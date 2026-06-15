@@ -183,8 +183,8 @@ values (
   'Chaixpress',
   'chaixpress',
   null,
-  '971554822424',
-  'Al Nahda, Dubai, UAE',
+  '971551150068',
+  'Al Rawdha 3 , Ajman, UAE',
   5,
   15,
   true

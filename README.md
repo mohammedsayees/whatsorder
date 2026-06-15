@@ -64,7 +64,7 @@ The seed creates:
 - Chaixpress
 - Slug: `chaixpress`
 - Currency: AED
-- WhatsApp number: `971554822424`
+- WhatsApp number: `971551150068`
 
 Seed items:
 
