@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="WhatsOrder">
+  <rect width="192" height="192" rx="42" fill="#1f8a5b"/>
+  <path d="M55 63c0-10 8-18 18-18h46c10 0 18 8 18 18v45c0 10-8 18-18 18H83l-28 21v-84Z" fill="#fff"/>
+  <path d="M78 74h36M78 93h36M78 112h22" stroke="#1f8a5b" stroke-width="10" stroke-linecap="round"/>
+</svg>
