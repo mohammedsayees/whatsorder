@@ -1,5 +1,5 @@
 import { OrderList } from "@/components/admin/OrderList";
-import { getDefaultRestaurant, getOrders } from "@/lib/data";
+import { getCustomers, getDefaultRestaurant, getOrders } from "@/lib/data";
 
 export default async function AdminOrdersPage() {
   const restaurant = await getDefaultRestaurant();
@@ -8,7 +8,7 @@ export default async function AdminOrdersPage() {
     return null;
   }
 
-  const orders = await getOrders(restaurant.id);
+  const [orders, customers] = await Promise.all([getOrders(restaurant.id), getCustomers(restaurant.id)]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -17,7 +17,7 @@ export default async function AdminOrdersPage() {
         Update statuses as orders move through the kitchen and delivery flow.
       </p>
       <div className="mt-6">
-        <OrderList orders={orders} />
+        <OrderList customers={customers} orders={orders} />
       </div>
     </main>
   );

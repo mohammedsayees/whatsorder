@@ -2,12 +2,33 @@
 
 import { revalidatePath } from "next/cache";
 import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
+import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
 import type { CartLine, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
   | { ok: true; orderId: string; whatsappUrl: string }
+  | { ok: false; error: string };
+
+type SavedCustomerLookupResult =
+  | {
+      ok: true;
+      found: true;
+      customer: {
+        name: string;
+        phone: string;
+        deliveryArea: string;
+        deliveryAddress: string;
+        deliveryLandmark: string;
+        latitude: number | null;
+        longitude: number | null;
+        googleMapsUrl: string;
+        addressText: string;
+        marketingOptIn: boolean;
+      };
+    }
+  | { ok: true; found: false }
   | { ok: false; error: string };
 
 const statusValues: OrderStatus[] = [
@@ -48,6 +69,84 @@ function parseCart(raw: string): CartLine[] {
       quantity: Number(item.quantity),
       price: Number(item.price)
     }));
+}
+
+export async function lookupSavedCustomerAction(
+  restaurantSlug: string,
+  phone: string
+): Promise<SavedCustomerLookupResult> {
+  const cleanPhone = phone.trim();
+
+  if (cleanPhone.length < 6) {
+    return { ok: true, found: false };
+  }
+
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+
+  if (!restaurant) {
+    return { ok: false, error: "Restaurant not found." };
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select(
+        "name,phone,delivery_area,delivery_address,default_latitude,default_longitude,default_google_maps_url,default_address_text,default_landmark,marketing_opt_in"
+      )
+      .eq("restaurant_id", restaurant.id)
+      .eq("phone", cleanPhone)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: "Could not check saved details. Please continue manually." };
+    }
+
+    if (data) {
+      return {
+        ok: true,
+        found: true,
+        customer: {
+          name: String(data.name ?? ""),
+          phone: String(data.phone ?? cleanPhone),
+          deliveryArea: String(data.delivery_area ?? ""),
+          deliveryAddress: String(data.delivery_address ?? ""),
+          deliveryLandmark: String(data.default_landmark ?? ""),
+          latitude: data.default_latitude === null ? null : Number(data.default_latitude),
+          longitude: data.default_longitude === null ? null : Number(data.default_longitude),
+          googleMapsUrl: String(data.default_google_maps_url ?? ""),
+          addressText: String(data.default_address_text ?? data.delivery_address ?? ""),
+          marketingOptIn: Boolean(data.marketing_opt_in)
+        }
+      };
+    }
+  }
+
+  const demoCustomer = demoCustomers.find(
+    (customer) => customer.restaurant_id === restaurant.id && customer.phone === cleanPhone
+  );
+
+  if (demoCustomer) {
+    return {
+      ok: true,
+      found: true,
+      customer: {
+        name: demoCustomer.name,
+        phone: demoCustomer.phone,
+        deliveryArea: demoCustomer.delivery_area,
+        deliveryAddress: demoCustomer.delivery_address,
+        deliveryLandmark: demoCustomer.default_landmark ?? "",
+        latitude: demoCustomer.default_latitude,
+        longitude: demoCustomer.default_longitude,
+        googleMapsUrl: demoCustomer.default_google_maps_url ?? "",
+        addressText: demoCustomer.default_address_text ?? demoCustomer.delivery_address,
+        marketingOptIn: demoCustomer.marketing_opt_in
+      }
+    };
+  }
+
+  return { ok: true, found: false };
 }
 
 export async function createOrderAction(
@@ -178,6 +277,9 @@ export async function createOrderAction(
         subtotal,
         delivery_fee: restaurant.delivery_fee,
         total,
+        points_earned: 0,
+        points_redeemed: 0,
+        loyalty_discount: 0,
         status: "New",
         whatsapp_message: message,
         consent_order_processing: consentOrderProcessing,
@@ -214,7 +316,11 @@ export async function createOrderAction(
           default_landmark: deliveryLandmark || null,
           total_orders: Number(existingCustomer.total_orders ?? 0) + 1,
           total_spend: Number(existingCustomer.total_spend ?? 0) + total,
+          last_order_at: consentTimestamp,
           marketing_opt_in: consentMarketing,
+          consent_order_processing: consentOrderProcessing,
+          consent_marketing: consentMarketing,
+          consent_timestamp: consentTimestamp,
           updated_at: consentTimestamp
         })
         .eq("id", existingCustomer.id);
@@ -232,7 +338,13 @@ export async function createOrderAction(
         default_landmark: deliveryLandmark || null,
         total_orders: 1,
         total_spend: total,
+        last_order_at: consentTimestamp,
         marketing_opt_in: consentMarketing,
+        consent_order_processing: consentOrderProcessing,
+        consent_marketing: consentMarketing,
+        consent_timestamp: consentTimestamp,
+        loyalty_points_balance: 0,
+        lifetime_points_earned: 0,
         updated_at: consentTimestamp
       });
     }
@@ -262,11 +374,60 @@ export async function updateOrderStatusAction(formData: FormData) {
   }
 
   if (supabase) {
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id,total,status,points_earned,customer_phone")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurant.id)
+      .maybeSingle();
+
     await supabase
       .from("orders")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", orderId)
       .eq("restaurant_id", restaurant.id);
+
+    if (status === "Completed" && order && Number(order.points_earned ?? 0) <= 0) {
+      const pointsEarned = Math.floor(Number(order.total ?? 0));
+
+      if (pointsEarned > 0) {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("id,loyalty_points_balance,lifetime_points_earned")
+          .eq("restaurant_id", restaurant.id)
+          .eq("phone", String(order.customer_phone))
+          .maybeSingle();
+
+        if (customer) {
+          const newBalance = Number(customer.loyalty_points_balance ?? 0) + pointsEarned;
+          const newLifetime = Number(customer.lifetime_points_earned ?? 0) + pointsEarned;
+
+          await supabase
+            .from("customers")
+            .update({
+              loyalty_points_balance: newBalance,
+              lifetime_points_earned: newLifetime
+            })
+            .eq("id", customer.id)
+            .eq("restaurant_id", restaurant.id);
+
+          await supabase.from("loyalty_transactions").insert({
+            restaurant_id: restaurant.id,
+            customer_id: customer.id,
+            order_id: order.id,
+            type: "earned",
+            points: pointsEarned,
+            description: `Earned ${pointsEarned} points for completed order`
+          });
+
+          await supabase
+            .from("orders")
+            .update({ points_earned: pointsEarned })
+            .eq("id", order.id)
+            .eq("restaurant_id", restaurant.id);
+        }
+      }
+    }
   }
 
   revalidatePath("/admin");

@@ -1,8 +1,8 @@
 import { updateOrderStatusAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { Customer, Order, OrderStatus } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { MapPin } from "lucide-react";
+import { Gift, MapPin } from "lucide-react";
 
 const statuses: OrderStatus[] = [
   "New",
@@ -13,16 +13,31 @@ const statuses: OrderStatus[] = [
   "Cancelled"
 ];
 
-export function OrderList({ orders }: { orders: Order[] }) {
+export function OrderList({ orders, customers = [] }: { orders: Order[]; customers?: Customer[] }) {
+  const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
+
   return (
     <div className="space-y-3">
-      {orders.map((order) => (
+      {orders.map((order) => {
+        const customer = customersByPhone.get(order.customer_phone);
+        const isRepeatCustomer = Number(customer?.total_orders ?? 0) > 1;
+
+        return (
         <article className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={order.id}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-black">{order.customer_name}</h3>
                 <StatusBadge status={order.status} />
+                <span
+                  className={
+                    isRepeatCustomer
+                      ? "rounded-full bg-mint/20 px-2.5 py-1 text-xs font-black text-leaf"
+                      : "rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-600"
+                  }
+                >
+                  {isRepeatCustomer ? "Repeat customer" : "New customer"}
+                </span>
               </div>
               <p className="mt-1 text-sm text-stone-500">
                 {order.customer_phone} · {order.delivery_area} · {new Date(order.created_at).toLocaleString("en-AE")}
@@ -61,6 +76,12 @@ export function OrderList({ orders }: { orders: Order[] }) {
             </div>
             <div className="min-w-56">
               <p className="text-right text-xl font-black">{formatAED(order.total)}</p>
+              {order.status === "Completed" && Number(order.points_earned ?? 0) > 0 ? (
+                <p className="mt-1 flex items-center justify-end gap-1 text-sm font-bold text-leaf">
+                  <Gift size={15} />
+                  {order.points_earned} points earned
+                </p>
+              ) : null}
               <form action={updateOrderStatusAction} className="mt-3 flex gap-2">
                 <input name="order_id" type="hidden" value={order.id} />
                 <select
@@ -81,7 +102,8 @@ export function OrderList({ orders }: { orders: Order[] }) {
             </div>
           </div>
         </article>
-      ))}
+      );
+      })}
     </div>
   );
 }

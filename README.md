@@ -28,11 +28,12 @@ The app remains multi-restaurant ready because every restaurant-owned table incl
 1. Customer opens `/r/chaixpress`.
 2. Customer adds menu items to cart.
 3. Customer enters contact, delivery, payment, and consent details.
-4. Customer can optionally share current location, generating a Google Maps delivery link.
-5. Order is saved to Supabase with status `New`.
-6. WhatsOrder generates a structured WhatsApp message.
-7. WhatsApp opens through `https://wa.me/<restaurant_whatsapp_number>?text=<encoded_order_message>`.
-8. Restaurant staff manage the order in `/admin`.
+4. Repeat customers can use saved address details after entering their phone number.
+5. Customer can optionally share current location, generating a Google Maps delivery link.
+6. Order is saved to Supabase with status `New`.
+7. WhatsOrder generates a structured WhatsApp message.
+8. WhatsApp opens through `https://wa.me/<restaurant_whatsapp_number>?text=<encoded_order_message>`.
+9. Restaurant staff manage the order in `/admin`.
 
 ## Local Setup
 
@@ -76,6 +77,10 @@ More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
 Checkout supports optional browser geolocation and manual address entry. See [LOCATION_FEATURE.md](LOCATION_FEATURE.md) for stored fields, Google Maps URL generation, and future Google Places ideas.
 
+## Customer Profiles and Loyalty
+
+Checkout can look up limited saved address details by restaurant and phone number to make repeat ordering easier. Admins can view customer order history, and completed orders can award future-ready loyalty points. See [CUSTOMER_PROFILE_AND_LOYALTY.md](CUSTOMER_PROFILE_AND_LOYALTY.md).
+
 ## Deployment
 
 The recommended deployment is:
@@ -106,10 +111,12 @@ Included:
 - Public restaurant menu route
 - Cart and checkout
 - Optional customer location capture
+- Saved customer address lookup
 - Consent capture
 - Click-to-WhatsApp
 - Supabase order persistence
 - Customer creation/update by phone number
+- Loyalty points foundation for completed orders
 - Admin orders, menu, customers, settings, and analytics
 
 Not included in V1:

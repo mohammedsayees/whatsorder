@@ -81,6 +81,9 @@ create table if not exists orders (
   subtotal numeric(10, 2) not null check (subtotal >= 0),
   delivery_fee numeric(10, 2) not null check (delivery_fee >= 0),
   total numeric(10, 2) not null check (total >= 0),
+  points_earned integer not null default 0,
+  points_redeemed integer not null default 0,
+  loyalty_discount numeric(10, 2) not null default 0,
   status order_status not null default 'New',
   whatsapp_message text not null,
   consent_order_processing boolean not null,
@@ -104,7 +107,13 @@ create table if not exists customers (
   default_landmark text,
   total_orders integer not null default 0,
   total_spend numeric(10, 2) not null default 0,
+  last_order_at timestamptz,
   marketing_opt_in boolean not null default false,
+  consent_order_processing boolean not null default false,
+  consent_marketing boolean not null default false,
+  consent_timestamp timestamptz,
+  loyalty_points_balance integer not null default 0,
+  lifetime_points_earned integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (restaurant_id, phone)
@@ -120,6 +129,17 @@ create table if not exists restaurant_users (
   unique (restaurant_id, email)
 );
 
+create table if not exists loyalty_transactions (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references restaurants(id) on delete cascade,
+  customer_id uuid not null references customers(id) on delete cascade,
+  order_id uuid references orders(id) on delete set null,
+  type text not null check (type in ('earned', 'redeemed', 'adjusted', 'expired')),
+  points integer not null,
+  description text,
+  created_at timestamptz not null default now()
+);
+
 alter table restaurants add column if not exists updated_at timestamptz not null default now();
 alter table menu_categories add column if not exists updated_at timestamptz not null default now();
 alter table menu_items add column if not exists updated_at timestamptz not null default now();
@@ -129,18 +149,29 @@ alter table orders add column if not exists delivery_google_maps_url text;
 alter table orders add column if not exists delivery_place_id text;
 alter table orders add column if not exists delivery_address_text text;
 alter table orders add column if not exists delivery_landmark text;
+alter table orders add column if not exists points_earned integer not null default 0;
+alter table orders add column if not exists points_redeemed integer not null default 0;
+alter table orders add column if not exists loyalty_discount numeric(10, 2) not null default 0;
 alter table customers add column if not exists default_latitude numeric(10, 7);
 alter table customers add column if not exists default_longitude numeric(10, 7);
 alter table customers add column if not exists default_google_maps_url text;
 alter table customers add column if not exists default_address_text text;
 alter table customers add column if not exists default_landmark text;
+alter table customers add column if not exists last_order_at timestamptz;
+alter table customers add column if not exists consent_order_processing boolean not null default false;
+alter table customers add column if not exists consent_marketing boolean not null default false;
+alter table customers add column if not exists consent_timestamp timestamptz;
+alter table customers add column if not exists loyalty_points_balance integer not null default 0;
+alter table customers add column if not exists lifetime_points_earned integer not null default 0;
 alter table restaurant_users add column if not exists user_id uuid;
 
 create index if not exists idx_menu_categories_restaurant on menu_categories(restaurant_id);
 create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id);
 create index if not exists idx_orders_restaurant_created on orders(restaurant_id, created_at desc);
+create index if not exists idx_orders_restaurant_customer_phone on orders(restaurant_id, customer_phone);
 create index if not exists idx_orders_status on orders(status);
 create index if not exists idx_customers_restaurant_phone on customers(restaurant_id, phone);
+create index if not exists idx_loyalty_transactions_restaurant_customer on loyalty_transactions(restaurant_id, customer_id);
 create index if not exists idx_restaurant_users_user on restaurant_users(user_id);
 
 create or replace function set_updated_at()
@@ -204,6 +235,7 @@ alter table menu_items enable row level security;
 alter table orders enable row level security;
 alter table customers enable row level security;
 alter table restaurant_users enable row level security;
+alter table loyalty_transactions enable row level security;
 
 drop policy if exists "Public can read active restaurants" on restaurants;
 create policy "Public can read active restaurants"
@@ -282,6 +314,12 @@ create policy "Restaurant users can manage own customers"
 on customers for all
 using (is_restaurant_member(customers.restaurant_id, array['owner', 'manager', 'staff']))
 with check (is_restaurant_member(customers.restaurant_id, array['owner', 'manager', 'staff']));
+
+drop policy if exists "Restaurant users can manage own loyalty transactions" on loyalty_transactions;
+create policy "Restaurant users can manage own loyalty transactions"
+on loyalty_transactions for all
+using (is_restaurant_member(loyalty_transactions.restaurant_id, array['owner', 'manager', 'staff']))
+with check (is_restaurant_member(loyalty_transactions.restaurant_id, array['owner', 'manager', 'staff']));
 
 drop policy if exists "Restaurant users can read own memberships" on restaurant_users;
 create policy "Restaurant users can read own memberships"
