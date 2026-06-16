@@ -7,8 +7,10 @@ import {
   addMenuItemAction,
   deleteMenuItemAction,
   importMenuRowsAction,
+  removeMenuItemImageAction,
   toggleMenuItemAvailabilityAction,
-  updateMenuItemAction
+  updateMenuItemAction,
+  uploadMenuItemImageAction
 } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import type { MenuCategory, MenuItem } from "@/lib/types";
@@ -531,12 +533,81 @@ function ItemForm({
   onDone: () => void;
 }) {
   const action = item ? updateMenuItemAction : addMenuItemAction;
+  const router = useRouter();
+  const [itemName, setItemName] = useState(item?.name ?? "");
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  async function uploadImage(file: File | null) {
+    setImageStatus(null);
+    setImageError(null);
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setImageError("Only JPG, PNG, and WebP images are allowed.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setImageError("Image must be 2MB or smaller.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("image", file);
+    formData.set("item_name", itemName || "menu-item");
+    if (item) {
+      formData.set("item_id", item.id);
+    }
+
+    setIsUploading(true);
+    const result = await uploadMenuItemImageAction(formData);
+    setIsUploading(false);
+
+    if (!result.ok) {
+      setImageError(result.error);
+      return;
+    }
+
+    setImageUrl(result.publicUrl);
+    setImageStatus(result.message);
+    if (item) {
+      router.refresh();
+    }
+  }
+
+  async function removeImage() {
+    setImageUrl("");
+    setImageStatus(item ? "Image removed." : "Image removed. Save item to keep it empty.");
+    setImageError(null);
+
+    if (item) {
+      const formData = new FormData();
+      formData.set("item_id", item.id);
+      await removeMenuItemImageAction(formData);
+      router.refresh();
+    }
+  }
 
   return (
     <form action={async (formData) => { await action(formData); onDone(); }} className="space-y-3">
       {item ? <input name="item_id" type="hidden" value={item.id} /> : null}
-      <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.name ?? ""} disabled={!canWrite} name="name" placeholder="Item name" required />
+      <input
+        className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2"
+        disabled={!canWrite}
+        name="name"
+        onChange={(event) => setItemName(event.target.value)}
+        placeholder="Item name"
+        required
+        value={itemName}
+      />
       <textarea className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.description ?? ""} disabled={!canWrite} name="description" placeholder="Description" />
       <div className="grid gap-3 sm:grid-cols-2">
         <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.price ?? ""} disabled={!canWrite} min="0" name="price" placeholder="Price" required step="0.01" type="number" />
@@ -548,32 +619,75 @@ function ItemForm({
           ))}
         </select>
       </div>
-      <details className="rounded-lg border border-stone-200 p-3">
-        <summary className="cursor-pointer text-sm font-black">Advanced</summary>
-        <input
-          className="focus-ring mt-3 w-full rounded-lg border border-stone-200 px-3 py-2"
-          disabled={!canWrite}
-          name="image_url"
-          onChange={(event) => setImageUrl(event.target.value)}
-          placeholder="Cloudinary image URL optional"
-          value={imageUrl}
-        />
+      <div className="rounded-lg border border-stone-200 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black">Item image</h3>
+            <p className="mt-1 text-xs text-stone-500">Optional. JPG, PNG, or WebP up to 2MB.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <label className="focus-ring inline-flex cursor-pointer items-center justify-center rounded-lg bg-ink px-3 py-2 text-sm font-black text-white aria-disabled:cursor-not-allowed aria-disabled:opacity-50" aria-disabled={!canWrite || isUploading}>
+              {isUploading ? "Uploading..." : "Upload image"}
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                disabled={!canWrite || isUploading}
+                onChange={(event) => {
+                  void uploadImage(event.target.files?.[0] ?? null);
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+            </label>
+            {imageUrl ? (
+              <button
+                className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50"
+                disabled={!canWrite || isUploading}
+                onClick={() => {
+                  void removeImage();
+                }}
+                type="button"
+              >
+                Remove image
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         <div className="mt-3 overflow-hidden rounded-lg border border-stone-200 bg-linen">
           {imageUrl ? (
-            // Regular img keeps pasted Cloudinary URLs visible without remote image config.
+            // Regular img keeps device-uploaded Supabase Storage URLs visible without remote image config.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              alt={item?.name ? `${item.name} preview` : "Menu item preview"}
+              alt={itemName ? `${itemName} preview` : "Menu item preview"}
               className="h-40 w-full object-cover"
               src={imageUrl}
             />
           ) : (
             <div className="grid h-40 place-items-center px-4 text-center text-sm font-bold text-ink/50">
-              Image preview appears here after pasting a URL.
+              Image preview appears here after upload.
             </div>
           )}
         </div>
-      </details>
+        {imageStatus ? <p className="mt-2 text-sm font-semibold text-leaf">{imageStatus}</p> : null}
+        {imageError ? <p className="mt-2 text-sm font-semibold text-red-600">{imageError}</p> : null}
+
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm font-black">Advanced: paste image URL manually</summary>
+          <input
+            className="focus-ring mt-3 w-full rounded-lg border border-stone-200 px-3 py-2"
+            disabled={!canWrite}
+            name="image_url"
+            onChange={(event) => {
+              setImageUrl(event.target.value);
+              setImageStatus(null);
+              setImageError(null);
+            }}
+            placeholder="https://res.cloudinary.com/... or Supabase public URL"
+            value={imageUrl}
+          />
+        </details>
+      </div>
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2 font-semibold">
           <input defaultChecked={item?.is_available ?? true} disabled={!canWrite} name="is_available" type="checkbox" />
