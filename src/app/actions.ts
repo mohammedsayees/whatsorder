@@ -60,6 +60,10 @@ type MenuItemInsert = {
   is_featured: boolean;
 };
 
+type UploadMenuImageResult =
+  | { ok: true; publicUrl: string; message: string }
+  | { ok: false; error: string };
+
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
@@ -86,6 +90,15 @@ function booleanFromValue(value: unknown, fallback = false) {
   }
 
   return ["true", "yes", "y", "1", "available", "featured"].includes(normalized);
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
 }
 
 function parseCart(raw: string): CartLine[] {
@@ -513,6 +526,100 @@ export async function updateMenuItemAction(formData: FormData) {
       is_available: formData.get("is_available") === "on",
       is_featured: formData.get("is_featured") === "on"
     })
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id);
+
+  revalidatePath("/admin/menu");
+  revalidatePath(`/r/${restaurant.slug}`);
+}
+
+export async function uploadMenuItemImageAction(formData: FormData): Promise<UploadMenuImageResult> {
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const supabase = getSupabaseAdmin();
+  const file = formData.get("image");
+  const itemName = stringValue(formData, "item_name") || "menu-item";
+  const itemId = stringValue(formData, "item_id");
+
+  if (!restaurant || !supabase) {
+    return { ok: false, error: "Image upload needs Supabase Storage access." };
+  }
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Please choose an image to upload." };
+  }
+
+  const allowedTypes = new Map([
+    ["image/jpeg", "jpg"],
+    ["image/png", "png"],
+    ["image/webp", "webp"]
+  ]);
+  const extension = allowedTypes.get(file.type);
+
+  if (!extension) {
+    return { ok: false, error: "Only JPG, PNG, and WebP images are allowed." };
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    return { ok: false, error: "Image must be 2MB or smaller." };
+  }
+
+  const bucketName = "menu-images";
+  const itemSlug = slugify(itemName) || "menu-item";
+  const filePath = `restaurants/${restaurant.slug}/${itemSlug}-${Date.now()}.${extension}`;
+  const bytes = await file.arrayBuffer();
+
+  const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
+    public: true,
+    fileSizeLimit: 2 * 1024 * 1024,
+    allowedMimeTypes: [...allowedTypes.keys()]
+  });
+
+  if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
+    return { ok: false, error: bucketError.message };
+  }
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, bytes, {
+      contentType: file.type,
+      upsert: false
+    });
+
+  if (uploadError) {
+    return { ok: false, error: uploadError.message };
+  }
+
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+  const publicUrl = data.publicUrl;
+
+  if (itemId) {
+    await supabase
+      .from("menu_items")
+      .update({ image_url: publicUrl })
+      .eq("id", itemId)
+      .eq("restaurant_id", restaurant.id);
+
+    revalidatePath("/admin/menu");
+    revalidatePath(`/r/${restaurant.slug}`);
+  }
+
+  return { ok: true, publicUrl, message: "Image uploaded successfully." };
+}
+
+export async function removeMenuItemImageAction(formData: FormData) {
+  const itemId = stringValue(formData, "item_id");
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const supabase = getSupabaseAdmin();
+
+  if (!restaurant || !supabase || !itemId) {
+    return;
+  }
+
+  await supabase
+    .from("menu_items")
+    .update({ image_url: null })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
 

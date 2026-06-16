@@ -81,6 +81,10 @@ Checkout supports optional browser geolocation and manual address entry. See [LO
 
 Checkout can look up limited saved address details by restaurant and phone number to make repeat ordering easier. Admins can view customer order history, and completed orders can award future-ready loyalty points. See [CUSTOMER_PROFILE_AND_LOYALTY.md](CUSTOMER_PROFILE_AND_LOYALTY.md).
 
+## Menu Images
+
+Restaurant staff can upload optional menu item images from their phone or laptop through Supabase Storage. See [MENU_IMAGE_UPLOAD.md](MENU_IMAGE_UPLOAD.md).
+
 ## Deployment
 
 The recommended deployment is:
