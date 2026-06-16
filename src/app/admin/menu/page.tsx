@@ -24,7 +24,7 @@ export default async function AdminMenuPage() {
         </p>
       ) : null}
       <div className="mt-6">
-        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} />
+        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} restaurantSlug={restaurant.slug} />
       </div>
     </main>
   );
