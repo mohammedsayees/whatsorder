@@ -16,7 +16,6 @@ export function RestaurantMenu({
   items: MenuItem[];
 }) {
   const cart = useCart();
-  const availableItems = items.filter((item) => item.is_available);
 
   return (
     <>
@@ -45,7 +44,7 @@ export function RestaurantMenu({
 
         <section className="mt-6 space-y-7">
           {categories.map((category) => {
-            const categoryItems = availableItems.filter((item) => item.category_id === category.id);
+            const categoryItems = items.filter((item) => item.category_id === category.id);
 
             if (categoryItems.length === 0) {
               return null;
@@ -61,7 +60,9 @@ export function RestaurantMenu({
                     return (
                       <article
                         key={item.id}
-                        className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm"
+                        className={`rounded-lg border border-stone-200 bg-white p-4 shadow-sm ${
+                          item.is_available ? "" : "opacity-65"
+                        }`}
                         data-testid={`menu-item-${item.id}`}
                       >
                         <div className="flex gap-4">
@@ -77,7 +78,11 @@ export function RestaurantMenu({
                               {item.description}
                             </p>
                             <div className="mt-4 flex items-center justify-between">
-                              {cartLine ? (
+                              {!item.is_available ? (
+                                <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-500">
+                                  Unavailable
+                                </span>
+                              ) : cartLine ? (
                                 <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                                   <button
                                     className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
@@ -101,8 +106,9 @@ export function RestaurantMenu({
                                 <span className="text-xs font-semibold text-stone-500">Ready to add</span>
                               )}
                               <button
-                                className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-bold text-white"
+                                className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                                 data-testid={`add-item-${item.id}`}
+                                disabled={!item.is_available}
                                 onClick={() => cart.addItem(item)}
                                 type="button"
                               >

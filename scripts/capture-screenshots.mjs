@@ -25,7 +25,7 @@ await page.screenshot({
 });
 
 await page.getByTestId("add-item-00000000-0000-4000-8000-000000000201").click();
-await page.getByTestId("add-item-00000000-0000-4000-8000-000000000210").click();
+await page.getByTestId("add-item-00000000-0000-4000-8000-000000000222").click();
 await page.goto(`${baseUrl}/r/chaixpress/checkout`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1000);
 await page.screenshot({

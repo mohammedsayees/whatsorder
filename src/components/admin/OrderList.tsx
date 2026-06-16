@@ -2,6 +2,7 @@ import { updateOrderStatusAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import type { Order, OrderStatus } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { MapPin } from "lucide-react";
 
 const statuses: OrderStatus[] = [
   "New",
@@ -33,7 +34,29 @@ export function OrderList({ orders }: { orders: Order[] }) {
                   </p>
                 ))}
               </div>
-              <p className="mt-3 text-sm text-stone-600">{order.delivery_address}</p>
+              <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
+                <p>
+                  <span className="font-bold text-stone-800">Area:</span> {order.delivery_area}
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold text-stone-800">Address:</span> {order.delivery_address}
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold text-stone-800">Landmark:</span>{" "}
+                  {order.delivery_landmark || "Not provided"}
+                </p>
+                {order.delivery_google_maps_url ? (
+                  <a
+                    className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-3 py-2 text-xs font-black text-white"
+                    href={order.delivery_google_maps_url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <MapPin size={14} />
+                    Open in Google Maps
+                  </a>
+                ) : null}
+              </div>
               {order.notes ? <p className="mt-1 text-sm text-stone-500">Notes: {order.notes}</p> : null}
             </div>
             <div className="min-w-56">

@@ -45,8 +45,15 @@ export async function getDefaultRestaurant() {
   return getRestaurantBySlug(defaultSlug);
 }
 
-export async function getMenu(restaurantId: string): Promise<MenuWithCategories> {
-  const supabase = getSupabase();
+type GetMenuOptions = {
+  admin?: boolean;
+};
+
+export async function getMenu(
+  restaurantId: string,
+  options: GetMenuOptions = {}
+): Promise<MenuWithCategories> {
+  const supabase = options.admin ? getSupabaseAdmin() : getSupabase();
 
   if (supabase) {
     const [{ data: categories }, { data: items }] = await Promise.all([

@@ -19,6 +19,7 @@ export type Restaurant = {
   minimum_order_amount: number;
   is_active: boolean;
   created_at: string;
+  updated_at?: string;
 };
 
 export type MenuCategory = {
@@ -28,6 +29,7 @@ export type MenuCategory = {
   display_order: number;
   is_active: boolean;
   created_at: string;
+  updated_at?: string;
 };
 
 export type MenuItem = {
@@ -41,6 +43,7 @@ export type MenuItem = {
   is_available: boolean;
   is_featured: boolean;
   created_at: string;
+  updated_at?: string;
 };
 
 export type CartLine = {
@@ -59,6 +62,12 @@ export type Order = {
   customer_phone: string;
   delivery_area: string;
   delivery_address: string;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  delivery_google_maps_url: string | null;
+  delivery_place_id: string | null;
+  delivery_address_text: string | null;
+  delivery_landmark: string | null;
   notes: string | null;
   payment_method: PaymentMethod;
   items: OrderItem[];
@@ -81,6 +90,11 @@ export type Customer = {
   phone: string;
   delivery_area: string;
   delivery_address: string;
+  default_latitude: number | null;
+  default_longitude: number | null;
+  default_google_maps_url: string | null;
+  default_address_text: string | null;
+  default_landmark: string | null;
   total_orders: number;
   total_spend: number;
   marketing_opt_in: boolean;
@@ -91,6 +105,7 @@ export type Customer = {
 export type RestaurantUser = {
   id: string;
   restaurant_id: string;
+  user_id: string | null;
   email: string;
   role: "owner" | "manager" | "staff";
   created_at: string;

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMenu, getRestaurantBySlug } from "@/lib/data";
+import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
 import type { CartLine, OrderStatus, PaymentMethod } from "@/lib/types";
@@ -21,6 +21,16 @@ const statusValues: OrderStatus[] = [
 
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
+}
+
+function decimalValue(formData: FormData, key: string) {
+  const raw = stringValue(formData, key);
+  if (!raw) {
+    return null;
+  }
+
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 function parseCart(raw: string): CartLine[] {
@@ -62,10 +72,44 @@ export async function createOrderAction(
     return { ok: false, error: "Your cart is empty." };
   }
 
+  const menu = await getMenu(restaurant.id);
+  const menuItems = new Map(menu.items.map((item) => [item.id, item]));
+  const verifiedItems: CartLine[] = [];
+
+  for (const cartItem of items) {
+    const menuItem = menuItems.get(cartItem.item_id);
+
+    if (!menuItem || !menuItem.is_available) {
+      return {
+        ok: false,
+        error: `${cartItem.name || "One item"} is no longer available. Please review your cart.`
+      };
+    }
+
+    verifiedItems.push({
+      item_id: menuItem.id,
+      name: menuItem.name,
+      price: menuItem.price,
+      quantity: Math.max(1, Math.floor(cartItem.quantity))
+    });
+  }
+
   const customerName = stringValue(formData, "customer_name");
   const customerPhone = stringValue(formData, "customer_phone");
   const deliveryArea = stringValue(formData, "delivery_area");
   const deliveryAddress = stringValue(formData, "delivery_address");
+  const deliveryLandmark = stringValue(formData, "delivery_landmark");
+  const deliveryLatitude = decimalValue(formData, "delivery_latitude");
+  const deliveryLongitude = decimalValue(formData, "delivery_longitude");
+  const submittedMapsUrl = stringValue(formData, "delivery_google_maps_url");
+  const deliveryGoogleMapsUrl =
+    submittedMapsUrl ||
+    (deliveryLatitude !== null && deliveryLongitude !== null
+      ? `https://www.google.com/maps?q=${deliveryLatitude},${deliveryLongitude}`
+      : "");
+  const deliveryPlaceId = stringValue(formData, "delivery_place_id");
+  // Future Google Places Autocomplete can populate delivery_address_text and delivery_place_id here.
+  const deliveryAddressText = stringValue(formData, "delivery_address_text") || deliveryAddress;
   const notes = stringValue(formData, "notes");
   const paymentMethod = stringValue(formData, "payment_method") as PaymentMethod;
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
@@ -83,7 +127,7 @@ export async function createOrderAction(
     return { ok: false, error: "Please accept order processing consent to continue." };
   }
 
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = verifiedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   if (subtotal < restaurant.minimum_order_amount) {
     return {
@@ -100,9 +144,11 @@ export async function createOrderAction(
     customerPhone,
     deliveryArea,
     deliveryAddress,
+    deliveryLandmark,
+    deliveryGoogleMapsUrl,
     notes,
     paymentMethod,
-    items,
+    items: verifiedItems,
     subtotal,
     deliveryFee: restaurant.delivery_fee,
     total
@@ -120,9 +166,15 @@ export async function createOrderAction(
         customer_phone: customerPhone,
         delivery_area: deliveryArea,
         delivery_address: deliveryAddress,
+        delivery_latitude: deliveryLatitude,
+        delivery_longitude: deliveryLongitude,
+        delivery_google_maps_url: deliveryGoogleMapsUrl || null,
+        delivery_place_id: deliveryPlaceId || null,
+        delivery_address_text: deliveryAddressText || null,
+        delivery_landmark: deliveryLandmark || null,
         notes: notes || null,
         payment_method: paymentMethod,
-        items,
+        items: verifiedItems,
         subtotal,
         delivery_fee: restaurant.delivery_fee,
         total,
@@ -155,6 +207,11 @@ export async function createOrderAction(
           name: customerName,
           delivery_area: deliveryArea,
           delivery_address: deliveryAddress,
+          default_latitude: deliveryLatitude,
+          default_longitude: deliveryLongitude,
+          default_google_maps_url: deliveryGoogleMapsUrl || null,
+          default_address_text: deliveryAddressText || null,
+          default_landmark: deliveryLandmark || null,
           total_orders: Number(existingCustomer.total_orders ?? 0) + 1,
           total_spend: Number(existingCustomer.total_spend ?? 0) + total,
           marketing_opt_in: consentMarketing,
@@ -168,6 +225,11 @@ export async function createOrderAction(
         phone: customerPhone,
         delivery_area: deliveryArea,
         delivery_address: deliveryAddress,
+        default_latitude: deliveryLatitude,
+        default_longitude: deliveryLongitude,
+        default_google_maps_url: deliveryGoogleMapsUrl || null,
+        default_address_text: deliveryAddressText || null,
+        default_landmark: deliveryLandmark || null,
         total_orders: 1,
         total_spend: total,
         marketing_opt_in: consentMarketing,
@@ -192,9 +254,10 @@ export async function createOrderAction(
 export async function updateOrderStatusAction(formData: FormData) {
   const orderId = stringValue(formData, "order_id");
   const status = stringValue(formData, "status") as OrderStatus;
+  const restaurant = await getDefaultRestaurant();
   const supabase = getSupabaseAdmin();
 
-  if (!orderId || !statusValues.includes(status)) {
+  if (!restaurant || !orderId || !statusValues.includes(status)) {
     return;
   }
 
@@ -202,7 +265,8 @@ export async function updateOrderStatusAction(formData: FormData) {
     await supabase
       .from("orders")
       .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurant.id);
   }
 
   revalidatePath("/admin");
@@ -305,7 +369,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
 export async function addCategoryAction(formData: FormData) {
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const menu = restaurant ? await getMenu(restaurant.id) : null;
+  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
   const supabase = getSupabaseAdmin();
 
   if (!restaurant || !menu || !supabase) {

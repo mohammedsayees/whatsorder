@@ -9,7 +9,7 @@ export default async function AdminMenuPage() {
     return null;
   }
 
-  const menu = await getMenu(restaurant.id);
+  const menu = await getMenu(restaurant.id, { admin: true });
   const canWrite = Boolean(getSupabaseAdmin());
 
   return (

@@ -54,7 +54,7 @@ export default function LandingPage() {
             <div className="rounded-xl bg-linen p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-leaf">Chaixpress</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-leaf">Chai Xpress</p>
                   <h2 className="text-2xl font-black">Today</h2>
                 </div>
                 <div className="grid h-11 w-11 place-items-center rounded-xl bg-leaf text-white">
@@ -75,7 +75,7 @@ export default function LandingPage() {
                 ))}
               </div>
               <div className="mt-4 space-y-2">
-                {["New order from Aisha", "Preparing: Zinger Combo", "Completed: Karak Tea"].map((item) => (
+                {["New order from Aisha", "Preparing: Zinger Burger + Fries + Karak", "Completed: Karak Tea"].map((item) => (
                   <div className="flex items-center justify-between rounded-lg bg-white px-3 py-3 text-sm" key={item}>
                     <span className="font-bold">{item}</span>
                     <span className="rounded-full bg-mint px-2 py-1 text-xs font-bold text-leaf">Live</span>

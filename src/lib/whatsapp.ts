@@ -7,6 +7,8 @@ type MessageInput = {
   customerPhone: string;
   deliveryArea: string;
   deliveryAddress: string;
+  deliveryLandmark?: string;
+  deliveryGoogleMapsUrl?: string;
   notes?: string;
   paymentMethod: PaymentMethod;
   items: OrderItem[];
@@ -17,24 +19,31 @@ type MessageInput = {
 
 export function buildWhatsAppMessage(input: MessageInput) {
   const lines = input.items.map(
-    (item) => `- ${item.quantity}x ${item.name} (${formatAED(item.price * item.quantity)})`
+    (item) => `${item.quantity} x ${item.name} - ${formatAED(item.price * item.quantity)}`
   );
 
   return [
-    `New order for ${input.restaurant.name}`,
+    `New Order - ${input.restaurant.name}`,
+    "",
+    "Customer:",
+    `Name: ${input.customerName}`,
+    `Phone: ${input.customerPhone}`,
+    "",
+    "Delivery Details:",
+    `Area: ${input.deliveryArea}`,
+    `Address: ${input.deliveryAddress}`,
+    `Landmark: ${input.deliveryLandmark || "Not provided"}`,
+    `Location: ${input.deliveryGoogleMapsUrl || "Not shared"}`,
     "",
     "Items:",
     ...lines,
     "",
     `Subtotal: ${formatAED(input.subtotal)}`,
-    `Delivery fee: ${formatAED(input.deliveryFee)}`,
+    `Delivery Fee: ${formatAED(input.deliveryFee)}`,
     `Total: ${formatAED(input.total)}`,
     "",
-    `Customer: ${input.customerName}`,
-    `Phone: ${input.customerPhone}`,
-    `Area: ${input.deliveryArea}`,
-    `Address: ${input.deliveryAddress}`,
     `Payment: ${input.paymentMethod}`,
+    "",
     input.notes ? `Notes: ${input.notes}` : "Notes: None"
   ].join("\n");
 }

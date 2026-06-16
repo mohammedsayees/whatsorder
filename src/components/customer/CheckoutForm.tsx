@@ -3,18 +3,63 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Loader2, MapPin, Send } from "lucide-react";
 import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { useCart } from "@/components/customer/CartProvider";
 import type { Restaurant } from "@/lib/types";
+
+type CapturedLocation = {
+  latitude: number;
+  longitude: number;
+  mapsUrl: string;
+};
 
 export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const router = useRouter();
   const cart = useCart();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [location, setLocation] = useState<CapturedLocation | null>(null);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
   const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
+
+  function captureLocation() {
+    setLocationError(null);
+    setLocationMessage(null);
+
+    if (!navigator.geolocation) {
+      setLocationError("Location is not supported on this browser. Please enter your full address manually.");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = Number(position.coords.latitude.toFixed(7));
+        const longitude = Number(position.coords.longitude.toFixed(7));
+        const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+        setLocation({ latitude, longitude, mapsUrl });
+        setLocationMessage("Location captured successfully");
+        setIsLocating(false);
+      },
+      (geoError) => {
+        setIsLocating(false);
+        setLocation(null);
+
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          setLocationError("Location permission denied. Please enter your full address manually.");
+          return;
+        }
+
+        setLocationError("Could not capture your location. Please enter your full address manually.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,6 +121,10 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <input name="items" type="hidden" />
+          <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />
+          <input name="delivery_longitude" readOnly type="hidden" value={location?.longitude ?? ""} />
+          <input name="delivery_google_maps_url" readOnly type="hidden" value={location?.mapsUrl ?? ""} />
+          <input name="delivery_place_id" readOnly type="hidden" value="" />
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-bold">Name</span>
@@ -95,23 +144,79 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               />
             </label>
           </div>
-          <label className="block">
-            <span className="text-sm font-bold">Delivery area</span>
-            <input
-              className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
-              name="delivery_area"
-              placeholder="Al Nahda, Deira, Business Bay..."
-              required
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold">Full address</span>
-            <textarea
-              className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
-              name="delivery_address"
-              required
-            />
-          </label>
+          <section className="rounded-lg border border-stone-200 bg-white p-4">
+            <div className="flex items-start gap-3">
+              <span className="mt-1 rounded-full bg-mint/20 p-2 text-leaf">
+                <MapPin size={18} />
+              </span>
+              <div>
+                <h2 className="font-black">Delivery location</h2>
+                <p className="mt-1 text-sm text-stone-600">
+                  Current location is optional but helps the restaurant deliver more accurately.
+                </p>
+              </div>
+            </div>
+
+            <button
+              className="focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-leaf px-4 py-3 text-sm font-black text-leaf disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              disabled={isLocating}
+              onClick={captureLocation}
+              type="button"
+            >
+              {isLocating ? <Loader2 className="animate-spin" size={17} /> : <MapPin size={17} />}
+              {isLocating ? "Capturing location..." : "Use my current location"}
+            </button>
+
+            {locationMessage ? (
+              <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                {locationMessage}
+              </p>
+            ) : null}
+            {location ? (
+              <a
+                className="mt-2 inline-flex text-sm font-black text-leaf underline-offset-4 hover:underline"
+                href={location.mapsUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                View selected location
+              </a>
+            ) : null}
+            {locationError ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                {locationError}
+              </p>
+            ) : null}
+
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className="text-sm font-bold">Delivery area</span>
+                <input
+                  className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  name="delivery_area"
+                  placeholder="Al Nahda, Deira, Business Bay..."
+                  required
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold">Full address / building / flat / villa number</span>
+                <textarea
+                  className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  name="delivery_address"
+                  required
+                />
+              </label>
+              <input name="delivery_address_text" readOnly type="hidden" value="" />
+              <label className="block">
+                <span className="text-sm font-bold">Landmark</span>
+                <input
+                  className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  name="delivery_landmark"
+                  placeholder="Near mosque, opposite supermarket..."
+                />
+              </label>
+            </div>
+          </section>
           <label className="block">
             <span className="text-sm font-bold">Notes</span>
             <textarea

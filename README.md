@@ -1,20 +1,42 @@
 # WhatsOrder
 
-WhatsOrder is a pilot-ready SaaS MVP for small UAE restaurants that already take orders through WhatsApp. It keeps WhatsApp as the ordering channel, but adds structured menus, checkout, order tracking, customer history, and simple restaurant analytics.
+WhatsOrder is a lightweight WhatsApp ordering and order management system for small restaurants in the UAE.
 
-## What is included
+It does not replace WhatsApp. It gives restaurants a public menu link, structured checkout, click-to-WhatsApp order messages, order tracking, customer history, and simple analytics.
 
-- Next.js App Router, TypeScript, and Tailwind CSS
-- Multi-restaurant public URLs such as `/r/chaixpress`
-- Customer menu, cart, checkout, consent capture, and click-to-WhatsApp
-- Supabase tables for restaurants, menus, orders, customers, and restaurant users
-- Admin dashboard, order statuses, menu management, customer database, and settings
-- Demo fallback data when Supabase is not configured
-- PWA-friendly manifest and mobile-first UI
+## Current Pilot
 
-## Local setup
+- Restaurant: Chai Xpress
+- Slug: `chaixpress`
+- Public menu URL: `/r/chaixpress`
+- Location: Al Rawda 3, Ajman, UAE
+- Currency: AED
 
-Use Node.js 20.9 or newer.
+The app remains multi-restaurant ready because every restaurant-owned table includes `restaurant_id`.
+
+## Tech Stack
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- Supabase
+- Vercel
+- PWA-friendly metadata and manifest
+
+## Core Flow
+
+1. Customer opens `/r/chaixpress`.
+2. Customer adds menu items to cart.
+3. Customer enters contact, delivery, payment, and consent details.
+4. Customer can optionally share current location, generating a Google Maps delivery link.
+5. Order is saved to Supabase with status `New`.
+6. WhatsOrder generates a structured WhatsApp message.
+7. WhatsApp opens through `https://wa.me/<restaurant_whatsapp_number>?text=<encoded_order_message>`.
+8. Restaurant staff manage the order in `/admin`.
+
+## Local Setup
+
+Use Node.js `20.9` or newer.
 
 ```bash
 npm install
@@ -25,56 +47,77 @@ npm run dev
 Open:
 
 - Landing page: `http://localhost:3000`
-- Demo menu: `http://localhost:3000/r/chaixpress`
+- Chai Xpress menu: `http://localhost:3000/r/chaixpress`
 - Admin dashboard: `http://localhost:3000/admin`
 
-## Supabase setup
-
-1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the Supabase SQL editor.
-3. Add your values to `.env.local`.
-4. Restart the dev server.
-
-Required environment variables:
+## Environment Variables
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG=chaixpress
-NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER=971554822424
+NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER=971551150068
 ```
 
-Use `SUPABASE_SERVICE_ROLE_KEY` only on the server. It powers server actions for orders, customers, menu edits, and settings updates. Public menu reads use the anon key and RLS select policies.
+Use `SUPABASE_SERVICE_ROLE_KEY` only on the server. Never expose it in browser code, screenshots, or client-side environment variables.
 
-## Pilot notes
+## Supabase
 
-This V1 intentionally does not include a marketplace, payment gateway, WhatsApp Business API, or subscriptions. The code includes clear insertion points for those future features:
+Run the schema and seed file:
 
-- WhatsApp Business API: replace the click-to-WhatsApp URL in `src/app/actions.ts`
-- Payment gateway: reserve payment intent before order creation in `src/app/actions.ts`
-- Loyalty points and campaigns: extend `customers` and the admin customer page
-- Subscription billing and multi-branch support: extend restaurant settings and `restaurant_users`
-- Authentication: connect `restaurant_users` to Supabase Auth and add user-scoped RLS policies
+```text
+supabase/schema.sql
+```
 
-## Demo restaurant
+More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
-The seed creates:
+## Delivery Location
 
-- Chaixpress
-- Slug: `chaixpress`
-- Currency: AED
-- WhatsApp number: `971551150068`
+Checkout supports optional browser geolocation and manual address entry. See [LOCATION_FEATURE.md](LOCATION_FEATURE.md) for stored fields, Google Maps URL generation, and future Google Places ideas.
 
-Seed items:
+## Deployment
 
-- Karak Tea — AED 1
-- Zinger Burger — AED 15
-- Double Smash Burger — AED 21
-- Single Smash Burger — AED 15
-- Grill Chicken Burger — AED 15
-- Classic Porotta Roll — AED 7
-- Oman Chips Porotta — AED 3
-- Chicken Loaded Fries — AED 16
-- Fresh Lime Juice — AED 8
-- Zinger Combo — AED 21
+The recommended deployment is:
+
+- GitHub for source control
+- Vercel for hosting
+- Supabase for database and future image storage
+
+See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Pilot Testing
+
+Use [PILOT_TESTING.md](PILOT_TESTING.md) to test the live flow with Chai Xpress staff and customers.
+
+## Commands
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+## V1 Scope
+
+Included:
+
+- Multi-restaurant data model
+- Public restaurant menu route
+- Cart and checkout
+- Optional customer location capture
+- Consent capture
+- Click-to-WhatsApp
+- Supabase order persistence
+- Customer creation/update by phone number
+- Admin orders, menu, customers, settings, and analytics
+
+Not included in V1:
+
+- Marketplace
+- Payment gateway
+- WhatsApp Business API
+- Delivery fleet
+- Subscription billing
+
+The code includes comments and structure for adding payments, WhatsApp Business API, loyalty, campaigns, subscriptions, authentication, and multi-branch support later.
