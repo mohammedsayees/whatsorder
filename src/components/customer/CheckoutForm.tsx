@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Loader2, MapPin, Send } from "lucide-react";
-import { createOrderAction } from "@/app/actions";
+import { createOrderAction, lookupSavedCustomerAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { useCart } from "@/components/customer/CartProvider";
 import type { Restaurant } from "@/lib/types";
@@ -15,16 +15,105 @@ type CapturedLocation = {
   mapsUrl: string;
 };
 
+type SavedCustomer = {
+  name: string;
+  phone: string;
+  deliveryArea: string;
+  deliveryAddress: string;
+  deliveryLandmark: string;
+  latitude: number | null;
+  longitude: number | null;
+  googleMapsUrl: string;
+  addressText: string;
+  marketingOptIn: boolean;
+};
+
 export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const router = useRouter();
   const cart = useCart();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLTextAreaElement>(null);
+  const landmarkRef = useRef<HTMLInputElement>(null);
+  const marketingRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
+  const [addressText, setAddressText] = useState("");
+  const [savedCustomer, setSavedCustomer] = useState<SavedCustomer | null>(null);
+  const [savedCustomerMessage, setSavedCustomerMessage] = useState<string | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
+
+  async function lookupSavedCustomer(phone: string) {
+    const cleanPhone = phone.trim();
+
+    setSavedCustomer(null);
+    setSavedCustomerMessage(null);
+
+    if (cleanPhone.length < 6) {
+      return;
+    }
+
+    setIsLookingUpCustomer(true);
+    const result = await lookupSavedCustomerAction(restaurant.slug, cleanPhone);
+    setIsLookingUpCustomer(false);
+
+    if (!result.ok) {
+      setSavedCustomerMessage(result.error);
+      return;
+    }
+
+    if (result.found) {
+      setSavedCustomer(result.customer);
+      setSavedCustomerMessage("We found your saved details. Use saved address?");
+      return;
+    }
+
+    setSavedCustomerMessage(null);
+  }
+
+  function applySavedCustomer() {
+    if (!savedCustomer) {
+      return;
+    }
+
+    if (nameRef.current) {
+      nameRef.current.value = savedCustomer.name;
+    }
+    if (phoneRef.current) {
+      phoneRef.current.value = savedCustomer.phone;
+    }
+    if (areaRef.current) {
+      areaRef.current.value = savedCustomer.deliveryArea;
+    }
+    if (addressRef.current) {
+      addressRef.current.value = savedCustomer.deliveryAddress;
+    }
+    if (landmarkRef.current) {
+      landmarkRef.current.value = savedCustomer.deliveryLandmark;
+    }
+    if (marketingRef.current) {
+      marketingRef.current.checked = savedCustomer.marketingOptIn;
+    }
+
+    setAddressText(savedCustomer.addressText);
+
+    if (savedCustomer.latitude !== null && savedCustomer.longitude !== null && savedCustomer.googleMapsUrl) {
+      setLocation({
+        latitude: savedCustomer.latitude,
+        longitude: savedCustomer.longitude,
+        mapsUrl: savedCustomer.googleMapsUrl
+      });
+      setLocationMessage("Saved location applied");
+    }
+
+    setSavedCustomerMessage("Saved address applied. You can edit it before placing the order.");
+  }
 
   function captureLocation() {
     setLocationError(null);
@@ -131,6 +220,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                 name="customer_name"
+                ref={nameRef}
                 required
               />
             </label>
@@ -140,10 +230,33 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                 inputMode="tel"
                 name="customer_phone"
+                onBlur={(event) => {
+                  void lookupSavedCustomer(event.currentTarget.value);
+                }}
+                ref={phoneRef}
                 required
               />
             </label>
           </div>
+          {isLookingUpCustomer ? (
+            <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-600">
+              Checking saved details...
+            </p>
+          ) : null}
+          {savedCustomerMessage ? (
+            <div className="rounded-lg border border-mint/70 bg-mint/10 px-4 py-3 text-sm text-stone-700">
+              <p className="font-bold">{savedCustomerMessage}</p>
+              {savedCustomer ? (
+                <button
+                  className="focus-ring mt-3 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
+                  onClick={applySavedCustomer}
+                  type="button"
+                >
+                  Use saved address
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <section className="rounded-lg border border-stone-200 bg-white p-4">
             <div className="flex items-start gap-3">
               <span className="mt-1 rounded-full bg-mint/20 p-2 text-leaf">
@@ -195,6 +308,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_area"
                   placeholder="Al Nahda, Deira, Business Bay..."
+                  ref={areaRef}
                   required
                 />
               </label>
@@ -203,16 +317,18 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 <textarea
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_address"
+                  ref={addressRef}
                   required
                 />
               </label>
-              <input name="delivery_address_text" readOnly type="hidden" value="" />
+              <input name="delivery_address_text" readOnly type="hidden" value={addressText} />
               <label className="block">
                 <span className="text-sm font-bold">Landmark</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_landmark"
                   placeholder="Near mosque, opposite supermarket..."
+                  ref={landmarkRef}
                 />
               </label>
             </div>
@@ -241,11 +357,14 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
           </fieldset>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_order_processing" required type="checkbox" />
-            <span>I agree that my details will be shared with the restaurant to process this order.</span>
+            <span>
+              I agree that this restaurant can save my details to process my order and make future
+              ordering easier.
+            </span>
           </label>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
-            <input className="mt-1" name="consent_marketing" type="checkbox" />
-            <span>I would like to receive offers from this restaurant.</span>
+            <input className="mt-1" name="consent_marketing" ref={marketingRef} type="checkbox" />
+            <span>I agree to receive offers and updates from this restaurant on WhatsApp.</span>
           </label>
 
           {error ? (

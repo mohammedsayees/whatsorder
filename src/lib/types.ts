@@ -74,6 +74,9 @@ export type Order = {
   subtotal: number;
   delivery_fee: number;
   total: number;
+  points_earned: number;
+  points_redeemed: number;
+  loyalty_discount: number;
   status: OrderStatus;
   whatsapp_message: string;
   consent_order_processing: boolean;
@@ -97,9 +100,26 @@ export type Customer = {
   default_landmark: string | null;
   total_orders: number;
   total_spend: number;
+  last_order_at: string | null;
   marketing_opt_in: boolean;
+  consent_order_processing: boolean;
+  consent_marketing: boolean;
+  consent_timestamp: string | null;
+  loyalty_points_balance: number;
+  lifetime_points_earned: number;
   created_at: string;
   updated_at: string;
+};
+
+export type LoyaltyTransaction = {
+  id: string;
+  restaurant_id: string;
+  customer_id: string;
+  order_id: string | null;
+  type: "earned" | "redeemed" | "adjusted" | "expired";
+  points: number;
+  description: string | null;
+  created_at: string;
 };
 
 export type RestaurantUser = {
