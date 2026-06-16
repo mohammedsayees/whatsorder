@@ -60,16 +60,27 @@ export function RestaurantMenu({
                     return (
                       <article
                         key={item.id}
-                        className={`rounded-lg border border-stone-200 bg-white p-4 shadow-sm ${
+                        className={`overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm ${
                           item.is_available ? "" : "opacity-65"
                         }`}
                         data-testid={`menu-item-${item.id}`}
                       >
-                        <div className="flex gap-4">
-                          <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg bg-linen text-xs font-bold text-ink/60">
-                            {item.is_featured ? "Popular" : "Menu"}
+                        {item.image_url ? (
+                          // Regular img keeps restaurant-uploaded Cloudinary URLs simple for the MVP.
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            alt={item.name}
+                            className="h-36 w-full object-cover"
+                            loading="lazy"
+                            src={item.image_url}
+                          />
+                        ) : (
+                          <div className="grid h-36 w-full place-items-center bg-linen px-4 text-center text-sm font-black text-ink/55">
+                            {item.is_featured ? "Popular item" : item.name}
                           </div>
-                          <div className="min-w-0 flex-1">
+                        )}
+                        <div className="p-4">
+                          <div className="min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <h3 className="font-bold">{item.name}</h3>
                               <p className="shrink-0 font-black text-leaf">{formatAED(item.price)}</p>

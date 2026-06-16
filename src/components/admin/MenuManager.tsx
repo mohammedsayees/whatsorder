@@ -531,6 +531,7 @@ function ItemForm({
   onDone: () => void;
 }) {
   const action = item ? updateMenuItemAction : addMenuItemAction;
+  const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
 
   return (
     <form action={async (formData) => { await action(formData); onDone(); }} className="space-y-3">
@@ -549,7 +550,29 @@ function ItemForm({
       </div>
       <details className="rounded-lg border border-stone-200 p-3">
         <summary className="cursor-pointer text-sm font-black">Advanced</summary>
-        <input className="focus-ring mt-3 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.image_url ?? ""} disabled={!canWrite} name="image_url" placeholder="Image URL optional" />
+        <input
+          className="focus-ring mt-3 w-full rounded-lg border border-stone-200 px-3 py-2"
+          disabled={!canWrite}
+          name="image_url"
+          onChange={(event) => setImageUrl(event.target.value)}
+          placeholder="Cloudinary image URL optional"
+          value={imageUrl}
+        />
+        <div className="mt-3 overflow-hidden rounded-lg border border-stone-200 bg-linen">
+          {imageUrl ? (
+            // Regular img keeps pasted Cloudinary URLs visible without remote image config.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              alt={item?.name ? `${item.name} preview` : "Menu item preview"}
+              className="h-40 w-full object-cover"
+              src={imageUrl}
+            />
+          ) : (
+            <div className="grid h-40 place-items-center px-4 text-center text-sm font-bold text-ink/50">
+              Image preview appears here after pasting a URL.
+            </div>
+          )}
+        </div>
       </details>
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2 font-semibold">
