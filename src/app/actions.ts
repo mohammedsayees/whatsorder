@@ -40,6 +40,26 @@ const statusValues: OrderStatus[] = [
   "Cancelled"
 ];
 
+type MenuImportRow = {
+  category: string;
+  item_name: string;
+  description?: string;
+  price: number;
+  is_available?: boolean;
+  is_featured?: boolean;
+};
+
+type MenuItemInsert = {
+  restaurant_id: string;
+  category_id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  image_url: null;
+  is_available: boolean;
+  is_featured: boolean;
+};
+
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
@@ -52,6 +72,20 @@ function decimalValue(formData: FormData, key: string) {
 
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+function booleanFromValue(value: unknown, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return ["true", "yes", "y", "1", "available", "featured"].includes(normalized);
 }
 
 function parseCart(raw: string): CartLine[] {
@@ -486,6 +520,27 @@ export async function updateMenuItemAction(formData: FormData) {
   revalidatePath(`/r/${restaurant.slug}`);
 }
 
+export async function toggleMenuItemAvailabilityAction(formData: FormData) {
+  const itemId = stringValue(formData, "item_id");
+  const isAvailable = stringValue(formData, "is_available") === "true";
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const supabase = getSupabaseAdmin();
+
+  if (!restaurant || !supabase || !itemId) {
+    return;
+  }
+
+  await supabase
+    .from("menu_items")
+    .update({ is_available: isAvailable })
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id);
+
+  revalidatePath("/admin/menu");
+  revalidatePath(`/r/${restaurant.slug}`);
+}
+
 export async function deleteMenuItemAction(formData: FormData) {
   const itemId = stringValue(formData, "item_id");
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
@@ -500,6 +555,104 @@ export async function deleteMenuItemAction(formData: FormData) {
 
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${restaurant.slug}`);
+}
+
+export async function importMenuRowsAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
+  const supabase = getSupabaseAdmin();
+  const rawRows = stringValue(formData, "rows");
+
+  if (!restaurant || !menu || !supabase) {
+    return { ok: false, message: "Menu import needs Supabase write access." };
+  }
+
+  let rows: MenuImportRow[] = [];
+
+  try {
+    rows = JSON.parse(rawRows) as MenuImportRow[];
+  } catch {
+    return { ok: false, message: "Imported rows could not be read." };
+  }
+
+  const validRows = rows
+    .map((row) => ({
+      category: String(row.category ?? "").trim(),
+      item_name: String(row.item_name ?? "").trim(),
+      description: String(row.description ?? "").trim(),
+      price: Number(row.price),
+      is_available: booleanFromValue(row.is_available, true),
+      is_featured: booleanFromValue(row.is_featured, false)
+    }))
+    .filter((row) => row.category && row.item_name && Number.isFinite(row.price) && row.price >= 0);
+
+  if (validRows.length === 0) {
+    return { ok: false, message: "No valid menu rows to import." };
+  }
+
+  const categoriesByName = new Map(
+    menu.categories.map((category) => [category.name.trim().toLowerCase(), category])
+  );
+
+  for (const categoryName of [...new Set(validRows.map((row) => row.category))]) {
+    const key = categoryName.toLowerCase();
+
+    if (categoriesByName.has(key)) {
+      continue;
+    }
+
+    const { data } = await supabase
+      .from("menu_categories")
+      .insert({
+        restaurant_id: restaurant.id,
+        name: categoryName,
+        display_order: categoriesByName.size + 1,
+        is_active: true
+      })
+      .select("*")
+      .single();
+
+    if (data) {
+      categoriesByName.set(key, data);
+    }
+  }
+
+  const itemsToInsert = validRows.reduce<MenuItemInsert[]>((items, row) => {
+      const category = categoriesByName.get(row.category.toLowerCase());
+
+      if (!category) {
+        return items;
+      }
+
+      items.push({
+        restaurant_id: restaurant.id,
+        category_id: category.id,
+        name: row.item_name,
+        description: row.description || null,
+        price: row.price,
+        image_url: null,
+        is_available: row.is_available,
+        is_featured: row.is_featured
+      });
+
+      return items;
+    }, []);
+
+  if (itemsToInsert.length === 0) {
+    return { ok: false, message: "No rows matched valid categories." };
+  }
+
+  const { error } = await supabase.from("menu_items").insert(itemsToInsert);
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath("/admin/menu");
+  revalidatePath(`/r/${restaurant.slug}`);
+
+  return { ok: true, message: `Imported ${itemsToInsert.length} menu items.` };
 }
 
 export async function updateRestaurantSettingsAction(formData: FormData) {
