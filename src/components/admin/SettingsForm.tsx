@@ -22,6 +22,9 @@ export function SettingsForm({
         <label className="block">
           <span className="text-sm font-bold">WhatsApp number</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.whatsapp_number} disabled={!canWrite} name="whatsapp_number" required />
+          <span className="mt-1 block text-xs font-medium text-stone-500">
+            Use country code format, for example 971554822424. Local UAE numbers starting with 05 will be converted automatically.
+          </span>
         </label>
         <label className="block">
           <span className="text-sm font-bold">Active</span>

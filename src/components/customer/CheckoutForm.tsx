@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, MapPin, Send } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, Send } from "lucide-react";
 import { createOrderAction, lookupSavedCustomerAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
@@ -29,6 +29,11 @@ type SavedCustomer = {
   googleMapsUrl: string;
   addressText: string;
   marketingOptIn: boolean;
+};
+
+type PendingWhatsAppOrder = {
+  orderId: string;
+  whatsappUrl: string;
 };
 
 function isMobileWhatsAppHandoff() {
@@ -61,6 +66,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
   const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
 
@@ -180,15 +186,17 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         return;
       }
 
-      cart.clearCart();
-
       if (isMobileWhatsAppHandoff()) {
-        // iOS Safari and in-app browsers can block async popups after the Supabase save.
-        // Navigating the same tab through the WhatsApp app scheme is more reliable for V1 click-to-WhatsApp.
-        window.location.assign(result.whatsappAppUrl);
+        // iOS Safari and WhatsApp in-app browsers handle a direct customer tap more reliably
+        // than an automatic redirect after the async Supabase save.
+        setPendingWhatsAppOrder({
+          orderId: result.orderId,
+          whatsappUrl: result.whatsappUrl
+        });
         return;
       }
 
+      cart.clearCart();
       const whatsappWindow = window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
 
       if (!whatsappWindow) {
@@ -205,6 +213,41 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
         <h1 className="text-2xl font-black">{t.loadingCart}</h1>
         <p className="mt-3 text-stone-600">{t.preparingCheckout}</p>
+      </main>
+    );
+  }
+
+  if (pendingWhatsAppOrder) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-mint text-leaf">
+          <CheckCircle2 size={34} />
+        </div>
+        <h1 className="mt-6 text-3xl font-black">
+          {language === "ar" ? "تم حفظ الطلب" : "Order saved"}
+        </h1>
+        <p className="mt-3 leading-7 text-stone-600">
+          {language === "ar"
+            ? "اضغط الزر أدناه لإرسال الطلب إلى المطعم عبر واتساب."
+            : "One final step: tap below to send this order to the restaurant on WhatsApp."}
+        </p>
+        <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
+          Reference: {pendingWhatsAppOrder.orderId}
+        </p>
+        <a
+          className="focus-ring mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
+          href={pendingWhatsAppOrder.whatsappUrl}
+          onClick={() => cart.clearCart()}
+        >
+          <MessageCircle size={20} />
+          {language === "ar" ? "إرسال عبر واتساب" : "Open WhatsApp to send"}
+        </a>
+        <Link
+          className="focus-ring mt-3 inline-flex justify-center rounded-full border border-stone-200 bg-white px-5 py-3 font-bold text-ink"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
+        </Link>
       </main>
     );
   }
