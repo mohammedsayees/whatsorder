@@ -15,6 +15,10 @@ export function SettingsForm({
           <span className="text-sm font-bold">Restaurant name</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.name} disabled={!canWrite} name="name" required />
         </label>
+        <label className="block sm:col-span-2">
+          <span className="text-sm font-bold">Restaurant name in Arabic</span>
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-right" defaultValue={restaurant.name_ar ?? ""} dir="rtl" disabled={!canWrite} name="name_ar" />
+        </label>
         <label className="block">
           <span className="text-sm font-bold">WhatsApp number</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.whatsapp_number} disabled={!canWrite} name="whatsapp_number" required />
@@ -36,6 +40,14 @@ export function SettingsForm({
         <label className="block sm:col-span-2">
           <span className="text-sm font-bold">Address</span>
           <textarea className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.address ?? ""} disabled={!canWrite} name="address" />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-sm font-bold">Address in Arabic</span>
+          <textarea className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2 text-right" defaultValue={restaurant.address_ar ?? ""} dir="rtl" disabled={!canWrite} name="address_ar" />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-sm font-bold">Arabic subtitle / cuisine tags</span>
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-right" defaultValue={restaurant.subtitle_ar ?? ""} dir="rtl" disabled={!canWrite} name="subtitle_ar" placeholder="مثال: كرك، برجر، شاورما" />
         </label>
       </div>
       <button className="focus-ring mt-5 rounded-lg bg-leaf px-5 py-3 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">

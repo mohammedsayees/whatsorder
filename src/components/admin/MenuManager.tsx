@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addCategoryAction,
@@ -436,6 +436,13 @@ export function MenuManager({
         <Dialog title="Add category" onClose={() => setAddCategoryOpen(false)}>
           <form action={async (formData) => { await addCategoryAction(formData); setAddCategoryOpen(false); router.refresh(); }} className="space-y-3">
             <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="name" placeholder="Breakfast" required />
+            <input
+              className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+              dir="rtl"
+              disabled={!canWrite}
+              name="name_ar"
+              placeholder="اسم القسم بالعربية"
+            />
             <button className="focus-ring w-full rounded-lg bg-ink px-4 py-2 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
               Add category
             </button>
@@ -539,6 +546,15 @@ function ItemForm({
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   async function uploadImage(file: File | null) {
     setImageStatus(null);
@@ -560,6 +576,9 @@ function ItemForm({
       return;
     }
 
+    setPreviewUrl(URL.createObjectURL(file));
+    setImageStatus("Uploading image...");
+
     const formData = new FormData();
     formData.set("image", file);
     formData.set("item_name", itemName || "menu-item");
@@ -572,11 +591,13 @@ function ItemForm({
     setIsUploading(false);
 
     if (!result.ok) {
+      setPreviewUrl(null);
       setImageError(result.error);
       return;
     }
 
     setImageUrl(result.publicUrl);
+    setPreviewUrl(null);
     setImageStatus(result.message);
     if (item) {
       router.refresh();
@@ -585,6 +606,7 @@ function ItemForm({
 
   async function removeImage() {
     setImageUrl("");
+    setPreviewUrl(null);
     setImageStatus(item ? "Image removed." : "Image removed. Save item to keep it empty.");
     setImageError(null);
 
@@ -608,7 +630,23 @@ function ItemForm({
         required
         value={itemName}
       />
+      <input
+        className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+        defaultValue={item?.name_ar ?? ""}
+        dir="rtl"
+        disabled={!canWrite}
+        name="name_ar"
+        placeholder="اسم الصنف بالعربية"
+      />
       <textarea className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.description ?? ""} disabled={!canWrite} name="description" placeholder="Description" />
+      <textarea
+        className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+        defaultValue={item?.description_ar ?? ""}
+        dir="rtl"
+        disabled={!canWrite}
+        name="description_ar"
+        placeholder="وصف الصنف بالعربية"
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.price ?? ""} disabled={!canWrite} min="0" name="price" placeholder="Price" required step="0.01" type="number" />
         <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.category_id ?? categories[0]?.id} disabled={!canWrite} name="category_id" required>
@@ -655,13 +693,13 @@ function ItemForm({
         </div>
 
         <div className="mt-3 overflow-hidden rounded-lg border border-stone-200 bg-linen">
-          {imageUrl ? (
+          {previewUrl || imageUrl ? (
             // Regular img keeps device-uploaded Supabase Storage URLs visible without remote image config.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               alt={itemName ? `${itemName} preview` : "Menu item preview"}
               className="h-40 w-full object-cover"
-              src={imageUrl}
+              src={previewUrl ?? imageUrl}
             />
           ) : (
             <div className="grid h-40 place-items-center px-4 text-center text-sm font-bold text-ink/50">

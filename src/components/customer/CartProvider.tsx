@@ -79,6 +79,7 @@ export function CartProvider({
         {
           item_id: item.id,
           name: item.name,
+          name_ar: item.name_ar ?? null,
           price: item.price,
           quantity: 1
         }

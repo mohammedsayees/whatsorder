@@ -18,7 +18,10 @@ import {
   X
 } from "lucide-react";
 import { formatAED } from "@/lib/currency";
+import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
+import { LanguageToggle } from "@/components/customer/LanguageToggle";
+import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import type { MenuCategory, MenuItem, Restaurant } from "@/lib/types";
 
 const CATEGORY_SCROLL_OFFSET = 172;
@@ -43,6 +46,9 @@ export function RestaurantMenu({
   items: MenuItem[];
 }) {
   const cart = useCart();
+  const { language, setLanguage } = useCustomerLanguage();
+  const t = customerTranslations[language];
+  const direction = getTextDirection(language);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -73,14 +79,19 @@ export function RestaurantMenu({
     items.find((item) => item.image_url)?.image_url ??
     null;
 
-  const cuisineLabel = restaurant.address?.split(",").slice(0, 2).join(" • ") || "Fresh cafe favourites";
+  const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
+  const restaurantAddress = language === "ar" && restaurant.address_ar ? restaurant.address_ar : restaurant.address;
+  const cuisineLabel =
+    (language === "ar" && restaurant.subtitle_ar ? restaurant.subtitle_ar : null) ??
+    restaurantAddress?.split(",").slice(0, 2).join(" • ") ??
+    t.freshCafeFavourites;
   const ratingValue = 4.7;
   const ratingCount = items.length > 8 ? "120+" : "50+";
   const etaText = "25-35 min";
   const offerTitle =
     featuredItems.length > 0
-      ? `${featuredItems[0].name} is trending today`
-      : "Order directly on WhatsApp and skip the confusion";
+      ? `${language === "ar" && featuredItems[0].name_ar ? featuredItems[0].name_ar : featuredItems[0].name} ${t.trendingToday}`
+      : t.offerFallback;
 
   useEffect(() => {
     if (!categoriesWithItems.length) {
@@ -175,14 +186,14 @@ export function RestaurantMenu({
   };
 
   return (
-    <>
+    <div dir={direction}>
       <main className="mx-auto w-full max-w-3xl pb-32">
         <section className="relative">
           <div className="relative h-44 overflow-hidden bg-ink sm:h-56">
             {coverImageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                alt={restaurant.name}
+                alt={restaurantName}
                 className="h-full w-full object-cover"
                 loading="eager"
                 src={coverImageUrl}
@@ -194,7 +205,7 @@ export function RestaurantMenu({
 
             <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
               <button
-                aria-label="Go back"
+                aria-label={t.goBack}
                 className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
                 onClick={() => window.history.back()}
                 type="button"
@@ -204,7 +215,7 @@ export function RestaurantMenu({
 
               <div className="flex items-center gap-2">
                 <button
-                  aria-label="Search menu"
+                  aria-label={t.searchMenu}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
                   onClick={() => window.scrollTo({ top: 300, behavior: "smooth" })}
                   type="button"
@@ -212,15 +223,15 @@ export function RestaurantMenu({
                   <Search size={18} />
                 </button>
                 <button
-                  aria-label="Share menu"
+                  aria-label={t.shareMenu}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
                   onClick={async () => {
                     const shareUrl = window.location.href;
 
                     if (navigator.share) {
                       await navigator.share({
-                        title: restaurant.name,
-                        text: `Order from ${restaurant.name} on WhatsOrder`,
+                        title: restaurantName,
+                        text: `${t.whatsAppOrdering} - ${restaurantName}`,
                         url: shareUrl
                       });
                       return;
@@ -233,7 +244,7 @@ export function RestaurantMenu({
                   <Share2 size={18} />
                 </button>
                 <button
-                  aria-label="Save restaurant"
+                  aria-label={t.saveRestaurant}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
                   type="button"
                 >
@@ -245,25 +256,28 @@ export function RestaurantMenu({
 
           <div className="relative z-10 -mt-8 px-4">
             <div className="rounded-[28px] bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.12)] ring-1 ring-black/5">
+              <div className="mb-3 flex justify-end">
+                <LanguageToggle language={language} setLanguage={setLanguage} />
+              </div>
               <div className="flex items-start gap-3">
                 {restaurant.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    alt={`${restaurant.name} logo`}
+                    alt={`${restaurantName} logo`}
                     className="h-16 w-16 rounded-2xl object-cover ring-1 ring-stone-200"
                     src={restaurant.logo_url}
                   />
                 ) : (
                   <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-mint/20 text-lg font-black text-leaf">
-                    {restaurant.name.slice(0, 2).toUpperCase()}
+                    {restaurantName.slice(0, 2).toUpperCase()}
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-leaf">
-                    WhatsApp ordering
+                    {t.whatsAppOrdering}
                   </p>
-                  <h1 className="mt-1 text-2xl font-black text-ink">{restaurant.name}</h1>
+                  <h1 className="mt-1 text-2xl font-black text-ink">{restaurantName}</h1>
                   <p className="mt-1 text-sm text-stone-500">{cuisineLabel}</p>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
@@ -277,11 +291,11 @@ export function RestaurantMenu({
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                       <Bike size={13} />
-                      Delivery {formatAED(restaurant.delivery_fee)}
+                      {t.delivery} {formatAED(restaurant.delivery_fee)}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                       <MapPin size={13} />
-                      Pickup available
+                      {t.pickupAvailable}
                     </span>
                   </div>
                 </div>
@@ -290,7 +304,7 @@ export function RestaurantMenu({
               <div className="mt-4 rounded-2xl bg-linen p-3">
                 <p className="text-sm font-bold text-ink">{offerTitle}</p>
                 <button className="mt-1 text-xs font-semibold text-leaf" type="button">
-                  More info
+                  {t.moreInfo}
                 </button>
               </div>
             </div>
@@ -300,7 +314,7 @@ export function RestaurantMenu({
         <section className="sticky top-0 z-20 mt-4 border-y border-stone-200/80 bg-white/95 backdrop-blur">
           <div className="flex items-center gap-3 px-4 py-3">
             <button
-              aria-label="Browse categories"
+              aria-label={t.browseCategories}
               className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink"
               onClick={() => setIsCategorySheetOpen(true)}
               type="button"
@@ -326,7 +340,7 @@ export function RestaurantMenu({
                     onClick={() => scrollToCategory(category.id)}
                     type="button"
                   >
-                    {category.name}
+                    {language === "ar" && category.name_ar ? category.name_ar : category.name}
                   </button>
                 );
               })}
@@ -337,9 +351,9 @@ export function RestaurantMenu({
         <section className="space-y-8 px-4 pt-5">
           {categoriesWithItems.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-stone-300 bg-white px-6 py-12 text-center shadow-sm">
-              <h2 className="text-lg font-black text-ink">Menu is being prepared</h2>
+              <h2 className="text-lg font-black text-ink">{t.menuBeingPrepared}</h2>
               <p className="mt-2 text-sm text-stone-500">
-                This restaurant has not published menu items yet. Check back shortly.
+                {t.menuBeingPreparedHint}
               </p>
             </div>
           ) : null}
@@ -352,15 +366,20 @@ export function RestaurantMenu({
               data-category-id={category.id}
             >
               <div className="mb-4">
-                <h2 className="text-xl font-black text-ink">{category.name}</h2>
+                <h2 className="text-xl font-black text-ink">
+                  {language === "ar" && category.name_ar ? category.name_ar : category.name}
+                </h2>
                 <p className="mt-1 text-sm text-stone-500">
-                  {availableItemCount} item{availableItemCount > 1 ? "s" : ""} available
+                  {availableItemCount} {availableItemCount > 1 ? t.itemsAvailable : t.itemAvailable}
                 </p>
               </div>
 
               <div className="space-y-3">
                 {categoryItems.map((item) => {
                   const cartLine = cart.lines.find((line) => line.item_id === item.id);
+                  const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
+                  const itemDescription =
+                    language === "ar" && item.description_ar ? item.description_ar : item.description;
 
                   return (
                     <article
@@ -373,30 +392,30 @@ export function RestaurantMenu({
                       <div className="flex gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-base font-black text-ink">{item.name}</h3>
+                            <h3 className="text-base font-black text-ink">{itemName}</h3>
                             {item.is_featured ? (
                               <span className="rounded-full bg-mint/20 px-2 py-0.5 text-[11px] font-bold text-leaf">
-                                Popular
+                                {t.popular}
                               </span>
                             ) : null}
                           </div>
 
                           <p className="mt-2 text-sm leading-6 text-stone-500">
-                            {item.description || "Freshly prepared and sent as a structured WhatsApp order."}
+                            {itemDescription || t.itemDescriptionFallback}
                           </p>
 
                           <div className="mt-3 flex items-center justify-between gap-3">
                             <div>
                               <p className="text-base font-black text-ink">{formatAED(item.price)}</p>
                               {!item.is_available ? (
-                                <p className="mt-1 text-xs font-semibold text-rose-500">Currently unavailable</p>
+                                <p className="mt-1 text-xs font-semibold text-rose-500">{t.unavailable}</p>
                               ) : null}
                             </div>
 
                             {cartLine ? (
                               <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                                 <button
-                                  aria-label={`Remove ${item.name}`}
+                                  aria-label={`${t.remove} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
                                   onClick={() => cart.decrement(item.id)}
                                   type="button"
@@ -405,7 +424,7 @@ export function RestaurantMenu({
                                 </button>
                                 <span className="w-8 text-center text-sm font-bold">{cartLine.quantity}</span>
                                 <button
-                                  aria-label={`Add more ${item.name}`}
+                                  aria-label={`${t.addMore} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
                                   onClick={() => cart.increment(item.id)}
                                   type="button"
@@ -415,7 +434,7 @@ export function RestaurantMenu({
                               </div>
                             ) : (
                               <button
-                                aria-label={`Add ${item.name}`}
+                                aria-label={`${t.add} ${itemName}`}
                                 className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                                 data-testid={`add-item-${item.id}`}
                                 disabled={!item.is_available}
@@ -432,14 +451,14 @@ export function RestaurantMenu({
                           {item.image_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              alt={item.name}
+                              alt={itemName}
                               className="h-full w-full object-cover"
                               loading="lazy"
                               src={item.image_url}
                             />
                           ) : (
                             <div className="grid h-full w-full place-items-center px-3 text-center text-xs font-bold text-ink/55">
-                              {item.is_featured ? "Popular pick" : item.name}
+                              {item.is_featured ? t.popularPick : itemName}
                             </div>
                           )}
                         </div>
@@ -461,14 +480,14 @@ export function RestaurantMenu({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black">
-                {cart.count} item{cart.count > 1 ? "s" : ""} in cart
+                {cart.count} {cart.count > 1 ? t.itemsInCart : t.itemInCart}
               </p>
             </div>
             <Link
               href={`/r/${restaurant.slug}/checkout`}
               className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
             >
-              View cart
+              {t.viewCart}
               <span>{formatAED(cart.subtotal)}</span>
             </Link>
           </div>
@@ -478,7 +497,7 @@ export function RestaurantMenu({
       {isCategorySheetOpen ? (
         <div className="fixed inset-0 z-40 bg-black/40" role="dialog" aria-modal="true">
           <button
-            aria-label="Close categories"
+            aria-label={t.closeCategories}
             className="absolute inset-0 cursor-default"
             onClick={() => setIsCategorySheetOpen(false)}
             type="button"
@@ -488,11 +507,11 @@ export function RestaurantMenu({
             <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-stone-200" />
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-black text-ink">Browse categories</h2>
-                <p className="text-sm text-stone-500">Jump straight to the section you want.</p>
+                <h2 className="text-lg font-black text-ink">{t.browseCategories}</h2>
+                <p className="text-sm text-stone-500">{t.jumpStraight}</p>
               </div>
               <button
-                aria-label="Close categories"
+                aria-label={t.closeCategories}
                 className="focus-ring grid h-10 w-10 place-items-center rounded-full border border-stone-200 bg-white text-ink"
                 onClick={() => setIsCategorySheetOpen(false)}
                 type="button"
@@ -505,7 +524,7 @@ export function RestaurantMenu({
               {categoriesWithItems.map(({ category, availableItemCount }) => (
                 <button
                   key={category.id}
-                  className={`focus-ring grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border px-4 py-3 text-left ${
+                  className={`focus-ring grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border px-4 py-3 text-start ${
                     activeCategoryId === category.id
                       ? "border-leaf bg-mint/10"
                       : "border-stone-200 bg-white"
@@ -514,8 +533,10 @@ export function RestaurantMenu({
                   type="button"
                 >
                   <div>
-                    <p className="font-bold text-ink">{category.name}</p>
-                    <p className="text-sm text-stone-500">Tap to jump to this section</p>
+                    <p className="font-bold text-ink">
+                      {language === "ar" && category.name_ar ? category.name_ar : category.name}
+                    </p>
+                    <p className="text-sm text-stone-500">{t.categoryDrawerHint}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="min-w-8 rounded-full bg-stone-100 px-2.5 py-1 text-center text-sm font-black text-ink">
@@ -529,6 +550,6 @@ export function RestaurantMenu({
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

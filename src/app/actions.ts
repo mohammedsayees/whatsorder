@@ -5,6 +5,7 @@ import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
 import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
+import { getCustomerLanguage } from "@/lib/customer-i18n";
 import type { CartLine, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -235,6 +236,7 @@ export async function createOrderAction(
     verifiedItems.push({
       item_id: menuItem.id,
       name: menuItem.name,
+      name_ar: menuItem.name_ar ?? null,
       price: menuItem.price,
       quantity: Math.max(1, Math.floor(cartItem.quantity))
     });
@@ -258,6 +260,7 @@ export async function createOrderAction(
   const deliveryAddressText = stringValue(formData, "delivery_address_text") || deliveryAddress;
   const notes = stringValue(formData, "notes");
   const paymentMethod = stringValue(formData, "payment_method") as PaymentMethod;
+  const orderLanguage = getCustomerLanguage(formData.get("order_language"));
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
   const consentMarketing = formData.get("consent_marketing") === "on";
 
@@ -297,7 +300,8 @@ export async function createOrderAction(
     items: verifiedItems,
     subtotal,
     deliveryFee: restaurant.delivery_fee,
-    total
+    total,
+    language: orderLanguage
   });
   const consentTimestamp = new Date().toISOString();
   const supabase = getSupabaseAdmin();
@@ -494,7 +498,9 @@ export async function addMenuItemAction(formData: FormData) {
     restaurant_id: restaurant.id,
     category_id: stringValue(formData, "category_id"),
     name: stringValue(formData, "name"),
+    name_ar: stringValue(formData, "name_ar") || null,
     description: stringValue(formData, "description") || null,
+    description_ar: stringValue(formData, "description_ar") || null,
     price: Number(stringValue(formData, "price")),
     image_url: stringValue(formData, "image_url") || null,
     is_available: formData.get("is_available") === "on",
@@ -519,7 +525,9 @@ export async function updateMenuItemAction(formData: FormData) {
     .from("menu_items")
     .update({
       name: stringValue(formData, "name"),
+      name_ar: stringValue(formData, "name_ar") || null,
       description: stringValue(formData, "description") || null,
+      description_ar: stringValue(formData, "description_ar") || null,
       price: Number(stringValue(formData, "price")),
       category_id: stringValue(formData, "category_id"),
       image_url: stringValue(formData, "image_url") || null,
@@ -569,22 +577,30 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
   const filePath = `restaurants/${restaurant.slug}/${itemSlug}-${Date.now()}.${extension}`;
   const bytes = await file.arrayBuffer();
 
-  const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-    public: true,
-    fileSizeLimit: 2 * 1024 * 1024,
-    allowedMimeTypes: [...allowedTypes.keys()]
-  });
+  const uploadFile = () =>
+    supabase.storage
+      .from(bucketName)
+      .upload(filePath, bytes, {
+        contentType: file.type,
+        upsert: false
+      });
 
-  if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
-    return { ok: false, error: bucketError.message };
-  }
+  let { error: uploadError } = await uploadFile();
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucketName)
-    .upload(filePath, bytes, {
-      contentType: file.type,
-      upsert: false
+  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
+    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
+      public: true,
+      fileSizeLimit: 2 * 1024 * 1024,
+      allowedMimeTypes: [...allowedTypes.keys()]
     });
+
+    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
+      return { ok: false, error: bucketError.message };
+    }
+
+    const retry = await uploadFile();
+    uploadError = retry.error;
+  }
 
   if (uploadError) {
     return { ok: false, error: uploadError.message };
@@ -775,8 +791,11 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
     .from("restaurants")
     .update({
       name: stringValue(formData, "name"),
+      name_ar: stringValue(formData, "name_ar") || null,
       whatsapp_number: stringValue(formData, "whatsapp_number"),
       address: stringValue(formData, "address") || null,
+      address_ar: stringValue(formData, "address_ar") || null,
+      subtitle_ar: stringValue(formData, "subtitle_ar") || null,
       delivery_fee: Number(stringValue(formData, "delivery_fee")),
       minimum_order_amount: Number(stringValue(formData, "minimum_order_amount")),
       is_active: formData.get("is_active") === "on"
@@ -800,6 +819,7 @@ export async function addCategoryAction(formData: FormData) {
   await supabase.from("menu_categories").insert({
     restaurant_id: restaurant.id,
     name: stringValue(formData, "name"),
+    name_ar: stringValue(formData, "name_ar") || null,
     display_order: menu.categories.length + 1,
     is_active: true
   });
