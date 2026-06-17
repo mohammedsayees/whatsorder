@@ -569,22 +569,30 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
   const filePath = `restaurants/${restaurant.slug}/${itemSlug}-${Date.now()}.${extension}`;
   const bytes = await file.arrayBuffer();
 
-  const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-    public: true,
-    fileSizeLimit: 2 * 1024 * 1024,
-    allowedMimeTypes: [...allowedTypes.keys()]
-  });
+  const uploadFile = () =>
+    supabase.storage
+      .from(bucketName)
+      .upload(filePath, bytes, {
+        contentType: file.type,
+        upsert: false
+      });
 
-  if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
-    return { ok: false, error: bucketError.message };
-  }
+  let { error: uploadError } = await uploadFile();
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucketName)
-    .upload(filePath, bytes, {
-      contentType: file.type,
-      upsert: false
+  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
+    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
+      public: true,
+      fileSizeLimit: 2 * 1024 * 1024,
+      allowedMimeTypes: [...allowedTypes.keys()]
     });
+
+    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
+      return { ok: false, error: bucketError.message };
+    }
+
+    const retry = await uploadFile();
+    uploadError = retry.error;
+  }
 
   if (uploadError) {
     return { ok: false, error: uploadError.message };

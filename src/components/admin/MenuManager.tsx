@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addCategoryAction,
@@ -539,6 +539,15 @@ function ItemForm({
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   async function uploadImage(file: File | null) {
     setImageStatus(null);
@@ -560,6 +569,9 @@ function ItemForm({
       return;
     }
 
+    setPreviewUrl(URL.createObjectURL(file));
+    setImageStatus("Uploading image...");
+
     const formData = new FormData();
     formData.set("image", file);
     formData.set("item_name", itemName || "menu-item");
@@ -572,11 +584,13 @@ function ItemForm({
     setIsUploading(false);
 
     if (!result.ok) {
+      setPreviewUrl(null);
       setImageError(result.error);
       return;
     }
 
     setImageUrl(result.publicUrl);
+    setPreviewUrl(null);
     setImageStatus(result.message);
     if (item) {
       router.refresh();
@@ -585,6 +599,7 @@ function ItemForm({
 
   async function removeImage() {
     setImageUrl("");
+    setPreviewUrl(null);
     setImageStatus(item ? "Image removed." : "Image removed. Save item to keep it empty.");
     setImageError(null);
 
@@ -655,13 +670,13 @@ function ItemForm({
         </div>
 
         <div className="mt-3 overflow-hidden rounded-lg border border-stone-200 bg-linen">
-          {imageUrl ? (
+          {previewUrl || imageUrl ? (
             // Regular img keeps device-uploaded Supabase Storage URLs visible without remote image config.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               alt={itemName ? `${itemName} preview` : "Menu item preview"}
               className="h-40 w-full object-cover"
-              src={imageUrl}
+              src={previewUrl ?? imageUrl}
             />
           ) : (
             <div className="grid h-40 place-items-center px-4 text-center text-sm font-bold text-ink/50">
