@@ -6,7 +6,7 @@ import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
-import type { CartLine, OrderStatus, PaymentMethod } from "@/lib/types";
+import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
   | { ok: true; orderId: string; whatsappUrl: string }
@@ -114,6 +114,7 @@ function parseCart(raw: string): CartLine[] {
     .map((item) => ({
       item_id: String(item.item_id),
       name: String(item.name),
+      name_ar: item.name_ar ? String(item.name_ar) : null,
       quantity: Number(item.quantity),
       price: Number(item.price)
     }));
@@ -826,4 +827,50 @@ export async function addCategoryAction(formData: FormData) {
 
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${restaurant.slug}`);
+}
+
+export async function moveCategoryAction(formData: FormData) {
+  const categoryId = stringValue(formData, "category_id");
+  const direction = stringValue(formData, "direction");
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
+  const supabase = getSupabaseAdmin();
+
+  if (!restaurant || !menu || !supabase || !categoryId || !["up", "down"].includes(direction)) {
+    return;
+  }
+
+  const orderedCategories = [...menu.categories].sort(
+    (first, second) => first.display_order - second.display_order
+  );
+  const currentIndex = orderedCategories.findIndex((category) => category.id === categoryId);
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedCategories.length) {
+    return;
+  }
+
+  const currentCategory = orderedCategories[currentIndex];
+  const targetCategory = orderedCategories[targetIndex];
+
+  await Promise.all([
+    updateCategoryDisplayOrder(supabase, currentCategory, targetCategory.display_order),
+    updateCategoryDisplayOrder(supabase, targetCategory, currentCategory.display_order)
+  ]);
+
+  revalidatePath("/admin/menu");
+  revalidatePath(`/r/${restaurant.slug}`);
+}
+
+function updateCategoryDisplayOrder(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  category: MenuCategory,
+  displayOrder: number
+) {
+  return supabase
+    .from("menu_categories")
+    .update({ display_order: displayOrder })
+    .eq("id", category.id)
+    .eq("restaurant_id", category.restaurant_id);
 }

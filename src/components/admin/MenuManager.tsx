@@ -7,6 +7,7 @@ import {
   addMenuItemAction,
   deleteMenuItemAction,
   importMenuRowsAction,
+  moveCategoryAction,
   removeMenuItemImageAction,
   toggleMenuItemAvailabilityAction,
   updateMenuItemAction,
@@ -15,6 +16,8 @@ import {
 import { formatAED } from "@/lib/currency";
 import type { MenuCategory, MenuItem } from "@/lib/types";
 import {
+  ArrowDown,
+  ArrowUp,
   Download,
   Eye,
   FileSpreadsheet,
@@ -193,6 +196,10 @@ export function MenuManager({
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateName>("Cafeteria");
   const [isPending, startTransition] = useTransition();
+  const sortedCategories = useMemo(
+    () => [...categories].sort((first, second) => first.display_order - second.display_order),
+    [categories]
+  );
 
   const visibleItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -344,6 +351,73 @@ export function MenuManager({
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-black">Category order</h2>
+            <p className="mt-1 text-sm text-stone-500">
+              Move best-selling categories to the top of the customer menu.
+            </p>
+          </div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+            Customer menu order
+          </p>
+        </div>
+
+        {sortedCategories.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-stone-300 p-5 text-sm font-semibold text-stone-500">
+            Add a category to start arranging your menu.
+          </div>
+        ) : (
+          <div className="mt-4 divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200">
+            {sortedCategories.map((category, index) => (
+              <div
+                className="grid gap-3 px-4 py-3 sm:grid-cols-[40px_1fr_auto] sm:items-center"
+                key={category.id}
+              >
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-100 text-sm font-black text-stone-600">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-black text-ink">{category.name}</p>
+                  {category.name_ar ? (
+                    <p className="mt-1 text-sm font-semibold text-stone-500" dir="rtl">
+                      {category.name_ar}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex gap-2">
+                  <form action={moveCategoryAction}>
+                    <input name="category_id" type="hidden" value={category.id} />
+                    <input name="direction" type="hidden" value="up" />
+                    <button
+                      aria-label={`Move ${category.name} up`}
+                      className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-stone-700 disabled:cursor-not-allowed disabled:opacity-35"
+                      disabled={!canWrite || index === 0}
+                      type="submit"
+                    >
+                      <ArrowUp size={17} />
+                    </button>
+                  </form>
+                  <form action={moveCategoryAction}>
+                    <input name="category_id" type="hidden" value={category.id} />
+                    <input name="direction" type="hidden" value="down" />
+                    <button
+                      aria-label={`Move ${category.name} down`}
+                      className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-stone-700 disabled:cursor-not-allowed disabled:opacity-35"
+                      disabled={!canWrite || index === sortedCategories.length - 1}
+                      type="submit"
+                    >
+                      <ArrowDown size={17} />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={17} />
@@ -358,7 +432,7 @@ export function MenuManager({
             <button className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${activeCategory === "all" ? "bg-ink text-white" : "bg-stone-100 text-stone-700"}`} onClick={() => setActiveCategory("all")} type="button">
               All
             </button>
-            {categories.map((category) => (
+            {sortedCategories.map((category) => (
               <button
                 className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${activeCategory === category.id ? "bg-ink text-white" : "bg-stone-100 text-stone-700"}`}
                 key={category.id}
@@ -541,6 +615,10 @@ function ItemForm({
 }) {
   const action = item ? updateMenuItemAction : addMenuItemAction;
   const router = useRouter();
+  const sortedCategories = useMemo(
+    () => [...categories].sort((first, second) => first.display_order - second.display_order),
+    [categories]
+  );
   const [itemName, setItemName] = useState(item?.name ?? "");
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [imageStatus, setImageStatus] = useState<string | null>(null);
@@ -649,8 +727,8 @@ function ItemForm({
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.price ?? ""} disabled={!canWrite} min="0" name="price" placeholder="Price" required step="0.01" type="number" />
-        <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.category_id ?? categories[0]?.id} disabled={!canWrite} name="category_id" required>
-          {categories.map((category) => (
+        <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.category_id ?? sortedCategories[0]?.id} disabled={!canWrite} name="category_id" required>
+          {sortedCategories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
             </option>
