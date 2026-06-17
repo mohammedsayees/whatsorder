@@ -6,7 +6,10 @@ import Link from "next/link";
 import { ArrowLeft, Loader2, MapPin, Send } from "lucide-react";
 import { createOrderAction, lookupSavedCustomerAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
+import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
+import { LanguageToggle } from "@/components/customer/LanguageToggle";
+import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import type { Restaurant } from "@/lib/types";
 
 type CapturedLocation = {
@@ -31,6 +34,9 @@ type SavedCustomer = {
 export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const router = useRouter();
   const cart = useCart();
+  const { language, setLanguage } = useCustomerLanguage();
+  const t = customerTranslations[language];
+  const direction = getTextDirection(language);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLInputElement>(null);
@@ -48,6 +54,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
+  const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
 
   async function lookupSavedCustomer(phone: string) {
     const cleanPhone = phone.trim();
@@ -70,7 +77,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
     if (result.found) {
       setSavedCustomer(result.customer);
-      setSavedCustomerMessage("We found your saved details. Use saved address?");
+      setSavedCustomerMessage(t.savedDetailsFound);
       return;
     }
 
@@ -109,10 +116,10 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         longitude: savedCustomer.longitude,
         mapsUrl: savedCustomer.googleMapsUrl
       });
-      setLocationMessage("Saved location applied");
+      setLocationMessage(t.savedLocationApplied);
     }
 
-    setSavedCustomerMessage("Saved address applied. You can edit it before placing the order.");
+    setSavedCustomerMessage(t.savedAddressApplied);
   }
 
   function captureLocation() {
@@ -120,7 +127,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
     setLocationMessage(null);
 
     if (!navigator.geolocation) {
-      setLocationError("Location is not supported on this browser. Please enter your full address manually.");
+      setLocationError(t.locationNotSupported);
       return;
     }
 
@@ -132,7 +139,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
         setLocation({ latitude, longitude, mapsUrl });
-        setLocationMessage("Location captured successfully");
+        setLocationMessage(t.locationCaptured);
         setIsLocating(false);
       },
       (geoError) => {
@@ -140,11 +147,11 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         setLocation(null);
 
         if (geoError.code === geoError.PERMISSION_DENIED) {
-          setLocationError("Location permission denied. Please enter your full address manually.");
+          setLocationError(t.locationDenied);
           return;
         }
 
-        setLocationError("Could not capture your location. Please enter your full address manually.");
+        setLocationError(t.locationFailed);
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
     );
@@ -173,42 +180,48 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
   if (!cart.isReady) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center">
-        <h1 className="text-2xl font-black">Loading your cart</h1>
-        <p className="mt-3 text-stone-600">Preparing checkout details...</p>
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">{t.loadingCart}</h1>
+        <p className="mt-3 text-stone-600">{t.preparingCheckout}</p>
       </main>
     );
   }
 
   if (cart.lines.length === 0) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center">
-        <h1 className="text-2xl font-black">Your cart is empty</h1>
-        <p className="mt-3 text-stone-600">Add a few items from the menu before checkout.</p>
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">{t.cartEmpty}</h1>
+        <p className="mt-3 text-stone-600">{t.cartEmptyHint}</p>
         <Link
           className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
           href={`/r/${restaurant.slug}`}
         >
-          Back to menu
+          {t.backToMenu}
         </Link>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8">
+    <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8" dir={direction}>
       <section>
-        <Link
-          href={`/r/${restaurant.slug}`}
-          className="focus-ring mb-5 inline-flex items-center gap-2 rounded-full px-2 py-2 text-sm font-bold text-stone-700"
-        >
-          <ArrowLeft size={17} />
-          Menu
-        </Link>
-        <h1 className="text-3xl font-black">Checkout</h1>
-        <p className="mt-2 text-stone-600">Send a clear order to {restaurant.name} on WhatsApp.</p>
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <Link
+            href={`/r/${restaurant.slug}`}
+            className="focus-ring inline-flex items-center gap-2 rounded-full px-2 py-2 text-sm font-bold text-stone-700"
+          >
+            <ArrowLeft className={language === "ar" ? "rotate-180" : ""} size={17} />
+            {t.menu}
+          </Link>
+          <LanguageToggle language={language} setLanguage={setLanguage} />
+        </div>
+        <h1 className="text-3xl font-black">{t.checkout}</h1>
+        <p className="mt-2 text-stone-600">
+          {language === "ar" ? `أرسل طلبا واضحا إلى ${restaurantName} عبر واتساب.` : `Send a clear order to ${restaurantName} on WhatsApp.`}
+        </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          <input name="order_language" readOnly type="hidden" value={language} />
           <input name="items" type="hidden" />
           <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />
           <input name="delivery_longitude" readOnly type="hidden" value={location?.longitude ?? ""} />
@@ -216,7 +229,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
           <input name="delivery_place_id" readOnly type="hidden" value="" />
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm font-bold">Name</span>
+              <span className="text-sm font-bold">{t.name}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                 name="customer_name"
@@ -225,7 +238,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               />
             </label>
             <label className="block">
-              <span className="text-sm font-bold">Phone number</span>
+              <span className="text-sm font-bold">{t.phoneNumber}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                 inputMode="tel"
@@ -240,7 +253,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
           </div>
           {isLookingUpCustomer ? (
             <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-600">
-              Checking saved details...
+              {t.checkingSavedDetails}
             </p>
           ) : null}
           {savedCustomerMessage ? (
@@ -252,7 +265,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   onClick={applySavedCustomer}
                   type="button"
                 >
-                  Use saved address
+                  {t.useSavedAddress}
                 </button>
               ) : null}
             </div>
@@ -263,9 +276,9 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 <MapPin size={18} />
               </span>
               <div>
-                <h2 className="font-black">Delivery location</h2>
+                <h2 className="font-black">{t.deliveryLocation}</h2>
                 <p className="mt-1 text-sm text-stone-600">
-                  Current location is optional but helps the restaurant deliver more accurately.
+                  {t.currentLocationHelp}
                 </p>
               </div>
             </div>
@@ -277,7 +290,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               type="button"
             >
               {isLocating ? <Loader2 className="animate-spin" size={17} /> : <MapPin size={17} />}
-              {isLocating ? "Capturing location..." : "Use my current location"}
+              {isLocating ? "..." : t.useCurrentLocation}
             </button>
 
             {locationMessage ? (
@@ -292,7 +305,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 rel="noreferrer"
                 target="_blank"
               >
-                View selected location
+                {t.viewSelectedLocation}
               </a>
             ) : null}
             {locationError ? (
@@ -303,54 +316,58 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
             <div className="mt-4 space-y-4">
               <label className="block">
-                <span className="text-sm font-bold">Delivery area</span>
+                <span className="text-sm font-bold">{t.deliveryArea}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_area"
-                  placeholder="Al Nahda, Deira, Business Bay..."
+                  placeholder={t.deliveryAreaPlaceholder}
                   ref={areaRef}
                   required
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-bold">Full address / building / flat / villa number</span>
+                <span className="text-sm font-bold">{t.address}</span>
                 <textarea
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_address"
+                  placeholder={t.addressPlaceholder}
                   ref={addressRef}
                   required
                 />
               </label>
               <input name="delivery_address_text" readOnly type="hidden" value={addressText} />
               <label className="block">
-                <span className="text-sm font-bold">Landmark</span>
+                <span className="text-sm font-bold">{t.landmark}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_landmark"
-                  placeholder="Near mosque, opposite supermarket..."
+                  placeholder={t.landmarkPlaceholder}
                   ref={landmarkRef}
                 />
               </label>
             </div>
           </section>
           <label className="block">
-            <span className="text-sm font-bold">Notes</span>
+            <span className="text-sm font-bold">{t.notes}</span>
             <textarea
               className="focus-ring mt-1 min-h-20 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
               name="notes"
-              placeholder="No onions, extra spicy, call on arrival..."
+              placeholder={t.notesPlaceholder}
             />
           </label>
           <fieldset className="rounded-lg border border-stone-200 bg-white p-4">
-            <legend className="px-1 text-sm font-bold">Payment method</legend>
+            <legend className="px-1 text-sm font-bold">{t.paymentMethod}</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {["Cash on Delivery", "Card on Delivery"].map((method) => (
+              {[
+                { value: "Cash on Delivery", label: t.cashOnDelivery },
+                { value: "Card on Delivery", label: t.cardOnDelivery }
+              ].map((method) => (
                 <label
                   className="flex items-center gap-3 rounded-lg border border-stone-200 px-3 py-3 text-sm font-semibold"
-                  key={method}
+                  key={method.value}
                 >
-                  <input defaultChecked={method === "Cash on Delivery"} name="payment_method" type="radio" value={method} />
-                  {method}
+                  <input defaultChecked={method.value === "Cash on Delivery"} name="payment_method" type="radio" value={method.value} />
+                  {method.label}
                 </label>
               ))}
             </div>
@@ -358,13 +375,12 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_order_processing" required type="checkbox" />
             <span>
-              I agree that this restaurant can save my details to process my order and make future
-              ordering easier.
+              {t.consentOrder}
             </span>
           </label>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_marketing" ref={marketingRef} type="checkbox" />
-            <span>I agree to receive offers and updates from this restaurant on WhatsApp.</span>
+            <span>{t.consentMarketing}</span>
           </label>
 
           {error ? (
@@ -379,19 +395,19 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
             type="submit"
           >
             <Send size={18} />
-            {isPending ? "Saving order..." : "Send Order on WhatsApp"}
+            {isPending ? t.sendingOrder : t.sendOrder}
           </button>
         </form>
       </section>
 
       <aside className="h-fit rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-5">
-        <h2 className="text-lg font-black">Order summary</h2>
+        <h2 className="text-lg font-black">{t.orderSummary}</h2>
         <div className="mt-4 space-y-3">
           {cart.lines.map((line) => (
             <div className="flex items-start justify-between gap-3 text-sm" key={line.item_id}>
               <div>
-                <p className="font-bold">{line.name}</p>
-                <p className="text-stone-500">Qty {line.quantity}</p>
+                <p className="font-bold">{language === "ar" && line.name_ar ? line.name_ar : line.name}</p>
+                <p className="text-stone-500">{t.quantityShort} {line.quantity}</p>
               </div>
               <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
             </div>
@@ -399,15 +415,15 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         </div>
         <div className="mt-5 space-y-2 border-t border-stone-200 pt-4 text-sm">
           <div className="flex justify-between">
-            <span>Subtotal</span>
+            <span>{t.subtotal}</span>
             <strong>{formatAED(cart.subtotal)}</strong>
           </div>
           <div className="flex justify-between">
-            <span>Delivery</span>
+            <span>{t.delivery}</span>
             <strong>{formatAED(restaurant.delivery_fee)}</strong>
           </div>
           <div className="flex justify-between text-lg">
-            <span className="font-black">Total</span>
+            <span className="font-black">{t.total}</span>
             <strong>{formatAED(total)}</strong>
           </div>
         </div>

@@ -11,10 +11,13 @@ export type OrderStatus =
 export type Restaurant = {
   id: string;
   name: string;
+  name_ar?: string | null;
   slug: string;
   logo_url: string | null;
   whatsapp_number: string;
   address: string | null;
+  address_ar?: string | null;
+  subtitle_ar?: string | null;
   delivery_fee: number;
   minimum_order_amount: number;
   is_active: boolean;
@@ -26,6 +29,7 @@ export type MenuCategory = {
   id: string;
   restaurant_id: string;
   name: string;
+  name_ar?: string | null;
   display_order: number;
   is_active: boolean;
   created_at: string;
@@ -37,7 +41,9 @@ export type MenuItem = {
   restaurant_id: string;
   category_id: string;
   name: string;
+  name_ar?: string | null;
   description: string | null;
+  description_ar?: string | null;
   price: number;
   image_url: string | null;
   is_available: boolean;
@@ -49,6 +55,7 @@ export type MenuItem = {
 export type CartLine = {
   item_id: string;
   name: string;
+  name_ar?: string | null;
   price: number;
   quantity: number;
 };

@@ -436,6 +436,13 @@ export function MenuManager({
         <Dialog title="Add category" onClose={() => setAddCategoryOpen(false)}>
           <form action={async (formData) => { await addCategoryAction(formData); setAddCategoryOpen(false); router.refresh(); }} className="space-y-3">
             <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="name" placeholder="Breakfast" required />
+            <input
+              className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+              dir="rtl"
+              disabled={!canWrite}
+              name="name_ar"
+              placeholder="اسم القسم بالعربية"
+            />
             <button className="focus-ring w-full rounded-lg bg-ink px-4 py-2 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
               Add category
             </button>
@@ -623,7 +630,23 @@ function ItemForm({
         required
         value={itemName}
       />
+      <input
+        className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+        defaultValue={item?.name_ar ?? ""}
+        dir="rtl"
+        disabled={!canWrite}
+        name="name_ar"
+        placeholder="اسم الصنف بالعربية"
+      />
       <textarea className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.description ?? ""} disabled={!canWrite} name="description" placeholder="Description" />
+      <textarea
+        className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+        defaultValue={item?.description_ar ?? ""}
+        dir="rtl"
+        disabled={!canWrite}
+        name="description_ar"
+        placeholder="وصف الصنف بالعربية"
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.price ?? ""} disabled={!canWrite} min="0" name="price" placeholder="Price" required step="0.01" type="number" />
         <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.category_id ?? categories[0]?.id} disabled={!canWrite} name="category_id" required>
