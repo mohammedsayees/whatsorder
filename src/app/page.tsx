@@ -122,8 +122,9 @@ function LandingHero() {
       <div className="relative mx-auto flex min-h-[94vh] max-w-7xl flex-col px-4 pb-12 pt-5 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between gap-4">
           <Link className="focus-ring inline-flex items-center gap-3 rounded-full" href="/">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-leaf text-lg font-black text-white shadow-soft">
-              W
+            <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-full shadow-soft">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img alt="WhatsOrder logo" className="h-full w-full object-contain" src="/whatsorder-logo.png" />
             </span>
             <span className="text-lg font-black">WhatsOrder</span>
           </Link>
@@ -516,7 +517,10 @@ function LandingFooter() {
       <div className="mx-auto flex max-w-7xl flex-col gap-8 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-leaf text-lg font-black">W</span>
+            <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img alt="WhatsOrder logo" className="h-full w-full object-contain" src="/whatsorder-logo.png" />
+            </span>
             <p className="text-xl font-black">WhatsOrder</p>
           </div>
           <p className="mt-3 text-sm text-white/58">Structured ordering for small restaurants.</p>
