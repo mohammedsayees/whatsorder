@@ -85,5 +85,10 @@ export function buildWhatsAppMessage(input: MessageInput) {
 
 export function buildWhatsAppUrl(number: string, message: string) {
   const cleanNumber = number.replace(/[^\d]/g, "");
-  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
+  return `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
+}
+
+export function buildWhatsAppAppUrl(number: string, message: string) {
+  const cleanNumber = number.replace(/[^\d]/g, "");
+  return `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }

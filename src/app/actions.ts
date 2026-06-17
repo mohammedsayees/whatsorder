@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
 import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
+import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
 import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
-  | { ok: true; orderId: string; whatsappUrl: string }
+  | { ok: true; orderId: string; whatsappUrl: string; whatsappAppUrl: string }
   | { ok: false; error: string };
 
 type SavedCustomerLookupResult =
@@ -411,7 +411,8 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
-    whatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+    whatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message),
+    whatsappAppUrl: buildWhatsAppAppUrl(restaurant.whatsapp_number, message)
   };
 }
 
