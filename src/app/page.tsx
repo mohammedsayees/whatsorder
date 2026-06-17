@@ -96,7 +96,7 @@ const faqs = [
 ];
 
 const whatsappDemoUrl =
-  "https://wa.me/971554822424?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20request%20a%20demo%20for%20my%20restaurant.";
+  "https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20request%20a%20demo%20for%20my%20restaurant.";
 
 export default function LandingPage() {
   return (
