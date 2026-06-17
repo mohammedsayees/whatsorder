@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
 import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
+import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
 import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
@@ -794,7 +794,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
     .update({
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
-      whatsapp_number: stringValue(formData, "whatsapp_number"),
+      whatsapp_number: normalizeWhatsAppNumber(stringValue(formData, "whatsapp_number")),
       address: stringValue(formData, "address") || null,
       address_ar: stringValue(formData, "address_ar") || null,
       subtitle_ar: stringValue(formData, "subtitle_ar") || null,

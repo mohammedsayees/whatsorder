@@ -83,12 +83,34 @@ export function buildWhatsAppMessage(input: MessageInput) {
   ].join("\n");
 }
 
+export function normalizeWhatsAppNumber(number: string) {
+  const digits = number.replace(/[^\d]/g, "");
+
+  if (digits.startsWith("00")) {
+    return digits.slice(2);
+  }
+
+  if (digits.startsWith("971")) {
+    return digits;
+  }
+
+  if (digits.startsWith("05") && digits.length === 10) {
+    return `971${digits.slice(1)}`;
+  }
+
+  if (digits.startsWith("5") && digits.length === 9) {
+    return `971${digits}`;
+  }
+
+  return digits;
+}
+
 export function buildWhatsAppUrl(number: string, message: string) {
-  const cleanNumber = number.replace(/[^\d]/g, "");
+  const cleanNumber = normalizeWhatsAppNumber(number);
   return `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }
 
 export function buildWhatsAppAppUrl(number: string, message: string) {
-  const cleanNumber = number.replace(/[^\d]/g, "");
+  const cleanNumber = normalizeWhatsAppNumber(number);
   return `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }
