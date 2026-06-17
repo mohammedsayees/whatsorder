@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, MessageCircle } from "lucide-react";
 import { getRestaurantBySlug } from "@/lib/data";
+import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { notFound } from "next/navigation";
 
 export default async function ThankYouPage({
@@ -35,7 +36,7 @@ export default async function ThankYouPage({
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
         <Link
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-bold text-white"
-          href={`https://wa.me/${restaurant.whatsapp_number.replace(/[^\d]/g, "")}`}
+          href={buildWhatsAppUrl(restaurant.whatsapp_number, "Hi, I need help with my WhatsOrder order.")}
         >
           <MessageCircle size={18} />
           Open WhatsApp

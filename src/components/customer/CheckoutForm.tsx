@@ -31,6 +31,14 @@ type SavedCustomer = {
   marketingOptIn: boolean;
 };
 
+function isMobileWhatsAppHandoff() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const router = useRouter();
   const cart = useCart();
@@ -173,7 +181,21 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
       }
 
       cart.clearCart();
-      window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
+
+      if (isMobileWhatsAppHandoff()) {
+        // iOS Safari and in-app browsers can block async popups after the Supabase save.
+        // Navigating the same tab through the WhatsApp app scheme is more reliable for V1 click-to-WhatsApp.
+        window.location.assign(result.whatsappAppUrl);
+        return;
+      }
+
+      const whatsappWindow = window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
+
+      if (!whatsappWindow) {
+        window.location.assign(result.whatsappUrl);
+        return;
+      }
+
       router.push(`/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(result.orderId)}`);
     });
   }
