@@ -51,24 +51,49 @@ Do not place the Super Admin password or service role key in frontend environmen
 The existing `/admin` routes now require authentication and redirect unauthenticated visitors to
 `/admin-login`.
 
-After creating a restaurant owner in Supabase Authentication, connect the user to the configured
-pilot restaurant:
+When Super Admin creates a restaurant with an owner email and leaves **Send owner invitation**
+enabled:
 
-```sql
-update restaurant_users
-set user_id = (
-  select id from auth.users where email = 'owner@example.com'
-),
-role = 'restaurant_admin'
-where restaurant_id = (
-  select id from restaurants where slug = 'chaixpress'
-)
-and email = 'owner@example.com';
+1. Supabase Auth creates the invited user.
+2. WhatsOrder links that user to the restaurant in `restaurant_users`.
+3. The owner receives an email invitation.
+4. The invitation opens `/auth/invite`.
+5. The owner creates a password at `/auth/setup-password`.
+6. The owner signs in later at `/admin-login`.
+7. `/admin` resolves the restaurant from the authenticated membership.
+
+Super Admin can resend or relink the owner from the restaurant Overview tab. The same page can
+invite managers and staff members.
+
+Roles:
+
+- `restaurant_admin` - dashboard, orders, menu, customers, and settings
+- `manager` - dashboard, orders, menu, customers, and settings
+- `staff` - dashboard, orders, and menu; customer database and settings are restricted
+
+Every admin query and mutation uses the authenticated user’s `restaurant_users.restaurant_id`.
+`NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG` remains only for pilot/demo defaults and is no longer used to
+select restaurant-admin data.
+
+## Supabase Invitation URLs
+
+In Supabase open **Authentication > URL Configuration**.
+
+Set the Site URL to your production domain:
+
+```text
+https://whatsorder-taupe.vercel.app
 ```
 
-The current restaurant console intentionally remains bound to
-`NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG`. A membership for another restaurant cannot access or mutate
-the default restaurant. Super Admin can still review every restaurant from `/super-admin`.
+Add these Redirect URLs:
+
+```text
+http://localhost:3000/auth/invite
+https://whatsorder-taupe.vercel.app/auth/invite
+```
+
+Use your custom production domain too when one is added. Supabase will reject or replace invitation
+redirects that are not included in this allow list.
 
 ## Environment Variables
 
@@ -93,9 +118,7 @@ Creating a restaurant:
 3. creates the public `/r/[slug]` link
 4. creates the onboarding checklist
 5. records the owner email in `restaurant_users`
-
-The owner still needs a Supabase Auth user and matching `restaurant_users.user_id` before a fully
-authenticated restaurant-admin portal is enabled.
+6. optionally sends the owner account invitation immediately
 
 ## Public Menu Status
 
@@ -124,6 +147,5 @@ The workspace reuses the existing menu manager and supports CSV import, sample t
 categories/items, ordering, availability, editing, and device image uploads. The selected
 `restaurant_id` is accepted only after server-side Super Admin verification.
 
-The restaurant-facing `/admin/menu` route remains connected to
-`NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG` until the restaurant console gains a full account-level
-restaurant switcher.
+The restaurant-facing `/admin/menu` route automatically uses the logged-in user’s assigned
+restaurant.

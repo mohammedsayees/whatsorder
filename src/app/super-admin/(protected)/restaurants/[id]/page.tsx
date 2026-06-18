@@ -6,10 +6,14 @@ import {
   Check,
   Circle,
   ClipboardList,
+  Mail,
   ShoppingBag,
+  UserPlus,
   Users
 } from "lucide-react";
 import {
+  inviteRestaurantOwnerAction,
+  inviteRestaurantUserAction,
   toggleOnboardingTaskAction,
   updateRestaurantNotesAction,
   updateSuperAdminRestaurantAction
@@ -51,7 +55,14 @@ export default async function SuperAdminRestaurantDetailPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; created?: string; saved?: string; error?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    created?: string;
+    saved?: string;
+    error?: string;
+    invited?: string;
+    invite_error?: string;
+  }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const detail = await getSuperAdminRestaurant(id);
@@ -61,7 +72,16 @@ export default async function SuperAdminRestaurantDetailPage({
   }
 
   const activeTab = tabs.includes(query.tab as DetailTab) ? (query.tab as DetailTab) : "overview";
-  const { restaurant, onboardingTasks, categories, items, orders, customers } = detail;
+  const {
+    restaurant,
+    onboardingTasks,
+    categories,
+    items,
+    orders,
+    customers,
+    ownerMembership,
+    teamMemberships
+  } = detail;
   const menuUrl = `${getPublicAppUrl()}/r/${restaurant.slug}`;
   const onboardingPercent =
     restaurant.onboarding_total > 0
@@ -121,6 +141,16 @@ export default async function SuperAdminRestaurantDetailPage({
       {query.error ? (
         <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
           {query.error}
+        </p>
+      ) : null}
+      {query.invited ? (
+        <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          {query.invited}
+        </p>
+      ) : null}
+      {query.invite_error ? (
+        <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          Owner invitation failed: {query.invite_error}
         </p>
       ) : null}
 
@@ -209,6 +239,124 @@ export default async function SuperAdminRestaurantDetailPage({
                 </div>
               </article>
             </div>
+
+            <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="text-leaf" size={18} />
+                    <h2 className="text-lg font-black">Restaurant owner access</h2>
+                  </div>
+                  <p className="mt-2 text-sm text-stone-500">
+                    {ownerMembership?.accepted_at
+                      ? `${ownerMembership.email} has activated access to this restaurant.`
+                      : ownerMembership?.user_id
+                        ? `${ownerMembership.email} is linked and awaiting activation.`
+                      : restaurant.owner_email
+                        ? `${restaurant.owner_email} has not activated an account yet.`
+                        : "Add an owner email in Settings before sending an invitation."}
+                  </p>
+                  {ownerMembership?.invited_at ? (
+                    <p className="mt-1 text-xs font-semibold text-stone-400">
+                      Last invitation: {formatDate(ownerMembership.invited_at)}
+                    </p>
+                  ) : null}
+                </div>
+                {restaurant.owner_email ? (
+                  <form action={inviteRestaurantOwnerAction}>
+                    <input name="restaurant_id" type="hidden" value={restaurant.id} />
+                    <input name="owner_email" type="hidden" value={restaurant.owner_email} />
+                    <button
+                      className="focus-ring rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white"
+                      type="submit"
+                    >
+                      {ownerMembership?.invited_at ? "Invite / relink owner" : "Invite owner"}
+                    </button>
+                  </form>
+                ) : (
+                  <Link
+                    className="rounded-lg border border-stone-200 px-4 py-3 text-sm font-black"
+                    href={`?tab=settings`}
+                  >
+                    Add owner email
+                  </Link>
+                )}
+              </div>
+            </article>
+
+            <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <UserPlus className="text-leaf" size={18} />
+                <h2 className="text-lg font-black">Team access</h2>
+              </div>
+              <p className="mt-2 text-sm text-stone-500">
+                Invite a manager or staff member. Each person receives their own credentials and is
+                restricted to this restaurant.
+              </p>
+              <form
+                action={inviteRestaurantUserAction}
+                className="mt-5 grid gap-3 sm:grid-cols-[1fr_180px_auto]"
+              >
+                <input name="restaurant_id" type="hidden" value={restaurant.id} />
+                <input
+                  className="focus-ring rounded-lg border border-stone-200 px-3 py-2.5 text-sm"
+                  name="email"
+                  placeholder="team.member@example.com"
+                  required
+                  type="email"
+                />
+                <select
+                  className="focus-ring rounded-lg border border-stone-200 px-3 py-2.5 text-sm font-bold"
+                  defaultValue="staff"
+                  name="role"
+                >
+                  <option value="manager">Manager</option>
+                  <option value="staff">Staff</option>
+                </select>
+                <button
+                  className="focus-ring rounded-lg bg-ink px-4 py-2.5 text-sm font-black text-white"
+                  type="submit"
+                >
+                  Send invite
+                </button>
+              </form>
+
+              <div className="mt-5 divide-y divide-stone-100 rounded-lg border border-stone-200">
+                {teamMemberships.map((membership) => (
+                  <div
+                    className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    key={membership.id}
+                  >
+                    <div>
+                      <p className="text-sm font-black">{membership.email}</p>
+                      <p className="mt-0.5 text-xs capitalize text-stone-500">
+                        {membership.role.replace("_", " ")}
+                      </p>
+                    </div>
+                    <span
+                      className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
+                        membership.accepted_at
+                          ? "bg-emerald-50 text-emerald-700"
+                          : membership.invited_at
+                            ? "bg-amber-50 text-amber-800"
+                            : "bg-stone-100 text-stone-600"
+                      }`}
+                    >
+                      {membership.accepted_at
+                        ? "Active"
+                        : membership.invited_at
+                          ? "Invitation sent"
+                          : "Pending invite"}
+                    </span>
+                  </div>
+                ))}
+                {teamMemberships.length === 0 ? (
+                  <p className="px-4 py-5 text-sm font-semibold text-stone-500">
+                    No restaurant users have been invited yet.
+                  </p>
+                ) : null}
+              </div>
+            </article>
           </div>
         ) : null}
 

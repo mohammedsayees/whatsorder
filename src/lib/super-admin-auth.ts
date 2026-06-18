@@ -3,7 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
-import type { Profile } from "@/lib/types";
+import type { Profile, Restaurant } from "@/lib/types";
 
 export const superAdminCookieName = "whatsorder_access_token";
 
@@ -13,7 +13,15 @@ export type SuperAdminSession = {
   profile: Profile;
 };
 
-async function getAuthenticatedUser() {
+export type RestaurantAdminSession = {
+  userId: string;
+  email: string;
+  role: "restaurant_admin" | "staff" | "owner" | "manager";
+  restaurantId: string;
+  restaurant: Restaurant;
+};
+
+export async function getAuthenticatedUser() {
   const token = (await cookies()).get(superAdminCookieName)?.value;
   const supabase = getSupabase();
 
@@ -74,17 +82,6 @@ export async function getRestaurantAdminSession() {
     return null;
   }
 
-  const { data: profile } = await admin.from("profiles").select("*").eq("id", user.id).maybeSingle();
-
-  if (profile?.role === "super_admin") {
-    return {
-      userId: user.id,
-      email: user.email ?? profile.email,
-      role: "super_admin" as const,
-      restaurantId: null
-    };
-  }
-
   const { data: membership } = await admin
     .from("restaurant_users")
     .select("restaurant_id,role,email")
@@ -97,23 +94,23 @@ export async function getRestaurantAdminSession() {
     return null;
   }
 
-  const defaultSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const { data: defaultRestaurant } = await admin
+  const { data: restaurant } = await admin
     .from("restaurants")
-    .select("id")
-    .eq("slug", defaultSlug)
+    .select("*")
+    .eq("id", membership.restaurant_id)
     .maybeSingle();
 
-  if (!defaultRestaurant || membership.restaurant_id !== defaultRestaurant.id) {
+  if (!restaurant) {
     return null;
   }
 
   return {
     userId: user.id,
     email: user.email ?? membership.email,
-    role: membership.role,
-    restaurantId: membership.restaurant_id as string
-  };
+    role: membership.role as RestaurantAdminSession["role"],
+    restaurantId: membership.restaurant_id as string,
+    restaurant: restaurant as Restaurant
+  } satisfies RestaurantAdminSession;
 }
 
 export async function requireRestaurantAdmin() {
@@ -121,6 +118,18 @@ export async function requireRestaurantAdmin() {
 
   if (!session) {
     redirect("/admin-login");
+  }
+
+  return session;
+}
+
+export async function requireRestaurantRole(
+  allowedRoles: RestaurantAdminSession["role"][]
+) {
+  const session = await requireRestaurantAdmin();
+
+  if (!allowedRoles.includes(session.role)) {
+    redirect("/admin?error=You%20do%20not%20have%20permission%20for%20that%20action.");
   }
 
   return session;

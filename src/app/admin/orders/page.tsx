@@ -1,12 +1,9 @@
 import { OrderList } from "@/components/admin/OrderList";
-import { getCustomers, getDefaultRestaurant, getOrders } from "@/lib/data";
+import { getCustomers, getOrders } from "@/lib/data";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminOrdersPage() {
-  const restaurant = await getDefaultRestaurant();
-
-  if (!restaurant) {
-    return null;
-  }
+  const { restaurant } = await requireRestaurantAdmin();
 
   const [orders, customers] = await Promise.all([getOrders(restaurant.id), getCustomers(restaurant.id)]);
 

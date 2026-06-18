@@ -18,6 +18,22 @@ type RestaurantDetail = {
   items: MenuItem[];
   orders: Order[];
   customers: Customer[];
+  ownerMembership: {
+    id: string;
+    user_id: string | null;
+    email: string;
+    role: string;
+    invited_at: string | null;
+    accepted_at: string | null;
+  } | null;
+  teamMemberships: Array<{
+    id: string;
+    user_id: string | null;
+    email: string;
+    role: string;
+    invited_at: string | null;
+    accepted_at: string | null;
+  }>;
 };
 
 function countByRestaurant(rows: Array<{ restaurant_id: string }>) {
@@ -99,7 +115,8 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     { data: categories },
     { data: items },
     { data: orders },
-    { data: customers }
+    { data: customers },
+    { data: teamMemberships }
   ] = await Promise.all([
     supabase.from("restaurants").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -118,7 +135,12 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     }),
     supabase.from("customers").select("*").eq("restaurant_id", id).order("updated_at", {
       ascending: false
-    })
+    }),
+    supabase
+      .from("restaurant_users")
+      .select("id,user_id,email,role,invited_at,accepted_at")
+      .eq("restaurant_id", id)
+      .order("created_at")
   ]);
 
   if (!restaurant) {
@@ -127,6 +149,18 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
 
   const restaurantOrders = (orders ?? []) as Order[];
   const restaurantTasks = (onboardingTasks ?? []) as OnboardingTask[];
+  const normalizedTeamMemberships = (teamMemberships ?? []).map((membership) => ({
+    id: String(membership.id),
+    user_id: membership.user_id ? String(membership.user_id) : null,
+    email: String(membership.email),
+    role: String(membership.role),
+    invited_at: membership.invited_at ? String(membership.invited_at) : null,
+    accepted_at: membership.accepted_at ? String(membership.accepted_at) : null
+  }));
+  const ownerMembership =
+    normalizedTeamMemberships.find((membership) =>
+      ["restaurant_admin", "owner"].includes(membership.role)
+    ) ?? null;
 
   return {
     restaurant: {
@@ -143,7 +177,9 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     categories: (categories ?? []) as MenuCategory[],
     items: (items ?? []) as MenuItem[],
     orders: restaurantOrders,
-    customers: (customers ?? []) as Customer[]
+    customers: (customers ?? []) as Customer[],
+    ownerMembership,
+    teamMemberships: normalizedTeamMemberships
   };
 }
 

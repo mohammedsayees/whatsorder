@@ -1,13 +1,10 @@
 import { MenuManager } from "@/components/admin/MenuManager";
-import { getMenu, getDefaultRestaurant } from "@/lib/data";
+import { getMenu } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminMenuPage() {
-  const restaurant = await getDefaultRestaurant();
-
-  if (!restaurant) {
-    return null;
-  }
+  const { restaurant } = await requireRestaurantAdmin();
 
   const menu = await getMenu(restaurant.id, { admin: true });
   const canWrite = Boolean(getSupabaseAdmin());

@@ -57,6 +57,8 @@ begin
 end $$;
 
 alter table restaurant_users add column if not exists user_id uuid;
+alter table restaurant_users add column if not exists invited_at timestamptz;
+alter table restaurant_users add column if not exists accepted_at timestamptz;
 alter table restaurant_users drop constraint if exists restaurant_users_role_check;
 alter table restaurant_users
   add constraint restaurant_users_role_check

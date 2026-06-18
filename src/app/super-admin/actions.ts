@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { requireSuperAdmin, superAdminCookieName } from "@/lib/super-admin-auth";
+import { getPublicAppUrl } from "@/lib/super-admin-data";
 import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
 
 const onboardingTaskTemplates = [
@@ -47,6 +48,88 @@ function slugify(value: string) {
 
 function queryError(message: string) {
   return encodeURIComponent(message);
+}
+
+async function findAuthUserByEmail(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  email: string
+) {
+  const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  return data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
+type InviteRole = "restaurant_admin" | "manager" | "staff";
+
+async function inviteRestaurantUser(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string,
+  email: string,
+  role: InviteRole
+) {
+  const redirectTo = `${getPublicAppUrl()}/auth/invite`;
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo,
+    data: { restaurant_id: restaurantId, role }
+  });
+
+  let user = data.user;
+  let invitationSent = !error;
+
+  if (error) {
+    user = await findAuthUserByEmail(supabase, email);
+
+    if (!user) {
+      return { ok: false as const, error: error.message };
+    }
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo
+    });
+    invitationSent = !resetError;
+  }
+
+  if (!user) {
+    return { ok: false as const, error: "Supabase did not return the invited user." };
+  }
+
+  const now = new Date().toISOString();
+  const { error: membershipError } = await supabase.from("restaurant_users").upsert(
+    {
+      restaurant_id: restaurantId,
+      user_id: user.id,
+      email,
+      role,
+      invited_at: now
+    },
+    { onConflict: "restaurant_id,email" }
+  );
+
+  if (membershipError) {
+    return { ok: false as const, error: membershipError.message };
+  }
+
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (existingProfile?.role !== "super_admin") {
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      email,
+      role: role === "staff" ? "staff" : "restaurant_admin",
+      updated_at: now
+    });
+  }
+
+  return {
+    ok: true as const,
+    invitationSent,
+    message: invitationSent
+      ? `Account activation email sent to ${email}.`
+      : `${email} already has an account and has been linked to this restaurant.`
+  };
 }
 
 export async function loginSuperAdminAction(formData: FormData) {
@@ -172,9 +255,80 @@ export async function createRestaurantAction(formData: FormData) {
       },
       { onConflict: "restaurant_id,email" }
     );
+
+    if (formData.get("send_owner_invite") === "on") {
+      const inviteResult = await inviteRestaurantUser(
+        supabase,
+        restaurant.id,
+        ownerEmail,
+        "restaurant_admin"
+      );
+
+      if (!inviteResult.ok) {
+        redirect(
+          `/super-admin/restaurants/${restaurant.id}?created=1&invite_error=${queryError(inviteResult.error)}`
+        );
+      }
+
+      redirect(
+        `/super-admin/restaurants/${restaurant.id}?created=1&invited=${queryError(inviteResult.message)}`
+      );
+    }
   }
 
   redirect(`/super-admin/restaurants/${restaurant.id}?created=1`);
+}
+
+export async function inviteRestaurantOwnerAction(formData: FormData) {
+  await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const email = stringValue(formData, "owner_email").toLowerCase();
+
+  if (!supabase || !restaurantId || !email) {
+    return;
+  }
+
+  const result = await inviteRestaurantUser(supabase, restaurantId, email, "restaurant_admin");
+
+  if (!result.ok) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?invite_error=${queryError(result.error)}`
+    );
+  }
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  redirect(
+    `/super-admin/restaurants/${restaurantId}?invited=${queryError(result.message)}`
+  );
+}
+
+export async function inviteRestaurantUserAction(formData: FormData) {
+  await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const email = stringValue(formData, "email").toLowerCase();
+  const requestedRole = stringValue(formData, "role") as InviteRole;
+  const role: InviteRole = ["restaurant_admin", "manager", "staff"].includes(requestedRole)
+    ? requestedRole
+    : "staff";
+
+  if (!supabase || !restaurantId || !email) {
+    return;
+  }
+
+  const result = await inviteRestaurantUser(supabase, restaurantId, email, role);
+
+  if (!result.ok) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?invite_error=${queryError(result.error)}`
+    );
+  }
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  redirect(
+    `/super-admin/restaurants/${restaurantId}?invited=${queryError(result.message)}`
+  );
 }
 
 export async function updateSuperAdminRestaurantAction(formData: FormData) {

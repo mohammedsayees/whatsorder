@@ -160,6 +160,8 @@ export type RestaurantUser = {
   user_id: string | null;
   email: string;
   role: UserRole | "owner" | "manager";
+  invited_at?: string | null;
+  accepted_at?: string | null;
   created_at: string;
 };
 

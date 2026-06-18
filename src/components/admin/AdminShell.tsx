@@ -1,17 +1,23 @@
 import Link from "next/link";
 import { BarChart3, ClipboardList, LogOut, MenuSquare, Settings, Users } from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
+import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 
 const navItems = [
-  { href: "/admin", label: "Dashboard", icon: BarChart3 },
-  { href: "/admin/orders", label: "Orders", icon: ClipboardList },
-  { href: "/admin/menu", label: "Menu", icon: MenuSquare },
-  { href: "/admin/customers", label: "Customers", icon: Users },
-  { href: "/admin/settings", label: "Settings", icon: Settings }
+  { href: "/admin", label: "Dashboard", icon: BarChart3, staff: true },
+  { href: "/admin/orders", label: "Orders", icon: ClipboardList, staff: true },
+  { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
+  { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
+  { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }
 ];
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
-  // Future authentication can filter navigation by restaurant_users.role before rendering.
+export function AdminShell({
+  children,
+  session
+}: {
+  children: React.ReactNode;
+  session: RestaurantAdminSession;
+}) {
   return (
     <div className="min-h-screen bg-stone-50">
       <aside className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white lg:inset-y-0 lg:left-0 lg:right-auto lg:w-64 lg:border-r lg:border-t-0">
@@ -19,10 +25,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <Link className="text-xl font-black text-ink" href="/admin">
             WhatsOrder
           </Link>
-          <p className="mt-1 text-sm text-stone-500">Restaurant console</p>
+          <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
+          <p className="mt-0.5 text-xs capitalize text-stone-500">{session.role.replace("_", " ")}</p>
         </div>
-        <nav className="grid grid-cols-5 gap-1 p-2 lg:block lg:space-y-1 lg:px-3">
-          {navItems.map((item) => {
+        <nav className={`grid gap-1 p-2 lg:block lg:space-y-1 lg:px-3 ${session.role === "staff" ? "grid-cols-3" : "grid-cols-5"}`}>
+          {navItems.filter((item) => session.role !== "staff" || item.staff).map((item) => {
             const Icon = item.icon;
 
             return (
@@ -38,6 +45,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <form action={logoutRestaurantAdminAction} className="hidden px-3 pb-4 lg:block">
+          <p className="mb-3 truncate px-3 text-xs font-semibold text-stone-400">{session.email}</p>
           <button className="focus-ring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-stone-500 hover:bg-stone-100" type="submit">
             <LogOut size={17} />
             Sign out
