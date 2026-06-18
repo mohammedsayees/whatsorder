@@ -1,6 +1,7 @@
 # Customer Profiles and Loyalty Foundation
 
-WhatsOrder now stores a lightweight customer profile per restaurant and phone number. This keeps repeat ordering simple without adding customer passwords or public order-history access.
+WhatsOrder stores a lightweight customer profile per restaurant and phone number for restaurant-side
+history, analytics, consent, and loyalty. Customer details are not publicly retrievable by phone.
 
 ## Customer Identity
 
@@ -12,22 +13,10 @@ restaurant_id + phone
 
 This lets every restaurant keep its own customer list, even when the same phone number orders from more than one restaurant in the future.
 
-## Saved Address Flow
+## Customer-facing lookup
 
-During checkout:
-
-1. Customer enters their phone number.
-2. WhatsOrder checks for a matching customer profile for that restaurant.
-3. If found, checkout shows:
-
-```text
-We found your saved details. Use saved address?
-```
-
-4. Customer can apply the saved name, area, address, landmark, and saved Google Maps location.
-5. Customer can still edit all details before sending the order on WhatsApp.
-
-Only saved address data is returned to the checkout. Full order history is not shown publicly by phone number.
+Checkout does not retrieve a profile from a phone number. Customers enter their details for each
+order until OTP verification or authenticated customer accounts are available.
 
 ## Consent Handling
 
@@ -120,6 +109,12 @@ Every AED 1 spent = 1 point
 ```
 
 Points are awarded only when an admin changes an order status to `Completed`. If an order is cancelled, points are not awarded. If an already completed order is saved again, points are not duplicated.
+
+## Privacy note
+
+Saved-address lookup by phone number is disabled in the application. A phone number is guessable and
+must not be treated as proof of identity. Re-enable saved-address autofill only after adding OTP
+verification or authenticated customer accounts.
 
 ## Future Improvements
 

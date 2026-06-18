@@ -18,6 +18,7 @@ Run this file in the Supabase SQL Editor:
 
 ```text
 supabase/super_admin_migration.sql
+supabase/security_hardening_migration.sql
 ```
 
 The migration:
@@ -74,6 +75,11 @@ Roles:
 Every admin query and mutation uses the authenticated user’s `restaurant_users.restaurant_id`.
 `NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG` remains only for pilot/demo defaults and is no longer used to
 select restaurant-admin data.
+
+Memberships must have `accepted_at` set before dashboard access is granted. Paused and cancelled
+restaurants cannot enter the restaurant dashboard. Accounts linked to more than one restaurant are
+rejected until the restaurant selector flow is implemented, preventing an arbitrary tenant from
+being selected.
 
 ## Supabase Invitation URLs
 

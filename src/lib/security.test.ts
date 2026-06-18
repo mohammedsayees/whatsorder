@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import {
+  classifyMembershipCount,
+  hasValidInvitationMetadata,
+  isRestaurantAdminAccessAllowed,
+  isValidCustomerPhone,
+  parseAndValidateCart
+} from "./security";
+
+describe("tenant access security", () => {
+  it("rejects ambiguous multi-restaurant memberships", () => {
+    expect(classifyMembershipCount(0)).toBe("no_membership");
+    expect(classifyMembershipCount(1)).toBe("ok");
+    expect(classifyMembershipCount(2)).toBe("multiple_memberships");
+  });
+
+  it("blocks paused and cancelled restaurant dashboards", () => {
+    expect(isRestaurantAdminAccessAllowed("live")).toBe(true);
+    expect(isRestaurantAdminAccessAllowed("onboarding")).toBe(true);
+    expect(isRestaurantAdminAccessAllowed("paused")).toBe(false);
+    expect(isRestaurantAdminAccessAllowed("cancelled")).toBe(false);
+  });
+});
+
+describe("invitation security", () => {
+  it("requires a restaurant and supported role", () => {
+    expect(hasValidInvitationMetadata("restaurant-id", "manager")).toBe(true);
+    expect(hasValidInvitationMetadata("", "manager")).toBe(false);
+    expect(hasValidInvitationMetadata("restaurant-id", "super_admin")).toBe(false);
+  });
+});
+
+describe("public order input security", () => {
+  it("accepts a bounded valid cart", () => {
+    const cart = parseAndValidateCart(
+      JSON.stringify([{ item_id: "item-1", name: "Tea", price: 2, quantity: 2 }])
+    );
+    expect(cart).toHaveLength(1);
+    expect(cart[0].quantity).toBe(2);
+  });
+
+  it("rejects oversized or partially invalid carts", () => {
+    expect(
+      parseAndValidateCart(
+        JSON.stringify([{ item_id: "item-1", name: "Tea", price: 2, quantity: 26 }])
+      )
+    ).toEqual([]);
+
+    expect(
+      parseAndValidateCart(
+        JSON.stringify([
+          { item_id: "item-1", name: "Tea", price: 2, quantity: 1 },
+          { item_id: "", name: "Invalid", price: 1, quantity: 1 }
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it("validates customer phone input", () => {
+    expect(isValidCustomerPhone("+971 55 123 4567")).toBe(true);
+    expect(isValidCustomerPhone("0551234567")).toBe(true);
+    expect(isValidCustomerPhone("not-a-phone")).toBe(false);
+  });
+});

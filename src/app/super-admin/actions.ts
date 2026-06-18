@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
-import { requireSuperAdmin, superAdminCookieName } from "@/lib/super-admin-auth";
+import {
+  refreshTokenCookieName,
+  requireSuperAdmin,
+  superAdminCookieName
+} from "@/lib/super-admin-auth";
 import { getPublicAppUrl } from "@/lib/super-admin-data";
 import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
 
@@ -66,6 +70,27 @@ async function inviteRestaurantUser(
   email: string,
   role: InviteRole
 ) {
+  const { data: existingMemberships, error: existingMembershipError } = await supabase
+    .from("restaurant_users")
+    .select("restaurant_id")
+    .eq("email", email);
+
+  if (existingMembershipError) {
+    return { ok: false as const, error: existingMembershipError.message };
+  }
+
+  if (
+    (existingMemberships ?? []).some(
+      (membership) => String(membership.restaurant_id) !== restaurantId
+    )
+  ) {
+    return {
+      ok: false as const,
+      error:
+        "This email is already assigned to another restaurant. Multi-restaurant accounts require an account selector and are not enabled yet."
+    };
+  }
+
   const redirectTo = `${getPublicAppUrl()}/auth/invite`;
   const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
     redirectTo,
@@ -82,9 +107,20 @@ async function inviteRestaurantUser(
       return { ok: false as const, error: error.message };
     }
 
+    const { error: metadataError } = await supabase.auth.admin.updateUserById(user.id, {
+      user_metadata: { restaurant_id: restaurantId, role }
+    });
+
+    if (metadataError) {
+      return { ok: false as const, error: metadataError.message };
+    }
+
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo
     });
+    if (resetError) {
+      return { ok: false as const, error: resetError.message };
+    }
     invitationSent = !resetError;
   }
 
@@ -115,12 +151,15 @@ async function inviteRestaurantUser(
     .maybeSingle();
 
   if (existingProfile?.role !== "super_admin") {
-    await supabase.from("profiles").upsert({
+    const { error: profileError } = await supabase.from("profiles").upsert({
       id: user.id,
       email,
       role: role === "staff" ? "staff" : "restaurant_admin",
       updated_at: now
     });
+    if (profileError) {
+      return { ok: false as const, error: profileError.message };
+    }
   }
 
   return {
@@ -161,19 +200,29 @@ export async function loginSuperAdminAction(formData: FormData) {
     redirect(`/super-admin/login?error=${queryError("This account does not have Super Admin access.")}`);
   }
 
-  (await cookies()).set(superAdminCookieName, data.session.access_token, {
+  const cookieStore = await cookies();
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/",
+    path: "/"
+  } as const;
+  cookieStore.set(superAdminCookieName, data.session.access_token, {
+    ...cookieOptions,
     maxAge: Math.max(60, data.session.expires_in)
+  });
+  cookieStore.set(refreshTokenCookieName, data.session.refresh_token, {
+    ...cookieOptions,
+    maxAge: 60 * 60 * 24 * 30
   });
 
   redirect("/super-admin");
 }
 
 export async function logoutSuperAdminAction() {
-  (await cookies()).delete(superAdminCookieName);
+  const cookieStore = await cookies();
+  cookieStore.delete(superAdminCookieName);
+  cookieStore.delete(refreshTokenCookieName);
   redirect("/super-admin/login");
 }
 
@@ -229,7 +278,7 @@ export async function createRestaurantAction(formData: FormData) {
   }
 
   const now = new Date().toISOString();
-  await supabase.from("onboarding_tasks").insert(
+  const { error: onboardingError } = await supabase.from("onboarding_tasks").insert(
     onboardingTaskTemplates.map(([taskKey, taskLabel]) => {
       const completed =
         taskKey === "restaurant_details" ||
@@ -245,9 +294,15 @@ export async function createRestaurantAction(formData: FormData) {
       };
     })
   );
+  if (onboardingError) {
+    await supabase.from("restaurants").delete().eq("id", restaurant.id);
+    redirect(
+      `/super-admin/restaurants/new?error=${queryError(`Onboarding setup failed: ${onboardingError.message}`)}`
+    );
+  }
 
   if (ownerEmail) {
-    await supabase.from("restaurant_users").upsert(
+    const { error: ownerMembershipError } = await supabase.from("restaurant_users").upsert(
       {
         restaurant_id: restaurant.id,
         email: ownerEmail,
@@ -255,6 +310,11 @@ export async function createRestaurantAction(formData: FormData) {
       },
       { onConflict: "restaurant_id,email" }
     );
+    if (ownerMembershipError) {
+      redirect(
+        `/super-admin/restaurants/${restaurant.id}?created=1&invite_error=${queryError(ownerMembershipError.message)}`
+      );
+    }
 
     if (formData.get("send_owner_invite") === "on") {
       const inviteResult = await inviteRestaurantUser(
@@ -394,7 +454,7 @@ export async function toggleOnboardingTaskAction(formData: FormData) {
     return;
   }
 
-  await supabase
+  const { error } = await supabase
     .from("onboarding_tasks")
     .update({
       is_completed: isCompleted,
@@ -402,6 +462,9 @@ export async function toggleOnboardingTaskAction(formData: FormData) {
     })
     .eq("id", taskId)
     .eq("restaurant_id", restaurantId);
+  if (error) {
+    throw new Error(`Onboarding task update failed: ${error.message}`);
+  }
 
   revalidatePath("/super-admin");
   revalidatePath("/super-admin/onboarding");
@@ -417,10 +480,15 @@ export async function updateRestaurantNotesAction(formData: FormData) {
     return;
   }
 
-  await supabase
+  const { error } = await supabase
     .from("restaurants")
     .update({ internal_notes: stringValue(formData, "internal_notes") || null })
     .eq("id", restaurantId);
+  if (error) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?tab=notes&error=${queryError(error.message)}`
+    );
+  }
 
   revalidatePath(`/super-admin/restaurants/${restaurantId}`);
   redirect(`/super-admin/restaurants/${restaurantId}?tab=notes&saved=1`);

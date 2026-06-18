@@ -4,10 +4,37 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import {
-  getRestaurantAdminSession,
   getSuperAdminSession,
+  refreshTokenCookieName,
+  resolveRestaurantAdminSession,
   superAdminCookieName
 } from "@/lib/super-admin-auth";
+
+function setAuthCookies(accessToken: string, refreshToken: string, expiresIn: number) {
+  return cookies().then((cookieStore) => {
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      path: "/"
+    };
+
+    cookieStore.set(superAdminCookieName, accessToken, {
+      ...options,
+      maxAge: Math.max(60, expiresIn)
+    });
+    cookieStore.set(refreshTokenCookieName, refreshToken, {
+      ...options,
+      maxAge: 60 * 60 * 24 * 30
+    });
+  });
+}
+
+async function clearAuthCookies() {
+  const cookieStore = await cookies();
+  cookieStore.delete(superAdminCookieName);
+  cookieStore.delete(refreshTokenCookieName);
+}
 
 export async function loginRestaurantAdminAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -24,29 +51,34 @@ export async function loginRestaurantAdminAction(formData: FormData) {
     redirect("/admin-login?error=Invalid%20email%20or%20password.");
   }
 
-  (await cookies()).set(superAdminCookieName, data.session.access_token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: Math.max(60, data.session.expires_in)
-  });
+  await setAuthCookies(
+    data.session.access_token,
+    data.session.refresh_token,
+    data.session.expires_in
+  );
 
   if (await getSuperAdminSession()) {
     redirect("/super-admin");
   }
 
-  const session = await getRestaurantAdminSession();
+  const resolution = await resolveRestaurantAdminSession();
 
-  if (!session) {
-    (await cookies()).delete(superAdminCookieName);
-    redirect("/admin-login?error=This%20account%20is%20not%20assigned%20to%20a%20restaurant.");
+  if (!resolution.session) {
+    await clearAuthCookies();
+    const messages = {
+      not_authenticated: "The sign-in session could not be verified.",
+      no_membership: "This account is not assigned to an active restaurant.",
+      multiple_memberships:
+        "This account is assigned to multiple restaurants. Contact WhatsOrder support to choose an active restaurant.",
+      restaurant_unavailable: "This restaurant account is currently paused or unavailable."
+    } as const;
+    redirect(`/admin-login?error=${encodeURIComponent(messages[resolution.issue])}`);
   }
 
   redirect("/admin");
 }
 
 export async function logoutRestaurantAdminAction() {
-  (await cookies()).delete(superAdminCookieName);
+  await clearAuthCookies();
   redirect("/admin-login");
 }

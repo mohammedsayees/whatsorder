@@ -28,12 +28,11 @@ The app remains multi-restaurant ready because every restaurant-owned table incl
 1. Customer opens `/r/chaixpress`.
 2. Customer adds menu items to cart.
 3. Customer enters contact, delivery, payment, and consent details.
-4. Repeat customers can use saved address details after entering their phone number.
-5. Customer can optionally share current location, generating a Google Maps delivery link.
-6. Order is saved to Supabase with status `New`.
-7. WhatsOrder generates a structured WhatsApp message.
-8. WhatsApp opens through `https://wa.me/<restaurant_whatsapp_number>?text=<encoded_order_message>`.
-9. Restaurant staff manage the order in `/admin`.
+4. Customer can optionally share current location, generating a Google Maps delivery link.
+5. Order and customer totals are saved atomically to Supabase with status `New`.
+6. WhatsOrder generates a structured WhatsApp message.
+7. WhatsApp opens with the restaurant number and encoded order message.
+8. Restaurant staff manage the order in `/admin`.
 
 ## Local Setup
 
@@ -68,10 +67,12 @@ Use `SUPABASE_SERVICE_ROLE_KEY` only on the server. Never expose it in browser c
 
 ## Supabase
 
-Run the schema and seed file:
+Run the schema and migrations in this order:
 
 ```text
 supabase/schema.sql
+supabase/super_admin_migration.sql
+supabase/security_hardening_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
@@ -93,7 +94,10 @@ Checkout supports optional browser geolocation and manual address entry. See [LO
 
 ## Customer Profiles and Loyalty
 
-Checkout can look up limited saved address details by restaurant and phone number to make repeat ordering easier. Admins can view customer order history, and completed orders can award future-ready loyalty points. See [CUSTOMER_PROFILE_AND_LOYALTY.md](CUSTOMER_PROFILE_AND_LOYALTY.md).
+Admins can view customer order history, and completed orders can award future-ready loyalty points.
+Public saved-address lookup is disabled because a phone number alone is not sufficient identity
+verification. It should only return after customer OTP or account authentication is added. See
+[CUSTOMER_PROFILE_AND_LOYALTY.md](CUSTOMER_PROFILE_AND_LOYALTY.md).
 
 ## Menu Images
 
@@ -129,7 +133,7 @@ Included:
 - Public restaurant menu route
 - Cart and checkout
 - Optional customer location capture
-- Saved customer address lookup
+- Restaurant-side customer history
 - Consent capture
 - Click-to-WhatsApp
 - Supabase order persistence

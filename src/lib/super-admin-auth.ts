@@ -3,9 +3,18 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
+import {
+  accessTokenCookieName,
+  refreshTokenCookieName
+} from "@/lib/auth-cookies";
+import {
+  classifyMembershipCount,
+  isRestaurantAdminAccessAllowed
+} from "@/lib/security";
 import type { Profile, Restaurant } from "@/lib/types";
 
-export const superAdminCookieName = "whatsorder_access_token";
+export const superAdminCookieName = accessTokenCookieName;
+export { refreshTokenCookieName };
 
 export type SuperAdminSession = {
   userId: string;
@@ -20,6 +29,16 @@ export type RestaurantAdminSession = {
   restaurantId: string;
   restaurant: Restaurant;
 };
+
+export type RestaurantSessionIssue =
+  | "not_authenticated"
+  | "no_membership"
+  | "multiple_memberships"
+  | "restaurant_unavailable";
+
+export type RestaurantSessionResolution =
+  | { session: RestaurantAdminSession; issue: null }
+  | { session: null; issue: RestaurantSessionIssue };
 
 export async function getAuthenticatedUser() {
   const token = (await cookies()).get(superAdminCookieName)?.value;
@@ -74,53 +93,77 @@ export async function requireSuperAdmin() {
   return session;
 }
 
-export async function getRestaurantAdminSession() {
+export async function resolveRestaurantAdminSession(): Promise<RestaurantSessionResolution> {
   const user = await getAuthenticatedUser();
   const admin = getSupabaseAdmin();
 
   if (!user || !admin) {
-    return null;
+    return { session: null, issue: "not_authenticated" };
   }
 
-  const { data: membership } = await admin
+  const { data: memberships, error: membershipError } = await admin
     .from("restaurant_users")
     .select("restaurant_id,role,email")
     .eq("user_id", user.id)
+    .not("accepted_at", "is", null)
     .in("role", ["restaurant_admin", "staff", "owner", "manager"])
-    .limit(1)
-    .maybeSingle();
+    .limit(2);
 
-  if (!membership) {
-    return null;
+  if (membershipError || !memberships) {
+    return { session: null, issue: "no_membership" };
   }
 
+  const membershipState = classifyMembershipCount(memberships.length);
+  if (membershipState !== "ok") {
+    return { session: null, issue: membershipState };
+  }
+
+  const membership = memberships[0];
   const { data: restaurant } = await admin
     .from("restaurants")
     .select("*")
     .eq("id", membership.restaurant_id)
     .maybeSingle();
 
-  if (!restaurant) {
-    return null;
+  if (
+    !restaurant ||
+    !isRestaurantAdminAccessAllowed(restaurant.status as Restaurant["status"])
+  ) {
+    return { session: null, issue: "restaurant_unavailable" };
   }
 
   return {
-    userId: user.id,
-    email: user.email ?? membership.email,
-    role: membership.role as RestaurantAdminSession["role"],
-    restaurantId: membership.restaurant_id as string,
-    restaurant: restaurant as Restaurant
-  } satisfies RestaurantAdminSession;
+    issue: null,
+    session: {
+      userId: user.id,
+      email: user.email ?? membership.email,
+      role: membership.role as RestaurantAdminSession["role"],
+      restaurantId: membership.restaurant_id as string,
+      restaurant: restaurant as Restaurant
+    }
+  };
+}
+
+export async function getRestaurantAdminSession() {
+  const resolution = await resolveRestaurantAdminSession();
+  return resolution.session;
 }
 
 export async function requireRestaurantAdmin() {
-  const session = await getRestaurantAdminSession();
+  const resolution = await resolveRestaurantAdminSession();
 
-  if (!session) {
-    redirect("/admin-login");
+  if (!resolution.session) {
+    const messages: Record<RestaurantSessionIssue, string> = {
+      not_authenticated: "Please sign in to continue.",
+      no_membership: "This account does not have an active restaurant assignment.",
+      multiple_memberships:
+        "This account is assigned to multiple restaurants. Contact WhatsOrder support to choose an active restaurant.",
+      restaurant_unavailable: "This restaurant account is currently unavailable."
+    };
+    redirect(`/admin-login?error=${encodeURIComponent(messages[resolution.issue])}`);
   }
 
-  return session;
+  return resolution.session;
 }
 
 export async function requireRestaurantRole(

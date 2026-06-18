@@ -60,7 +60,7 @@ const features = [
   { title: "Digital menu link", text: "Share one restaurant-specific link or QR code.", icon: QrCode },
   { title: "Structured WhatsApp orders", text: "Clean item, address, note, and payment details.", icon: MessageSquareText },
   { title: "Delivery, pickup, scheduled orders", text: "Ready for the ordering modes small restaurants need.", icon: Clock3 },
-  { title: "Saved customer details", text: "Make repeat orders faster with saved address data.", icon: Repeat2 },
+  { title: "Repeat customer insights", text: "Track customer history without exposing saved addresses publicly.", icon: Repeat2 },
   { title: "Product image upload", text: "Upload food photos directly from phone or laptop.", icon: ImagePlus },
   { title: "Admin order dashboard", text: "Track New, Preparing, Completed, and more.", icon: LayoutDashboard },
   { title: "Customer database", text: "Understand repeat customers and marketing opt-ins.", icon: Users },
