@@ -50,6 +50,8 @@ Open:
 - Landing page: `http://localhost:3000`
 - Chai Xpress menu: `http://localhost:3000/r/chaixpress`
 - Admin dashboard: `http://localhost:3000/admin`
+- Restaurant admin login: `http://localhost:3000/admin-login`
+- Super Admin login: `http://localhost:3000/super-admin/login`
 
 ## Environment Variables
 
@@ -59,6 +61,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG=chaixpress
 NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER=971551150068
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 Use `SUPABASE_SERVICE_ROLE_KEY` only on the server. Never expose it in browser code, screenshots, or client-side environment variables.
@@ -72,6 +75,14 @@ supabase/schema.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+
+## Super Admin
+
+The protected Super Admin area supports multi-restaurant setup, onboarding, plans, QR codes, and
+portfolio-level reporting. Run `supabase/super_admin_migration.sql`, create a Supabase Auth user,
+and promote its profile to `super_admin`.
+
+See [SUPER_ADMIN_SETUP.md](SUPER_ADMIN_SETUP.md) for the complete setup and security notes.
 
 ## Delivery Location
 

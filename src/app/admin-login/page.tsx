@@ -1,0 +1,48 @@
+import { redirect } from "next/navigation";
+import { Store } from "lucide-react";
+import { loginRestaurantAdminAction } from "@/app/admin-login/actions";
+import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
+
+export default async function RestaurantAdminLoginPage({
+  searchParams
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const [session, query] = await Promise.all([getRestaurantAdminSession(), searchParams]);
+
+  if (session) {
+    redirect("/admin");
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-stone-100 px-4 py-10">
+      <section className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-6 shadow-xl sm:p-8">
+        <div className="grid h-12 w-12 place-items-center rounded-lg bg-mint text-leaf">
+          <Store size={24} />
+        </div>
+        <h1 className="mt-5 text-2xl font-black">Restaurant admin</h1>
+        <p className="mt-2 text-sm leading-6 text-stone-600">
+          Sign in with the account assigned to your WhatsOrder restaurant.
+        </p>
+        {query.error ? (
+          <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            {query.error}
+          </p>
+        ) : null}
+        <form action={loginRestaurantAdminAction} className="mt-6 space-y-4">
+          <label className="block">
+            <span className="text-sm font-bold">Email</span>
+            <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-4 py-3" name="email" required type="email" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-bold">Password</span>
+            <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-4 py-3" name="password" required type="password" />
+          </label>
+          <button className="focus-ring w-full rounded-lg bg-leaf px-5 py-3 font-black text-white" type="submit">
+            Sign in
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}

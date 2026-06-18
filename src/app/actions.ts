@@ -6,6 +6,7 @@ import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -417,6 +418,7 @@ export async function createOrderAction(
 }
 
 export async function updateOrderStatusAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const orderId = stringValue(formData, "order_id");
   const status = stringValue(formData, "status") as OrderStatus;
   const restaurant = await getDefaultRestaurant();
@@ -488,6 +490,7 @@ export async function updateOrderStatusAction(formData: FormData) {
 }
 
 export async function addMenuItemAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const supabase = getSupabaseAdmin();
@@ -514,6 +517,7 @@ export async function addMenuItemAction(formData: FormData) {
 }
 
 export async function updateMenuItemAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const itemId = stringValue(formData, "item_id");
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
@@ -544,6 +548,7 @@ export async function updateMenuItemAction(formData: FormData) {
 }
 
 export async function uploadMenuItemImageAction(formData: FormData): Promise<UploadMenuImageResult> {
+  await requireRestaurantAdmin();
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const supabase = getSupabaseAdmin();
@@ -626,6 +631,7 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
 }
 
 export async function removeMenuItemImageAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const itemId = stringValue(formData, "item_id");
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
@@ -646,6 +652,7 @@ export async function removeMenuItemImageAction(formData: FormData) {
 }
 
 export async function toggleMenuItemAvailabilityAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const itemId = stringValue(formData, "item_id");
   const isAvailable = stringValue(formData, "is_available") === "true";
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
@@ -667,6 +674,7 @@ export async function toggleMenuItemAvailabilityAction(formData: FormData) {
 }
 
 export async function deleteMenuItemAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const itemId = stringValue(formData, "item_id");
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
@@ -683,6 +691,7 @@ export async function deleteMenuItemAction(formData: FormData) {
 }
 
 export async function importMenuRowsAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  await requireRestaurantAdmin();
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
@@ -781,6 +790,7 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
 }
 
 export async function updateRestaurantSettingsAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const supabase = getSupabaseAdmin();
@@ -809,6 +819,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
 }
 
 export async function addCategoryAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
@@ -831,6 +842,7 @@ export async function addCategoryAction(formData: FormData) {
 }
 
 export async function moveCategoryAction(formData: FormData) {
+  await requireRestaurantAdmin();
   const categoryId = stringValue(formData, "category_id");
   const direction = stringValue(formData, "direction");
   const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";

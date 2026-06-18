@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { BarChart3, ClipboardList, MenuSquare, Settings, Users } from "lucide-react";
+import { BarChart3, ClipboardList, LogOut, MenuSquare, Settings, Users } from "lucide-react";
+import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: BarChart3 },
@@ -36,6 +37,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <form action={logoutRestaurantAdminAction} className="hidden px-3 pb-4 lg:block">
+          <button className="focus-ring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-stone-500 hover:bg-stone-100" type="submit">
+            <LogOut size={17} />
+            Sign out
+          </button>
+        </form>
       </aside>
       <div className="pb-24 lg:pb-0 lg:pl-64">{children}</div>
     </div>

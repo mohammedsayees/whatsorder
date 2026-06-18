@@ -13,7 +13,7 @@ export function useCustomerLanguage() {
     const savedLanguage = window.localStorage.getItem(customerLanguageStorageKey);
 
     if (savedLanguage === "ar") {
-      setLanguageState("ar");
+      queueMicrotask(() => setLanguageState("ar"));
     }
   }, []);
 
