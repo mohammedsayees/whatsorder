@@ -6,7 +6,7 @@ import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
-import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { requireRestaurantAdmin, requireSuperAdmin } from "@/lib/super-admin-auth";
 import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -78,6 +78,57 @@ function decimalValue(formData: FormData, key: string) {
 
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+async function getMenuActionContext(formData: FormData) {
+  const requestedRestaurantId = stringValue(formData, "restaurant_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return null;
+  }
+
+  if (requestedRestaurantId) {
+    await requireSuperAdmin();
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("*")
+      .eq("id", requestedRestaurantId)
+      .maybeSingle();
+
+    return restaurant ? { restaurant, supabase, isSuperAdmin: true } : null;
+  }
+
+  await requireRestaurantAdmin();
+  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+
+  return restaurant ? { restaurant, supabase, isSuperAdmin: false } : null;
+}
+
+function revalidateMenuPaths(restaurant: { id: string; slug: string }) {
+  revalidatePath("/admin/menu");
+  revalidatePath(`/r/${restaurant.slug}`);
+  revalidatePath(`/super-admin/restaurants/${restaurant.id}`);
+}
+
+async function completeOnboardingTasks(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string,
+  taskKeys: string[]
+) {
+  if (taskKeys.length === 0) {
+    return;
+  }
+
+  await supabase
+    .from("onboarding_tasks")
+    .update({
+      is_completed: true,
+      completed_at: new Date().toISOString()
+    })
+    .eq("restaurant_id", restaurantId)
+    .in("task_key", taskKeys);
 }
 
 function booleanFromValue(value: unknown, fallback = false) {
@@ -490,15 +541,14 @@ export async function updateOrderStatusAction(formData: FormData) {
 }
 
 export async function addMenuItemAction(formData: FormData) {
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
+  const context = await getMenuActionContext(formData);
 
-  if (!restaurant || !supabase) {
+  if (!context) {
     return;
   }
 
+  const { restaurant, supabase } = context;
+  const imageUrl = stringValue(formData, "image_url") || null;
   await supabase.from("menu_items").insert({
     restaurant_id: restaurant.id,
     category_id: stringValue(formData, "category_id"),
@@ -507,26 +557,28 @@ export async function addMenuItemAction(formData: FormData) {
     description: stringValue(formData, "description") || null,
     description_ar: stringValue(formData, "description_ar") || null,
     price: Number(stringValue(formData, "price")),
-    image_url: stringValue(formData, "image_url") || null,
+    image_url: imageUrl,
     is_available: formData.get("is_available") === "on",
     is_featured: formData.get("is_featured") === "on"
   });
+  await completeOnboardingTasks(supabase, restaurant.id, [
+    "items_added",
+    ...(imageUrl ? ["images_added"] : [])
+  ]);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function updateMenuItemAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const context = await getMenuActionContext(formData);
   const itemId = stringValue(formData, "item_id");
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
 
-  if (!restaurant || !supabase || !itemId) {
+  if (!context || !itemId) {
     return;
   }
 
+  const { restaurant, supabase } = context;
+  const imageUrl = stringValue(formData, "image_url") || null;
   await supabase
     .from("menu_items")
     .update({
@@ -536,30 +588,30 @@ export async function updateMenuItemAction(formData: FormData) {
       description_ar: stringValue(formData, "description_ar") || null,
       price: Number(stringValue(formData, "price")),
       category_id: stringValue(formData, "category_id"),
-      image_url: stringValue(formData, "image_url") || null,
+      image_url: imageUrl,
       is_available: formData.get("is_available") === "on",
       is_featured: formData.get("is_featured") === "on"
     })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
+  if (imageUrl) {
+    await completeOnboardingTasks(supabase, restaurant.id, ["images_added"]);
+  }
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function uploadMenuItemImageAction(formData: FormData): Promise<UploadMenuImageResult> {
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
+  const context = await getMenuActionContext(formData);
   const file = formData.get("image");
   const itemName = stringValue(formData, "item_name") || "menu-item";
   const itemId = stringValue(formData, "item_id");
 
-  if (!restaurant || !supabase) {
+  if (!context) {
     return { ok: false, error: "Image upload needs Supabase Storage access." };
   }
 
+  const { restaurant, supabase } = context;
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "Please choose an image to upload." };
   }
@@ -623,85 +675,74 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
       .eq("id", itemId)
       .eq("restaurant_id", restaurant.id);
 
-    revalidatePath("/admin/menu");
-    revalidatePath(`/r/${restaurant.slug}`);
+    await completeOnboardingTasks(supabase, restaurant.id, ["images_added"]);
+    revalidateMenuPaths(restaurant);
   }
 
   return { ok: true, publicUrl, message: "Image uploaded successfully." };
 }
 
 export async function removeMenuItemImageAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const context = await getMenuActionContext(formData);
   const itemId = stringValue(formData, "item_id");
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
 
-  if (!restaurant || !supabase || !itemId) {
+  if (!context || !itemId) {
     return;
   }
 
+  const { restaurant, supabase } = context;
   await supabase
     .from("menu_items")
     .update({ image_url: null })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function toggleMenuItemAvailabilityAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const context = await getMenuActionContext(formData);
   const itemId = stringValue(formData, "item_id");
   const isAvailable = stringValue(formData, "is_available") === "true";
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
 
-  if (!restaurant || !supabase || !itemId) {
+  if (!context || !itemId) {
     return;
   }
 
+  const { restaurant, supabase } = context;
   await supabase
     .from("menu_items")
     .update({ is_available: isAvailable })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function deleteMenuItemAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const context = await getMenuActionContext(formData);
   const itemId = stringValue(formData, "item_id");
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const supabase = getSupabaseAdmin();
 
-  if (!restaurant || !supabase || !itemId) {
+  if (!context || !itemId) {
     return;
   }
 
+  const { restaurant, supabase } = context;
   await supabase.from("menu_items").delete().eq("id", itemId).eq("restaurant_id", restaurant.id);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function importMenuRowsAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
-  const supabase = getSupabaseAdmin();
+  const context = await getMenuActionContext(formData);
   const rawRows = stringValue(formData, "rows");
 
-  if (!restaurant || !menu || !supabase) {
+  if (!context) {
     return { ok: false, message: "Menu import needs Supabase write access." };
   }
 
+  const { restaurant, supabase } = context;
+  const menu = await getMenu(restaurant.id, { admin: true });
   let rows: MenuImportRow[] = [];
 
   try {
@@ -783,8 +824,12 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
     return { ok: false, message: error.message };
   }
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  await completeOnboardingTasks(supabase, restaurant.id, [
+    "menu_uploaded",
+    "categories_created",
+    "items_added"
+  ]);
+  revalidateMenuPaths(restaurant);
 
   return { ok: true, message: `Imported ${itemsToInsert.length} menu items.` };
 }
@@ -819,16 +864,14 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
 }
 
 export async function addCategoryAction(formData: FormData) {
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
-  const supabase = getSupabaseAdmin();
+  const context = await getMenuActionContext(formData);
 
-  if (!restaurant || !menu || !supabase) {
+  if (!context) {
     return;
   }
 
+  const { restaurant, supabase } = context;
+  const menu = await getMenu(restaurant.id, { admin: true });
   await supabase.from("menu_categories").insert({
     restaurant_id: restaurant.id,
     name: stringValue(formData, "name"),
@@ -836,24 +879,22 @@ export async function addCategoryAction(formData: FormData) {
     display_order: menu.categories.length + 1,
     is_active: true
   });
+  await completeOnboardingTasks(supabase, restaurant.id, ["categories_created"]);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 export async function moveCategoryAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const context = await getMenuActionContext(formData);
   const categoryId = stringValue(formData, "category_id");
   const direction = stringValue(formData, "direction");
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-  const menu = restaurant ? await getMenu(restaurant.id, { admin: true }) : null;
-  const supabase = getSupabaseAdmin();
 
-  if (!restaurant || !menu || !supabase || !categoryId || !["up", "down"].includes(direction)) {
+  if (!context || !categoryId || !["up", "down"].includes(direction)) {
     return;
   }
 
+  const { restaurant, supabase } = context;
+  const menu = await getMenu(restaurant.id, { admin: true });
   const orderedCategories = [...menu.categories].sort(
     (first, second) => first.display_order - second.display_order
   );
@@ -872,8 +913,7 @@ export async function moveCategoryAction(formData: FormData) {
     updateCategoryDisplayOrder(supabase, targetCategory, currentCategory.display_order)
   ]);
 
-  revalidatePath("/admin/menu");
-  revalidatePath(`/r/${restaurant.slug}`);
+  revalidateMenuPaths(restaurant);
 }
 
 function updateCategoryDisplayOrder(

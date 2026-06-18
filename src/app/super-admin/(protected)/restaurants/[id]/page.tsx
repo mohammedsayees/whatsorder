@@ -6,8 +6,6 @@ import {
   Check,
   Circle,
   ClipboardList,
-  ExternalLink,
-  ImageIcon,
   ShoppingBag,
   Users
 } from "lucide-react";
@@ -19,6 +17,7 @@ import {
 import { QrCodePanel } from "@/components/super-admin/QrCodePanel";
 import { RestaurantPlanBadge, RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 import { RestaurantForm } from "@/components/super-admin/RestaurantForm";
+import { MenuManager } from "@/components/admin/MenuManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
 import { getPublicAppUrl, getSuperAdminRestaurant } from "@/lib/super-admin-data";
@@ -263,68 +262,13 @@ export default async function SuperAdminRestaurantDetailPage({
         ) : null}
 
         {activeTab === "menu" ? (
-          <div className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                ["Categories", categories.length],
-                ["Menu items", items.length],
-                ["Items with images", items.filter((item) => Boolean(item.image_url)).length]
-              ].map(([label, value]) => (
-                <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm" key={String(label)}>
-                  <p className="text-sm font-bold text-stone-500">{String(label)}</p>
-                  <p className="mt-2 text-2xl font-black">{String(value)}</p>
-                </article>
-              ))}
-            </div>
-            <article className="rounded-lg border border-stone-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-black">Menu visibility</h2>
-                  <p className="text-sm text-stone-500">Review the restaurant menu without duplicating menu management logic.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <a className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm font-black" href={menuUrl} target="_blank">
-                    Preview menu
-                    <ExternalLink size={15} />
-                  </a>
-                  {restaurant.slug === (process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress") ? (
-                    <Link className="rounded-lg bg-leaf px-3 py-2 text-sm font-black text-white" href="/admin/menu">
-                      Open menu manager
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-              <div className="divide-y divide-stone-100">
-                {categories.map((category) => {
-                  const categoryItems = items.filter((item) => item.category_id === category.id);
-                  return (
-                    <div className="px-5 py-4" key={category.id}>
-                      <div className="flex items-center justify-between">
-                        <p className="font-black">{category.name}</p>
-                        <span className="text-xs font-bold text-stone-500">{categoryItems.length} items</span>
-                      </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                        {categoryItems.slice(0, 6).map((item) => (
-                          <div className="flex items-center gap-3 rounded-lg bg-stone-50 px-3 py-3" key={item.id}>
-                            <span className="grid h-9 w-9 place-items-center rounded-lg bg-white text-stone-400">
-                              <ImageIcon size={16} />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold">{item.name}</p>
-                              <p className="text-xs text-stone-500">{formatAED(item.price)}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {categories.length === 0 ? (
-                  <p className="px-5 py-12 text-center text-sm font-bold text-stone-500">No menu categories yet.</p>
-                ) : null}
-              </div>
-            </article>
-          </div>
+          <MenuManager
+            canWrite
+            categories={categories}
+            items={items}
+            restaurantId={restaurant.id}
+            restaurantSlug={restaurant.slug}
+          />
         ) : null}
 
         {activeTab === "orders" ? (
