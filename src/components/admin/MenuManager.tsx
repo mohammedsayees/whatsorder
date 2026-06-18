@@ -177,11 +177,13 @@ export function MenuManager({
   categories,
   items,
   canWrite,
+  restaurantId,
   restaurantSlug
 }: {
   categories: MenuCategory[];
   items: MenuItem[];
   canWrite: boolean;
+  restaurantId?: string;
   restaurantSlug: string;
 }) {
   const router = useRouter();
@@ -285,6 +287,9 @@ export function MenuManager({
 
     const formData = new FormData();
     formData.set("rows", JSON.stringify(validRows.map(rowPayload)));
+    if (restaurantId) {
+      formData.set("restaurant_id", restaurantId);
+    }
 
     startTransition(async () => {
       const result = await importMenuRowsAction(formData);
@@ -387,6 +392,7 @@ export function MenuManager({
                 </div>
                 <div className="flex gap-2">
                   <form action={moveCategoryAction}>
+                    {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                     <input name="category_id" type="hidden" value={category.id} />
                     <input name="direction" type="hidden" value="up" />
                     <button
@@ -399,6 +405,7 @@ export function MenuManager({
                     </button>
                   </form>
                   <form action={moveCategoryAction}>
+                    {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                     <input name="category_id" type="hidden" value={category.id} />
                     <input name="direction" type="hidden" value="down" />
                     <button
@@ -473,6 +480,7 @@ export function MenuManager({
                   <p className="text-sm font-bold text-stone-600">{categoryName(categories, item.category_id)}</p>
                   <p className="font-black text-leaf">{formatAED(item.price)}</p>
                   <form action={toggleMenuItemAvailabilityAction}>
+                    {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                     <input name="item_id" type="hidden" value={item.id} />
                     <input name="is_available" type="hidden" value={String(!item.is_available)} />
                     <button className={`focus-ring rounded-full px-3 py-1.5 text-xs font-black disabled:opacity-50 ${item.is_available ? "bg-mint/20 text-leaf" : "bg-stone-100 text-stone-500"}`} disabled={!canWrite} type="submit">
@@ -487,6 +495,7 @@ export function MenuManager({
                       Edit
                     </button>
                     <form action={deleteMenuItemAction}>
+                      {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                       <input name="item_id" type="hidden" value={item.id} />
                       <button className="focus-ring rounded-lg px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50" disabled={!canWrite} type="submit">
                         Delete
@@ -502,13 +511,14 @@ export function MenuManager({
 
       {addItemOpen ? (
         <Dialog title="Add menu item" onClose={() => setAddItemOpen(false)}>
-          <ItemForm categories={categories} canWrite={canWrite} onDone={() => { setAddItemOpen(false); router.refresh(); }} />
+          <ItemForm categories={categories} canWrite={canWrite} onDone={() => { setAddItemOpen(false); router.refresh(); }} restaurantId={restaurantId} />
         </Dialog>
       ) : null}
 
       {addCategoryOpen ? (
         <Dialog title="Add category" onClose={() => setAddCategoryOpen(false)}>
           <form action={async (formData) => { await addCategoryAction(formData); setAddCategoryOpen(false); router.refresh(); }} className="space-y-3">
+            {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
             <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="name" placeholder="Breakfast" required />
             <input
               className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
@@ -526,7 +536,7 @@ export function MenuManager({
 
       {editingItem ? (
         <Dialog title={`Edit ${editingItem.name}`} onClose={() => setEditingItem(null)}>
-          <ItemForm categories={categories} canWrite={canWrite} item={editingItem} onDone={() => { setEditingItem(null); router.refresh(); }} />
+          <ItemForm categories={categories} canWrite={canWrite} item={editingItem} onDone={() => { setEditingItem(null); router.refresh(); }} restaurantId={restaurantId} />
         </Dialog>
       ) : null}
 
@@ -606,12 +616,14 @@ function ItemForm({
   canWrite,
   categories,
   item,
-  onDone
+  onDone,
+  restaurantId
 }: {
   canWrite: boolean;
   categories: MenuCategory[];
   item?: MenuItem;
   onDone: () => void;
+  restaurantId?: string;
 }) {
   const action = item ? updateMenuItemAction : addMenuItemAction;
   const router = useRouter();
@@ -660,6 +672,9 @@ function ItemForm({
     const formData = new FormData();
     formData.set("image", file);
     formData.set("item_name", itemName || "menu-item");
+    if (restaurantId) {
+      formData.set("restaurant_id", restaurantId);
+    }
     if (item) {
       formData.set("item_id", item.id);
     }
@@ -690,6 +705,9 @@ function ItemForm({
 
     if (item) {
       const formData = new FormData();
+      if (restaurantId) {
+        formData.set("restaurant_id", restaurantId);
+      }
       formData.set("item_id", item.id);
       await removeMenuItemImageAction(formData);
       router.refresh();
@@ -698,6 +716,7 @@ function ItemForm({
 
   return (
     <form action={async (formData) => { await action(formData); onDone(); }} className="space-y-3">
+      {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
       {item ? <input name="item_id" type="hidden" value={item.id} /> : null}
       <input
         className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2"

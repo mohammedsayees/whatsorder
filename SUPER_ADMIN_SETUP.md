@@ -112,10 +112,18 @@ Draft, onboarding, paused, and cancelled restaurants are hidden from public menu
 QR codes are generated in the browser using the `qrcode` package. No restaurant URL is sent to an
 external QR service. Super Admin can copy the public link or download a PNG.
 
-## Current Menu Management Context
+## Menu Onboarding
 
-The existing `/admin/menu` route remains connected to `NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG`.
-The Super Admin restaurant workspace shows menu inventory for every restaurant and opens the
-existing menu manager for the configured default pilot. A later authenticated restaurant-context
-switcher can extend the same menu manager to every assigned restaurant without duplicating menu
-logic.
+Super Admin can manage each restaurant menu directly from:
+
+```text
+/super-admin/restaurants/[id]?tab=menu
+```
+
+The workspace reuses the existing menu manager and supports CSV import, sample templates, manual
+categories/items, ordering, availability, editing, and device image uploads. The selected
+`restaurant_id` is accepted only after server-side Super Admin verification.
+
+The restaurant-facing `/admin/menu` route remains connected to
+`NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG` until the restaurant console gains a full account-level
+restaurant switcher.
