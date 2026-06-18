@@ -74,6 +74,7 @@ supabase/schema.sql
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
+supabase/customer_feedback_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
@@ -134,6 +135,7 @@ Included:
 - Public restaurant menu route
 - Cart and checkout
 - Delivery, takeaway, and Bring to My Car fulfilment
+- Verified completed-order feedback with restaurant moderation
 - Optional customer location capture
 - Restaurant-side customer history
 - Consent capture

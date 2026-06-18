@@ -44,6 +44,7 @@ export type Restaurant = {
   car_pickup_enabled?: boolean;
   delivery_enabled?: boolean;
   scheduled_orders_enabled?: boolean;
+  public_reviews_enabled?: boolean;
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   internal_notes?: string | null;
@@ -157,6 +158,29 @@ export type LoyaltyTransaction = {
   points: number;
   description: string | null;
   created_at: string;
+};
+
+export type FeedbackModerationStatus = "pending" | "approved" | "hidden";
+
+export type CustomerFeedback = {
+  id: string;
+  restaurant_id: string;
+  order_id: string;
+  rating: number;
+  tags: string[];
+  comment: string | null;
+  customer_display_name: string;
+  is_verified_order: boolean;
+  moderation_status: FeedbackModerationStatus;
+  restaurant_response: string | null;
+  submitted_at: string;
+  published_at: string | null;
+};
+
+export type PublicFeedbackSummary = {
+  averageRating: number | null;
+  reviewCount: number;
+  reviews: CustomerFeedback[];
 };
 
 export type RestaurantUser = {

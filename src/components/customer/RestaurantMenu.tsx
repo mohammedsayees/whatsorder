@@ -23,7 +23,12 @@ import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
-import type { MenuCategory, MenuItem, Restaurant } from "@/lib/types";
+import type {
+  MenuCategory,
+  MenuItem,
+  PublicFeedbackSummary,
+  Restaurant
+} from "@/lib/types";
 
 const CATEGORY_SCROLL_OFFSET = 172;
 
@@ -40,10 +45,12 @@ function getCategorySectionId(categoryId: string) {
 export function RestaurantMenu({
   restaurant,
   categories,
+  feedback,
   items
 }: {
   restaurant: Restaurant;
   categories: MenuCategory[];
+  feedback: PublicFeedbackSummary;
   items: MenuItem[];
 }) {
   const cart = useCart();
@@ -91,8 +98,6 @@ export function RestaurantMenu({
     (language === "ar" && restaurant.subtitle_ar ? restaurant.subtitle_ar : null) ??
     restaurantAddress?.split(",").slice(0, 2).join(" • ") ??
     t.freshCafeFavourites;
-  const ratingValue = 4.7;
-  const ratingCount = items.length > 8 ? "120+" : "50+";
   const etaText = "25-35 min";
   const offerTitle =
     featuredItems.length > 0
@@ -274,10 +279,12 @@ export function RestaurantMenu({
                   <p className="mt-1 text-sm text-stone-500">{cuisineLabel}</p>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                      <Star size={13} className="fill-current" />
-                      {ratingValue} ({ratingCount})
-                    </span>
+                    {feedback.averageRating !== null ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                        <Star size={13} className="fill-current" />
+                        {feedback.averageRating.toFixed(1)} ({feedback.reviewCount})
+                      </span>
+                    ) : null}
                     <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                       <Clock3 size={13} />
                       {etaText}
@@ -472,6 +479,41 @@ export function RestaurantMenu({
               </div>
             </section>
           ))}
+
+          {feedback.reviews.length > 0 ? (
+            <section className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-ink">{t.customerReviews}</h2>
+                  <p className="mt-1 text-sm text-stone-500">
+                    {t.verifiedFeedback}
+                  </p>
+                </div>
+                {feedback.averageRating !== null ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-2 font-black text-amber-700">
+                    <Star className="fill-current" size={16} />
+                    {feedback.averageRating.toFixed(1)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-4 space-y-4">
+                {feedback.reviews.map((review) => (
+                  <article className="border-t border-stone-100 pt-4 first:border-t-0 first:pt-0" key={review.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-black">{review.customer_display_name}</p>
+                      <div className="flex text-amber-400">
+                        {Array.from({ length: review.rating }, (_, index) => (
+                          <Star className="fill-current" key={index} size={14} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-stone-600">{review.comment}</p>
+                    <p className="mt-2 text-xs font-bold text-leaf">{t.verifiedOrder}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </section>
       </main>
 
