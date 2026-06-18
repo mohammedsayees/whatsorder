@@ -425,6 +425,7 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
       delivery_enabled: formData.get("delivery_enabled") === "on",
       scheduled_orders_enabled: formData.get("scheduled_orders_enabled") === "on",
+      public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       status,
       plan,
       is_active: ["live", "trial", "paid"].includes(status)

@@ -32,6 +32,7 @@ export const customerTranslations = {
       "I agree that this restaurant can save my details to process my order and maintain order history.",
     currentLocationHelp:
       "Current location is optional but helps the restaurant deliver more accurately.",
+    customerReviews: "What customers say",
     delivery: "Delivery",
     deliveryArea: "Delivery area",
     deliveryAreaPlaceholder: "Al Nahda, Deira, Business Bay...",
@@ -84,6 +85,8 @@ export const customerTranslations = {
     useCurrentLocation: "Use my current location",
     viewCart: "View cart",
     viewSelectedLocation: "View selected location",
+    verifiedFeedback: "Verified feedback from completed orders",
+    verifiedOrder: "Verified order",
     whatsAppOrdering: "WhatsApp ordering"
   },
   ar: {
@@ -109,6 +112,7 @@ export const customerTranslations = {
     consentOrder:
       "أوافق على أن يحفظ المطعم بياناتي لمعالجة الطلب والاحتفاظ بسجل الطلبات.",
     currentLocationHelp: "مشاركة الموقع اختيارية لكنها تساعد المطعم على التوصيل بدقة أكبر.",
+    customerReviews: "آراء العملاء",
     delivery: "التوصيل",
     deliveryArea: "منطقة التوصيل",
     deliveryAreaPlaceholder: "النهدة، ديرة، الخليج التجاري...",
@@ -160,6 +164,8 @@ export const customerTranslations = {
     useCurrentLocation: "استخدم موقعي الحالي",
     viewCart: "عرض السلة",
     viewSelectedLocation: "عرض الموقع المحدد",
+    verifiedFeedback: "آراء موثقة من طلبات مكتملة",
+    verifiedOrder: "طلب موثق",
     whatsAppOrdering: "طلب عبر واتساب"
   }
 } as const;

@@ -2,6 +2,7 @@ import { updateOrderStatusAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
 import { CarFront, Gift, MapPin, ShoppingBag, Truck } from "lucide-react";
 
 const statuses: OrderStatus[] = [
@@ -139,6 +140,9 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   Save
                 </button>
               </form>
+              {order.status === "Completed" ? (
+                <RequestFeedbackButton orderId={order.id} />
+              ) : null}
             </div>
           </div>
           </article>

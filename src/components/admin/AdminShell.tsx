@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { BarChart3, ClipboardList, LogOut, MenuSquare, Settings, Users } from "lucide-react";
+import {
+  BarChart3,
+  ClipboardList,
+  LogOut,
+  MenuSquare,
+  MessageSquareText,
+  Settings,
+  Users
+} from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 
@@ -8,6 +16,7 @@ const navItems = [
   { href: "/admin/orders", label: "Orders", icon: ClipboardList, staff: true },
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
+  { href: "/admin/feedback", label: "Feedback", icon: MessageSquareText, staff: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }
 ];
 
@@ -28,7 +37,7 @@ export function AdminShell({
           <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
           <p className="mt-0.5 text-xs capitalize text-stone-500">{session.role.replace("_", " ")}</p>
         </div>
-        <nav className={`grid gap-1 p-2 lg:block lg:space-y-1 lg:px-3 ${session.role === "staff" ? "grid-cols-3" : "grid-cols-5"}`}>
+        <nav className={`grid gap-1 p-2 lg:block lg:space-y-1 lg:px-3 ${session.role === "staff" ? "grid-cols-3" : "grid-cols-6"}`}>
           {navItems.filter((item) => session.role !== "staff" || item.staff).map((item) => {
             const Icon = item.icon;
 

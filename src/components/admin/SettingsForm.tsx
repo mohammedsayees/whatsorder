@@ -50,6 +50,22 @@ export function SettingsForm({
             ))}
           </div>
         </fieldset>
+        <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <input
+            className="mt-1"
+            defaultChecked={restaurant.public_reviews_enabled === true}
+            disabled={!canWrite}
+            name="public_reviews_enabled"
+            type="checkbox"
+          />
+          <span>
+            <span className="block text-sm font-black">Show verified reviews publicly</span>
+            <span className="mt-1 block text-xs leading-5 text-stone-500">
+              The overall rating includes every verified submission. Only approved written comments
+              are displayed on the customer menu.
+            </span>
+          </span>
+        </label>
         <label className="block">
           <span className="text-sm font-bold">Active</span>
           <div className="mt-3">

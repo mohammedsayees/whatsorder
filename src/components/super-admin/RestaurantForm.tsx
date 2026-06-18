@@ -146,6 +146,11 @@ export function RestaurantForm({
                 "scheduled_orders_enabled",
                 "Scheduled orders enabled",
                 restaurant?.scheduled_orders_enabled ?? false
+              ],
+              [
+                "public_reviews_enabled",
+                "Public verified reviews enabled",
+                restaurant?.public_reviews_enabled ?? false
               ]
             ].map(([name, label, checked]) => (
               <label className="flex items-center gap-2 text-sm font-bold" key={String(name)}>

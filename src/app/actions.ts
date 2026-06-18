@@ -849,6 +849,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       delivery_enabled: formData.get("delivery_enabled") === "on",
       pickup_enabled: formData.get("pickup_enabled") === "on",
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
+      public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);
