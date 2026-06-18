@@ -1,11 +1,13 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { getMenu, getRestaurantBySlug } from "@/lib/data";
-import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
+import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -15,26 +17,6 @@ import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/t
 
 type CreateOrderResult =
   | { ok: true; orderId: string; whatsappUrl: string; whatsappAppUrl: string }
-  | { ok: false; error: string };
-
-type SavedCustomerLookupResult =
-  | {
-      ok: true;
-      found: true;
-      customer: {
-        name: string;
-        phone: string;
-        deliveryArea: string;
-        deliveryAddress: string;
-        deliveryLandmark: string;
-        latitude: number | null;
-        longitude: number | null;
-        googleMapsUrl: string;
-        addressText: string;
-        marketingOptIn: boolean;
-      };
-    }
-  | { ok: true; found: false }
   | { ok: false; error: string };
 
 const statusValues: OrderStatus[] = [
@@ -72,6 +54,10 @@ type UploadMenuImageResult =
 
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
+}
+
+function limitedStringValue(formData: FormData, key: string, maxLength: number) {
+  return stringValue(formData, key).slice(0, maxLength);
 }
 
 function decimalValue(formData: FormData, key: string) {
@@ -122,7 +108,7 @@ async function completeOnboardingTasks(
     return;
   }
 
-  await supabase
+  const { error } = await supabase
     .from("onboarding_tasks")
     .update({
       is_completed: true,
@@ -130,6 +116,7 @@ async function completeOnboardingTasks(
     })
     .eq("restaurant_id", restaurantId)
     .in("task_key", taskKeys);
+  databaseFailure("Onboarding task update", error);
 }
 
 function booleanFromValue(value: unknown, fallback = false) {
@@ -146,6 +133,28 @@ function booleanFromValue(value: unknown, fallback = false) {
   return ["true", "yes", "y", "1", "available", "featured"].includes(normalized);
 }
 
+function databaseFailure(operation: string, error: { message: string } | null) {
+  if (error) {
+    throw new Error(`${operation} failed: ${error.message}`);
+  }
+}
+
+async function categoryBelongsToRestaurant(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string,
+  categoryId: string
+) {
+  const { data, error } = await supabase
+    .from("menu_categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  databaseFailure("Category validation", error);
+  return Boolean(data);
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -155,100 +164,39 @@ function slugify(value: string) {
     .slice(0, 60);
 }
 
-function parseCart(raw: string): CartLine[] {
-  const parsed = JSON.parse(raw) as CartLine[];
+async function checkOrderRateLimit(restaurantId: string) {
+  const requestHeaders = await headers();
+  const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const realIp = requestHeaders.get("x-real-ip")?.trim();
+  const clientIp = forwardedFor || realIp;
 
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  return parsed
-    .filter((item) => item.item_id && item.name && item.quantity > 0 && item.price >= 0)
-    .map((item) => ({
-      item_id: String(item.item_id),
-      name: String(item.name),
-      name_ar: item.name_ar ? String(item.name_ar) : null,
-      quantity: Number(item.quantity),
-      price: Number(item.price)
-    }));
-}
-
-export async function lookupSavedCustomerAction(
-  restaurantSlug: string,
-  phone: string
-): Promise<SavedCustomerLookupResult> {
-  const cleanPhone = phone.trim();
-
-  if (cleanPhone.length < 6) {
-    return { ok: true, found: false };
-  }
-
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-
-  if (!restaurant) {
-    return { ok: false, error: "Restaurant not found." };
+  if (!clientIp) {
+    return true;
   }
 
   const supabase = getSupabaseAdmin();
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("customers")
-      .select(
-        "name,phone,delivery_area,delivery_address,default_latitude,default_longitude,default_google_maps_url,default_address_text,default_landmark,marketing_opt_in"
-      )
-      .eq("restaurant_id", restaurant.id)
-      .eq("phone", cleanPhone)
-      .maybeSingle();
-
-    if (error) {
-      return { ok: false, error: "Could not check saved details. Please continue manually." };
-    }
-
-    if (data) {
-      return {
-        ok: true,
-        found: true,
-        customer: {
-          name: String(data.name ?? ""),
-          phone: String(data.phone ?? cleanPhone),
-          deliveryArea: String(data.delivery_area ?? ""),
-          deliveryAddress: String(data.delivery_address ?? ""),
-          deliveryLandmark: String(data.default_landmark ?? ""),
-          latitude: data.default_latitude === null ? null : Number(data.default_latitude),
-          longitude: data.default_longitude === null ? null : Number(data.default_longitude),
-          googleMapsUrl: String(data.default_google_maps_url ?? ""),
-          addressText: String(data.default_address_text ?? data.delivery_address ?? ""),
-          marketingOptIn: Boolean(data.marketing_opt_in)
-        }
-      };
-    }
+  if (!supabase) {
+    return true;
   }
 
-  const demoCustomer = demoCustomers.find(
-    (customer) => customer.restaurant_id === restaurant.id && customer.phone === cleanPhone
-  );
+  const fingerprint = createHash("sha256")
+    .update(`${restaurantId}:${clientIp}`)
+    .digest("hex");
+  const { data, error } = await supabase.rpc("check_order_submission_rate_limit", {
+    target_restaurant_id: restaurantId,
+    target_client_fingerprint: fingerprint,
+    attempt_limit: 8,
+    window_size_seconds: 600
+  });
 
-  if (demoCustomer) {
-    return {
-      ok: true,
-      found: true,
-      customer: {
-        name: demoCustomer.name,
-        phone: demoCustomer.phone,
-        deliveryArea: demoCustomer.delivery_area,
-        deliveryAddress: demoCustomer.delivery_address,
-        deliveryLandmark: demoCustomer.default_landmark ?? "",
-        latitude: demoCustomer.default_latitude,
-        longitude: demoCustomer.default_longitude,
-        googleMapsUrl: demoCustomer.default_google_maps_url ?? "",
-        addressText: demoCustomer.default_address_text ?? demoCustomer.delivery_address,
-        marketingOptIn: demoCustomer.marketing_opt_in
-      }
-    };
+  // Deployments that have not applied the security migration continue working,
+  // while input limits below still provide a baseline defense.
+  if (error?.code === "PGRST202" || error?.message?.includes("Could not find the function")) {
+    return true;
   }
 
-  return { ok: true, found: false };
+  return !error && data === true;
 }
 
 export async function createOrderAction(
@@ -264,13 +212,20 @@ export async function createOrderAction(
   let items: CartLine[] = [];
 
   try {
-    items = parseCart(stringValue(formData, "items"));
+    items = parseAndValidateCart(stringValue(formData, "items"));
   } catch {
     return { ok: false, error: "Your cart could not be read. Please refresh and try again." };
   }
 
   if (items.length === 0) {
-    return { ok: false, error: "Your cart is empty." };
+    return { ok: false, error: "Your cart is empty or exceeds the allowed order size." };
+  }
+
+  if (!(await checkOrderRateLimit(restaurant.id))) {
+    return {
+      ok: false,
+      error: "Too many order attempts were received. Please wait a few minutes and try again."
+    };
   }
 
   const menu = await getMenu(restaurant.id);
@@ -296,23 +251,24 @@ export async function createOrderAction(
     });
   }
 
-  const customerName = stringValue(formData, "customer_name");
-  const customerPhone = stringValue(formData, "customer_phone");
-  const deliveryArea = stringValue(formData, "delivery_area");
-  const deliveryAddress = stringValue(formData, "delivery_address");
-  const deliveryLandmark = stringValue(formData, "delivery_landmark");
+  const customerName = limitedStringValue(formData, "customer_name", 120);
+  const customerPhone = limitedStringValue(formData, "customer_phone", 24);
+  const deliveryArea = limitedStringValue(formData, "delivery_area", 120);
+  const deliveryAddress = limitedStringValue(formData, "delivery_address", 500);
+  const deliveryLandmark = limitedStringValue(formData, "delivery_landmark", 250);
   const deliveryLatitude = decimalValue(formData, "delivery_latitude");
   const deliveryLongitude = decimalValue(formData, "delivery_longitude");
-  const submittedMapsUrl = stringValue(formData, "delivery_google_maps_url");
+  const submittedMapsUrl = limitedStringValue(formData, "delivery_google_maps_url", 500);
   const deliveryGoogleMapsUrl =
     submittedMapsUrl ||
     (deliveryLatitude !== null && deliveryLongitude !== null
       ? `https://www.google.com/maps?q=${deliveryLatitude},${deliveryLongitude}`
       : "");
-  const deliveryPlaceId = stringValue(formData, "delivery_place_id");
+  const deliveryPlaceId = limitedStringValue(formData, "delivery_place_id", 250);
   // Future Google Places Autocomplete can populate delivery_address_text and delivery_place_id here.
-  const deliveryAddressText = stringValue(formData, "delivery_address_text") || deliveryAddress;
-  const notes = stringValue(formData, "notes");
+  const deliveryAddressText =
+    limitedStringValue(formData, "delivery_address_text", 500) || deliveryAddress;
+  const notes = limitedStringValue(formData, "notes", 1000);
   const paymentMethod = stringValue(formData, "payment_method") as PaymentMethod;
   const orderLanguage = getCustomerLanguage(formData.get("order_language"));
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
@@ -320,6 +276,10 @@ export async function createOrderAction(
 
   if (!customerName || !customerPhone || !deliveryArea || !deliveryAddress) {
     return { ok: false, error: "Please complete your contact and delivery details." };
+  }
+
+  if (!isValidCustomerPhone(customerPhone)) {
+    return { ok: false, error: "Please enter a valid phone number." };
   }
 
   if (!["Cash on Delivery", "Card on Delivery"].includes(paymentMethod)) {
@@ -362,97 +322,43 @@ export async function createOrderAction(
   let orderId = `WO-${Date.now()}`;
 
   if (supabase) {
-    const { data, error } = await supabase
-      .from("orders")
-      .insert({
-        restaurant_id: restaurant.id,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        delivery_area: deliveryArea,
-        delivery_address: deliveryAddress,
-        delivery_latitude: deliveryLatitude,
-        delivery_longitude: deliveryLongitude,
-        delivery_google_maps_url: deliveryGoogleMapsUrl || null,
-        delivery_place_id: deliveryPlaceId || null,
-        delivery_address_text: deliveryAddressText || null,
-        delivery_landmark: deliveryLandmark || null,
-        notes: notes || null,
-        payment_method: paymentMethod,
-        items: verifiedItems,
-        subtotal,
-        delivery_fee: restaurant.delivery_fee,
-        total,
-        points_earned: 0,
-        points_redeemed: 0,
-        loyalty_discount: 0,
-        status: "New",
-        whatsapp_message: message,
-        consent_order_processing: consentOrderProcessing,
-        consent_marketing: consentMarketing,
-        consent_timestamp: consentTimestamp
-      })
-      .select("id")
-      .single();
+    const { data, error } = await supabase.rpc("create_order_with_customer", {
+      target_restaurant_id: restaurant.id,
+      order_customer_name: customerName,
+      order_customer_phone: customerPhone,
+      order_delivery_area: deliveryArea,
+      order_delivery_address: deliveryAddress,
+      order_delivery_latitude: deliveryLatitude,
+      order_delivery_longitude: deliveryLongitude,
+      order_delivery_google_maps_url: deliveryGoogleMapsUrl || null,
+      order_delivery_place_id: deliveryPlaceId || null,
+      order_delivery_address_text: deliveryAddressText || null,
+      order_delivery_landmark: deliveryLandmark || null,
+      order_notes: notes || null,
+      order_payment_method: paymentMethod,
+      order_items: verifiedItems,
+      order_subtotal: subtotal,
+      order_delivery_fee: restaurant.delivery_fee,
+      order_total: total,
+      order_whatsapp_message: message,
+      order_consent_processing: consentOrderProcessing,
+      order_consent_marketing: consentMarketing,
+      order_consent_timestamp: consentTimestamp
+    });
 
     if (error) {
-      return { ok: false, error: error.message };
+      if (error.code === "PGRST202" || error.message.includes("Could not find the function")) {
+        return {
+          ok: false,
+          error:
+            "Ordering is temporarily unavailable while the security migration is applied. Please contact the restaurant directly."
+        };
+      }
+
+      return { ok: false, error: "The order could not be saved. Please try again." };
     }
 
-    orderId = String(data.id);
-
-    const { data: existingCustomer } = await supabase
-      .from("customers")
-      .select("id,total_orders,total_spend")
-      .eq("restaurant_id", restaurant.id)
-      .eq("phone", customerPhone)
-      .maybeSingle();
-
-    if (existingCustomer) {
-      await supabase
-        .from("customers")
-        .update({
-          name: customerName,
-          delivery_area: deliveryArea,
-          delivery_address: deliveryAddress,
-          default_latitude: deliveryLatitude,
-          default_longitude: deliveryLongitude,
-          default_google_maps_url: deliveryGoogleMapsUrl || null,
-          default_address_text: deliveryAddressText || null,
-          default_landmark: deliveryLandmark || null,
-          total_orders: Number(existingCustomer.total_orders ?? 0) + 1,
-          total_spend: Number(existingCustomer.total_spend ?? 0) + total,
-          last_order_at: consentTimestamp,
-          marketing_opt_in: consentMarketing,
-          consent_order_processing: consentOrderProcessing,
-          consent_marketing: consentMarketing,
-          consent_timestamp: consentTimestamp,
-          updated_at: consentTimestamp
-        })
-        .eq("id", existingCustomer.id);
-    } else {
-      await supabase.from("customers").insert({
-        restaurant_id: restaurant.id,
-        name: customerName,
-        phone: customerPhone,
-        delivery_area: deliveryArea,
-        delivery_address: deliveryAddress,
-        default_latitude: deliveryLatitude,
-        default_longitude: deliveryLongitude,
-        default_google_maps_url: deliveryGoogleMapsUrl || null,
-        default_address_text: deliveryAddressText || null,
-        default_landmark: deliveryLandmark || null,
-        total_orders: 1,
-        total_spend: total,
-        last_order_at: consentTimestamp,
-        marketing_opt_in: consentMarketing,
-        consent_order_processing: consentOrderProcessing,
-        consent_marketing: consentMarketing,
-        consent_timestamp: consentTimestamp,
-        loyalty_points_balance: 0,
-        lifetime_points_earned: 0,
-        updated_at: consentTimestamp
-      });
-    }
+    orderId = String(data);
   }
 
   revalidatePath(`/r/${restaurant.slug}`);
@@ -488,11 +394,12 @@ export async function updateOrderStatusAction(formData: FormData) {
       .eq("restaurant_id", restaurant.id)
       .maybeSingle();
 
-    await supabase
+    const { error: statusError } = await supabase
       .from("orders")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", orderId)
       .eq("restaurant_id", restaurant.id);
+    databaseFailure("Order status update", statusError);
 
     if (status === "Completed" && order && Number(order.points_earned ?? 0) <= 0) {
       const pointsEarned = Math.floor(Number(order.total ?? 0));
@@ -509,7 +416,7 @@ export async function updateOrderStatusAction(formData: FormData) {
           const newBalance = Number(customer.loyalty_points_balance ?? 0) + pointsEarned;
           const newLifetime = Number(customer.lifetime_points_earned ?? 0) + pointsEarned;
 
-          await supabase
+          const { error: customerError } = await supabase
             .from("customers")
             .update({
               loyalty_points_balance: newBalance,
@@ -517,8 +424,9 @@ export async function updateOrderStatusAction(formData: FormData) {
             })
             .eq("id", customer.id)
             .eq("restaurant_id", restaurant.id);
+          databaseFailure("Customer loyalty update", customerError);
 
-          await supabase.from("loyalty_transactions").insert({
+          const { error: transactionError } = await supabase.from("loyalty_transactions").insert({
             restaurant_id: restaurant.id,
             customer_id: customer.id,
             order_id: order.id,
@@ -526,12 +434,14 @@ export async function updateOrderStatusAction(formData: FormData) {
             points: pointsEarned,
             description: `Earned ${pointsEarned} points for completed order`
           });
+          databaseFailure("Loyalty transaction creation", transactionError);
 
-          await supabase
+          const { error: orderPointsError } = await supabase
             .from("orders")
             .update({ points_earned: pointsEarned })
             .eq("id", order.id)
             .eq("restaurant_id", restaurant.id);
+          databaseFailure("Order loyalty update", orderPointsError);
         }
       }
     }
@@ -549,10 +459,14 @@ export async function addMenuItemAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
+  const categoryId = stringValue(formData, "category_id");
+  if (!(await categoryBelongsToRestaurant(supabase, restaurant.id, categoryId))) {
+    throw new Error("The selected category does not belong to this restaurant.");
+  }
   const imageUrl = stringValue(formData, "image_url") || null;
-  await supabase.from("menu_items").insert({
+  const { error } = await supabase.from("menu_items").insert({
     restaurant_id: restaurant.id,
-    category_id: stringValue(formData, "category_id"),
+    category_id: categoryId,
     name: stringValue(formData, "name"),
     name_ar: stringValue(formData, "name_ar") || null,
     description: stringValue(formData, "description") || null,
@@ -562,6 +476,7 @@ export async function addMenuItemAction(formData: FormData) {
     is_available: formData.get("is_available") === "on",
     is_featured: formData.get("is_featured") === "on"
   });
+  databaseFailure("Menu item creation", error);
   await completeOnboardingTasks(supabase, restaurant.id, [
     "items_added",
     ...(imageUrl ? ["images_added"] : [])
@@ -579,8 +494,12 @@ export async function updateMenuItemAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
+  const categoryId = stringValue(formData, "category_id");
+  if (!(await categoryBelongsToRestaurant(supabase, restaurant.id, categoryId))) {
+    throw new Error("The selected category does not belong to this restaurant.");
+  }
   const imageUrl = stringValue(formData, "image_url") || null;
-  await supabase
+  const { error } = await supabase
     .from("menu_items")
     .update({
       name: stringValue(formData, "name"),
@@ -588,13 +507,14 @@ export async function updateMenuItemAction(formData: FormData) {
       description: stringValue(formData, "description") || null,
       description_ar: stringValue(formData, "description_ar") || null,
       price: Number(stringValue(formData, "price")),
-      category_id: stringValue(formData, "category_id"),
+      category_id: categoryId,
       image_url: imageUrl,
       is_available: formData.get("is_available") === "on",
       is_featured: formData.get("is_featured") === "on"
     })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu item update", error);
   if (imageUrl) {
     await completeOnboardingTasks(supabase, restaurant.id, ["images_added"]);
   }
@@ -670,11 +590,15 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
   const publicUrl = data.publicUrl;
 
   if (itemId) {
-    await supabase
+    const { error: imageSaveError } = await supabase
       .from("menu_items")
       .update({ image_url: publicUrl })
       .eq("id", itemId)
       .eq("restaurant_id", restaurant.id);
+    if (imageSaveError) {
+      await supabase.storage.from(bucketName).remove([filePath]);
+      return { ok: false, error: imageSaveError.message };
+    }
 
     await completeOnboardingTasks(supabase, restaurant.id, ["images_added"]);
     revalidateMenuPaths(restaurant);
@@ -692,11 +616,22 @@ export async function removeMenuItemImageAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
-  await supabase
+  const { data: item } = await supabase
+    .from("menu_items")
+    .select("image_url")
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+  const { error } = await supabase
     .from("menu_items")
     .update({ image_url: null })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu image removal", error);
+  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
+  if (storagePath) {
+    await supabase.storage.from("menu-images").remove([storagePath]);
+  }
 
   revalidateMenuPaths(restaurant);
 }
@@ -711,11 +646,12 @@ export async function toggleMenuItemAvailabilityAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
-  await supabase
+  const { error } = await supabase
     .from("menu_items")
     .update({ is_available: isAvailable })
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu availability update", error);
 
   revalidateMenuPaths(restaurant);
 }
@@ -729,7 +665,22 @@ export async function deleteMenuItemAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
-  await supabase.from("menu_items").delete().eq("id", itemId).eq("restaurant_id", restaurant.id);
+  const { data: item } = await supabase
+    .from("menu_items")
+    .select("image_url")
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+  const { error } = await supabase
+    .from("menu_items")
+    .delete()
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu item deletion", error);
+  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
+  if (storagePath) {
+    await supabase.storage.from("menu-images").remove([storagePath]);
+  }
 
   revalidateMenuPaths(restaurant);
 }
@@ -778,7 +729,7 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
       continue;
     }
 
-    const { data } = await supabase
+    const { data, error: categoryError } = await supabase
       .from("menu_categories")
       .insert({
         restaurant_id: restaurant.id,
@@ -788,6 +739,7 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
       })
       .select("*")
       .single();
+    databaseFailure("Imported category creation", categoryError);
 
     if (data) {
       categoriesByName.set(key, data);
@@ -844,7 +796,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
     return;
   }
 
-  await supabase
+  const { error } = await supabase
     .from("restaurants")
     .update({
       name: stringValue(formData, "name"),
@@ -858,6 +810,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);
+  databaseFailure("Restaurant settings update", error);
 
   revalidatePath("/admin/settings");
   revalidatePath(`/r/${restaurant.slug}`);
@@ -872,13 +825,14 @@ export async function addCategoryAction(formData: FormData) {
 
   const { restaurant, supabase } = context;
   const menu = await getMenu(restaurant.id, { admin: true });
-  await supabase.from("menu_categories").insert({
+  const { error } = await supabase.from("menu_categories").insert({
     restaurant_id: restaurant.id,
     name: stringValue(formData, "name"),
     name_ar: stringValue(formData, "name_ar") || null,
     display_order: menu.categories.length + 1,
     is_active: true
   });
+  databaseFailure("Menu category creation", error);
   await completeOnboardingTasks(supabase, restaurant.id, ["categories_created"]);
 
   revalidateMenuPaths(restaurant);
@@ -926,4 +880,15 @@ function updateCategoryDisplayOrder(
     .update({ display_order: displayOrder })
     .eq("id", category.id)
     .eq("restaurant_id", category.restaurant_id);
+}
+
+function storagePathFromPublicUrl(url: string) {
+  const marker = "/storage/v1/object/public/menu-images/";
+  const markerIndex = url.indexOf(marker);
+
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  return decodeURIComponent(url.slice(markerIndex + marker.length).split("?")[0]);
 }

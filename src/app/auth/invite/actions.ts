@@ -5,8 +5,10 @@ import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import {
   getAuthenticatedUser,
+  refreshTokenCookieName,
   superAdminCookieName
 } from "@/lib/super-admin-auth";
+import { hasValidInvitationMetadata } from "@/lib/security";
 
 type InvitePayload = {
   accessToken?: string;
@@ -28,6 +30,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
   }
 
   let accessToken = payload.accessToken ?? "";
+  let refreshToken = payload.refreshToken ?? "";
   let expiresIn = 3600;
 
   if (!accessToken && payload.code) {
@@ -38,6 +41,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
     }
 
     accessToken = data.session.access_token;
+    refreshToken = data.session.refresh_token;
     expiresIn = data.session.expires_in;
   }
 
@@ -52,6 +56,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
     }
 
     accessToken = data.session.access_token;
+    refreshToken = data.session.refresh_token;
     expiresIn = data.session.expires_in;
   }
 
@@ -67,40 +72,69 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
 
   const now = new Date().toISOString();
   const invitedRestaurantId = String(userData.user.user_metadata.restaurant_id ?? "");
-  let membershipUpdate = admin
+  const invitedRole = String(userData.user.user_metadata.role ?? "");
+
+  if (!hasValidInvitationMetadata(invitedRestaurantId, invitedRole)) {
+    inviteError("This invitation is missing its restaurant assignment. Request a new invitation.");
+  }
+
+  const { data: membership, error: membershipLookupError } = await admin
+    .from("restaurant_users")
+    .select("id,user_id,role")
+    .eq("restaurant_id", invitedRestaurantId)
+    .eq("email", userData.user.email.toLowerCase())
+    .eq("role", invitedRole)
+    .maybeSingle();
+
+  if (
+    membershipLookupError ||
+    !membership ||
+    (membership.user_id && membership.user_id !== userData.user.id)
+  ) {
+    inviteError("This invitation no longer matches an active restaurant assignment.");
+  }
+
+  const { error: membershipError } = await admin
     .from("restaurant_users")
     .update({
       user_id: userData.user.id,
       accepted_at: now
     })
-    .eq("email", userData.user.email.toLowerCase())
-    .in("role", ["restaurant_admin", "owner", "manager", "staff"]);
-
-  if (invitedRestaurantId) {
-    membershipUpdate = membershipUpdate.eq("restaurant_id", invitedRestaurantId);
-  }
-
-  const { error: membershipError } = await membershipUpdate;
+    .eq("id", membership.id)
+    .eq("restaurant_id", invitedRestaurantId);
 
   if (membershipError) {
     inviteError(membershipError.message);
   }
 
-  const invitedRole = String(userData.user.user_metadata.role ?? "restaurant_admin");
-  await admin.from("profiles").upsert({
+  const { error: profileError } = await admin.from("profiles").upsert({
     id: userData.user.id,
     email: userData.user.email.toLowerCase(),
     role: invitedRole === "staff" ? "staff" : "restaurant_admin",
     updated_at: now
   });
 
-  (await cookies()).set(superAdminCookieName, accessToken, {
+  if (profileError) {
+    inviteError(profileError.message);
+  }
+
+  const cookieStore = await cookies();
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/",
+    path: "/"
+  } as const;
+  cookieStore.set(superAdminCookieName, accessToken, {
+    ...cookieOptions,
     maxAge: Math.max(60, expiresIn)
   });
+  if (refreshToken) {
+    cookieStore.set(refreshTokenCookieName, refreshToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 24 * 30
+    });
+  }
 
   redirect("/auth/setup-password");
 }
@@ -129,10 +163,13 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
     redirect(`/auth/setup-password?error=${encodeURIComponent(error.message)}`);
   }
 
-  await admin
+  const { error: membershipError } = await admin
     .from("restaurant_users")
     .update({ accepted_at: new Date().toISOString() })
     .eq("user_id", user.id);
+  if (membershipError) {
+    redirect(`/auth/setup-password?error=${encodeURIComponent(membershipError.message)}`);
+  }
 
   redirect("/admin?welcome=1");
 }

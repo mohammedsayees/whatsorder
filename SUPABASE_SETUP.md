@@ -18,6 +18,8 @@ Open Supabase SQL Editor and run:
 
 ```text
 supabase/schema.sql
+supabase/super_admin_migration.sql
+supabase/security_hardening_migration.sql
 ```
 
 The SQL creates:
@@ -95,6 +97,13 @@ Public users can:
 Restaurant users, once Supabase Auth is connected, can manage only their own restaurant data through `restaurant_users.user_id`.
 
 The current app uses server actions with `SUPABASE_SERVICE_ROLE_KEY` for admin operations and customer/order persistence. This keeps the service key server-only.
+
+The security hardening migration also creates:
+
+- transactional order and customer persistence
+- database-backed public order rate limiting
+- service-role-only security functions
+- active membership indexes and corrected loyalty permissions
 
 ## 5. Storage Bucket Notes
 

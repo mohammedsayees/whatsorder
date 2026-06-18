@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, Send } from "lucide-react";
-import { createOrderAction, lookupSavedCustomerAction } from "@/app/actions";
+import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
@@ -16,19 +16,6 @@ type CapturedLocation = {
   latitude: number;
   longitude: number;
   mapsUrl: string;
-};
-
-type SavedCustomer = {
-  name: string;
-  phone: string;
-  deliveryArea: string;
-  deliveryAddress: string;
-  deliveryLandmark: string;
-  latitude: number | null;
-  longitude: number | null;
-  googleMapsUrl: string;
-  addressText: string;
-  marketingOptIn: boolean;
 };
 
 type PendingWhatsAppOrder = {
@@ -50,91 +37,16 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const { language, setLanguage } = useCustomerLanguage();
   const t = customerTranslations[language];
   const direction = getTextDirection(language);
-  const nameRef = useRef<HTMLInputElement>(null);
-  const phoneRef = useRef<HTMLInputElement>(null);
-  const areaRef = useRef<HTMLInputElement>(null);
-  const addressRef = useRef<HTMLTextAreaElement>(null);
-  const landmarkRef = useRef<HTMLInputElement>(null);
-  const marketingRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
   const [addressText, setAddressText] = useState("");
-  const [savedCustomer, setSavedCustomer] = useState<SavedCustomer | null>(null);
-  const [savedCustomerMessage, setSavedCustomerMessage] = useState<string | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
   const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
-
-  async function lookupSavedCustomer(phone: string) {
-    const cleanPhone = phone.trim();
-
-    setSavedCustomer(null);
-    setSavedCustomerMessage(null);
-
-    if (cleanPhone.length < 6) {
-      return;
-    }
-
-    setIsLookingUpCustomer(true);
-    const result = await lookupSavedCustomerAction(restaurant.slug, cleanPhone);
-    setIsLookingUpCustomer(false);
-
-    if (!result.ok) {
-      setSavedCustomerMessage(result.error);
-      return;
-    }
-
-    if (result.found) {
-      setSavedCustomer(result.customer);
-      setSavedCustomerMessage(t.savedDetailsFound);
-      return;
-    }
-
-    setSavedCustomerMessage(null);
-  }
-
-  function applySavedCustomer() {
-    if (!savedCustomer) {
-      return;
-    }
-
-    if (nameRef.current) {
-      nameRef.current.value = savedCustomer.name;
-    }
-    if (phoneRef.current) {
-      phoneRef.current.value = savedCustomer.phone;
-    }
-    if (areaRef.current) {
-      areaRef.current.value = savedCustomer.deliveryArea;
-    }
-    if (addressRef.current) {
-      addressRef.current.value = savedCustomer.deliveryAddress;
-    }
-    if (landmarkRef.current) {
-      landmarkRef.current.value = savedCustomer.deliveryLandmark;
-    }
-    if (marketingRef.current) {
-      marketingRef.current.checked = savedCustomer.marketingOptIn;
-    }
-
-    setAddressText(savedCustomer.addressText);
-
-    if (savedCustomer.latitude !== null && savedCustomer.longitude !== null && savedCustomer.googleMapsUrl) {
-      setLocation({
-        latitude: savedCustomer.latitude,
-        longitude: savedCustomer.longitude,
-        mapsUrl: savedCustomer.googleMapsUrl
-      });
-      setLocationMessage(t.savedLocationApplied);
-    }
-
-    setSavedCustomerMessage(t.savedAddressApplied);
-  }
 
   function captureLocation() {
     setLocationError(null);
@@ -297,8 +209,8 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               <span className="text-sm font-bold">{t.name}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                maxLength={120}
                 name="customer_name"
-                ref={nameRef}
                 required
               />
             </label>
@@ -307,34 +219,12 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                 inputMode="tel"
+                maxLength={24}
                 name="customer_phone"
-                onBlur={(event) => {
-                  void lookupSavedCustomer(event.currentTarget.value);
-                }}
-                ref={phoneRef}
                 required
               />
             </label>
           </div>
-          {isLookingUpCustomer ? (
-            <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-600">
-              {t.checkingSavedDetails}
-            </p>
-          ) : null}
-          {savedCustomerMessage ? (
-            <div className="rounded-lg border border-mint/70 bg-mint/10 px-4 py-3 text-sm text-stone-700">
-              <p className="font-bold">{savedCustomerMessage}</p>
-              {savedCustomer ? (
-                <button
-                  className="focus-ring mt-3 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
-                  onClick={applySavedCustomer}
-                  type="button"
-                >
-                  {t.useSavedAddress}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
           <section className="rounded-lg border border-stone-200 bg-white p-4">
             <div className="flex items-start gap-3">
               <span className="mt-1 rounded-full bg-mint/20 p-2 text-leaf">
@@ -386,7 +276,6 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_area"
                   placeholder={t.deliveryAreaPlaceholder}
-                  ref={areaRef}
                   required
                 />
               </label>
@@ -396,7 +285,6 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_address"
                   placeholder={t.addressPlaceholder}
-                  ref={addressRef}
                   required
                 />
               </label>
@@ -407,7 +295,6 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
                   name="delivery_landmark"
                   placeholder={t.landmarkPlaceholder}
-                  ref={landmarkRef}
                 />
               </label>
             </div>
@@ -444,7 +331,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
             </span>
           </label>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
-            <input className="mt-1" name="consent_marketing" ref={marketingRef} type="checkbox" />
+            <input className="mt-1" name="consent_marketing" type="checkbox" />
             <span>{t.consentMarketing}</span>
           </label>
 
