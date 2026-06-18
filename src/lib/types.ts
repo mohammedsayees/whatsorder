@@ -1,5 +1,18 @@
 export type PaymentMethod = "Cash on Delivery" | "Card on Delivery";
 
+export type UserRole = "super_admin" | "restaurant_admin" | "staff";
+
+export type RestaurantStatus =
+  | "draft"
+  | "onboarding"
+  | "live"
+  | "trial"
+  | "paid"
+  | "paused"
+  | "cancelled";
+
+export type RestaurantPlan = "trial" | "starter" | "growth" | "pro" | "custom";
+
 export type OrderStatus =
   | "New"
   | "Accepted"
@@ -14,12 +27,24 @@ export type Restaurant = {
   name_ar?: string | null;
   slug: string;
   logo_url: string | null;
+  cover_image_url?: string | null;
   whatsapp_number: string;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
   address: string | null;
+  city?: string | null;
+  subtitle?: string | null;
   address_ar?: string | null;
   subtitle_ar?: string | null;
   delivery_fee: number;
   minimum_order_amount: number;
+  pickup_enabled?: boolean;
+  delivery_enabled?: boolean;
+  scheduled_orders_enabled?: boolean;
+  status?: RestaurantStatus;
+  plan?: RestaurantPlan;
+  internal_notes?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at?: string;
@@ -134,8 +159,36 @@ export type RestaurantUser = {
   restaurant_id: string;
   user_id: string | null;
   email: string;
-  role: "owner" | "manager" | "staff";
+  role: UserRole | "owner" | "manager";
   created_at: string;
+};
+
+export type Profile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OnboardingTask = {
+  id: string;
+  restaurant_id: string;
+  task_key: string;
+  task_label: string;
+  is_completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SuperAdminRestaurant = Restaurant & {
+  orders_count: number;
+  customers_count: number;
+  onboarding_completed: number;
+  onboarding_total: number;
+  last_order_at: string | null;
 };
 
 export type MenuWithCategories = {

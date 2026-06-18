@@ -73,6 +73,11 @@ export function RestaurantMenu({
     () => items.filter((item) => item.is_available && item.is_featured).slice(0, 3),
     [items]
   );
+  const visibleActiveCategoryId = categoriesWithItems.some(
+    (entry) => entry.category.id === activeCategoryId
+  )
+    ? activeCategoryId
+    : categoriesWithItems[0]?.category.id ?? null;
 
   const coverImageUrl =
     restaurant.logo_url ??
@@ -92,19 +97,6 @@ export function RestaurantMenu({
     featuredItems.length > 0
       ? `${language === "ar" && featuredItems[0].name_ar ? featuredItems[0].name_ar : featuredItems[0].name} ${t.trendingToday}`
       : t.offerFallback;
-
-  useEffect(() => {
-    if (!categoriesWithItems.length) {
-      setActiveCategoryId(null);
-      return;
-    }
-
-    setActiveCategoryId((current) => {
-      const currentStillVisible = categoriesWithItems.some((entry) => entry.category.id === current);
-
-      return currentStillVisible ? current : categoriesWithItems[0].category.id;
-    });
-  }, [categoriesWithItems]);
 
   useEffect(() => {
     if (!categoriesWithItems.length) {
@@ -156,16 +148,16 @@ export function RestaurantMenu({
   }, [categoriesWithItems]);
 
   useEffect(() => {
-    if (!activeCategoryId) {
+    if (!visibleActiveCategoryId) {
       return;
     }
 
-    tabRefs.current[activeCategoryId]?.scrollIntoView({
+    tabRefs.current[visibleActiveCategoryId]?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "center"
     });
-  }, [activeCategoryId]);
+  }, [visibleActiveCategoryId]);
 
   const scrollToCategory = (categoryId: string) => {
     const element = document.getElementById(getCategorySectionId(categoryId));
@@ -324,7 +316,7 @@ export function RestaurantMenu({
 
             <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-5 overflow-x-auto scroll-smooth">
               {categoriesWithItems.map(({ category }) => {
-                const isActive = activeCategoryId === category.id;
+                const isActive = visibleActiveCategoryId === category.id;
 
                 return (
                   <button
@@ -525,7 +517,7 @@ export function RestaurantMenu({
                 <button
                   key={category.id}
                   className={`focus-ring grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border px-4 py-3 text-start ${
-                    activeCategoryId === category.id
+                    visibleActiveCategoryId === category.id
                       ? "border-leaf bg-mint/10"
                       : "border-stone-200 bg-white"
                   }`}

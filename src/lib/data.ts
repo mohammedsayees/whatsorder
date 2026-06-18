@@ -30,7 +30,14 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
       .single();
 
     if (!error && data) {
-      return data as Restaurant;
+      const restaurant = data as Restaurant;
+      const unavailableStatuses = ["draft", "onboarding", "paused", "cancelled"];
+
+      if (restaurant.status && unavailableStatuses.includes(restaurant.status)) {
+        return null;
+      }
+
+      return restaurant;
     }
   }
 
