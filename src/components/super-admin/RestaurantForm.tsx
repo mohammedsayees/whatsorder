@@ -178,6 +178,18 @@ export function RestaurantForm({
         </div>
       </section>
 
+      {mode === "create" ? (
+        <label className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <input className="mt-1" defaultChecked name="send_owner_invite" type="checkbox" />
+          <span>
+            <span className="block text-sm font-black text-emerald-900">Send owner invitation</span>
+            <span className="mt-1 block text-xs leading-5 text-emerald-800">
+              The owner will receive an email to activate their account and create a password.
+            </span>
+          </span>
+        </label>
+      ) : null}
+
       <button className="focus-ring rounded-lg bg-leaf px-5 py-3 text-sm font-black text-white" type="submit">
         {mode === "create" ? "Create restaurant" : "Save restaurant settings"}
       </button>

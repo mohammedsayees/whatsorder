@@ -1,14 +1,11 @@
 import { MapPin } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
-import { getCustomers, getDefaultRestaurant, getOrders } from "@/lib/data";
+import { getCustomers, getOrders } from "@/lib/data";
+import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 export default async function AdminCustomersPage() {
-  const restaurant = await getDefaultRestaurant();
-
-  if (!restaurant) {
-    return null;
-  }
+  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
 
   const [customers, orders] = await Promise.all([getCustomers(restaurant.id), getOrders(restaurant.id)]);
 

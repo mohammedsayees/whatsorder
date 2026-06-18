@@ -1,14 +1,11 @@
 import { SettingsForm } from "@/components/admin/SettingsForm";
-import { getDefaultRestaurant } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminSettingsPage() {
-  const restaurant = await getDefaultRestaurant();
-  const canWrite = Boolean(getSupabaseAdmin());
-
-  if (!restaurant) {
-    return null;
-  }
+  const session = await requireRestaurantAdmin();
+  const restaurant = session.restaurant;
+  const canWrite = Boolean(getSupabaseAdmin()) && session.role !== "staff";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">

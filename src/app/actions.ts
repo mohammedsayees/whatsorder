@@ -1,12 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDefaultRestaurant, getMenu, getRestaurantBySlug } from "@/lib/data";
+import { getMenu, getRestaurantBySlug } from "@/lib/data";
 import { demoCustomers } from "@/lib/demo-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
-import { requireRestaurantAdmin, requireSuperAdmin } from "@/lib/super-admin-auth";
+import {
+  requireRestaurantAdmin,
+  requireRestaurantRole,
+  requireSuperAdmin
+} from "@/lib/super-admin-auth";
 import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -99,11 +103,8 @@ async function getMenuActionContext(formData: FormData) {
     return restaurant ? { restaurant, supabase, isSuperAdmin: true } : null;
   }
 
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
-
-  return restaurant ? { restaurant, supabase, isSuperAdmin: false } : null;
+  const session = await requireRestaurantAdmin();
+  return { restaurant: session.restaurant, supabase, isSuperAdmin: false };
 }
 
 function revalidateMenuPaths(restaurant: { id: string; slug: string }) {
@@ -469,10 +470,10 @@ export async function createOrderAction(
 }
 
 export async function updateOrderStatusAction(formData: FormData) {
-  await requireRestaurantAdmin();
+  const session = await requireRestaurantAdmin();
   const orderId = stringValue(formData, "order_id");
   const status = stringValue(formData, "status") as OrderStatus;
-  const restaurant = await getDefaultRestaurant();
+  const restaurant = session.restaurant;
   const supabase = getSupabaseAdmin();
 
   if (!restaurant || !orderId || !statusValues.includes(status)) {
@@ -835,9 +836,8 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
 }
 
 export async function updateRestaurantSettingsAction(formData: FormData) {
-  await requireRestaurantAdmin();
-  const restaurantSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
-  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const restaurant = session.restaurant;
   const supabase = getSupabaseAdmin();
 
   if (!restaurant || !supabase) {

@@ -82,6 +82,9 @@ The protected Super Admin area supports multi-restaurant setup, onboarding, plan
 portfolio-level reporting. Run `supabase/super_admin_migration.sql`, create a Supabase Auth user,
 and promote its profile to `super_admin`.
 
+Restaurant owners, managers, and staff use the shared `/admin-login` endpoint. Their assigned
+restaurant is resolved from `restaurant_users`, so each account sees only its own dashboard data.
+
 See [SUPER_ADMIN_SETUP.md](SUPER_ADMIN_SETUP.md) for the complete setup and security notes.
 
 ## Delivery Location

@@ -3,7 +3,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
-import { getRestaurantAdminSession, superAdminCookieName } from "@/lib/super-admin-auth";
+import {
+  getRestaurantAdminSession,
+  getSuperAdminSession,
+  superAdminCookieName
+} from "@/lib/super-admin-auth";
 
 export async function loginRestaurantAdminAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -27,6 +31,10 @@ export async function loginRestaurantAdminAction(formData: FormData) {
     path: "/",
     maxAge: Math.max(60, data.session.expires_in)
   });
+
+  if (await getSuperAdminSession()) {
+    redirect("/super-admin");
+  }
 
   const session = await getRestaurantAdminSession();
 

@@ -2,14 +2,16 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
 import { OrderList } from "@/components/admin/OrderList";
-import { getAnalytics, getCustomers, getDefaultRestaurant, getOrders } from "@/lib/data";
+import { getAnalytics, getCustomers, getOrders } from "@/lib/data";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
-export default async function AdminDashboardPage() {
-  const restaurant = await getDefaultRestaurant();
-
-  if (!restaurant) {
-    return null;
-  }
+export default async function AdminDashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<{ welcome?: string; error?: string }>;
+}) {
+  const query = await searchParams;
+  const { restaurant } = await requireRestaurantAdmin();
 
   const [orders, customers] = await Promise.all([getOrders(restaurant.id), getCustomers(restaurant.id)]);
   const analytics = getAnalytics(orders, customers);
@@ -29,6 +31,16 @@ export default async function AdminDashboardPage() {
           <ArrowRight size={16} />
         </Link>
       </div>
+      {query.welcome ? (
+        <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          Your restaurant account is active. Welcome to WhatsOrder.
+        </p>
+      ) : null}
+      {query.error ? (
+        <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          {query.error}
+        </p>
+      ) : null}
 
       <div className="mt-6">
         <AnalyticsCards analytics={analytics} />
