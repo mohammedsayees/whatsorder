@@ -2,7 +2,7 @@ import { updateOrderStatusAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Gift, MapPin } from "lucide-react";
+import { CarFront, Gift, MapPin, ShoppingBag, Truck } from "lucide-react";
 
 const statuses: OrderStatus[] = [
   "New",
@@ -21,14 +21,40 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
       {orders.map((order) => {
         const customer = customersByPhone.get(order.customer_phone);
         const isRepeatCustomer = Number(customer?.total_orders ?? 0) > 1;
+        const fulfilmentType = order.fulfilment_type ?? "delivery";
+        const fulfilment =
+          fulfilmentType === "delivery"
+            ? { label: "Delivery", icon: Truck, className: "bg-blue-50 text-blue-700" }
+            : fulfilmentType === "takeaway"
+              ? {
+                  label: "Takeaway",
+                  icon: ShoppingBag,
+                  className: "bg-amber-50 text-amber-800"
+                }
+              : {
+                  label: "Car Pickup",
+                  icon: CarFront,
+                  className: "bg-violet-50 text-violet-700"
+                };
+        const FulfilmentIcon = fulfilment.icon;
+        const availableStatuses =
+          fulfilmentType === "delivery"
+            ? statuses
+            : statuses.filter((status) => status !== "Out for Delivery");
 
         return (
-        <article className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={order.id}>
+          <article className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={order.id}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-black">{order.customer_name}</h3>
                 <StatusBadge status={order.status} />
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black ${fulfilment.className}`}
+                >
+                  <FulfilmentIcon size={13} />
+                  {fulfilment.label}
+                </span>
                 <span
                   className={
                     isRepeatCustomer
@@ -40,7 +66,9 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                 </span>
               </div>
               <p className="mt-1 text-sm text-stone-500">
-                {order.customer_phone} · {order.delivery_area} · {new Date(order.created_at).toLocaleString("en-AE")}
+                {order.customer_phone}
+                {order.delivery_area ? ` · ${order.delivery_area}` : ""} ·{" "}
+                {new Date(order.created_at).toLocaleString("en-AE")}
               </p>
               <div className="mt-3 space-y-1 text-sm">
                 {order.items.map((item) => (
@@ -49,29 +77,41 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   </p>
                 ))}
               </div>
-              <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
-                <p>
-                  <span className="font-bold text-stone-800">Area:</span> {order.delivery_area}
-                </p>
-                <p className="mt-1">
-                  <span className="font-bold text-stone-800">Address:</span> {order.delivery_address}
-                </p>
-                <p className="mt-1">
-                  <span className="font-bold text-stone-800">Landmark:</span>{" "}
-                  {order.delivery_landmark || "Not provided"}
-                </p>
-                {order.delivery_google_maps_url ? (
-                  <a
-                    className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-3 py-2 text-xs font-black text-white"
-                    href={order.delivery_google_maps_url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <MapPin size={14} />
-                    Open in Google Maps
-                  </a>
-                ) : null}
-              </div>
+              {fulfilmentType === "delivery" ? (
+                <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
+                  <p>
+                    <span className="font-bold text-stone-800">Area:</span> {order.delivery_area}
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-bold text-stone-800">Address:</span>{" "}
+                    {order.delivery_address}
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-bold text-stone-800">Landmark:</span>{" "}
+                    {order.delivery_landmark || "Not provided"}
+                  </p>
+                  {order.delivery_google_maps_url ? (
+                    <a
+                      className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-3 py-2 text-xs font-black text-white"
+                      href={order.delivery_google_maps_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <MapPin size={14} />
+                      Open in Google Maps
+                    </a>
+                  ) : null}
+                </div>
+              ) : fulfilmentType === "car_pickup" ? (
+                <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+                  <p className="text-base font-black">
+                    Plate: {order.car_plate_number || "Not provided"}
+                  </p>
+                  <p className="mt-1">
+                    Car: {order.car_description || "No colour/model provided"}
+                  </p>
+                </div>
+              ) : null}
               {order.notes ? <p className="mt-1 text-sm text-stone-500">Notes: {order.notes}</p> : null}
             </div>
             <div className="min-w-56">
@@ -89,7 +129,7 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   defaultValue={order.status}
                   name="status"
                 >
-                  {statuses.map((status) => (
+                  {availableStatuses.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
@@ -101,7 +141,7 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
               </form>
             </div>
           </div>
-        </article>
+          </article>
       );
       })}
     </div>
