@@ -429,7 +429,15 @@ export default async function SuperAdminRestaurantDetailPage({
                 <div className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-center" key={order.id}>
                   <div>
                     <p className="font-black">{order.customer_name}</p>
-                    <p className="text-sm text-stone-500">{order.customer_phone} · {formatDate(order.created_at)}</p>
+                    <p className="text-sm text-stone-500">
+                      {order.customer_phone} ·{" "}
+                      {order.fulfilment_type === "car_pickup"
+                        ? `Car Pickup · ${order.car_plate_number}`
+                        : order.fulfilment_type === "takeaway"
+                          ? "Takeaway"
+                          : "Delivery"}{" "}
+                      · {formatDate(order.created_at)}
+                    </p>
                   </div>
                   <StatusBadge status={order.status} />
                   <p className="font-black">{formatAED(order.total)}</p>

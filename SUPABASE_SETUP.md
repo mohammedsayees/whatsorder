@@ -20,6 +20,7 @@ Open Supabase SQL Editor and run:
 supabase/schema.sql
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
+supabase/fulfilment_options_migration.sql
 ```
 
 The SQL creates:

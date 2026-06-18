@@ -136,6 +136,11 @@ export function RestaurantForm({
           <div className="mt-4 flex flex-wrap gap-5">
             {[
               ["pickup_enabled", "Pickup enabled", restaurant?.pickup_enabled ?? true],
+              [
+                "car_pickup_enabled",
+                "Bring to My Car enabled",
+                restaurant?.car_pickup_enabled ?? false
+              ],
               ["delivery_enabled", "Delivery enabled", restaurant?.delivery_enabled ?? true],
               [
                 "scheduled_orders_enabled",

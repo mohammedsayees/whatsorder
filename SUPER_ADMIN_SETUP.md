@@ -19,6 +19,7 @@ Run this file in the Supabase SQL Editor:
 ```text
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
+supabase/fulfilment_options_migration.sql
 ```
 
 The migration:

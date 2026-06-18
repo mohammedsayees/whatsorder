@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bike,
+  CarFront,
   ChevronLeft,
   Clock3,
   Heart,
@@ -281,14 +282,24 @@ export function RestaurantMenu({
                       <Clock3 size={13} />
                       {etaText}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
-                      <Bike size={13} />
-                      {t.delivery} {formatAED(restaurant.delivery_fee)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
-                      <MapPin size={13} />
-                      {t.pickupAvailable}
-                    </span>
+                    {restaurant.delivery_enabled !== false ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
+                        <Bike size={13} />
+                        {t.delivery} {formatAED(restaurant.delivery_fee)}
+                      </span>
+                    ) : null}
+                    {restaurant.pickup_enabled === true ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
+                        <MapPin size={13} />
+                        {t.pickupAvailable}
+                      </span>
+                    ) : null}
+                    {restaurant.car_pickup_enabled === true ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">
+                        <CarFront size={13} />
+                        {t.carPickup}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>

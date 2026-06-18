@@ -26,6 +26,30 @@ export function SettingsForm({
             Use country code format, for example 971554822424. Local UAE numbers starting with 05 will be converted automatically.
           </span>
         </label>
+        <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <legend className="px-1 text-sm font-bold">Available order types</legend>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            {[
+              ["delivery_enabled", "Delivery", restaurant.delivery_enabled !== false],
+              ["pickup_enabled", "Takeaway", restaurant.pickup_enabled === true],
+              [
+                "car_pickup_enabled",
+                "Bring to My Car",
+                restaurant.car_pickup_enabled === true
+              ]
+            ].map(([name, label, checked]) => (
+              <label className="flex items-center gap-2 text-sm font-bold" key={String(name)}>
+                <input
+                  defaultChecked={Boolean(checked)}
+                  disabled={!canWrite}
+                  name={String(name)}
+                  type="checkbox"
+                />
+                {String(label)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <label className="block">
           <span className="text-sm font-bold">Active</span>
           <div className="mt-3">

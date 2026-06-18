@@ -73,6 +73,7 @@ Run the schema and migrations in this order:
 supabase/schema.sql
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
+supabase/fulfilment_options_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
@@ -132,6 +133,7 @@ Included:
 - Multi-restaurant data model
 - Public restaurant menu route
 - Cart and checkout
+- Delivery, takeaway, and Bring to My Car fulfilment
 - Optional customer location capture
 - Restaurant-side customer history
 - Consent capture

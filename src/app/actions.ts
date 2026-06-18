@@ -13,7 +13,13 @@ import {
   requireRestaurantRole,
   requireSuperAdmin
 } from "@/lib/super-admin-auth";
-import type { CartLine, MenuCategory, OrderStatus, PaymentMethod } from "@/lib/types";
+import type {
+  CartLine,
+  FulfilmentType,
+  MenuCategory,
+  OrderStatus,
+  PaymentMethod
+} from "@/lib/types";
 
 type CreateOrderResult =
   | { ok: true; orderId: string; whatsappUrl: string; whatsappAppUrl: string }
@@ -253,6 +259,13 @@ export async function createOrderAction(
 
   const customerName = limitedStringValue(formData, "customer_name", 120);
   const customerPhone = limitedStringValue(formData, "customer_phone", 24);
+  const fulfilmentType = limitedStringValue(
+    formData,
+    "fulfilment_type",
+    30
+  ) as FulfilmentType;
+  const carPlateNumber = limitedStringValue(formData, "car_plate_number", 40);
+  const carDescription = limitedStringValue(formData, "car_description", 120);
   const deliveryArea = limitedStringValue(formData, "delivery_area", 120);
   const deliveryAddress = limitedStringValue(formData, "delivery_address", 500);
   const deliveryLandmark = limitedStringValue(formData, "delivery_landmark", 250);
@@ -274,12 +287,29 @@ export async function createOrderAction(
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
   const consentMarketing = formData.get("consent_marketing") === "on";
 
-  if (!customerName || !customerPhone || !deliveryArea || !deliveryAddress) {
-    return { ok: false, error: "Please complete your contact and delivery details." };
+  if (!customerName || !customerPhone) {
+    return { ok: false, error: "Please complete your contact details." };
   }
 
   if (!isValidCustomerPhone(customerPhone)) {
     return { ok: false, error: "Please enter a valid phone number." };
+  }
+
+  const fulfilmentEnabled =
+    (fulfilmentType === "delivery" && restaurant.delivery_enabled !== false) ||
+    (fulfilmentType === "takeaway" && restaurant.pickup_enabled === true) ||
+    (fulfilmentType === "car_pickup" && restaurant.car_pickup_enabled === true);
+
+  if (!fulfilmentEnabled) {
+    return { ok: false, error: "Please choose an available order type." };
+  }
+
+  if (fulfilmentType === "delivery" && (!deliveryArea || !deliveryAddress)) {
+    return { ok: false, error: "Please complete your delivery details." };
+  }
+
+  if (fulfilmentType === "car_pickup" && !carPlateNumber) {
+    return { ok: false, error: "Please enter your car plate number." };
   }
 
   if (!["Cash on Delivery", "Card on Delivery"].includes(paymentMethod)) {
@@ -299,12 +329,16 @@ export async function createOrderAction(
     };
   }
 
-  const total = subtotal + restaurant.delivery_fee;
+  const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
+  const total = subtotal + appliedDeliveryFee;
   // Future payment gateway support can reserve an unpaid payment intent here before WhatsApp opens.
   const message = buildWhatsAppMessage({
     restaurant,
     customerName,
     customerPhone,
+    fulfilmentType,
+    carPlateNumber,
+    carDescription,
     deliveryArea,
     deliveryAddress,
     deliveryLandmark,
@@ -313,7 +347,7 @@ export async function createOrderAction(
     paymentMethod,
     items: verifiedItems,
     subtotal,
-    deliveryFee: restaurant.delivery_fee,
+    deliveryFee: appliedDeliveryFee,
     total,
     language: orderLanguage
   });
@@ -326,19 +360,24 @@ export async function createOrderAction(
       target_restaurant_id: restaurant.id,
       order_customer_name: customerName,
       order_customer_phone: customerPhone,
-      order_delivery_area: deliveryArea,
-      order_delivery_address: deliveryAddress,
-      order_delivery_latitude: deliveryLatitude,
-      order_delivery_longitude: deliveryLongitude,
-      order_delivery_google_maps_url: deliveryGoogleMapsUrl || null,
-      order_delivery_place_id: deliveryPlaceId || null,
-      order_delivery_address_text: deliveryAddressText || null,
-      order_delivery_landmark: deliveryLandmark || null,
+      order_fulfilment_type: fulfilmentType,
+      order_car_plate_number: carPlateNumber || null,
+      order_car_description: carDescription || null,
+      order_delivery_area: fulfilmentType === "delivery" ? deliveryArea : null,
+      order_delivery_address: fulfilmentType === "delivery" ? deliveryAddress : null,
+      order_delivery_latitude: fulfilmentType === "delivery" ? deliveryLatitude : null,
+      order_delivery_longitude: fulfilmentType === "delivery" ? deliveryLongitude : null,
+      order_delivery_google_maps_url:
+        fulfilmentType === "delivery" ? deliveryGoogleMapsUrl || null : null,
+      order_delivery_place_id: fulfilmentType === "delivery" ? deliveryPlaceId || null : null,
+      order_delivery_address_text:
+        fulfilmentType === "delivery" ? deliveryAddressText || null : null,
+      order_delivery_landmark: fulfilmentType === "delivery" ? deliveryLandmark || null : null,
       order_notes: notes || null,
       order_payment_method: paymentMethod,
       order_items: verifiedItems,
       order_subtotal: subtotal,
-      order_delivery_fee: restaurant.delivery_fee,
+      order_delivery_fee: appliedDeliveryFee,
       order_total: total,
       order_whatsapp_message: message,
       order_consent_processing: consentOrderProcessing,
@@ -807,6 +846,9 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       subtitle_ar: stringValue(formData, "subtitle_ar") || null,
       delivery_fee: Number(stringValue(formData, "delivery_fee")),
       minimum_order_amount: Number(stringValue(formData, "minimum_order_amount")),
+      delivery_enabled: formData.get("delivery_enabled") === "on",
+      pickup_enabled: formData.get("pickup_enabled") === "on",
+      car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);

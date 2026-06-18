@@ -1,16 +1,26 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  CarFront,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  MessageCircle,
+  Send,
+  ShoppingBag,
+  Truck
+} from "lucide-react";
 import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
-import type { Restaurant } from "@/lib/types";
+import type { FulfilmentType, Restaurant } from "@/lib/types";
 
 type CapturedLocation = {
   latitude: number;
@@ -37,15 +47,23 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const { language, setLanguage } = useCustomerLanguage();
   const t = customerTranslations[language];
   const direction = getTextDirection(language);
+  const availableFulfilmentTypes: FulfilmentType[] = [
+    ...(restaurant.delivery_enabled !== false ? (["delivery"] as const) : []),
+    ...(restaurant.pickup_enabled === true ? (["takeaway"] as const) : []),
+    ...(restaurant.car_pickup_enabled === true ? (["car_pickup"] as const) : [])
+  ];
+  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(
+    availableFulfilmentTypes[0] ?? "delivery"
+  );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
-  const [addressText, setAddressText] = useState("");
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
-  const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
+  const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
+  const total = cart.subtotal + appliedDeliveryFee;
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
 
   function captureLocation() {
@@ -199,11 +217,51 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <input name="order_language" readOnly type="hidden" value={language} />
+          <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />
           <input name="items" type="hidden" />
           <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />
           <input name="delivery_longitude" readOnly type="hidden" value={location?.longitude ?? ""} />
           <input name="delivery_google_maps_url" readOnly type="hidden" value={location?.mapsUrl ?? ""} />
           <input name="delivery_place_id" readOnly type="hidden" value="" />
+          <fieldset className="rounded-lg border border-stone-200 bg-white p-4">
+            <legend className="px-1 text-sm font-bold">
+              {language === "ar" ? "كيف تريد استلام طلبك؟" : "How would you like your order?"}
+            </legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {availableFulfilmentTypes.map((type) => {
+                const option =
+                  type === "delivery"
+                    ? { icon: Truck, label: t.delivery }
+                    : type === "takeaway"
+                      ? { icon: ShoppingBag, label: t.takeaway }
+                      : { icon: CarFront, label: t.carPickup };
+                const Icon = option.icon;
+                const selected = fulfilmentType === type;
+
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={`focus-ring flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-black transition ${
+                      selected
+                        ? "border-leaf bg-mint/20 text-leaf"
+                        : "border-stone-200 text-stone-600"
+                    }`}
+                    key={type}
+                    onClick={() => {
+                      setFulfilmentType(type);
+                      setLocation(null);
+                      setLocationError(null);
+                      setLocationMessage(null);
+                    }}
+                    type="button"
+                  >
+                    <Icon size={22} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm font-bold">{t.name}</span>
@@ -225,6 +283,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               />
             </label>
           </div>
+          {fulfilmentType === "delivery" ? (
           <section className="rounded-lg border border-stone-200 bg-white p-4">
             <div className="flex items-start gap-3">
               <span className="mt-1 rounded-full bg-mint/20 p-2 text-leaf">
@@ -283,12 +342,12 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 <span className="text-sm font-bold">{t.address}</span>
                 <textarea
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  maxLength={500}
                   name="delivery_address"
                   placeholder={t.addressPlaceholder}
                   required
                 />
               </label>
-              <input name="delivery_address_text" readOnly type="hidden" value={addressText} />
               <label className="block">
                 <span className="text-sm font-bold">{t.landmark}</span>
                 <input
@@ -299,6 +358,52 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               </label>
             </div>
           </section>
+          ) : fulfilmentType === "takeaway" ? (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <ShoppingBag className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.takeaway}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.takeawayHelp}</p>
+                  <p className="mt-2 text-sm font-bold text-stone-800">
+                    {restaurant.address || restaurant.name}
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <CarFront className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.carPickup}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.carPickupHelp}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold">{t.carPlateNumber}</span>
+                  <input
+                    autoCapitalize="characters"
+                    className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3 uppercase"
+                    maxLength={40}
+                    name="car_plate_number"
+                    placeholder={t.carPlatePlaceholder}
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-bold">{t.carDescription}</span>
+                  <input
+                    className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                    maxLength={120}
+                    name="car_description"
+                    placeholder={t.carDescriptionPlaceholder}
+                  />
+                </label>
+              </div>
+            </section>
+          )}
           <label className="block">
             <span className="text-sm font-bold">{t.notes}</span>
             <textarea
@@ -311,8 +416,24 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
             <legend className="px-1 text-sm font-bold">{t.paymentMethod}</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {[
-                { value: "Cash on Delivery", label: t.cashOnDelivery },
-                { value: "Card on Delivery", label: t.cardOnDelivery }
+                {
+                  value: "Cash on Delivery",
+                  label:
+                    fulfilmentType === "delivery"
+                      ? t.cashOnDelivery
+                      : language === "ar"
+                        ? "نقدا عند الاستلام"
+                        : "Cash on collection"
+                },
+                {
+                  value: "Card on Delivery",
+                  label:
+                    fulfilmentType === "delivery"
+                      ? t.cardOnDelivery
+                      : language === "ar"
+                        ? "بطاقة عند الاستلام"
+                        : "Card on collection"
+                }
               ].map((method) => (
                 <label
                   className="flex items-center gap-3 rounded-lg border border-stone-200 px-3 py-3 text-sm font-semibold"
@@ -370,10 +491,12 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
             <span>{t.subtotal}</span>
             <strong>{formatAED(cart.subtotal)}</strong>
           </div>
-          <div className="flex justify-between">
-            <span>{t.delivery}</span>
-            <strong>{formatAED(restaurant.delivery_fee)}</strong>
-          </div>
+          {fulfilmentType === "delivery" ? (
+            <div className="flex justify-between">
+              <span>{t.delivery}</span>
+              <strong>{formatAED(appliedDeliveryFee)}</strong>
+            </div>
+          ) : null}
           <div className="flex justify-between text-lg">
             <span className="font-black">{t.total}</span>
             <strong>{formatAED(total)}</strong>
