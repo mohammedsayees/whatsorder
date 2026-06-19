@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { CartProvider } from "@/components/customer/CartProvider";
 import { RestaurantMenu } from "@/components/customer/RestaurantMenu";
-import { getMenu, getRestaurantBySlug } from "@/lib/data";
+import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
 import { getPublicFeedback } from "@/lib/feedback";
 
 export default async function RestaurantPage({
@@ -19,8 +19,9 @@ export default async function RestaurantPage({
     notFound();
   }
 
-  const [menu, feedback] = await Promise.all([
+  const [menu, offers, feedback] = await Promise.all([
     getMenu(restaurant.id),
+    getMenuOffers(restaurant.id),
     getPublicFeedback(restaurant)
   ]);
 
@@ -31,6 +32,7 @@ export default async function RestaurantPage({
         categories={menu.categories}
         feedback={feedback}
         items={menu.items}
+        offers={offers}
         tableNumber={tableNumber}
       />
     </CartProvider>

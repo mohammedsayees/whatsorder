@@ -24,6 +24,7 @@ supabase/arabic_menu_fields_migration.sql
 supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
 supabase/new_order_realtime_migration.sql
+supabase/menu_offers_migration.sql
 ```
 
 The migration:

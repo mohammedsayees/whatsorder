@@ -23,6 +23,7 @@ import { RestaurantPlanBadge, RestaurantStatusBadge } from "@/components/super-a
 import { RestaurantForm } from "@/components/super-admin/RestaurantForm";
 import { RevokeTeamAccessButton } from "@/components/super-admin/RevokeTeamAccessButton";
 import { MenuManager } from "@/components/admin/MenuManager";
+import { OffersManager } from "@/components/admin/OffersManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
 import { formatUaeShortDateTime } from "@/lib/date-time";
@@ -77,6 +78,7 @@ export default async function SuperAdminRestaurantDetailPage({
     onboardingTasks,
     categories,
     items,
+    offers,
     orders,
     customers,
     ownerMembership,
@@ -422,13 +424,21 @@ export default async function SuperAdminRestaurantDetailPage({
         ) : null}
 
         {activeTab === "menu" ? (
-          <MenuManager
-            canWrite
-            categories={categories}
-            items={items}
-            restaurantId={restaurant.id}
-            restaurantSlug={restaurant.slug}
-          />
+          <div className="space-y-6">
+            <OffersManager
+              canWrite
+              items={items}
+              offers={offers}
+              restaurantId={restaurant.id}
+            />
+            <MenuManager
+              canWrite
+              categories={categories}
+              items={items}
+              restaurantId={restaurant.id}
+              restaurantSlug={restaurant.slug}
+            />
+          </div>
         ) : null}
 
         {activeTab === "orders" ? (

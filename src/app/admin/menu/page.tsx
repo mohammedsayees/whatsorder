@@ -1,13 +1,19 @@
 import { MenuManager } from "@/components/admin/MenuManager";
-import { getMenu } from "@/lib/data";
+import { OffersManager } from "@/components/admin/OffersManager";
+import { getMenu, getMenuOffers } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminMenuPage() {
-  const { restaurant } = await requireRestaurantAdmin();
+  const { restaurant, role } = await requireRestaurantAdmin();
 
-  const menu = await getMenu(restaurant.id, { admin: true });
+  const [menu, offers] = await Promise.all([
+    getMenu(restaurant.id, { admin: true }),
+    getMenuOffers(restaurant.id, { admin: true })
+  ]);
   const canWrite = Boolean(getSupabaseAdmin());
+  const canManageOffers =
+    canWrite && ["restaurant_admin", "owner", "manager"].includes(role);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -20,6 +26,13 @@ export default async function AdminMenuPage() {
           Demo mode is read-only. Connect Supabase in .env.local to enable menu writes.
         </p>
       ) : null}
+      <div className="mt-6">
+        <OffersManager
+          canWrite={canManageOffers}
+          items={menu.items}
+          offers={offers}
+        />
+      </div>
       <div className="mt-6">
         <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} restaurantSlug={restaurant.slug} />
       </div>

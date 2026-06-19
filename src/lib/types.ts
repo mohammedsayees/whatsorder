@@ -82,8 +82,26 @@ export type MenuItem = {
   updated_at?: string;
 };
 
+export type MenuOffer = {
+  id: string;
+  restaurant_id: string;
+  menu_item_id: string;
+  title: string;
+  title_ar: string | null;
+  description: string | null;
+  description_ar: string | null;
+  promotional_price: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CartLine = {
   item_id: string;
+  offer_id?: string | null;
   name: string;
   name_ar?: string | null;
   price: number;

@@ -12,6 +12,7 @@ import type {
   Customer,
   MenuCategory,
   MenuItem,
+  MenuOffer,
   MenuWithCategories,
   Order,
   Restaurant
@@ -115,6 +116,46 @@ export async function getMenu(
     categories: demoCategories.filter((category) => category.restaurant_id === restaurantId),
     items: demoItems.filter((item) => item.restaurant_id === restaurantId)
   };
+}
+
+export async function getMenuOffers(
+  restaurantId: string,
+  options: GetMenuOptions = {}
+): Promise<MenuOffer[]> {
+  const supabase = options.admin ? getSupabaseAdmin() : getSupabase();
+
+  if (!supabase) {
+    if (!demoDataEnabled) {
+      productionDataFailure("Menu offers");
+    }
+    return [];
+  }
+
+  let query = supabase
+    .from("menu_offers")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("display_order")
+    .order("created_at");
+
+  if (!options.admin) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+
+  if (!error && data) {
+    return data.map((offer) => ({
+      ...offer,
+      promotional_price: Number(offer.promotional_price)
+    })) as MenuOffer[];
+  }
+
+  if (!demoDataEnabled) {
+    productionDataFailure("Menu offers", error);
+  }
+
+  return [];
 }
 
 export async function getOrders(restaurantId: string): Promise<Order[]> {

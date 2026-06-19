@@ -78,6 +78,7 @@ Before sharing the restaurant link:
 - Leave a dashboard open for more than one hour and place another test order.
 - Complete an order, send a feedback request, submit it, approve it, and verify it publicly.
 - Test every enabled fulfilment option, including table number and car plate requirements.
+- Create an offer, confirm it appears in the swipe carousel, and verify the discounted price in checkout and WhatsApp.
 - Pause the restaurant and confirm its public menu and dashboard access become unavailable.
 
 ## 7. Security Notes
