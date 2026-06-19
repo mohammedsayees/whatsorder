@@ -1176,10 +1176,19 @@ export async function addCategoryAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
+  const name = stringValue(formData, "name");
+  const normalizedName = name.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+
+  if (normalizedName === "best seller" || normalizedName === "best sellers") {
+    throw new Error(
+      "Best Sellers is created automatically from product tags. Add the product to its normal category and enable its Best Seller tag."
+    );
+  }
+
   const menu = await getMenu(restaurant.id, { admin: true });
   const { error } = await supabase.from("menu_categories").insert({
     restaurant_id: restaurant.id,
-    name: stringValue(formData, "name"),
+    name,
     name_ar: stringValue(formData, "name_ar") || null,
     display_order: menu.categories.length + 1,
     is_active: true

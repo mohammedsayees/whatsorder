@@ -48,11 +48,12 @@ type TemplateName =
   | "Kerala restaurant"
   | "Cloud kitchen";
 
-const csvTemplate = `category,item_name,description,price,is_available,is_featured
+const csvTemplate = `category,item_name,description,price,is_available,is_best_seller
 Tea & Hot Drinks,Karak Tea,Signature hot karak tea,2,true,true
 Burgers,Zinger Burger,Crispy chicken burger,12,true,true
 Juices,Fresh Lime Juice,Chilled fresh lime juice,8,true,false
 `;
+const BEST_SELLERS_FILTER = "best-sellers";
 
 const sampleTemplates: Record<TemplateName, Omit<ImportRow, "id" | "errors">[]> = {
   Cafeteria: [
@@ -192,6 +193,7 @@ export function MenuManager({
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
@@ -207,7 +209,11 @@ export function MenuManager({
     const normalizedSearch = search.trim().toLowerCase();
 
     return items.filter((item) => {
-      const matchesCategory = activeCategory === "all" || item.category_id === activeCategory;
+      const matchesCategory =
+        activeCategory === "all" ||
+        (activeCategory === BEST_SELLERS_FILTER
+          ? item.is_featured
+          : item.category_id === activeCategory);
       const matchesSearch = !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch);
       return matchesCategory && matchesSearch;
     });
@@ -218,7 +224,7 @@ export function MenuManager({
       { label: "Total categories", value: categories.length },
       { label: "Total items", value: items.length },
       { label: "Available items", value: items.filter((item) => item.is_available).length },
-      { label: "Featured items", value: items.filter((item) => item.is_featured).length }
+      { label: "Best Sellers", value: items.filter((item) => item.is_featured).length }
     ],
     [categories.length, items]
   );
@@ -253,7 +259,9 @@ export function MenuManager({
         description: value("description"),
         price: value("price"),
         is_available: value("is_available").toLowerCase() !== "false",
-        is_featured: ["true", "yes", "1"].includes(value("is_featured").toLowerCase()),
+        is_featured: ["true", "yes", "1"].includes(
+          (value("is_best_seller") || value("is_featured")).toLowerCase()
+        ),
         errors: []
       });
     });
@@ -439,6 +447,17 @@ export function MenuManager({
             <button className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${activeCategory === "all" ? "bg-ink text-white" : "bg-stone-100 text-stone-700"}`} onClick={() => setActiveCategory("all")} type="button">
               All
             </button>
+            <button
+              className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${
+                activeCategory === BEST_SELLERS_FILTER
+                  ? "bg-amber-500 text-white"
+                  : "bg-amber-50 text-amber-800"
+              }`}
+              onClick={() => setActiveCategory(BEST_SELLERS_FILTER)}
+              type="button"
+            >
+              Best Sellers
+            </button>
             {sortedCategories.map((category) => (
               <button
                 className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${activeCategory === category.id ? "bg-ink text-white" : "bg-stone-100 text-stone-700"}`}
@@ -467,7 +486,7 @@ export function MenuManager({
               <span>Category</span>
               <span>Price</span>
               <span>Available</span>
-              <span>Featured</span>
+              <span>Best Seller</span>
               <span>Actions</span>
             </div>
             <div className="divide-y divide-stone-200">
@@ -488,7 +507,7 @@ export function MenuManager({
                     </button>
                   </form>
                   <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-black ${item.is_featured ? "bg-amber-100 text-amber-800" : "bg-stone-100 text-stone-500"}`}>
-                    {item.is_featured ? "Featured" : "Standard"}
+                    {item.is_featured ? "Best Seller" : "Standard"}
                   </span>
                   <div className="flex gap-2">
                     <button className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-sm font-black disabled:opacity-50" disabled={!canWrite} onClick={() => setEditingItem(item)} type="button">
@@ -516,8 +535,29 @@ export function MenuManager({
       ) : null}
 
       {addCategoryOpen ? (
-        <Dialog title="Add category" onClose={() => setAddCategoryOpen(false)}>
-          <form action={async (formData) => { await addCategoryAction(formData); setAddCategoryOpen(false); router.refresh(); }} className="space-y-3">
+        <Dialog
+          title="Add category"
+          onClose={() => {
+            setAddCategoryOpen(false);
+            setCategoryError(null);
+          }}
+        >
+          <form
+            action={async (formData) => {
+              setCategoryError(null);
+
+              try {
+                await addCategoryAction(formData);
+                setAddCategoryOpen(false);
+                router.refresh();
+              } catch (error) {
+                setCategoryError(
+                  error instanceof Error ? error.message : "Category could not be added."
+                );
+              }
+            }}
+            className="space-y-3"
+          >
             {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
             <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="name" placeholder="Breakfast" required />
             <input
@@ -527,6 +567,15 @@ export function MenuManager({
               name="name_ar"
               placeholder="اسم القسم بالعربية"
             />
+            <p className="text-sm text-stone-500">
+              Best Sellers is generated automatically. Tag products as Best Seller instead of
+              creating it as a category.
+            </p>
+            {categoryError ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {categoryError}
+              </p>
+            ) : null}
             <button className="focus-ring w-full rounded-lg bg-ink px-4 py-2 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
               Add category
             </button>
@@ -830,7 +879,7 @@ function ItemForm({
         </label>
         <label className="flex items-center gap-2 font-semibold">
           <input defaultChecked={item?.is_featured ?? false} disabled={!canWrite} name="is_featured" type="checkbox" />
-          Featured
+          Best Seller
         </label>
       </div>
       <button className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-50" disabled={!canWrite} type="submit">
@@ -878,7 +927,7 @@ function ImportPreview({
               </label>
               <label className="flex items-center gap-2">
                 <input checked={row.is_featured} onChange={(event) => updateRow(row.id, { is_featured: event.target.checked })} type="checkbox" />
-                Featured
+                Best Seller
               </label>
               {row.errors.length > 0 ? <span className="text-red-600">{row.errors.join(", ")}</span> : null}
             </div>
