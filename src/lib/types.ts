@@ -1,3 +1,5 @@
+import type { OpeningHours } from "@/lib/opening-hours";
+
 export type PaymentMethod = "Cash on Delivery" | "Card on Delivery";
 export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
 
@@ -48,6 +50,8 @@ export type Restaurant = {
   scheduled_orders_enabled?: boolean;
   public_reviews_enabled?: boolean;
   accepting_orders?: boolean;
+  opening_hours_enabled?: boolean;
+  opening_hours?: OpeningHours | null;
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   internal_notes?: string | null;

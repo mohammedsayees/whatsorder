@@ -8,6 +8,10 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
 import {
+  isRestaurantOpen,
+  openingHoursFromFormData
+} from "@/lib/opening-hours";
+import {
   isOfferQuantityAllowed,
   isValidCustomerPhone,
   parseAndValidateCart
@@ -259,6 +263,18 @@ export async function createOrderAction(
     return {
       ok: false,
       error: "This restaurant is temporarily not accepting new orders."
+    };
+  }
+
+  if (
+    !isRestaurantOpen(
+      restaurant.opening_hours_enabled,
+      restaurant.opening_hours
+    )
+  ) {
+    return {
+      ok: false,
+      error: "This restaurant is currently closed. Please order during opening hours."
     };
   }
 
@@ -1141,6 +1157,8 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       dine_in_enabled: formData.get("dine_in_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       accepting_orders: formData.get("accepting_orders") === "on",
+      opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
+      opening_hours: openingHoursFromFormData(formData),
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);
