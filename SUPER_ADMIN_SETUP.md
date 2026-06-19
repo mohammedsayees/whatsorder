@@ -20,8 +20,10 @@ Run this file in the Supabase SQL Editor:
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
+supabase/arabic_menu_fields_migration.sql
 supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
+supabase/new_order_realtime_migration.sql
 ```
 
 The migration:
@@ -67,7 +69,8 @@ enabled:
 7. `/admin` resolves the restaurant from the authenticated membership.
 
 Super Admin can resend or relink the owner from the restaurant Overview tab. The same page can
-invite managers and staff members.
+invite managers and staff members. Manager and staff memberships can also be revoked immediately
+without deleting the person’s Supabase Auth account.
 
 Roles:
 

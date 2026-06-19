@@ -4,11 +4,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { Bell, BellRing, Radio, Volume2, VolumeX } from "lucide-react";
-import { getNewOrderAlertStateAction } from "@/app/admin/alerts/actions";
+import {
+  getNewOrderAlertStateAction,
+  getRealtimeAccessTokenAction
+} from "@/app/admin/alerts/actions";
 
 const highlightDurationMs = 9_000;
 const repeatIntervalMs = 18_000;
 const crossTabDedupeWindowMs = 30_000;
+const realtimeTokenRefreshIntervalMs = 30 * 60 * 1_000;
 
 type NewOrderAlertsContextValue = {
   highlightedOrderIds: ReadonlySet<string>;
@@ -149,6 +153,8 @@ export function NewOrderAlertsProvider({
     restaurantId && realtimeAccessToken && supabase ? "connecting" : "offline"
   );
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [activeRealtimeAccessToken, setActiveRealtimeAccessToken] =
+    useState(realtimeAccessToken);
   const soundStorageKey = `whatsorder-sound-alerts:${restaurantId}`;
   const repeatStorageKey = `whatsorder-repeat-order-alerts:${restaurantId}`;
 
@@ -211,6 +217,21 @@ export function NewOrderAlertsProvider({
     }
   }, []);
 
+  const refreshRealtimeAccess = useCallback(async () => {
+    try {
+      const access = await getRealtimeAccessTokenAction();
+
+      if (!access || access.restaurantId !== restaurantId) {
+        setConnectionState("offline");
+        return;
+      }
+
+      setActiveRealtimeAccessToken(access.accessToken);
+    } catch {
+      setConnectionState("offline");
+    }
+  }, [restaurantId]);
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       void refreshAlertState();
@@ -218,6 +239,7 @@ export function NewOrderAlertsProvider({
 
     const handleFocus = () => {
       void refreshAlertState();
+      void refreshRealtimeAccess();
     };
     window.addEventListener("focus", handleFocus);
 
@@ -225,10 +247,20 @@ export function NewOrderAlertsProvider({
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [refreshAlertState]);
+  }, [refreshAlertState, refreshRealtimeAccess]);
 
   useEffect(() => {
-    if (!restaurantId || !realtimeAccessToken || !supabase) {
+    const interval = window.setInterval(() => {
+      void refreshRealtimeAccess();
+    }, realtimeTokenRefreshIntervalMs);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [refreshRealtimeAccess]);
+
+  useEffect(() => {
+    if (!restaurantId || !activeRealtimeAccessToken || !supabase) {
       return;
     }
 
@@ -237,7 +269,8 @@ export function NewOrderAlertsProvider({
 
     const subscribe = async () => {
       try {
-        await supabase.realtime.setAuth(realtimeAccessToken);
+        setConnectionState("connecting");
+        await supabase.realtime.setAuth(activeRealtimeAccessToken);
 
         if (!active) {
           return;
@@ -323,7 +356,7 @@ export function NewOrderAlertsProvider({
     };
   }, [
     playAlertSound,
-    realtimeAccessToken,
+    activeRealtimeAccessToken,
     restaurantId,
     router,
     showToast,

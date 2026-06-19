@@ -1,10 +1,10 @@
-# Chai Xpress Pilot Testing
+# WhatsOrder Restaurant Pilot Testing
 
 Use this checklist to run a 7-day pilot.
 
 ## Test Flow
 
-1. Open `/r/chaixpress`.
+1. Open the restaurant’s `/r/[slug]` URL.
 2. Add at least two items to cart.
 3. Go to checkout.
 4. Enter:
@@ -22,6 +22,20 @@ Use this checklist to run a 7-day pilot.
 10. Update status from `New` to `Accepted`, `Preparing`, and `Completed`.
 11. Confirm customer appears in `/admin/customers`.
 12. Repeat with the same phone number and confirm `total_orders` and `total_spend` update.
+13. Enable sound alerts and place an order from a separate phone.
+14. Confirm the dashboard shows `Live`, plays a sound, highlights the order, and updates its count.
+15. Test Delivery, Takeaway, Bring to My Car, and Dine In when each option is enabled.
+16. Complete an order, request feedback, submit it, approve it, and verify the public review.
+17. Invite a temporary staff account, sign in, revoke it, and confirm access is removed.
+
+## Daily Operational Checks
+
+- Keep the restaurant dashboard open on a dedicated charged device.
+- Confirm the Realtime indicator says `Live`.
+- Confirm sound alerts are enabled after browser/device restarts.
+- Review `New` orders and accept them promptly.
+- If the indicator says `Offline`, refresh the dashboard and place a test order.
+- Keep the restaurant’s direct WhatsApp number available as the fallback ordering route.
 
 ## Metrics to Track for 7 Days
 

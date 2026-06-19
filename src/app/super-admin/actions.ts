@@ -391,6 +391,59 @@ export async function inviteRestaurantUserAction(formData: FormData) {
   );
 }
 
+export async function revokeRestaurantUserAccessAction(formData: FormData) {
+  await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const membershipId = stringValue(formData, "membership_id");
+
+  if (!supabase || !restaurantId || !membershipId) {
+    return;
+  }
+
+  const { data: membership, error: membershipLookupError } = await supabase
+    .from("restaurant_users")
+    .select("id,email,role")
+    .eq("id", membershipId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  if (membershipLookupError || !membership) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?error=${queryError(
+        membershipLookupError?.message ?? "Restaurant user could not be found."
+      )}`
+    );
+  }
+
+  if (["restaurant_admin", "owner"].includes(String(membership.role))) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?error=${queryError(
+        "Owner access must be transferred before it can be revoked."
+      )}`
+    );
+  }
+
+  const { error } = await supabase
+    .from("restaurant_users")
+    .delete()
+    .eq("id", membershipId)
+    .eq("restaurant_id", restaurantId);
+
+  if (error) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?error=${queryError(error.message)}`
+    );
+  }
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  redirect(
+    `/super-admin/restaurants/${restaurantId}?access_revoked=${queryError(
+      `Access revoked for ${membership.email}.`
+    )}`
+  );
+}
+
 export async function updateSuperAdminRestaurantAction(formData: FormData) {
   await requireSuperAdmin();
   const supabase = getSupabaseAdmin();
