@@ -1,14 +1,40 @@
 import { MapPin } from "lucide-react";
+import { redirect } from "next/navigation";
+import { PaginationNav } from "@/components/admin/PaginationNav";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate, formatUaeDateTime } from "@/lib/date-time";
-import { getCustomers, getOrders } from "@/lib/data";
+import { getCustomersPage, getOrdersForCustomerPhones } from "@/lib/data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
-export default async function AdminCustomersPage() {
-  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+function positivePage(value?: string) {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
 
-  const [customers, orders] = await Promise.all([getCustomers(restaurant.id), getOrders(restaurant.id)]);
+export default async function AdminCustomersPage({
+  searchParams
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const query = await searchParams;
+  const customersPage = await getCustomersPage(restaurant.id, {
+    page: positivePage(query.page),
+    pageSize: 25
+  });
+
+  if (
+    customersPage.totalPages > 0 &&
+    customersPage.page > customersPage.totalPages
+  ) {
+    redirect(`/admin/customers?page=${customersPage.totalPages}`);
+  }
+
+  const orders = await getOrdersForCustomerPhones(
+    restaurant.id,
+    customersPage.items.map((customer) => customer.phone)
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -18,7 +44,7 @@ export default async function AdminCustomersPage() {
       </p>
 
       <div className="mt-6 grid gap-4">
-        {customers.map((customer) => {
+        {customersPage.items.map((customer) => {
           const history = orders.filter((order) => order.customer_phone === customer.phone);
           const totalOrders = customer.total_orders || history.length;
           const totalSpend = customer.total_spend || history.reduce((sum, order) => sum + order.total, 0);
@@ -121,7 +147,23 @@ export default async function AdminCustomersPage() {
             </article>
           );
         })}
+        {customersPage.items.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
+            <p className="font-black">No customers found</p>
+            <p className="mt-1 text-sm text-stone-500">
+              Customer profiles will appear after orders are placed.
+            </p>
+          </div>
+        ) : null}
       </div>
+
+      <PaginationNav
+        basePath="/admin/customers"
+        page={customersPage.page}
+        pageSize={customersPage.pageSize}
+        total={customersPage.total}
+        totalPages={customersPage.totalPages}
+      />
 
       <p className="mt-5 text-sm leading-6 text-stone-500">
         {/* Future campaigns can segment customers by delivery area, spend, and marketing consent. */}
