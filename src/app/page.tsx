@@ -478,7 +478,7 @@ function LandingCTA() {
           <ChevronRight size={18} />
         </a>
         <a className="focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-6 py-4 font-black text-ink shadow-sm transition hover:-translate-y-0.5" href={whatsappDemoUrl}>
-          Message us on WhatsApp
+          Message us on WhatsApp.
           <MessageSquareText size={18} />
         </a>
       </div>
