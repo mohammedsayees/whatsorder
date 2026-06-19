@@ -147,7 +147,8 @@ export async function getMenuOffers(
   if (!error && data) {
     return data.map((offer) => ({
       ...offer,
-      promotional_price: Number(offer.promotional_price)
+      promotional_price: Number(offer.promotional_price),
+      max_quantity_per_order: Number(offer.max_quantity_per_order ?? 1)
     })) as MenuOffer[];
   }
 

@@ -1,7 +1,8 @@
 import {
   addMenuOfferAction,
   deleteMenuOfferAction,
-  toggleMenuOfferAction
+  toggleMenuOfferAction,
+  updateMenuOfferLimitAction
 } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate } from "@/lib/date-time";
@@ -58,6 +59,22 @@ export function OffersManager({
             step="0.01"
             type="number"
           />
+        </label>
+        <label className="block">
+          <span className="text-sm font-bold">Maximum quantity per order</span>
+          <input
+            className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5"
+            defaultValue={1}
+            disabled={!canWrite}
+            max="25"
+            min="1"
+            name="max_quantity_per_order"
+            required
+            type="number"
+          />
+          <span className="mt-1 block text-xs text-stone-500">
+            Customers receive the offer price up to this quantity.
+          </span>
         </label>
         <label className="block">
           <span className="text-sm font-bold">Offer title</span>
@@ -152,6 +169,33 @@ export function OffersManager({
                     {offer.ends_at ? formatUaeDate(offer.ends_at) : "No expiry"}
                   </p>
                 ) : null}
+                <form
+                  action={updateMenuOfferLimitAction}
+                  className="mt-2 flex max-w-xs items-center gap-2"
+                >
+                  {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
+                  <input name="offer_id" type="hidden" value={offer.id} />
+                  <label className="text-xs font-bold text-stone-500" htmlFor={`offer-limit-${offer.id}`}>
+                    Maximum per order
+                  </label>
+                  <input
+                    className="focus-ring w-16 rounded-lg border border-stone-200 px-2 py-1.5 text-sm font-bold"
+                    defaultValue={offer.max_quantity_per_order}
+                    disabled={!canWrite}
+                    id={`offer-limit-${offer.id}`}
+                    max="25"
+                    min="1"
+                    name="max_quantity_per_order"
+                    type="number"
+                  />
+                  <button
+                    className="focus-ring rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs font-black"
+                    disabled={!canWrite}
+                    type="submit"
+                  >
+                    Save
+                  </button>
+                </form>
               </div>
               <form action={toggleMenuOfferAction}>
                 {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}

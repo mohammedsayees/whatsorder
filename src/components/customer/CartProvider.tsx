@@ -17,6 +17,7 @@ type CartContextValue = {
   isReady: boolean;
   addItem: (item: MenuItem) => void;
   addOffer: (item: MenuItem, offer: MenuOffer) => void;
+  incrementOffer: (itemId: string, offer: MenuOffer) => void;
   increment: (itemId: string) => void;
   decrement: (itemId: string) => void;
   clearCart: () => void;
@@ -31,7 +32,7 @@ export function CartProvider({
   restaurantSlug: string;
   children: React.ReactNode;
 }) {
-  const storageKey = `whatsorder-cart-${restaurantSlug}`;
+  const storageKey = `whatsorder-cart-v2-${restaurantSlug}`;
   const [lines, setLines] = useState<CartLine[]>([]);
   const [isReady, setIsReady] = useState(false);
 
@@ -70,6 +71,14 @@ export function CartProvider({
       const existing = current.find((line) => line.item_id === item.id);
 
       if (existing) {
+        if (
+          existing.offer_id &&
+          existing.offer_max_quantity &&
+          existing.quantity >= existing.offer_max_quantity
+        ) {
+          return current;
+        }
+
         return current.map((line) =>
           line.item_id === item.id ? { ...line, quantity: line.quantity + 1 } : line
         );
@@ -93,6 +102,13 @@ export function CartProvider({
       const existing = current.find((line) => line.item_id === item.id);
 
       if (existing) {
+        if (
+          existing.offer_id === offer.id &&
+          existing.quantity >= offer.max_quantity_per_order
+        ) {
+          return current;
+        }
+
         return current.map((line) =>
           line.item_id === item.id
             ? {
@@ -100,8 +116,9 @@ export function CartProvider({
                 name: item.name,
                 name_ar: item.name_ar ?? null,
                 offer_id: offer.id,
+                offer_max_quantity: offer.max_quantity_per_order,
                 price: offer.promotional_price,
-                quantity: line.quantity + 1
+                quantity: Math.min(line.quantity + 1, offer.max_quantity_per_order)
               }
             : line
         );
@@ -112,6 +129,7 @@ export function CartProvider({
         {
           item_id: item.id,
           offer_id: offer.id,
+          offer_max_quantity: offer.max_quantity_per_order,
           name: item.name,
           name_ar: item.name_ar ?? null,
           price: offer.promotional_price,
@@ -121,10 +139,27 @@ export function CartProvider({
     });
   }, []);
 
+  const incrementOffer = useCallback((itemId: string, offer: MenuOffer) => {
+    setLines((current) =>
+      current.map((line) =>
+        line.item_id === itemId &&
+        line.offer_id === offer.id &&
+        line.quantity < offer.max_quantity_per_order
+          ? { ...line, quantity: line.quantity + 1 }
+          : line
+      )
+    );
+  }, []);
+
   const increment = useCallback((itemId: string) => {
     setLines((current) =>
       current.map((line) =>
-        line.item_id === itemId ? { ...line, quantity: line.quantity + 1 } : line
+        line.item_id === itemId &&
+        (!line.offer_id ||
+          !line.offer_max_quantity ||
+          line.quantity < line.offer_max_quantity)
+          ? { ...line, quantity: line.quantity + 1 }
+          : line
       )
     );
   }, []);
@@ -149,11 +184,12 @@ export function CartProvider({
       subtotal: lines.reduce((sum, line) => sum + line.price * line.quantity, 0),
       addItem,
       addOffer,
+      incrementOffer,
       increment,
       decrement,
       clearCart
     }),
-    [addItem, addOffer, clearCart, decrement, increment, isReady, lines]
+    [addItem, addOffer, clearCart, decrement, increment, incrementOffer, isReady, lines]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
