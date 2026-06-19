@@ -7,7 +7,6 @@ import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
-import { isValidOrderStatusTransition } from "@/lib/order-status";
 import {
   isOfferQuantityAllowed,
   isValidCustomerPhone,
@@ -136,7 +135,7 @@ async function getMenuActionContext(formData: FormData) {
     return restaurant ? { restaurant, supabase, isSuperAdmin: true } : null;
   }
 
-  const session = await requireRestaurantAdmin();
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   return { restaurant: session.restaurant, supabase, isSuperAdmin: false };
 }
 
@@ -256,6 +255,13 @@ export async function createOrderAction(
     return { ok: false, error: "Restaurant not found." };
   }
 
+  if (restaurant.accepting_orders === false) {
+    return {
+      ok: false,
+      error: "This restaurant is temporarily not accepting new orders."
+    };
+  }
+
   let items: CartLine[] = [];
 
   try {
@@ -353,6 +359,7 @@ export async function createOrderAction(
   const orderLanguage = getCustomerLanguage(formData.get("order_language"));
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
   const consentMarketing = formData.get("consent_marketing") === "on";
+  const submissionToken = limitedStringValue(formData, "submission_token", 100);
 
   if (!customerName || !customerPhone) {
     return { ok: false, error: "Please complete your contact details." };
@@ -390,6 +397,10 @@ export async function createOrderAction(
 
   if (!consentOrderProcessing) {
     return { ok: false, error: "Please accept order processing consent to continue." };
+  }
+
+  if (!submissionToken) {
+    return { ok: false, error: "This checkout session is invalid. Please refresh and try again." };
   }
 
   const subtotal = verifiedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -435,7 +446,7 @@ export async function createOrderAction(
     };
   }
 
-  const { data, error } = await supabase.rpc("create_order_with_customer_v2", {
+  const { data, error } = await supabase.rpc("create_order_with_customer_v3", {
     target_restaurant_id: restaurant.id,
     order_customer_name: customerName,
     order_customer_phone: customerPhone,
@@ -462,7 +473,8 @@ export async function createOrderAction(
     order_whatsapp_message: message,
     order_consent_processing: consentOrderProcessing,
     order_consent_marketing: consentMarketing,
-    order_consent_timestamp: consentTimestamp
+    order_consent_timestamp: consentTimestamp,
+    order_submission_token: submissionToken
   });
 
   if (error) {
@@ -489,6 +501,13 @@ export async function createOrderAction(
   }
 
   const orderId = String(data);
+  const { data: persistedOrder } = await supabase
+    .from("orders")
+    .select("whatsapp_message")
+    .eq("id", orderId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+  const persistedMessage = String(persistedOrder?.whatsapp_message ?? message);
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
@@ -498,8 +517,8 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
-    whatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message),
-    whatsappAppUrl: buildWhatsAppAppUrl(restaurant.whatsapp_number, message)
+    whatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, persistedMessage),
+    whatsappAppUrl: buildWhatsAppAppUrl(restaurant.whatsapp_number, persistedMessage)
   };
 }
 
@@ -515,83 +534,18 @@ export async function updateOrderStatusAction(formData: FormData) {
   }
 
   if (supabase) {
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("id,total,status,points_earned,customer_phone,fulfilment_type")
-      .eq("id", orderId)
-      .eq("restaurant_id", restaurant.id)
-      .maybeSingle();
-
-    databaseFailure("Order lookup", orderError);
-
-    if (
-      !order ||
-      !isValidOrderStatusTransition(
-        order.fulfilment_type as FulfilmentType,
-        order.status as OrderStatus,
-        status
-      )
-    ) {
-      throw new Error("This order cannot be moved to the requested status.");
-    }
-
-    const { data: updatedOrder, error: statusError } = await supabase
-      .from("orders")
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .eq("restaurant_id", restaurant.id)
-      .eq("status", order.status)
-      .select("id")
-      .maybeSingle();
-    databaseFailure("Order status update", statusError);
-
-    if (!updatedOrder) {
-      throw new Error("This order was updated by another operator. Refresh and try again.");
-    }
-
-    if (status === "Completed" && order && Number(order.points_earned ?? 0) <= 0) {
-      const pointsEarned = Math.floor(Number(order.total ?? 0));
-
-      if (pointsEarned > 0) {
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("id,loyalty_points_balance,lifetime_points_earned")
-          .eq("restaurant_id", restaurant.id)
-          .eq("phone", String(order.customer_phone))
-          .maybeSingle();
-
-        if (customer) {
-          const newBalance = Number(customer.loyalty_points_balance ?? 0) + pointsEarned;
-          const newLifetime = Number(customer.lifetime_points_earned ?? 0) + pointsEarned;
-
-          const { error: customerError } = await supabase
-            .from("customers")
-            .update({
-              loyalty_points_balance: newBalance,
-              lifetime_points_earned: newLifetime
-            })
-            .eq("id", customer.id)
-            .eq("restaurant_id", restaurant.id);
-          databaseFailure("Customer loyalty update", customerError);
-
-          const { error: transactionError } = await supabase.from("loyalty_transactions").insert({
-            restaurant_id: restaurant.id,
-            customer_id: customer.id,
-            order_id: order.id,
-            type: "earned",
-            points: pointsEarned,
-            description: `Earned ${pointsEarned} points for completed order`
-          });
-          databaseFailure("Loyalty transaction creation", transactionError);
-
-          const { error: orderPointsError } = await supabase
-            .from("orders")
-            .update({ points_earned: pointsEarned })
-            .eq("id", order.id)
-            .eq("restaurant_id", restaurant.id);
-          databaseFailure("Order loyalty update", orderPointsError);
-        }
+    const { data: updatedOrderId, error } = await supabase.rpc(
+      "transition_order_status_and_award_loyalty",
+      {
+        target_order_id: orderId,
+        target_restaurant_id: restaurant.id,
+        target_status: status
       }
+    );
+    databaseFailure("Order status update", error);
+
+    if (!updatedOrderId) {
+      throw new Error("This order could not be updated. Refresh and try again.");
     }
   }
 
@@ -1186,6 +1140,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
       dine_in_enabled: formData.get("dine_in_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
+      accepting_orders: formData.get("accepting_orders") === "on",
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);

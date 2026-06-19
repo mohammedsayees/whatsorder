@@ -7,7 +7,6 @@ import {
   CarFront,
   ChevronLeft,
   Clock3,
-  Heart,
   MapPin,
   Menu,
   Minus,
@@ -65,13 +64,31 @@ export function RestaurantMenu({
   const direction = getTextDirection(language);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const categoriesWithItems = useMemo<CategoryWithItems[]>(
     () =>
       categories
         .map((category) => {
-          const categoryItems = items.filter((item) => item.category_id === category.id);
+          const normalizedSearch = searchQuery.trim().toLowerCase();
+          const categoryItems = items.filter((item) => {
+            if (item.category_id !== category.id) {
+              return false;
+            }
+
+            if (!normalizedSearch) {
+              return true;
+            }
+
+            return [
+              item.name,
+              item.name_ar,
+              item.description,
+              item.description_ar
+            ].some((value) => value?.toLowerCase().includes(normalizedSearch));
+          });
 
           return {
             category,
@@ -80,7 +97,7 @@ export function RestaurantMenu({
           };
         })
         .filter((entry) => entry.availableItemCount > 0),
-    [categories, items]
+    [categories, items, searchQuery]
   );
 
   const itemsById = useMemo(
@@ -98,6 +115,7 @@ export function RestaurantMenu({
     : categoriesWithItems[0]?.category.id ?? null;
 
   const coverImageUrl =
+    restaurant.cover_image_url ??
     restaurant.logo_url ??
     items.find((item) => item.image_url)?.image_url ??
     null;
@@ -220,7 +238,7 @@ export function RestaurantMenu({
                 <button
                   aria-label={t.searchMenu}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
-                  onClick={() => window.scrollTo({ top: 300, behavior: "smooth" })}
+                  onClick={() => setIsSearchOpen((current) => !current)}
                   type="button"
                 >
                   <Search size={18} />
@@ -245,13 +263,6 @@ export function RestaurantMenu({
                   type="button"
                 >
                   <Share2 size={18} />
-                </button>
-                <button
-                  aria-label={t.saveRestaurant}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
-                  type="button"
-                >
-                  <Heart size={18} />
                 </button>
               </div>
             </div>
@@ -322,9 +333,37 @@ export function RestaurantMenu({
                 </div>
               </div>
 
+              {restaurant.accepting_orders === false ? (
+                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
+                  {language === "ar"
+                    ? "المطعم لا يستقبل طلبات جديدة حالياً."
+                    : "This restaurant is temporarily not accepting new orders."}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>
+
+        {isSearchOpen ? (
+          <section className="px-4 pt-4">
+            <label className="block">
+              <span className="sr-only">{t.searchMenu}</span>
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
+                  size={18}
+                />
+                <input
+                  autoFocus
+                  className="focus-ring w-full rounded-2xl border border-stone-200 bg-white py-3 pl-11 pr-4"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t.searchMenu}
+                  value={searchQuery}
+                />
+              </div>
+            </label>
+          </section>
+        ) : null}
 
         {offers.length > 0 ? (
           <section className="mt-5 px-4">
@@ -412,7 +451,7 @@ export function RestaurantMenu({
                             <button
                               aria-label={`${t.addMore} ${title}`}
                               className="focus-ring grid h-10 w-10 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
-                              disabled={maximumReached}
+                              disabled={maximumReached || restaurant.accepting_orders === false}
                               onClick={() => cart.incrementOffer(item.id, offer)}
                               type="button"
                             >
@@ -423,6 +462,7 @@ export function RestaurantMenu({
                           <button
                             aria-label={`${t.add} ${title}`}
                             className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
+                            disabled={restaurant.accepting_orders === false}
                             onClick={() => cart.addOffer(item, offer)}
                             type="button"
                           >
@@ -570,9 +610,10 @@ export function RestaurantMenu({
                                   aria-label={`${t.addMore} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
                                   disabled={
-                                    Boolean(activeOffer) &&
-                                    cartLine.quantity >=
-                                      (activeOffer?.max_quantity_per_order ?? 1)
+                                    restaurant.accepting_orders === false ||
+                                    (Boolean(activeOffer) &&
+                                      cartLine.quantity >=
+                                        (activeOffer?.max_quantity_per_order ?? 1))
                                   }
                                   onClick={() =>
                                     activeOffer
@@ -589,7 +630,9 @@ export function RestaurantMenu({
                                 aria-label={`${t.add} ${itemName}`}
                                 className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                                 data-testid={`add-item-${item.id}`}
-                                disabled={!item.is_available}
+                                disabled={
+                                  !item.is_available || restaurant.accepting_orders === false
+                                }
                                 onClick={() =>
                                   activeOffer ? cart.addOffer(item, activeOffer) : cart.addItem(item)
                                 }

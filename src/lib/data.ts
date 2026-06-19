@@ -239,9 +239,12 @@ export function getAnalytics(orders: Order[], customers: Customer[]): Analytics 
     isSameUaeCalendarDay(order.created_at, now)
   );
   const completed = orders.filter((order) => order.status === "Completed");
+  const completedToday = completed.filter((order) =>
+    isSameUaeCalendarDay(order.created_at, now)
+  );
   const itemCounts = new Map<string, number>();
 
-  orders.forEach((order) => {
+  completed.forEach((order) => {
     order.items.forEach((item) => {
       itemCounts.set(item.name, (itemCounts.get(item.name) ?? 0) + item.quantity);
     });
@@ -252,12 +255,14 @@ export function getAnalytics(orders: Order[], customers: Customer[]): Analytics 
 
   return {
     todaysOrders: todaysOrders.length,
-    todaysRevenue: todaysOrders.reduce((sum, order) => sum + order.total, 0),
+    todaysRevenue: completedToday.reduce((sum, order) => sum + order.total, 0),
     newOrders: orders.filter((order) => order.status === "New").length,
     completedOrders: completed.length,
     repeatCustomers: customers.filter((customer) => customer.total_orders > 1).length,
     averageOrderValue:
-      orders.length > 0 ? orders.reduce((sum, order) => sum + order.total, 0) / orders.length : 0,
+      completed.length > 0
+        ? completed.reduce((sum, order) => sum + order.total, 0) / completed.length
+        : 0,
     topSellingItem
   };
 }

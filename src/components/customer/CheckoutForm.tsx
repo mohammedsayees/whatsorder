@@ -66,6 +66,11 @@ export function CheckoutForm({
       : availableFulfilmentTypes[0] ?? "delivery"
   );
   const [isPending, startTransition] = useTransition();
+  const [submissionToken] = useState(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   const [error, setError] = useState<string | null>(null);
   const [fallbackWhatsappUrl, setFallbackWhatsappUrl] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
@@ -210,6 +215,27 @@ export function CheckoutForm({
     );
   }
 
+  if (restaurant.accepting_orders === false) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">
+          {language === "ar" ? "الطلبات متوقفة مؤقتاً" : "Ordering is temporarily paused"}
+        </h1>
+        <p className="mt-3 text-stone-600">
+          {language === "ar"
+            ? "يمكنك مشاهدة القائمة، لكن المطعم لا يستقبل طلبات جديدة حالياً."
+            : "You can still view the menu, but the restaurant is not accepting new orders right now."}
+        </p>
+        <Link
+          className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
+        </Link>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8" dir={direction}>
       <section>
@@ -230,6 +256,7 @@ export function CheckoutForm({
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <input name="order_language" readOnly type="hidden" value={language} />
+          <input name="submission_token" readOnly type="hidden" value={submissionToken} />
           <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />
           <input name="items" type="hidden" />
           <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />

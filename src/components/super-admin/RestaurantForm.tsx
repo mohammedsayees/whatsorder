@@ -85,6 +85,17 @@ export function RestaurantForm({
               type="number"
             />
           </label>
+          <label className="block">
+            <span className="text-sm font-bold">Minimum order amount</span>
+            <input
+              className={inputClass}
+              defaultValue={restaurant?.minimum_order_amount ?? 0}
+              min="0"
+              name="minimum_order_amount"
+              step="0.01"
+              type="number"
+            />
+          </label>
         </div>
       </section>
 
@@ -152,6 +163,11 @@ export function RestaurantForm({
                 "public_reviews_enabled",
                 "Public verified reviews enabled",
                 restaurant?.public_reviews_enabled ?? false
+              ],
+              [
+                "accepting_orders",
+                "Accepting new orders",
+                restaurant?.accepting_orders ?? true
               ]
             ].map(([name, label, checked]) => (
               <label className="flex items-center gap-2 text-sm font-bold" key={String(name)}>

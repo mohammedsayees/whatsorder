@@ -264,6 +264,8 @@ export async function createRestaurantAction(formData: FormData) {
       address: stringValue(formData, "address") || null,
       city: stringValue(formData, "city") || null,
       subtitle: stringValue(formData, "subtitle") || null,
+      delivery_fee: Number(stringValue(formData, "delivery_fee") || 0),
+      minimum_order_amount: Number(stringValue(formData, "minimum_order_amount") || 0),
       status,
       plan,
       is_active: ["live", "trial", "paid"].includes(status)
@@ -474,12 +476,14 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
       city: stringValue(formData, "city") || null,
       subtitle: stringValue(formData, "subtitle") || null,
       delivery_fee: Number(stringValue(formData, "delivery_fee") || 0),
+      minimum_order_amount: Number(stringValue(formData, "minimum_order_amount") || 0),
       pickup_enabled: formData.get("pickup_enabled") === "on",
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
       dine_in_enabled: formData.get("dine_in_enabled") === "on",
       delivery_enabled: formData.get("delivery_enabled") === "on",
       scheduled_orders_enabled: formData.get("scheduled_orders_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
+      accepting_orders: formData.get("accepting_orders") === "on",
       status,
       plan,
       is_active: ["live", "trial", "paid"].includes(status)
