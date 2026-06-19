@@ -64,6 +64,8 @@ type UploadMenuImageResult =
   | { ok: true; publicUrl: string; message: string }
   | { ok: false; error: string };
 
+type RestaurantBrandImageKind = "logo" | "cover";
+
 async function getOfferActionContext(formData: FormData) {
   const requestedRestaurantId = stringValue(formData, "restaurant_id");
   const supabase = getSupabaseAdmin();
@@ -753,6 +755,107 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
   return { ok: true, publicUrl, message: "Image uploaded successfully." };
 }
 
+export async function uploadRestaurantBrandImageAction(
+  formData: FormData
+): Promise<UploadMenuImageResult> {
+  const context = await getOfferActionContext(formData);
+  const file = formData.get("image");
+  const kindValue = stringValue(formData, "kind");
+
+  if (!context) {
+    return { ok: false, error: "Image upload needs Supabase Storage access." };
+  }
+
+  if (kindValue !== "logo" && kindValue !== "cover") {
+    return { ok: false, error: "Choose a valid restaurant image type." };
+  }
+
+  const kind: RestaurantBrandImageKind = kindValue;
+  const { restaurant, supabase } = context;
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Please choose an image to upload." };
+  }
+
+  const allowedTypes = new Map([
+    ["image/jpeg", "jpg"],
+    ["image/png", "png"],
+    ["image/webp", "webp"]
+  ]);
+  const extension = allowedTypes.get(file.type);
+  if (!extension) {
+    return { ok: false, error: "Only JPG, PNG, and WebP images are allowed." };
+  }
+
+  const maximumBytes = kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+  if (file.size > maximumBytes) {
+    return {
+      ok: false,
+      error: `${kind === "logo" ? "Logo" : "Cover image"} must be ${
+        maximumBytes / 1024 / 1024
+      }MB or smaller.`
+    };
+  }
+
+  const bucketName = "restaurant-assets";
+  const filePath = `restaurants/${restaurant.id}/${kind}-${Date.now()}.${extension}`;
+  const bytes = await file.arrayBuffer();
+  const uploadFile = () =>
+    supabase.storage.from(bucketName).upload(filePath, bytes, {
+      contentType: file.type,
+      upsert: false
+    });
+
+  let { error: uploadError } = await uploadFile();
+  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
+    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
+      public: true,
+      fileSizeLimit: 5 * 1024 * 1024,
+      allowedMimeTypes: [...allowedTypes.keys()]
+    });
+
+    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
+      return { ok: false, error: bucketError.message };
+    }
+
+    const retry = await uploadFile();
+    uploadError = retry.error;
+  }
+
+  if (uploadError) {
+    return { ok: false, error: uploadError.message };
+  }
+
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+  const publicUrl = data.publicUrl;
+  const column = kind === "logo" ? "logo_url" : "cover_image_url";
+  const previousUrl = String(restaurant[column] ?? "");
+  const { error: imageSaveError } = await supabase
+    .from("restaurants")
+    .update({ [column]: publicUrl })
+    .eq("id", restaurant.id);
+
+  if (imageSaveError) {
+    await supabase.storage.from(bucketName).remove([filePath]);
+    return { ok: false, error: imageSaveError.message };
+  }
+
+  const previousStoragePath = storagePathFromPublicUrl(previousUrl, bucketName);
+  if (previousStoragePath) {
+    await supabase.storage.from(bucketName).remove([previousStoragePath]);
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/settings");
+  revalidatePath(`/r/${restaurant.slug}`);
+  revalidatePath(`/super-admin/restaurants/${restaurant.id}`);
+
+  return {
+    ok: true,
+    publicUrl,
+    message: `${kind === "logo" ? "Logo" : "Cover image"} uploaded successfully.`
+  };
+}
+
 export async function removeMenuItemImageAction(formData: FormData) {
   const context = await getMenuActionContext(formData);
   const itemId = stringValue(formData, "item_id");
@@ -1070,6 +1173,8 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
     .update({
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
+      logo_url: stringValue(formData, "logo_url") || null,
+      cover_image_url: stringValue(formData, "cover_image_url") || null,
       whatsapp_number: normalizeWhatsAppNumber(stringValue(formData, "whatsapp_number")),
       address: stringValue(formData, "address") || null,
       address_ar: stringValue(formData, "address_ar") || null,
@@ -1156,8 +1261,8 @@ function updateCategoryDisplayOrder(
     .eq("restaurant_id", category.restaurant_id);
 }
 
-function storagePathFromPublicUrl(url: string) {
-  const marker = "/storage/v1/object/public/menu-images/";
+function storagePathFromPublicUrl(url: string, bucketName = "menu-images") {
+  const marker = `/storage/v1/object/public/${bucketName}/`;
   const markerIndex = url.indexOf(marker);
 
   if (markerIndex < 0) {
