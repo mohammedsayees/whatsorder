@@ -39,9 +39,10 @@ import type {
 } from "@/lib/types";
 
 const CATEGORY_SCROLL_OFFSET = 172;
+const BEST_SELLERS_CATEGORY_ID = "best-sellers";
 
 type CategoryWithItems = {
-  category: MenuCategory;
+  category: Pick<MenuCategory, "id" | "name" | "name_ar">;
   items: MenuItem[];
   availableItemCount: number;
 };
@@ -76,32 +77,34 @@ export function RestaurantMenu({
   const orderingAvailable =
     restaurant.accepting_orders !== false && scheduleOpen;
   const weeklyHours = normalizeOpeningHours(restaurant.opening_hours);
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
+  const hasBestSellers = items.some((item) => item.is_featured && item.is_available);
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
+    hasBestSellers ? BEST_SELLERS_CATEGORY_ID : categories[0]?.id ?? null
+  );
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const categoriesWithItems = useMemo<CategoryWithItems[]>(
-    () =>
-      categories
+    () => {
+      const normalizedSearch = searchQuery.trim().toLowerCase();
+      const matchesSearch = (item: MenuItem) =>
+        !normalizedSearch ||
+        [item.name, item.name_ar, item.description, item.description_ar].some((value) =>
+          value?.toLowerCase().includes(normalizedSearch)
+        );
+      const bestSellerItems = items.filter(
+        (item) => item.is_featured && item.is_available && matchesSearch(item)
+      );
+      const regularCategories = categories
         .map((category) => {
-          const normalizedSearch = searchQuery.trim().toLowerCase();
           const categoryItems = items.filter((item) => {
             if (item.category_id !== category.id) {
               return false;
             }
 
-            if (!normalizedSearch) {
-              return true;
-            }
-
-            return [
-              item.name,
-              item.name_ar,
-              item.description,
-              item.description_ar
-            ].some((value) => value?.toLowerCase().includes(normalizedSearch));
+            return matchesSearch(item);
           });
 
           return {
@@ -110,7 +113,23 @@ export function RestaurantMenu({
             availableItemCount: categoryItems.filter((item) => item.is_available).length
           };
         })
-        .filter((entry) => entry.availableItemCount > 0),
+        .filter((entry) => entry.availableItemCount > 0);
+
+      return bestSellerItems.length > 0
+        ? [
+            {
+              category: {
+                id: BEST_SELLERS_CATEGORY_ID,
+                name: customerTranslations.en.bestSellers,
+                name_ar: customerTranslations.ar.bestSellers
+              },
+              items: bestSellerItems,
+              availableItemCount: bestSellerItems.length
+            },
+            ...regularCategories
+          ]
+        : regularCategories;
+    },
     [categories, items, searchQuery]
   );
 
@@ -625,8 +644,9 @@ export function RestaurantMenu({
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-base font-black text-ink">{itemName}</h3>
                             {item.is_featured ? (
-                              <span className="rounded-full bg-mint/20 px-2 py-0.5 text-[11px] font-bold text-leaf">
-                                {t.popular}
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700">
+                                <Star className="fill-current" size={11} />
+                                {t.bestSeller}
                               </span>
                             ) : null}
                           </div>

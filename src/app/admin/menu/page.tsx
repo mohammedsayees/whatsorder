@@ -21,7 +21,7 @@ export default async function AdminMenuPage() {
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-black">Menu management</h1>
       <p className="mt-2 text-stone-600">
-        Add items, edit prices, and mark items unavailable when the kitchen runs out.
+        Add items, edit prices, tag Best Sellers, and mark items unavailable when the kitchen runs out.
       </p>
       {!hasDatabaseAccess ? (
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
