@@ -39,6 +39,22 @@ describe("public order input security", () => {
     expect(cart[0].quantity).toBe(2);
   });
 
+  it("preserves an offer reference for server-side price validation", () => {
+    const cart = parseAndValidateCart(
+      JSON.stringify([
+        {
+          item_id: "item-1",
+          offer_id: "offer-1",
+          name: "Tea offer",
+          price: 1,
+          quantity: 1
+        }
+      ])
+    );
+
+    expect(cart[0].offer_id).toBe("offer-1");
+  });
+
   it("rejects oversized or partially invalid carts", () => {
     expect(
       parseAndValidateCart(

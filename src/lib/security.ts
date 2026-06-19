@@ -24,6 +24,7 @@ export function parseAndValidateCart(raw: string): CartLine[] {
     )
     .map((item) => ({
       item_id: String(item.item_id),
+      ...(item.offer_id ? { offer_id: String(item.offer_id) } : {}),
       name: String(item.name),
       name_ar: item.name_ar ? String(item.name_ar) : null,
       quantity: Math.floor(Number(item.quantity)),

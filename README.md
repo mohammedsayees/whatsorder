@@ -80,6 +80,7 @@ supabase/arabic_menu_fields_migration.sql
 supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
 supabase/new_order_realtime_migration.sql
+supabase/menu_offers_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
@@ -144,6 +145,7 @@ Included:
 - Public restaurant menu route
 - Cart and checkout
 - Delivery, takeaway, Bring to My Car, and table-aware Dine In fulfilment
+- Bilingual, swipeable promotional offers linked to server-validated menu pricing
 - Verified completed-order feedback with restaurant moderation
 - Optional customer location capture
 - Restaurant-side customer history

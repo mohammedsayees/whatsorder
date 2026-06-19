@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { getMenu, getRestaurantBySlug } from "@/lib/data";
+import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
@@ -59,6 +59,39 @@ type MenuItemInsert = {
 type UploadMenuImageResult =
   | { ok: true; publicUrl: string; message: string }
   | { ok: false; error: string };
+
+async function getOfferActionContext(formData: FormData) {
+  const requestedRestaurantId = stringValue(formData, "restaurant_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return null;
+  }
+
+  if (requestedRestaurantId) {
+    await requireSuperAdmin();
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("*")
+      .eq("id", requestedRestaurantId)
+      .maybeSingle();
+
+    return restaurant ? { restaurant, supabase } : null;
+  }
+
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  return { restaurant: session.restaurant, supabase };
+}
+
+function uaeDateBoundary(value: string, endOfDay = false) {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(
+    `${value}T${endOfDay ? "23:59:59" : "00:00:00"}+04:00`
+  ).toISOString();
+}
 
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -236,8 +269,12 @@ export async function createOrderAction(
     };
   }
 
-  const menu = await getMenu(restaurant.id);
+  const [menu, offers] = await Promise.all([
+    getMenu(restaurant.id),
+    getMenuOffers(restaurant.id)
+  ]);
   const menuItems = new Map(menu.items.map((item) => [item.id, item]));
+  const activeOffers = new Map(offers.map((offer) => [offer.id, offer]));
   const verifiedItems: CartLine[] = [];
 
   for (const cartItem of items) {
@@ -250,11 +287,21 @@ export async function createOrderAction(
       };
     }
 
+    const offer = cartItem.offer_id ? activeOffers.get(cartItem.offer_id) : null;
+
+    if (cartItem.offer_id && (!offer || offer.menu_item_id !== menuItem.id)) {
+      return {
+        ok: false,
+        error: `${menuItem.name}'s offer is no longer available. Please review your cart.`
+      };
+    }
+
     verifiedItems.push({
       item_id: menuItem.id,
+      offer_id: offer?.id ?? null,
       name: menuItem.name,
       name_ar: menuItem.name_ar ?? null,
-      price: menuItem.price,
+      price: offer ? Number(offer.promotional_price) : menuItem.price,
       quantity: Math.max(1, Math.floor(cartItem.quantity))
     });
   }
@@ -869,6 +916,96 @@ export async function importMenuRowsAction(formData: FormData): Promise<{ ok: bo
   revalidateMenuPaths(restaurant);
 
   return { ok: true, message: `Imported ${itemsToInsert.length} menu items.` };
+}
+
+export async function addMenuOfferAction(formData: FormData) {
+  const context = await getOfferActionContext(formData);
+
+  if (!context) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const menuItemId = stringValue(formData, "menu_item_id");
+  const title = limitedStringValue(formData, "title", 120);
+  const promotionalPrice = Number(stringValue(formData, "promotional_price"));
+  const { data: menuItem, error: itemError } = await supabase
+    .from("menu_items")
+    .select("id,price")
+    .eq("id", menuItemId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+
+  databaseFailure("Offer item lookup", itemError);
+
+  if (
+    !title ||
+    !menuItem ||
+    !Number.isFinite(promotionalPrice) ||
+    promotionalPrice < 0 ||
+    promotionalPrice >= Number(menuItem.price)
+  ) {
+    throw new Error("Offer price must be lower than the selected menu item price.");
+  }
+
+  const { count } = await supabase
+    .from("menu_offers")
+    .select("id", { count: "exact", head: true })
+    .eq("restaurant_id", restaurant.id);
+  const { error } = await supabase.from("menu_offers").insert({
+    restaurant_id: restaurant.id,
+    menu_item_id: menuItemId,
+    title,
+    title_ar: limitedStringValue(formData, "title_ar", 120) || null,
+    description: limitedStringValue(formData, "description", 300) || null,
+    description_ar: limitedStringValue(formData, "description_ar", 300) || null,
+    promotional_price: promotionalPrice,
+    starts_at: uaeDateBoundary(stringValue(formData, "starts_on")),
+    ends_at: uaeDateBoundary(stringValue(formData, "ends_on"), true),
+    display_order: count ?? 0,
+    is_active: formData.get("is_active") === "on"
+  });
+  databaseFailure("Offer creation", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function toggleMenuOfferAction(formData: FormData) {
+  const context = await getOfferActionContext(formData);
+  const offerId = stringValue(formData, "offer_id");
+
+  if (!context || !offerId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { error } = await supabase
+    .from("menu_offers")
+    .update({ is_active: stringValue(formData, "is_active") === "true" })
+    .eq("id", offerId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Offer availability update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function deleteMenuOfferAction(formData: FormData) {
+  const context = await getOfferActionContext(formData);
+  const offerId = stringValue(formData, "offer_id");
+
+  if (!context || !offerId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { error } = await supabase
+    .from("menu_offers")
+    .delete()
+    .eq("id", offerId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Offer deletion", error);
+
+  revalidateMenuPaths(restaurant);
 }
 
 export async function updateRestaurantSettingsAction(formData: FormData) {

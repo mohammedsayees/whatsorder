@@ -6,6 +6,7 @@ import type {
   Customer,
   MenuCategory,
   MenuItem,
+  MenuOffer,
   OnboardingTask,
   Order,
   Restaurant,
@@ -17,6 +18,7 @@ type RestaurantDetail = {
   onboardingTasks: OnboardingTask[];
   categories: MenuCategory[];
   items: MenuItem[];
+  offers: MenuOffer[];
   orders: Order[];
   customers: Customer[];
   ownerMembership: {
@@ -115,6 +117,7 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     { data: onboardingTasks },
     { data: categories },
     { data: items },
+    { data: offers },
     { data: orders },
     { data: customers },
     { data: teamMemberships }
@@ -131,6 +134,12 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
       .eq("restaurant_id", id)
       .order("display_order"),
     supabase.from("menu_items").select("*").eq("restaurant_id", id).order("created_at"),
+    supabase
+      .from("menu_offers")
+      .select("*")
+      .eq("restaurant_id", id)
+      .order("display_order")
+      .order("created_at"),
     supabase.from("orders").select("*").eq("restaurant_id", id).order("created_at", {
       ascending: false
     }),
@@ -177,6 +186,10 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     onboardingTasks: restaurantTasks,
     categories: (categories ?? []) as MenuCategory[],
     items: (items ?? []) as MenuItem[],
+    offers: (offers ?? []).map((offer) => ({
+      ...offer,
+      promotional_price: Number(offer.promotional_price)
+    })) as MenuOffer[],
     orders: restaurantOrders,
     customers: (customers ?? []) as Customer[],
     ownerMembership,

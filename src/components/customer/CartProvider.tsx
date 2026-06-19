@@ -8,7 +8,7 @@ import {
   useMemo,
   useState
 } from "react";
-import type { CartLine, MenuItem } from "@/lib/types";
+import type { CartLine, MenuItem, MenuOffer } from "@/lib/types";
 
 type CartContextValue = {
   lines: CartLine[];
@@ -16,6 +16,7 @@ type CartContextValue = {
   subtotal: number;
   isReady: boolean;
   addItem: (item: MenuItem) => void;
+  addOffer: (item: MenuItem, offer: MenuOffer) => void;
   increment: (itemId: string) => void;
   decrement: (itemId: string) => void;
   clearCart: () => void;
@@ -87,6 +88,39 @@ export function CartProvider({
     });
   }, []);
 
+  const addOffer = useCallback((item: MenuItem, offer: MenuOffer) => {
+    setLines((current) => {
+      const existing = current.find((line) => line.item_id === item.id);
+
+      if (existing) {
+        return current.map((line) =>
+          line.item_id === item.id
+            ? {
+                ...line,
+                name: item.name,
+                name_ar: item.name_ar ?? null,
+                offer_id: offer.id,
+                price: offer.promotional_price,
+                quantity: line.quantity + 1
+              }
+            : line
+        );
+      }
+
+      return [
+        ...current,
+        {
+          item_id: item.id,
+          offer_id: offer.id,
+          name: item.name,
+          name_ar: item.name_ar ?? null,
+          price: offer.promotional_price,
+          quantity: 1
+        }
+      ];
+    });
+  }, []);
+
   const increment = useCallback((itemId: string) => {
     setLines((current) =>
       current.map((line) =>
@@ -114,11 +148,12 @@ export function CartProvider({
       count: lines.reduce((sum, line) => sum + line.quantity, 0),
       subtotal: lines.reduce((sum, line) => sum + line.price * line.quantity, 0),
       addItem,
+      addOffer,
       increment,
       decrement,
       clearCart
     }),
-    [addItem, clearCart, decrement, increment, isReady, lines]
+    [addItem, addOffer, clearCart, decrement, increment, isReady, lines]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

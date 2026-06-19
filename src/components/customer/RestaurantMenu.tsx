@@ -27,6 +27,7 @@ import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import type {
   MenuCategory,
   MenuItem,
+  MenuOffer,
   PublicFeedbackSummary,
   Restaurant
 } from "@/lib/types";
@@ -48,12 +49,14 @@ export function RestaurantMenu({
   categories,
   feedback,
   items,
+  offers,
   tableNumber
 }: {
   restaurant: Restaurant;
   categories: MenuCategory[];
   feedback: PublicFeedbackSummary;
   items: MenuItem[];
+  offers: MenuOffer[];
   tableNumber?: string;
 }) {
   const cart = useCart();
@@ -80,8 +83,8 @@ export function RestaurantMenu({
     [categories, items]
   );
 
-  const featuredItems = useMemo(
-    () => items.filter((item) => item.is_available && item.is_featured).slice(0, 3),
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item.id, item])),
     [items]
   );
   const visibleActiveCategoryId = categoriesWithItems.some(
@@ -102,11 +105,6 @@ export function RestaurantMenu({
     restaurantAddress?.split(",").slice(0, 2).join(" • ") ??
     t.freshCafeFavourites;
   const etaText = "25-35 min";
-  const offerTitle =
-    featuredItems.length > 0
-      ? `${language === "ar" && featuredItems[0].name_ar ? featuredItems[0].name_ar : featuredItems[0].name} ${t.trendingToday}`
-      : t.offerFallback;
-
   useEffect(() => {
     if (!categoriesWithItems.length) {
       return;
@@ -320,15 +318,92 @@ export function RestaurantMenu({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-linen p-3">
-                <p className="text-sm font-bold text-ink">{offerTitle}</p>
-                <button className="mt-1 text-xs font-semibold text-leaf" type="button">
-                  {t.moreInfo}
-                </button>
-              </div>
             </div>
           </div>
         </section>
+
+        {offers.length > 0 ? (
+          <section className="mt-5 px-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-leaf">
+                  {t.specialOffers}
+                </p>
+                <h2 className="mt-1 text-xl font-black text-ink">{t.offersForYou}</h2>
+              </div>
+              <p className="text-xs font-semibold text-stone-400">{t.swipeToExplore}</p>
+            </div>
+            <div className="no-scrollbar -mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
+              {offers.map((offer) => {
+                const item = itemsById.get(offer.menu_item_id);
+
+                if (!item?.is_available) {
+                  return null;
+                }
+
+                const title =
+                  language === "ar" && offer.title_ar ? offer.title_ar : offer.title;
+                const description =
+                  language === "ar" && offer.description_ar
+                    ? offer.description_ar
+                    : offer.description;
+                const itemName =
+                  language === "ar" && item.name_ar ? item.name_ar : item.name;
+
+                return (
+                  <article
+                    className="w-[82%] shrink-0 snap-start overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm sm:w-[48%]"
+                    key={offer.id}
+                  >
+                    <div className="relative h-36 bg-linen">
+                      {item.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          alt={title}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          src={item.image_url}
+                        />
+                      ) : (
+                        <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.28),_transparent_48%),linear-gradient(135deg,#f7f4ec,#e7f6ee)] px-5 text-center text-lg font-black text-ink">
+                          {itemName}
+                        </div>
+                      )}
+                      <span className="absolute left-3 top-3 rounded-full bg-rose-600 px-3 py-1 text-xs font-black text-white shadow-sm">
+                        {t.offer}
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="text-lg font-black text-ink">{title}</h3>
+                      <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-stone-500">
+                        {description || itemName}
+                      </p>
+                      <div className="mt-3 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold text-stone-400 line-through">
+                            {formatAED(item.price)}
+                          </p>
+                          <p className="text-xl font-black text-leaf">
+                            {formatAED(offer.promotional_price)}
+                          </p>
+                        </div>
+                        <button
+                          aria-label={`${t.add} ${title}`}
+                          className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
+                          onClick={() => cart.addOffer(item, offer)}
+                          type="button"
+                        >
+                          <Plus size={17} />
+                          {t.add}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         <section className="sticky top-0 z-20 mt-4 border-y border-stone-200/80 bg-white/95 backdrop-blur">
           <div className="flex items-center gap-3 px-4 py-3">
