@@ -9,6 +9,7 @@ import {
   Users
 } from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
+import { NewOrderAlertsProvider } from "@/components/admin/NewOrderAlerts";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 
 const navItems = [
@@ -22,9 +23,13 @@ const navItems = [
 
 export function AdminShell({
   children,
+  initialNewOrderCount,
+  realtimeAccessToken,
   session
 }: {
   children: React.ReactNode;
+  initialNewOrderCount: number;
+  realtimeAccessToken: string | null;
   session: RestaurantAdminSession;
 }) {
   return (
@@ -61,7 +66,15 @@ export function AdminShell({
           </button>
         </form>
       </aside>
-      <div className="pb-24 lg:pb-0 lg:pl-64">{children}</div>
+      <div className="pb-24 lg:pb-0 lg:pl-64">
+        <NewOrderAlertsProvider
+          initialNewOrderCount={initialNewOrderCount}
+          realtimeAccessToken={realtimeAccessToken}
+          restaurantId={session.restaurantId}
+        >
+          {children}
+        </NewOrderAlertsProvider>
+      </div>
     </div>
   );
 }

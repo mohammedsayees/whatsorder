@@ -109,6 +109,26 @@ export async function getOrders(restaurantId: string): Promise<Order[]> {
   return demoOrders.filter((order) => order.restaurant_id === restaurantId);
 }
 
+export async function getNewOrderCount(restaurantId: string): Promise<number> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { count, error } = await supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "New");
+
+    if (!error) {
+      return count ?? 0;
+    }
+  }
+
+  return demoOrders.filter(
+    (order) => order.restaurant_id === restaurantId && order.status === "New"
+  ).length;
+}
+
 export async function getCustomers(restaurantId: string): Promise<Customer[]> {
   const supabase = getSupabaseAdmin();
 
