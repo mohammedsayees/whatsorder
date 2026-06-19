@@ -1,7 +1,24 @@
+import { cookies } from "next/headers";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { accessTokenCookieName } from "@/lib/auth-cookies";
+import { getNewOrderCount } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireRestaurantAdmin();
-  return <AdminShell session={session}>{children}</AdminShell>;
+  const [cookieStore, initialNewOrderCount] = await Promise.all([
+    cookies(),
+    getNewOrderCount(session.restaurantId)
+  ]);
+  const realtimeAccessToken = cookieStore.get(accessTokenCookieName)?.value ?? null;
+
+  return (
+    <AdminShell
+      initialNewOrderCount={initialNewOrderCount}
+      realtimeAccessToken={realtimeAccessToken}
+      session={session}
+    >
+      {children}
+    </AdminShell>
+  );
 }
