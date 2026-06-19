@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getUaeMonthStartIso } from "@/lib/date-time";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type {
   Customer,
@@ -186,9 +187,7 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
 export async function getSuperAdminDashboardData() {
   const restaurants = await getSuperAdminRestaurants();
   const supabase = getSupabaseAdmin();
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const monthStartIso = getUaeMonthStartIso();
 
   let ordersThisMonth = 0;
   let totalCustomers = restaurants.reduce((sum, restaurant) => sum + restaurant.customers_count, 0);
@@ -198,7 +197,7 @@ export async function getSuperAdminDashboardData() {
       supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
-        .gte("created_at", monthStart.toISOString()),
+        .gte("created_at", monthStartIso),
       supabase.from("customers").select("id", { count: "exact", head: true })
     ]);
 

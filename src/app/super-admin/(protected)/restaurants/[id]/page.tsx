@@ -25,6 +25,7 @@ import { RevokeTeamAccessButton } from "@/components/super-admin/RevokeTeamAcces
 import { MenuManager } from "@/components/admin/MenuManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
+import { formatUaeShortDateTime } from "@/lib/date-time";
 import { getPublicAppUrl, getSuperAdminRestaurant } from "@/lib/super-admin-data";
 
 const tabs = [
@@ -45,10 +46,7 @@ function formatDate(value: string | null | undefined) {
     return "Not available";
   }
 
-  return new Intl.DateTimeFormat("en-AE", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
+  return formatUaeShortDateTime(value);
 }
 
 export default async function SuperAdminRestaurantDetailPage({

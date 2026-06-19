@@ -1,6 +1,7 @@
 import { MapPin } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
+import { formatUaeDate, formatUaeDateTime } from "@/lib/date-time";
 import { getCustomers, getOrders } from "@/lib/data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -56,7 +57,7 @@ export default async function AdminCustomersPage() {
                       <p className="text-stone-500">Last order</p>
                       <p className="font-bold">
                         {customer.last_order_at
-                          ? new Date(customer.last_order_at).toLocaleDateString("en-AE")
+                          ? formatUaeDate(customer.last_order_at)
                           : "Not recorded"}
                       </p>
                     </div>
@@ -101,7 +102,7 @@ export default async function AdminCustomersPage() {
                             <span className="font-black">{formatAED(order.total)}</span>
                           </div>
                           <p className="mt-2 text-stone-500">
-                            {new Date(order.created_at).toLocaleString("en-AE")}
+                            {formatUaeDateTime(order.created_at)}
                           </p>
                           <p className="mt-2 text-stone-700">
                             {order.items.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
