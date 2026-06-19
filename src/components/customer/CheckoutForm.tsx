@@ -12,7 +12,8 @@ import {
   MessageCircle,
   Send,
   ShoppingBag,
-  Truck
+  Truck,
+  Utensils
 } from "lucide-react";
 import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
@@ -41,7 +42,13 @@ function isMobileWhatsAppHandoff() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
+export function CheckoutForm({
+  initialTableNumber = "",
+  restaurant
+}: {
+  initialTableNumber?: string;
+  restaurant: Restaurant;
+}) {
   const router = useRouter();
   const cart = useCart();
   const { language, setLanguage } = useCustomerLanguage();
@@ -50,10 +57,13 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   const availableFulfilmentTypes: FulfilmentType[] = [
     ...(restaurant.delivery_enabled !== false ? (["delivery"] as const) : []),
     ...(restaurant.pickup_enabled === true ? (["takeaway"] as const) : []),
-    ...(restaurant.car_pickup_enabled === true ? (["car_pickup"] as const) : [])
+    ...(restaurant.car_pickup_enabled === true ? (["car_pickup"] as const) : []),
+    ...(restaurant.dine_in_enabled === true ? (["dine_in"] as const) : [])
   ];
   const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(
-    availableFulfilmentTypes[0] ?? "delivery"
+    initialTableNumber && restaurant.dine_in_enabled === true
+      ? "dine_in"
+      : availableFulfilmentTypes[0] ?? "delivery"
   );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +244,9 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                     ? { icon: Truck, label: t.delivery }
                     : type === "takeaway"
                       ? { icon: ShoppingBag, label: t.takeaway }
-                      : { icon: CarFront, label: t.carPickup };
+                      : type === "car_pickup"
+                        ? { icon: CarFront, label: t.carPickup }
+                        : { icon: Utensils, label: t.dineIn };
                 const Icon = option.icon;
                 const selected = fulfilmentType === type;
 
@@ -371,7 +383,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 </div>
               </div>
             </section>
-          ) : (
+          ) : fulfilmentType === "car_pickup" ? (
             <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex items-start gap-3">
                 <CarFront className="mt-0.5 text-leaf" size={21} />
@@ -402,6 +414,27 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                   />
                 </label>
               </div>
+            </section>
+          ) : (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <Utensils className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.dineIn}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.dineInHelp}</p>
+                </div>
+              </div>
+              <label className="mt-4 block">
+                <span className="text-sm font-bold">{t.tableNumber}</span>
+                <input
+                  className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={initialTableNumber}
+                  maxLength={40}
+                  name="table_number"
+                  placeholder={t.tableNumberPlaceholder}
+                  required
+                />
+              </label>
             </section>
           )}
           <label className="block">

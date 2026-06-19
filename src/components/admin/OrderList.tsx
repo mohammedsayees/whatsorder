@@ -3,12 +3,13 @@ import { formatAED } from "@/lib/currency";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
-import { CarFront, Gift, MapPin, ShoppingBag, Truck } from "lucide-react";
+import { CarFront, Gift, MapPin, ShoppingBag, Truck, Utensils } from "lucide-react";
 
 const statuses: OrderStatus[] = [
   "New",
   "Accepted",
   "Preparing",
+  "Ready to Serve",
   "Out for Delivery",
   "Completed",
   "Cancelled"
@@ -32,16 +33,26 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   icon: ShoppingBag,
                   className: "bg-amber-50 text-amber-800"
                 }
-              : {
+              : fulfilmentType === "car_pickup"
+                ? {
                   label: "Car Pickup",
                   icon: CarFront,
                   className: "bg-violet-50 text-violet-700"
-                };
+                  }
+                : {
+                    label: "Dine In",
+                    icon: Utensils,
+                    className: "bg-emerald-50 text-emerald-700"
+                  };
         const FulfilmentIcon = fulfilment.icon;
         const availableStatuses =
           fulfilmentType === "delivery"
-            ? statuses
-            : statuses.filter((status) => status !== "Out for Delivery");
+            ? statuses.filter((status) => status !== "Ready to Serve")
+            : fulfilmentType === "dine_in"
+              ? statuses.filter((status) => status !== "Out for Delivery")
+              : statuses.filter(
+                  (status) => status !== "Out for Delivery" && status !== "Ready to Serve"
+                );
 
         return (
           <article className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={order.id}>
@@ -110,6 +121,12 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   </p>
                   <p className="mt-1">
                     Car: {order.car_description || "No colour/model provided"}
+                  </p>
+                </div>
+              ) : fulfilmentType === "dine_in" ? (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
+                  <p className="text-base font-black">
+                    Table: {order.table_number || "Not provided"}
                   </p>
                 </div>
               ) : null}

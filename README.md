@@ -75,6 +75,7 @@ supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
 supabase/customer_feedback_migration.sql
+supabase/dine_in_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
@@ -134,7 +135,7 @@ Included:
 - Multi-restaurant data model
 - Public restaurant menu route
 - Cart and checkout
-- Delivery, takeaway, and Bring to My Car fulfilment
+- Delivery, takeaway, Bring to My Car, and table-aware Dine In fulfilment
 - Verified completed-order feedback with restaurant moderation
 - Optional customer location capture
 - Restaurant-side customer history

@@ -141,6 +141,7 @@ export function RestaurantForm({
                 "Bring to My Car enabled",
                 restaurant?.car_pickup_enabled ?? false
               ],
+              ["dine_in_enabled", "Dine In enabled", restaurant?.dine_in_enabled ?? false],
               ["delivery_enabled", "Delivery enabled", restaurant?.delivery_enabled ?? true],
               [
                 "scheduled_orders_enabled",

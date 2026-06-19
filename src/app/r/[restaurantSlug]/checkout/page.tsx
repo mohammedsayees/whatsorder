@@ -4,11 +4,14 @@ import { CheckoutForm } from "@/components/customer/CheckoutForm";
 import { getRestaurantBySlug } from "@/lib/data";
 
 export default async function CheckoutPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ restaurantSlug: string }>;
+  searchParams: Promise<{ table?: string }>;
 }) {
-  const { restaurantSlug } = await params;
+  const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
+  const tableNumber = String(query.table ?? "").trim().slice(0, 40);
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
@@ -17,7 +20,7 @@ export default async function CheckoutPage({
 
   return (
     <CartProvider restaurantSlug={restaurant.slug}>
-      <CheckoutForm restaurant={restaurant} />
+      <CheckoutForm initialTableNumber={tableNumber} restaurant={restaurant} />
     </CartProvider>
   );
 }

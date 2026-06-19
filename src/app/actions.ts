@@ -29,6 +29,7 @@ const statusValues: OrderStatus[] = [
   "New",
   "Accepted",
   "Preparing",
+  "Ready to Serve",
   "Out for Delivery",
   "Completed",
   "Cancelled"
@@ -266,6 +267,7 @@ export async function createOrderAction(
   ) as FulfilmentType;
   const carPlateNumber = limitedStringValue(formData, "car_plate_number", 40);
   const carDescription = limitedStringValue(formData, "car_description", 120);
+  const tableNumber = limitedStringValue(formData, "table_number", 40);
   const deliveryArea = limitedStringValue(formData, "delivery_area", 120);
   const deliveryAddress = limitedStringValue(formData, "delivery_address", 500);
   const deliveryLandmark = limitedStringValue(formData, "delivery_landmark", 250);
@@ -298,7 +300,8 @@ export async function createOrderAction(
   const fulfilmentEnabled =
     (fulfilmentType === "delivery" && restaurant.delivery_enabled !== false) ||
     (fulfilmentType === "takeaway" && restaurant.pickup_enabled === true) ||
-    (fulfilmentType === "car_pickup" && restaurant.car_pickup_enabled === true);
+    (fulfilmentType === "car_pickup" && restaurant.car_pickup_enabled === true) ||
+    (fulfilmentType === "dine_in" && restaurant.dine_in_enabled === true);
 
   if (!fulfilmentEnabled) {
     return { ok: false, error: "Please choose an available order type." };
@@ -310,6 +313,10 @@ export async function createOrderAction(
 
   if (fulfilmentType === "car_pickup" && !carPlateNumber) {
     return { ok: false, error: "Please enter your car plate number." };
+  }
+
+  if (fulfilmentType === "dine_in" && !tableNumber) {
+    return { ok: false, error: "Please enter your table number." };
   }
 
   if (!["Cash on Delivery", "Card on Delivery"].includes(paymentMethod)) {
@@ -339,6 +346,7 @@ export async function createOrderAction(
     fulfilmentType,
     carPlateNumber,
     carDescription,
+    tableNumber,
     deliveryArea,
     deliveryAddress,
     deliveryLandmark,
@@ -356,13 +364,14 @@ export async function createOrderAction(
   let orderId = `WO-${Date.now()}`;
 
   if (supabase) {
-    const { data, error } = await supabase.rpc("create_order_with_customer", {
+    const { data, error } = await supabase.rpc("create_order_with_customer_v2", {
       target_restaurant_id: restaurant.id,
       order_customer_name: customerName,
       order_customer_phone: customerPhone,
       order_fulfilment_type: fulfilmentType,
       order_car_plate_number: carPlateNumber || null,
       order_car_description: carDescription || null,
+      order_table_number: tableNumber || null,
       order_delivery_area: fulfilmentType === "delivery" ? deliveryArea : null,
       order_delivery_address: fulfilmentType === "delivery" ? deliveryAddress : null,
       order_delivery_latitude: fulfilmentType === "delivery" ? deliveryLatitude : null,
@@ -849,6 +858,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       delivery_enabled: formData.get("delivery_enabled") === "on",
       pickup_enabled: formData.get("pickup_enabled") === "on",
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
+      dine_in_enabled: formData.get("dine_in_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       is_active: formData.get("is_active") === "on"
     })
