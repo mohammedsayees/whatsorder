@@ -1,4 +1,5 @@
 import { updateRestaurantSettingsAction } from "@/app/actions";
+import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import type { Restaurant } from "@/lib/types";
 
 export function SettingsForm({
@@ -11,6 +12,22 @@ export function SettingsForm({
   return (
     <form action={updateRestaurantSettingsAction} className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <h2 className="text-lg font-black">Brand images</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Upload directly from this device. Images are saved to this restaurant only.
+          </p>
+        </div>
+        <BrandImageUploader
+          canWrite={canWrite}
+          currentUrl={restaurant.logo_url}
+          kind="logo"
+        />
+        <BrandImageUploader
+          canWrite={canWrite}
+          currentUrl={restaurant.cover_image_url}
+          kind="cover"
+        />
         <label className="block sm:col-span-2">
           <span className="text-sm font-bold">Restaurant name</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.name} disabled={!canWrite} name="name" required />

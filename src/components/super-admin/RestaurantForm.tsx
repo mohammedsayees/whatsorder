@@ -1,3 +1,4 @@
+import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import type { Restaurant, RestaurantPlan, RestaurantStatus } from "@/lib/types";
 
 const statuses: RestaurantStatus[] = [
@@ -119,19 +120,18 @@ export function RestaurantForm({
         <section className="border-b border-stone-200 pb-6">
           <h2 className="text-lg font-black">Brand and fulfilment</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm font-bold">Logo URL</span>
-              <input className={inputClass} defaultValue={restaurant?.logo_url ?? ""} name="logo_url" type="url" />
-            </label>
-            <label className="block">
-              <span className="text-sm font-bold">Cover image URL</span>
-              <input
-                className={inputClass}
-                defaultValue={restaurant?.cover_image_url ?? ""}
-                name="cover_image_url"
-                type="url"
-              />
-            </label>
+            <BrandImageUploader
+              canWrite
+              currentUrl={restaurant?.logo_url}
+              kind="logo"
+              restaurantId={restaurant?.id}
+            />
+            <BrandImageUploader
+              canWrite
+              currentUrl={restaurant?.cover_image_url}
+              kind="cover"
+              restaurantId={restaurant?.id}
+            />
           </div>
           <div className="mt-4 flex flex-wrap gap-5">
             {[
