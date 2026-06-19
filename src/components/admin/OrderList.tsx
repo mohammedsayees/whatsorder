@@ -127,6 +127,7 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                 ) : null}
                 <OrderStatusActions
                   fulfilmentType={fulfilmentType}
+                  key={`${order.id}-${order.status}`}
                   orderId={order.id}
                   status={order.status}
                 />
