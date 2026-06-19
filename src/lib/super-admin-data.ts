@@ -188,7 +188,8 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     items: (items ?? []) as MenuItem[],
     offers: (offers ?? []).map((offer) => ({
       ...offer,
-      promotional_price: Number(offer.promotional_price)
+      promotional_price: Number(offer.promotional_price),
+      max_quantity_per_order: Number(offer.max_quantity_per_order ?? 1)
     })) as MenuOffer[],
     orders: restaurantOrders,
     customers: (customers ?? []) as Customer[],

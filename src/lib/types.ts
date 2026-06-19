@@ -91,6 +91,7 @@ export type MenuOffer = {
   description: string | null;
   description_ar: string | null;
   promotional_price: number;
+  max_quantity_per_order: number;
   starts_at: string | null;
   ends_at: string | null;
   display_order: number;
@@ -102,6 +103,7 @@ export type MenuOffer = {
 export type CartLine = {
   item_id: string;
   offer_id?: string | null;
+  offer_max_quantity?: number | null;
   name: string;
   name_ar?: string | null;
   price: number;

@@ -10,15 +10,37 @@ create table if not exists public.menu_offers (
   description text,
   description_ar text,
   promotional_price numeric(10, 2) not null check (promotional_price >= 0),
+  max_quantity_per_order integer not null default 1
+    constraint menu_offers_max_quantity_check
+    check (max_quantity_per_order between 1 and 25),
   starts_at timestamptz,
   ends_at timestamptz,
   display_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (restaurant_id, menu_item_id),
   check (ends_at is null or starts_at is null or ends_at >= starts_at)
 );
+
+alter table public.menu_offers
+add column if not exists max_quantity_per_order integer not null default 1;
+
+do $migration$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'menu_offers_max_quantity_check'
+  ) then
+    alter table public.menu_offers
+    add constraint menu_offers_max_quantity_check
+    check (max_quantity_per_order between 1 and 25);
+  end if;
+end;
+$migration$;
+
+create unique index if not exists idx_menu_offers_restaurant_item_unique
+on public.menu_offers(restaurant_id, menu_item_id);
 
 create index if not exists idx_menu_offers_restaurant_active_order
 on public.menu_offers(restaurant_id, is_active, display_order);

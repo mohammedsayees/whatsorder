@@ -8,7 +8,11 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
 import { isValidOrderStatusTransition } from "@/lib/order-status";
-import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
+import {
+  isOfferQuantityAllowed,
+  isValidCustomerPhone,
+  parseAndValidateCart
+} from "@/lib/security";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -296,9 +300,20 @@ export async function createOrderAction(
       };
     }
 
+    if (
+      offer &&
+      !isOfferQuantityAllowed(cartItem.quantity, offer.max_quantity_per_order)
+    ) {
+      return {
+        ok: false,
+        error: `${offer.title} is limited to ${offer.max_quantity_per_order} per order.`
+      };
+    }
+
     verifiedItems.push({
       item_id: menuItem.id,
       offer_id: offer?.id ?? null,
+      offer_max_quantity: offer?.max_quantity_per_order ?? null,
       name: menuItem.name,
       name_ar: menuItem.name_ar ?? null,
       price: offer ? Number(offer.promotional_price) : menuItem.price,
@@ -929,6 +944,7 @@ export async function addMenuOfferAction(formData: FormData) {
   const menuItemId = stringValue(formData, "menu_item_id");
   const title = limitedStringValue(formData, "title", 120);
   const promotionalPrice = Number(stringValue(formData, "promotional_price"));
+  const maximumQuantity = Number(stringValue(formData, "max_quantity_per_order") || 1);
   const { data: menuItem, error: itemError } = await supabase
     .from("menu_items")
     .select("id,price")
@@ -943,9 +959,14 @@ export async function addMenuOfferAction(formData: FormData) {
     !menuItem ||
     !Number.isFinite(promotionalPrice) ||
     promotionalPrice < 0 ||
-    promotionalPrice >= Number(menuItem.price)
+    promotionalPrice >= Number(menuItem.price) ||
+    !Number.isInteger(maximumQuantity) ||
+    maximumQuantity < 1 ||
+    maximumQuantity > 25
   ) {
-    throw new Error("Offer price must be lower than the selected menu item price.");
+    throw new Error(
+      "Offer price must be lower than the item price and maximum quantity must be between 1 and 25."
+    );
   }
 
   const { count } = await supabase
@@ -960,6 +981,7 @@ export async function addMenuOfferAction(formData: FormData) {
     description: limitedStringValue(formData, "description", 300) || null,
     description_ar: limitedStringValue(formData, "description_ar", 300) || null,
     promotional_price: promotionalPrice,
+    max_quantity_per_order: maximumQuantity,
     starts_at: uaeDateBoundary(stringValue(formData, "starts_on")),
     ends_at: uaeDateBoundary(stringValue(formData, "ends_on"), true),
     display_order: count ?? 0,
@@ -985,6 +1007,32 @@ export async function toggleMenuOfferAction(formData: FormData) {
     .eq("id", offerId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Offer availability update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function updateMenuOfferLimitAction(formData: FormData) {
+  const context = await getOfferActionContext(formData);
+  const offerId = stringValue(formData, "offer_id");
+  const maximumQuantity = Number(stringValue(formData, "max_quantity_per_order"));
+
+  if (
+    !context ||
+    !offerId ||
+    !Number.isInteger(maximumQuantity) ||
+    maximumQuantity < 1 ||
+    maximumQuantity > 25
+  ) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { error } = await supabase
+    .from("menu_offers")
+    .update({ max_quantity_per_order: maximumQuantity })
+    .eq("id", offerId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Offer quantity limit update", error);
 
   revalidateMenuPaths(restaurant);
 }

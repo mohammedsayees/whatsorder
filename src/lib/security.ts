@@ -25,6 +25,9 @@ export function parseAndValidateCart(raw: string): CartLine[] {
     .map((item) => ({
       item_id: String(item.item_id),
       ...(item.offer_id ? { offer_id: String(item.offer_id) } : {}),
+      ...(item.offer_max_quantity
+        ? { offer_max_quantity: Math.floor(Number(item.offer_max_quantity)) }
+        : {}),
       name: String(item.name),
       name_ar: item.name_ar ? String(item.name_ar) : null,
       quantity: Math.floor(Number(item.quantity)),
@@ -43,6 +46,16 @@ export function parseAndValidateCart(raw: string): CartLine[] {
 
 export function isValidCustomerPhone(phone: string) {
   return /^\+?[0-9][0-9\s()-]{5,22}$/.test(phone);
+}
+
+export function isOfferQuantityAllowed(quantity: number, maximumQuantity: number) {
+  return (
+    Number.isInteger(quantity) &&
+    Number.isInteger(maximumQuantity) &&
+    quantity > 0 &&
+    maximumQuantity > 0 &&
+    quantity <= maximumQuantity
+  );
 }
 
 export function isRestaurantAdminAccessAllowed(status?: RestaurantStatus | null) {

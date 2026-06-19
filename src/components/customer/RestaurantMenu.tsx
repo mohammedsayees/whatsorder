@@ -87,6 +87,10 @@ export function RestaurantMenu({
     () => new Map(items.map((item) => [item.id, item])),
     [items]
   );
+  const offersByItemId = useMemo(
+    () => new Map(offers.map((offer) => [offer.menu_item_id, offer])),
+    [offers]
+  );
   const visibleActiveCategoryId = categoriesWithItems.some(
     (entry) => entry.category.id === activeCategoryId
   )
@@ -349,6 +353,11 @@ export function RestaurantMenu({
                     : offer.description;
                 const itemName =
                   language === "ar" && item.name_ar ? item.name_ar : item.name;
+                const cartLine = cart.lines.find((line) => line.item_id === item.id);
+                const offerQuantity =
+                  cartLine?.offer_id === offer.id ? cartLine.quantity : 0;
+                const maximumReached =
+                  offerQuantity >= offer.max_quantity_per_order;
 
                 return (
                   <article
@@ -387,16 +396,44 @@ export function RestaurantMenu({
                             {formatAED(offer.promotional_price)}
                           </p>
                         </div>
-                        <button
-                          aria-label={`${t.add} ${title}`}
-                          className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
-                          onClick={() => cart.addOffer(item, offer)}
-                          type="button"
-                        >
-                          <Plus size={17} />
-                          {t.add}
-                        </button>
+                        {offerQuantity > 0 ? (
+                          <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
+                            <button
+                              aria-label={`${t.remove} ${title}`}
+                              className="focus-ring grid h-10 w-10 place-items-center text-stone-700"
+                              onClick={() => cart.decrement(item.id)}
+                              type="button"
+                            >
+                              <Minus size={16} />
+                            </button>
+                            <span className="w-9 text-center text-sm font-black">
+                              {offerQuantity}
+                            </span>
+                            <button
+                              aria-label={`${t.addMore} ${title}`}
+                              className="focus-ring grid h-10 w-10 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
+                              disabled={maximumReached}
+                              onClick={() => cart.incrementOffer(item.id, offer)}
+                              type="button"
+                            >
+                              <Plus size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            aria-label={`${t.add} ${title}`}
+                            className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
+                            onClick={() => cart.addOffer(item, offer)}
+                            type="button"
+                          >
+                            <Plus size={17} />
+                            {t.add}
+                          </button>
+                        )}
                       </div>
+                      <p className="mt-2 text-xs font-semibold text-stone-400">
+                        {t.offerMaximum}: {offer.max_quantity_per_order}
+                      </p>
                     </div>
                   </article>
                 );
@@ -471,6 +508,7 @@ export function RestaurantMenu({
               <div className="space-y-3">
                 {categoryItems.map((item) => {
                   const cartLine = cart.lines.find((line) => line.item_id === item.id);
+                  const activeOffer = offersByItemId.get(item.id);
                   const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
                   const itemDescription =
                     language === "ar" && item.description_ar ? item.description_ar : item.description;
@@ -500,7 +538,18 @@ export function RestaurantMenu({
 
                           <div className="mt-3 flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-base font-black text-ink">{formatAED(item.price)}</p>
+                              {activeOffer ? (
+                                <>
+                                  <p className="text-xs font-semibold text-stone-400 line-through">
+                                    {formatAED(item.price)}
+                                  </p>
+                                  <p className="text-base font-black text-leaf">
+                                    {formatAED(activeOffer.promotional_price)}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-base font-black text-ink">{formatAED(item.price)}</p>
+                              )}
                               {!item.is_available ? (
                                 <p className="mt-1 text-xs font-semibold text-rose-500">{t.unavailable}</p>
                               ) : null}
@@ -520,7 +569,16 @@ export function RestaurantMenu({
                                 <button
                                   aria-label={`${t.addMore} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
-                                  onClick={() => cart.increment(item.id)}
+                                  disabled={
+                                    Boolean(activeOffer) &&
+                                    cartLine.quantity >=
+                                      (activeOffer?.max_quantity_per_order ?? 1)
+                                  }
+                                  onClick={() =>
+                                    activeOffer
+                                      ? cart.incrementOffer(item.id, activeOffer)
+                                      : cart.increment(item.id)
+                                  }
                                   type="button"
                                 >
                                   <Plus size={16} />
@@ -532,7 +590,9 @@ export function RestaurantMenu({
                                 className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                                 data-testid={`add-item-${item.id}`}
                                 disabled={!item.is_available}
-                                onClick={() => cart.addItem(item)}
+                                onClick={() =>
+                                  activeOffer ? cart.addOffer(item, activeOffer) : cart.addItem(item)
+                                }
                                 type="button"
                               >
                                 <Plus size={18} />

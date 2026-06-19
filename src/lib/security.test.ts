@@ -3,6 +3,7 @@ import {
   classifyMembershipCount,
   hasValidInvitationMetadata,
   isRestaurantAdminAccessAllowed,
+  isOfferQuantityAllowed,
   isValidCustomerPhone,
   parseAndValidateCart
 } from "./security";
@@ -45,6 +46,7 @@ describe("public order input security", () => {
         {
           item_id: "item-1",
           offer_id: "offer-1",
+          offer_max_quantity: 2,
           name: "Tea offer",
           price: 1,
           quantity: 1
@@ -53,6 +55,13 @@ describe("public order input security", () => {
     );
 
     expect(cart[0].offer_id).toBe("offer-1");
+    expect(cart[0].offer_max_quantity).toBe(2);
+  });
+
+  it("enforces promotional quantity limits", () => {
+    expect(isOfferQuantityAllowed(1, 1)).toBe(true);
+    expect(isOfferQuantityAllowed(2, 3)).toBe(true);
+    expect(isOfferQuantityAllowed(4, 3)).toBe(false);
   });
 
   it("rejects oversized or partially invalid carts", () => {
