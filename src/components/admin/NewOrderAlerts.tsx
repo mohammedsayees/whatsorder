@@ -165,7 +165,7 @@ export function NewOrderAlertsProvider({
       setSoundEnabled(storedSoundEnabled);
       setRepeatEnabled(storageBoolean(repeatStorageKey));
     }, 0);
-    audioRef.current = new Audio("/sounds/new-order.mp3");
+    audioRef.current = new Audio("/sounds/new-order.wav");
     audioRef.current.preload = "auto";
 
     return () => {

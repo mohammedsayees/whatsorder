@@ -72,6 +72,24 @@ export function SettingsForm({
             ))}
           </div>
         </fieldset>
+        <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
+          <input
+            className="mt-1"
+            defaultChecked={restaurant.accepting_orders !== false}
+            disabled={!canWrite}
+            name="accepting_orders"
+            type="checkbox"
+          />
+          <span>
+            <span className="block text-sm font-black text-amber-950">
+              Accept new customer orders
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-amber-800">
+              Turn this off temporarily when the kitchen is closed or unable to accept orders.
+              The menu remains visible, but customers cannot add or submit items.
+            </span>
+          </span>
+        </label>
         <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">
           <input
             className="mt-1"

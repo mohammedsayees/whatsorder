@@ -18,6 +18,7 @@ export const demoRestaurant: Restaurant = {
   car_pickup_enabled: true,
   dine_in_enabled: true,
   delivery_enabled: true,
+  accepting_orders: true,
   is_active: true,
   created_at: now
 };

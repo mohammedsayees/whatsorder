@@ -118,7 +118,10 @@ export function CartProvider({
                 offer_id: offer.id,
                 offer_max_quantity: offer.max_quantity_per_order,
                 price: offer.promotional_price,
-                quantity: Math.min(line.quantity + 1, offer.max_quantity_per_order)
+                quantity:
+                  line.offer_id === offer.id
+                    ? Math.min(line.quantity + 1, offer.max_quantity_per_order)
+                    : 1
               }
             : line
         );

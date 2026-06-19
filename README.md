@@ -81,6 +81,7 @@ supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
 supabase/new_order_realtime_migration.sql
 supabase/menu_offers_migration.sql
+supabase/pilot_launch_hardening_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
