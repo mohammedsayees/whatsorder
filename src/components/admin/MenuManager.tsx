@@ -54,6 +54,7 @@ Burgers,Zinger Burger,Crispy chicken burger,12,true,true
 Juices,Fresh Lime Juice,Chilled fresh lime juice,8,true,false
 `;
 const BEST_SELLERS_FILTER = "best-sellers";
+const MISSING_IMAGES_FILTER = "missing-images";
 
 const sampleTemplates: Record<TemplateName, Omit<ImportRow, "id" | "errors">[]> = {
   Cafeteria: [
@@ -204,6 +205,8 @@ export function MenuManager({
     () => [...categories].sort((first, second) => first.display_order - second.display_order),
     [categories]
   );
+  const uploadedImageCount = items.filter((item) => item.image_url).length;
+  const missingImageCount = items.length - uploadedImageCount;
 
   const visibleItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -213,7 +216,9 @@ export function MenuManager({
         activeCategory === "all" ||
         (activeCategory === BEST_SELLERS_FILTER
           ? item.is_featured
-          : item.category_id === activeCategory);
+          : activeCategory === MISSING_IMAGES_FILTER
+            ? !item.image_url
+            : item.category_id === activeCategory);
       const matchesSearch = !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch);
       return matchesCategory && matchesSearch;
     });
@@ -224,9 +229,11 @@ export function MenuManager({
       { label: "Total categories", value: categories.length },
       { label: "Total items", value: items.length },
       { label: "Available items", value: items.filter((item) => item.is_available).length },
-      { label: "Best Sellers", value: items.filter((item) => item.is_featured).length }
+      { label: "Best Sellers", value: items.filter((item) => item.is_featured).length },
+      { label: "Images uploaded", value: `${uploadedImageCount}/${items.length}` },
+      { label: "Missing images", value: missingImageCount }
     ],
-    [categories.length, items]
+    [categories.length, items, missingImageCount, uploadedImageCount]
   );
 
   function downloadTemplate() {
@@ -314,7 +321,7 @@ export function MenuManager({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {summary.map((card) => (
           <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={card.label}>
             <p className="text-sm font-bold text-stone-500">{card.label}</p>
@@ -458,6 +465,27 @@ export function MenuManager({
             >
               Best Sellers
             </button>
+            <button
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm font-black ${
+                activeCategory === MISSING_IMAGES_FILTER
+                  ? "bg-amber-500 text-white"
+                  : "bg-amber-50 text-amber-800"
+              }`}
+              onClick={() => setActiveCategory(MISSING_IMAGES_FILTER)}
+              type="button"
+            >
+              <ImageIcon size={15} />
+              Images Missing
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  activeCategory === MISSING_IMAGES_FILTER
+                    ? "bg-white/20"
+                    : "bg-white"
+                }`}
+              >
+                {missingImageCount}
+              </span>
+            </button>
             {sortedCategories.map((category) => (
               <button
                 className={`shrink-0 rounded-full px-3 py-2 text-sm font-black ${activeCategory === category.id ? "bg-ink text-white" : "bg-stone-100 text-stone-700"}`}
@@ -474,10 +502,16 @@ export function MenuManager({
         {visibleItems.length === 0 ? (
           <div className="mt-5 rounded-lg border border-dashed border-stone-300 p-8 text-center">
             <h3 className="text-lg font-black">No menu items found</h3>
-            <p className="mt-2 text-sm text-stone-500">Add an item manually, import a CSV, or start with a sample template.</p>
-            <button className="focus-ring mt-4 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white disabled:opacity-50" disabled={!canWrite} onClick={() => setAddItemOpen(true)} type="button">
-              Add first item
-            </button>
+            <p className="mt-2 text-sm text-stone-500">
+              {activeCategory === MISSING_IMAGES_FILTER
+                ? "Every product in this view has an image."
+                : "Add an item manually, import a CSV, or start with a sample template."}
+            </p>
+            {activeCategory !== MISSING_IMAGES_FILTER ? (
+              <button className="focus-ring mt-4 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white disabled:opacity-50" disabled={!canWrite} onClick={() => setAddItemOpen(true)} type="button">
+                Add first item
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="mt-5 overflow-hidden rounded-lg border border-stone-200">
@@ -491,10 +525,53 @@ export function MenuManager({
             </div>
             <div className="divide-y divide-stone-200">
               {visibleItems.map((item) => (
-                <div className="grid gap-3 px-4 py-4 lg:grid-cols-[1.4fr_1fr_120px_120px_120px_170px] lg:items-center" key={item.id}>
-                  <div>
-                    <p className="font-black">{item.name}</p>
-                    {item.description ? <p className="mt-1 line-clamp-2 text-sm text-stone-500">{item.description}</p> : null}
+                <div
+                  className={`grid gap-3 px-4 py-4 lg:grid-cols-[1.4fr_1fr_120px_120px_120px_170px] lg:items-center ${
+                    item.image_url ? "" : "bg-amber-50/35"
+                  }`}
+                  key={item.id}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <button
+                      aria-label={`Edit image for ${item.name}`}
+                      className={`focus-ring relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border ${
+                        item.image_url
+                          ? "border-stone-200 bg-linen"
+                          : "border-dashed border-amber-300 bg-amber-50 text-amber-700"
+                      }`}
+                      disabled={!canWrite}
+                      onClick={() => setEditingItem(item)}
+                      type="button"
+                    >
+                      {item.image_url ? (
+                        // Device-uploaded Supabase Storage URLs are shown without remote image config.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          src={item.image_url}
+                        />
+                      ) : (
+                        <span className="flex flex-col items-center gap-1 text-[10px] font-black">
+                          <ImageIcon size={20} />
+                          No image
+                        </span>
+                      )}
+                    </button>
+                    <div className="min-w-0">
+                      <p className="font-black">{item.name}</p>
+                      {item.description ? (
+                        <p className="mt-1 line-clamp-2 text-sm text-stone-500">
+                          {item.description}
+                        </p>
+                      ) : null}
+                      {!item.image_url ? (
+                        <p className="mt-1 text-xs font-black text-amber-700">
+                          Product image missing
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <p className="text-sm font-bold text-stone-600">{categoryName(categories, item.category_id)}</p>
                   <p className="font-black text-leaf">{formatAED(item.price)}</p>
