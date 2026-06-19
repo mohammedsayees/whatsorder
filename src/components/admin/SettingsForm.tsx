@@ -1,5 +1,6 @@
 import { updateRestaurantSettingsAction } from "@/app/actions";
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
+import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
 import type { Restaurant } from "@/lib/types";
 
 export function SettingsForm({
@@ -90,6 +91,13 @@ export function SettingsForm({
             </span>
           </span>
         </label>
+        <div className="sm:col-span-2">
+          <WeeklyHoursFields
+            canWrite={canWrite}
+            enabled={restaurant.opening_hours_enabled === true}
+            openingHours={restaurant.opening_hours}
+          />
+        </div>
         <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">
           <input
             className="mt-1"

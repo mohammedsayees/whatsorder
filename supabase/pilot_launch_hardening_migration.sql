@@ -3,7 +3,80 @@
 -- Do not rerun schema.sql afterward.
 
 alter table public.restaurants
-add column if not exists accepting_orders boolean not null default true;
+add column if not exists accepting_orders boolean not null default true,
+add column if not exists opening_hours_enabled boolean not null default false,
+add column if not exists opening_hours jsonb not null default '{
+  "monday":{"closed":false,"open":"08:00","close":"23:00"},
+  "tuesday":{"closed":false,"open":"08:00","close":"23:00"},
+  "wednesday":{"closed":false,"open":"08:00","close":"23:00"},
+  "thursday":{"closed":false,"open":"08:00","close":"23:00"},
+  "friday":{"closed":false,"open":"08:00","close":"23:00"},
+  "saturday":{"closed":false,"open":"08:00","close":"23:00"},
+  "sunday":{"closed":false,"open":"08:00","close":"23:00"}
+}'::jsonb;
+
+create or replace function public.is_restaurant_open_at(
+  schedule_enabled boolean,
+  schedule jsonb,
+  checked_at timestamptz default now()
+)
+returns boolean
+language plpgsql
+stable
+set search_path = public
+as $restaurant_open$
+declare
+  day_keys text[] := array[
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+  ];
+  local_time timestamp := checked_at at time zone 'Asia/Dubai';
+  day_index integer := extract(isodow from local_time)::integer;
+  current_minutes integer :=
+    extract(hour from local_time)::integer * 60 + extract(minute from local_time)::integer;
+  current_day jsonb;
+  previous_day jsonb;
+  opens integer;
+  closes integer;
+begin
+  if schedule_enabled is not true then
+    return true;
+  end if;
+
+  current_day := coalesce(schedule -> day_keys[day_index], '{}'::jsonb);
+  if coalesce((current_day ->> 'closed')::boolean, true) is false then
+    opens := split_part(current_day ->> 'open', ':', 1)::integer * 60
+      + split_part(current_day ->> 'open', ':', 2)::integer;
+    closes := split_part(current_day ->> 'close', ':', 1)::integer * 60
+      + split_part(current_day ->> 'close', ':', 2)::integer;
+
+    if opens = closes
+       or (closes > opens and current_minutes >= opens and current_minutes < closes)
+       or (closes < opens and current_minutes >= opens) then
+      return true;
+    end if;
+  end if;
+
+  previous_day := coalesce(
+    schedule -> day_keys[case when day_index = 1 then 7 else day_index - 1 end],
+    '{}'::jsonb
+  );
+  if coalesce((previous_day ->> 'closed')::boolean, true) is false then
+    opens := split_part(previous_day ->> 'open', ':', 1)::integer * 60
+      + split_part(previous_day ->> 'open', ':', 2)::integer;
+    closes := split_part(previous_day ->> 'close', ':', 1)::integer * 60
+      + split_part(previous_day ->> 'close', ':', 2)::integer;
+
+    if closes < opens and current_minutes < closes then
+      return true;
+    end if;
+  end if;
+
+  return false;
+exception
+  when others then
+    return false;
+end;
+$restaurant_open$;
 
 create table if not exists public.order_submission_keys (
   id uuid primary key default gen_random_uuid(),
@@ -77,6 +150,7 @@ begin
     where id = target_restaurant_id
       and is_active = true
       and accepting_orders = true
+      and public.is_restaurant_open_at(opening_hours_enabled, opening_hours)
       and status in ('live', 'trial', 'paid')
   ) then
     raise exception 'Restaurant is not accepting orders';

@@ -19,6 +19,13 @@ import {
   X
 } from "lucide-react";
 import { formatAED } from "@/lib/currency";
+import {
+  formatOpeningTime,
+  isRestaurantOpen,
+  normalizeOpeningHours,
+  weekDayLabels,
+  weekDays
+} from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -62,6 +69,13 @@ export function RestaurantMenu({
   const { language, setLanguage } = useCustomerLanguage();
   const t = customerTranslations[language];
   const direction = getTextDirection(language);
+  const scheduleOpen = isRestaurantOpen(
+    restaurant.opening_hours_enabled,
+    restaurant.opening_hours
+  );
+  const orderingAvailable =
+    restaurant.accepting_orders !== false && scheduleOpen;
+  const weeklyHours = normalizeOpeningHours(restaurant.opening_hours);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id ?? null);
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -305,6 +319,24 @@ export function RestaurantMenu({
                       <Clock3 size={13} />
                       {etaText}
                     </span>
+                    {restaurant.opening_hours_enabled ? (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${
+                          scheduleOpen
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        <Clock3 size={13} />
+                        {scheduleOpen
+                          ? language === "ar"
+                            ? "مفتوح الآن"
+                            : "Open now"
+                          : language === "ar"
+                            ? "مغلق الآن"
+                            : "Closed now"}
+                      </span>
+                    ) : null}
                     {restaurant.delivery_enabled !== false ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                         <Bike size={13} />
@@ -333,12 +365,39 @@ export function RestaurantMenu({
                 </div>
               </div>
 
-              {restaurant.accepting_orders === false ? (
+              {!orderingAvailable ? (
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
-                  {language === "ar"
-                    ? "المطعم لا يستقبل طلبات جديدة حالياً."
-                    : "This restaurant is temporarily not accepting new orders."}
+                  {restaurant.accepting_orders === false
+                    ? language === "ar"
+                      ? "المطعم لا يستقبل طلبات جديدة حالياً."
+                      : "This restaurant is temporarily not accepting new orders."
+                    : language === "ar"
+                      ? "المطعم مغلق حالياً. يرجى الطلب خلال ساعات العمل."
+                      : "The restaurant is currently closed. Please order during opening hours."}
                 </p>
+              ) : null}
+              {restaurant.opening_hours_enabled ? (
+                <details className="mt-3 rounded-2xl border border-stone-200 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-black text-stone-700">
+                    {language === "ar" ? "ساعات العمل الأسبوعية" : "Weekly opening hours"}
+                  </summary>
+                  <div className="mt-3 space-y-2 text-sm">
+                    {weekDays.map((day) => (
+                      <div className="flex justify-between gap-4" key={day}>
+                        <span className="font-bold">{weekDayLabels[day]}</span>
+                        <span className="text-stone-500">
+                          {weeklyHours[day].closed
+                            ? language === "ar"
+                              ? "مغلق"
+                              : "Closed"
+                            : `${formatOpeningTime(
+                                weeklyHours[day].open
+                              )}–${formatOpeningTime(weeklyHours[day].close)}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               ) : null}
             </div>
           </div>
@@ -451,7 +510,7 @@ export function RestaurantMenu({
                             <button
                               aria-label={`${t.addMore} ${title}`}
                               className="focus-ring grid h-10 w-10 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
-                              disabled={maximumReached || restaurant.accepting_orders === false}
+                              disabled={maximumReached || !orderingAvailable}
                               onClick={() => cart.incrementOffer(item.id, offer)}
                               type="button"
                             >
@@ -462,7 +521,7 @@ export function RestaurantMenu({
                           <button
                             aria-label={`${t.add} ${title}`}
                             className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
-                            disabled={restaurant.accepting_orders === false}
+                            disabled={!orderingAvailable}
                             onClick={() => cart.addOffer(item, offer)}
                             type="button"
                           >
@@ -610,7 +669,7 @@ export function RestaurantMenu({
                                   aria-label={`${t.addMore} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
                                   disabled={
-                                    restaurant.accepting_orders === false ||
+                                    !orderingAvailable ||
                                     (Boolean(activeOffer) &&
                                       cartLine.quantity >=
                                         (activeOffer?.max_quantity_per_order ?? 1))
@@ -631,7 +690,7 @@ export function RestaurantMenu({
                                 className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                                 data-testid={`add-item-${item.id}`}
                                 disabled={
-                                  !item.is_available || restaurant.accepting_orders === false
+                                  !item.is_available || !orderingAvailable
                                 }
                                 onClick={() =>
                                   activeOffer ? cart.addOffer(item, activeOffer) : cart.addItem(item)

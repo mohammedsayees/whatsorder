@@ -1,4 +1,5 @@
 import type { Customer, MenuCategory, MenuItem, Order, Restaurant } from "@/lib/types";
+import { defaultOpeningHours } from "@/lib/opening-hours";
 
 const now = new Date().toISOString();
 
@@ -19,6 +20,8 @@ export const demoRestaurant: Restaurant = {
   dine_in_enabled: true,
   delivery_enabled: true,
   accepting_orders: true,
+  opening_hours_enabled: true,
+  opening_hours: defaultOpeningHours,
   is_active: true,
   created_at: now
 };

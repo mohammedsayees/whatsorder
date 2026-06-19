@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
+import { openingHoursFromFormData } from "@/lib/opening-hours";
 import {
   refreshTokenCookieName,
   requireSuperAdmin,
@@ -484,6 +485,8 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
       scheduled_orders_enabled: formData.get("scheduled_orders_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       accepting_orders: formData.get("accepting_orders") === "on",
+      opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
+      opening_hours: openingHoursFromFormData(formData),
       status,
       plan,
       is_active: ["live", "trial", "paid"].includes(status)

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
+import { isRestaurantOpen } from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -81,6 +82,10 @@ export function CheckoutForm({
   const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
   const total = cart.subtotal + appliedDeliveryFee;
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
+  const scheduleOpen = isRestaurantOpen(
+    restaurant.opening_hours_enabled,
+    restaurant.opening_hours
+  );
 
   function captureLocation() {
     setLocationError(null);
@@ -215,7 +220,7 @@ export function CheckoutForm({
     );
   }
 
-  if (restaurant.accepting_orders === false) {
+  if (restaurant.accepting_orders === false || !scheduleOpen) {
     return (
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
         <h1 className="text-2xl font-black">
@@ -224,7 +229,9 @@ export function CheckoutForm({
         <p className="mt-3 text-stone-600">
           {language === "ar"
             ? "يمكنك مشاهدة القائمة، لكن المطعم لا يستقبل طلبات جديدة حالياً."
-            : "You can still view the menu, but the restaurant is not accepting new orders right now."}
+            : restaurant.accepting_orders === false
+              ? "You can still view the menu, but the restaurant is not accepting new orders right now."
+              : "The restaurant is currently closed. Please return during opening hours."}
         </p>
         <Link
           className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"

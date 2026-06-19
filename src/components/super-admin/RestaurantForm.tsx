@@ -1,4 +1,5 @@
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
+import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
 import type { Restaurant, RestaurantPlan, RestaurantStatus } from "@/lib/types";
 
 const statuses: RestaurantStatus[] = [
@@ -175,6 +176,12 @@ export function RestaurantForm({
                 {String(label)}
               </label>
             ))}
+          </div>
+          <div className="mt-5">
+            <WeeklyHoursFields
+              enabled={restaurant?.opening_hours_enabled === true}
+              openingHours={restaurant?.opening_hours}
+            />
           </div>
         </section>
       ) : null}
