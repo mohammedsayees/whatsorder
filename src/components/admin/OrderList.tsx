@@ -1,20 +1,10 @@
-import { updateOrderStatusAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
-import type { Customer, Order, OrderStatus } from "@/lib/types";
+import type { Customer, Order } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
+import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
 import { CarFront, Gift, MapPin, ShoppingBag, Truck, Utensils } from "lucide-react";
-
-const statuses: OrderStatus[] = [
-  "New",
-  "Accepted",
-  "Preparing",
-  "Ready to Serve",
-  "Out for Delivery",
-  "Completed",
-  "Cancelled"
-];
 
 export function OrderList({ orders, customers = [] }: { orders: Order[]; customers?: Customer[] }) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
@@ -46,15 +36,6 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                     className: "bg-emerald-50 text-emerald-700"
                   };
         const FulfilmentIcon = fulfilment.icon;
-        const availableStatuses =
-          fulfilmentType === "delivery"
-            ? statuses.filter((status) => status !== "Ready to Serve")
-            : fulfilmentType === "dine_in"
-              ? statuses.filter((status) => status !== "Out for Delivery")
-              : statuses.filter(
-                  (status) => status !== "Out for Delivery" && status !== "Ready to Serve"
-                );
-
         return (
           <NewOrderAlertCard key={order.id} orderId={order.id}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -144,26 +125,11 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                     {order.points_earned} points earned
                   </p>
                 ) : null}
-                <form action={updateOrderStatusAction} className="mt-3 flex gap-2">
-                  <input name="order_id" type="hidden" value={order.id} />
-                  <select
-                    className="focus-ring min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
-                    defaultValue={order.status}
-                    name="status"
-                  >
-                    {availableStatuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="focus-ring rounded-lg bg-ink px-3 py-2 text-sm font-bold text-white"
-                    type="submit"
-                  >
-                    Save
-                  </button>
-                </form>
+                <OrderStatusActions
+                  fulfilmentType={fulfilmentType}
+                  orderId={order.id}
+                  status={order.status}
+                />
                 {order.status === "Completed" ? (
                   <RequestFeedbackButton orderId={order.id} />
                 ) : null}

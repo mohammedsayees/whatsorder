@@ -7,6 +7,7 @@ import { getMenu, getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
+import { isValidOrderStatusTransition } from "@/lib/order-status";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import {
   requireRestaurantAdmin,
@@ -450,19 +451,39 @@ export async function updateOrderStatusAction(formData: FormData) {
   }
 
   if (supabase) {
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id,total,status,points_earned,customer_phone")
+      .select("id,total,status,points_earned,customer_phone,fulfilment_type")
       .eq("id", orderId)
       .eq("restaurant_id", restaurant.id)
       .maybeSingle();
 
-    const { error: statusError } = await supabase
+    databaseFailure("Order lookup", orderError);
+
+    if (
+      !order ||
+      !isValidOrderStatusTransition(
+        order.fulfilment_type as FulfilmentType,
+        order.status as OrderStatus,
+        status
+      )
+    ) {
+      throw new Error("This order cannot be moved to the requested status.");
+    }
+
+    const { data: updatedOrder, error: statusError } = await supabase
       .from("orders")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", orderId)
-      .eq("restaurant_id", restaurant.id);
+      .eq("restaurant_id", restaurant.id)
+      .eq("status", order.status)
+      .select("id")
+      .maybeSingle();
     databaseFailure("Order status update", statusError);
+
+    if (!updatedOrder) {
+      throw new Error("This order was updated by another operator. Refresh and try again.");
+    }
 
     if (status === "Completed" && order && Number(order.points_earned ?? 0) <= 0) {
       const pointsEarned = Math.floor(Number(order.total ?? 0));
