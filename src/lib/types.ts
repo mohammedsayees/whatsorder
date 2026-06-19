@@ -1,5 +1,5 @@
 export type PaymentMethod = "Cash on Delivery" | "Card on Delivery";
-export type FulfilmentType = "delivery" | "takeaway" | "car_pickup";
+export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
 
 export type UserRole = "super_admin" | "restaurant_admin" | "staff";
 
@@ -18,6 +18,7 @@ export type OrderStatus =
   | "New"
   | "Accepted"
   | "Preparing"
+  | "Ready to Serve"
   | "Out for Delivery"
   | "Completed"
   | "Cancelled";
@@ -42,6 +43,7 @@ export type Restaurant = {
   minimum_order_amount: number;
   pickup_enabled?: boolean;
   car_pickup_enabled?: boolean;
+  dine_in_enabled?: boolean;
   delivery_enabled?: boolean;
   scheduled_orders_enabled?: boolean;
   public_reviews_enabled?: boolean;
@@ -98,6 +100,7 @@ export type Order = {
   fulfilment_type: FulfilmentType;
   car_plate_number: string | null;
   car_description: string | null;
+  table_number: string | null;
   delivery_area: string | null;
   delivery_address: string | null;
   delivery_latitude: number | null;

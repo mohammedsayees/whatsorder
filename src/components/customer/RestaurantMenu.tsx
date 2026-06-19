@@ -16,6 +16,7 @@ import {
   Share2,
   ShoppingBag,
   Star,
+  Utensils,
   X
 } from "lucide-react";
 import { formatAED } from "@/lib/currency";
@@ -46,12 +47,14 @@ export function RestaurantMenu({
   restaurant,
   categories,
   feedback,
-  items
+  items,
+  tableNumber
 }: {
   restaurant: Restaurant;
   categories: MenuCategory[];
   feedback: PublicFeedbackSummary;
   items: MenuItem[];
+  tableNumber?: string;
 }) {
   const cart = useCart();
   const { language, setLanguage } = useCustomerLanguage();
@@ -307,6 +310,12 @@ export function RestaurantMenu({
                         {t.carPickup}
                       </span>
                     ) : null}
+                    {restaurant.dine_in_enabled === true ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                        <Utensils size={13} />
+                        {t.dineIn}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -529,7 +538,9 @@ export function RestaurantMenu({
               </p>
             </div>
             <Link
-              href={`/r/${restaurant.slug}/checkout`}
+              href={`/r/${restaurant.slug}/checkout${
+                tableNumber ? `?table=${encodeURIComponent(tableNumber)}` : ""
+              }`}
               className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
             >
               {t.viewCart}

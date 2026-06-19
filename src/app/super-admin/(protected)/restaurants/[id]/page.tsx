@@ -435,7 +435,9 @@ export default async function SuperAdminRestaurantDetailPage({
                         ? `Car Pickup · ${order.car_plate_number}`
                         : order.fulfilment_type === "takeaway"
                           ? "Takeaway"
-                          : "Delivery"}{" "}
+                          : order.fulfilment_type === "dine_in"
+                            ? `Dine In · Table ${order.table_number}`
+                            : "Delivery"}{" "}
                       · {formatDate(order.created_at)}
                     </p>
                   </div>

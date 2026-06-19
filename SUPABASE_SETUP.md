@@ -22,6 +22,7 @@ supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
 supabase/customer_feedback_migration.sql
+supabase/dine_in_migration.sql
 ```
 
 The SQL creates:

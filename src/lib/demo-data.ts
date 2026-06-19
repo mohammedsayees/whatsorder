@@ -16,6 +16,7 @@ export const demoRestaurant: Restaurant = {
   minimum_order_amount: 15,
   pickup_enabled: true,
   car_pickup_enabled: true,
+  dine_in_enabled: true,
   delivery_enabled: true,
   is_active: true,
   created_at: now
@@ -397,6 +398,7 @@ export const demoOrders: Order[] = [
     fulfilment_type: "delivery",
     car_plate_number: null,
     car_description: null,
+    table_number: null,
     delivery_area: "Al Nahda",
     delivery_address: "Tower B, Flat 904",
     delivery_latitude: 25.291334,
@@ -433,6 +435,7 @@ export const demoOrders: Order[] = [
     fulfilment_type: "delivery",
     car_plate_number: null,
     car_description: null,
+    table_number: null,
     delivery_area: "Qusais",
     delivery_address: "Near Metro Station",
     delivery_latitude: null,

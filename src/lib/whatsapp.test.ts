@@ -50,4 +50,16 @@ describe("WhatsApp fulfilment messages", () => {
     expect(message).toContain("New Takeaway Order");
     expect(message).toContain("Collect from: Ajman Corniche");
   });
+
+  it("includes the table number for dine-in", () => {
+    const message = buildWhatsAppMessage({
+      ...baseInput,
+      fulfilmentType: "dine_in",
+      tableNumber: "Outdoor 2"
+    });
+
+    expect(message).toContain("New Dine-In Order");
+    expect(message).toContain("Table: Outdoor 2");
+    expect(message).not.toContain("Delivery Fee");
+  });
 });

@@ -14,6 +14,7 @@ type MessageInput = {
   fulfilmentType: FulfilmentType;
   carPlateNumber?: string;
   carDescription?: string;
+  tableNumber?: string;
   deliveryArea?: string;
   deliveryAddress?: string;
   deliveryLandmark?: string;
@@ -43,7 +44,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
         ? "توصيل"
         : input.fulfilmentType === "takeaway"
           ? "استلام من المطعم"
-          : "التوصيل إلى السيارة";
+          : input.fulfilmentType === "car_pickup"
+            ? "التوصيل إلى السيارة"
+            : "داخل المطعم";
     const fulfilmentLines =
       input.fulfilmentType === "delivery"
         ? [
@@ -61,7 +64,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
               `رقم اللوحة: ${input.carPlateNumber}`,
               `السيارة: ${input.carDescription || "غير مذكور"}`
             ]
-          : ["", `الاستلام من: ${input.restaurant.address || input.restaurant.name}`];
+          : input.fulfilmentType === "dine_in"
+            ? ["", "تفاصيل الجلسة:", `رقم الطاولة: ${input.tableNumber}`]
+            : ["", `الاستلام من: ${input.restaurant.address || input.restaurant.name}`];
 
     return [
       `طلب ${fulfilmentLabel} جديد - ${input.restaurant.name}`,
@@ -89,7 +94,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
       ? "Delivery"
       : input.fulfilmentType === "takeaway"
         ? "Takeaway"
-        : "Car Pickup";
+        : input.fulfilmentType === "car_pickup"
+          ? "Car Pickup"
+          : "Dine-In";
   const fulfilmentLines =
     input.fulfilmentType === "delivery"
       ? [
@@ -107,7 +114,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
             `Plate number: ${input.carPlateNumber}`,
             `Car: ${input.carDescription || "Not provided"}`
           ]
-        : ["", `Collect from: ${input.restaurant.address || input.restaurant.name}`];
+        : input.fulfilmentType === "dine_in"
+          ? ["", "Dine-In Details:", `Table: ${input.tableNumber}`]
+          : ["", `Collect from: ${input.restaurant.address || input.restaurant.name}`];
 
   return [
     `New ${fulfilmentLabel} Order - ${input.restaurant.name}`,

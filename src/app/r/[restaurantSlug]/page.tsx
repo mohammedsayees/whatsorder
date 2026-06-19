@@ -5,11 +5,14 @@ import { getMenu, getRestaurantBySlug } from "@/lib/data";
 import { getPublicFeedback } from "@/lib/feedback";
 
 export default async function RestaurantPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ restaurantSlug: string }>;
+  searchParams: Promise<{ table?: string }>;
 }) {
-  const { restaurantSlug } = await params;
+  const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
+  const tableNumber = String(query.table ?? "").trim().slice(0, 40);
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
@@ -28,6 +31,7 @@ export default async function RestaurantPage({
         categories={menu.categories}
         feedback={feedback}
         items={menu.items}
+        tableNumber={tableNumber}
       />
     </CartProvider>
   );

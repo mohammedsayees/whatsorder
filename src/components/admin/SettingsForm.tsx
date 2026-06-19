@@ -36,6 +36,11 @@ export function SettingsForm({
                 "car_pickup_enabled",
                 "Bring to My Car",
                 restaurant.car_pickup_enabled === true
+              ],
+              [
+                "dine_in_enabled",
+                "Dine In",
+                restaurant.dine_in_enabled === true
               ]
             ].map(([name, label, checked]) => (
               <label className="flex items-center gap-2 text-sm font-bold" key={String(name)}>
