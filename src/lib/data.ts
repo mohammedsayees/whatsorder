@@ -17,6 +17,19 @@ import type {
 } from "@/lib/types";
 
 const defaultSlug = process.env.NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG ?? "chaixpress";
+const demoDataEnabled =
+  process.env.NODE_ENV !== "production" || process.env.ENABLE_DEMO_DATA === "true";
+
+function productionDataFailure(resource: string, error?: { message?: string } | null): never {
+  console.error("WhatsOrder production data read failed", {
+    resource,
+    message: error?.message ?? "Supabase is not configured"
+  });
+
+  throw new Error(
+    `${resource} could not be loaded from Supabase.${error?.message ? ` ${error.message}` : ""}`
+  );
+}
 
 export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
   const supabase = getSupabase();
@@ -39,9 +52,15 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
 
       return restaurant;
     }
+
+    if (error && error.code !== "PGRST116" && !demoDataEnabled) {
+      productionDataFailure("Restaurant", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Restaurant");
   }
 
-  if (slug === demoRestaurant.slug) {
+  if (demoDataEnabled && slug === demoRestaurant.slug) {
     return demoRestaurant;
   }
 
@@ -83,6 +102,12 @@ export async function getMenu(
         items: items as MenuItem[]
       };
     }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Menu");
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Menu");
   }
 
   return {
@@ -104,6 +129,12 @@ export async function getOrders(restaurantId: string): Promise<Order[]> {
     if (!error && data) {
       return data as Order[];
     }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Orders", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Orders");
   }
 
   return demoOrders.filter((order) => order.restaurant_id === restaurantId);
@@ -122,6 +153,12 @@ export async function getNewOrderCount(restaurantId: string): Promise<number> {
     if (!error) {
       return count ?? 0;
     }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("New-order count", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("New-order count");
   }
 
   return demoOrders.filter(
@@ -142,6 +179,12 @@ export async function getCustomers(restaurantId: string): Promise<Customer[]> {
     if (!error && data) {
       return data as Customer[];
     }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Customers", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Customers");
   }
 
   return demoCustomers.filter((customer) => customer.restaurant_id === restaurantId);

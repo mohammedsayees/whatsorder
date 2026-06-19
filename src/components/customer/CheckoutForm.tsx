@@ -67,6 +67,7 @@ export function CheckoutForm({
   );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [fallbackWhatsappUrl, setFallbackWhatsappUrl] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -114,6 +115,7 @@ export function CheckoutForm({
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setFallbackWhatsappUrl(null);
 
     const formData = new FormData(event.currentTarget);
     formData.set("items", JSON.stringify(cart.lines));
@@ -123,6 +125,7 @@ export function CheckoutForm({
 
       if (!result.ok) {
         setError(result.error);
+        setFallbackWhatsappUrl(result.fallbackWhatsappUrl ?? null);
         return;
       }
 
@@ -490,9 +493,18 @@ export function CheckoutForm({
           </label>
 
           {error ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </p>
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <p>{error}</p>
+              {fallbackWhatsappUrl ? (
+                <a
+                  className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 font-black text-white"
+                  href={fallbackWhatsappUrl}
+                >
+                  <MessageCircle size={17} />
+                  Send directly on WhatsApp
+                </a>
+              ) : null}
+            </div>
           ) : null}
 
           <button

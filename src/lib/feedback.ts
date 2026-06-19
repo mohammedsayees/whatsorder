@@ -33,6 +33,7 @@ export async function getPublicFeedback(
     .from("customer_feedback")
     .select("*")
     .eq("restaurant_id", restaurant.id)
+    .eq("moderation_status", "approved")
     .order("submitted_at", { ascending: false });
 
   if (error || !data) {
@@ -46,10 +47,7 @@ export async function getPublicFeedback(
       ? feedback.reduce((sum, review) => sum + Number(review.rating), 0) / reviewCount
       : null;
   const reviews = feedback
-    .filter(
-      (review) =>
-        review.moderation_status === "approved" && Boolean(review.comment?.trim())
-    )
+    .filter((review) => Boolean(review.comment?.trim()))
     .slice(0, 3);
 
   return { averageRating, reviewCount, reviews };

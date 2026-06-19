@@ -23,7 +23,7 @@ import type {
 
 type CreateOrderResult =
   | { ok: true; orderId: string; whatsappUrl: string; whatsappAppUrl: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; fallbackWhatsappUrl?: string };
 
 const statusValues: OrderStatus[] = [
   "New",
@@ -361,54 +361,69 @@ export async function createOrderAction(
   });
   const consentTimestamp = new Date().toISOString();
   const supabase = getSupabaseAdmin();
-  let orderId = `WO-${Date.now()}`;
 
-  if (supabase) {
-    const { data, error } = await supabase.rpc("create_order_with_customer_v2", {
-      target_restaurant_id: restaurant.id,
-      order_customer_name: customerName,
-      order_customer_phone: customerPhone,
-      order_fulfilment_type: fulfilmentType,
-      order_car_plate_number: carPlateNumber || null,
-      order_car_description: carDescription || null,
-      order_table_number: tableNumber || null,
-      order_delivery_area: fulfilmentType === "delivery" ? deliveryArea : null,
-      order_delivery_address: fulfilmentType === "delivery" ? deliveryAddress : null,
-      order_delivery_latitude: fulfilmentType === "delivery" ? deliveryLatitude : null,
-      order_delivery_longitude: fulfilmentType === "delivery" ? deliveryLongitude : null,
-      order_delivery_google_maps_url:
-        fulfilmentType === "delivery" ? deliveryGoogleMapsUrl || null : null,
-      order_delivery_place_id: fulfilmentType === "delivery" ? deliveryPlaceId || null : null,
-      order_delivery_address_text:
-        fulfilmentType === "delivery" ? deliveryAddressText || null : null,
-      order_delivery_landmark: fulfilmentType === "delivery" ? deliveryLandmark || null : null,
-      order_notes: notes || null,
-      order_payment_method: paymentMethod,
-      order_items: verifiedItems,
-      order_subtotal: subtotal,
-      order_delivery_fee: appliedDeliveryFee,
-      order_total: total,
-      order_whatsapp_message: message,
-      order_consent_processing: consentOrderProcessing,
-      order_consent_marketing: consentMarketing,
-      order_consent_timestamp: consentTimestamp
-    });
-
-    if (error) {
-      if (error.code === "PGRST202" || error.message.includes("Could not find the function")) {
-        return {
-          ok: false,
-          error:
-            "Ordering is temporarily unavailable while the security migration is applied. Please contact the restaurant directly."
-        };
-      }
-
-      return { ok: false, error: "The order could not be saved. Please try again." };
-    }
-
-    orderId = String(data);
+  if (!supabase) {
+    return {
+      ok: false,
+      error: "This order was not saved to the dashboard. You can send it directly on WhatsApp.",
+      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+    };
   }
 
+  const { data, error } = await supabase.rpc("create_order_with_customer_v2", {
+    target_restaurant_id: restaurant.id,
+    order_customer_name: customerName,
+    order_customer_phone: customerPhone,
+    order_fulfilment_type: fulfilmentType,
+    order_car_plate_number: carPlateNumber || null,
+    order_car_description: carDescription || null,
+    order_table_number: tableNumber || null,
+    order_delivery_area: fulfilmentType === "delivery" ? deliveryArea : null,
+    order_delivery_address: fulfilmentType === "delivery" ? deliveryAddress : null,
+    order_delivery_latitude: fulfilmentType === "delivery" ? deliveryLatitude : null,
+    order_delivery_longitude: fulfilmentType === "delivery" ? deliveryLongitude : null,
+    order_delivery_google_maps_url:
+      fulfilmentType === "delivery" ? deliveryGoogleMapsUrl || null : null,
+    order_delivery_place_id: fulfilmentType === "delivery" ? deliveryPlaceId || null : null,
+    order_delivery_address_text:
+      fulfilmentType === "delivery" ? deliveryAddressText || null : null,
+    order_delivery_landmark: fulfilmentType === "delivery" ? deliveryLandmark || null : null,
+    order_notes: notes || null,
+    order_payment_method: paymentMethod,
+    order_items: verifiedItems,
+    order_subtotal: subtotal,
+    order_delivery_fee: appliedDeliveryFee,
+    order_total: total,
+    order_whatsapp_message: message,
+    order_consent_processing: consentOrderProcessing,
+    order_consent_marketing: consentMarketing,
+    order_consent_timestamp: consentTimestamp
+  });
+
+  if (error) {
+    console.error("WhatsOrder order persistence failed", {
+      code: error.code,
+      message: error.message,
+      restaurantId: restaurant.id
+    });
+
+    if (error.code === "PGRST202" || error.message.includes("Could not find the function")) {
+      return {
+        ok: false,
+        error:
+          "This order was not saved because a database update is pending. You can send it directly on WhatsApp.",
+        fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+      };
+    }
+
+    return {
+      ok: false,
+      error: "This order was not saved to the dashboard. You can retry or send it directly on WhatsApp.",
+      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+    };
+  }
+
+  const orderId = String(data);
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath("/admin");
   revalidatePath("/admin/orders");

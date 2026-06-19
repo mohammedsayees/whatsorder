@@ -18,12 +18,19 @@ Open Supabase SQL Editor and run:
 
 ```text
 supabase/schema.sql
+supabase/customer_profile_loyalty_migration.sql
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
+supabase/arabic_menu_fields_migration.sql
 supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
+supabase/new_order_realtime_migration.sql
 ```
+
+For an existing project, apply only files that have not already been executed.
+Application deployments do not require rerunning `schema.sql`. The Realtime
+migration is required for restaurant-scoped new-order sound alerts.
 
 The SQL creates:
 
@@ -97,7 +104,8 @@ Public users can:
 - Read available menu items
 - Insert new orders with status `New` and processing consent
 
-Restaurant users, once Supabase Auth is connected, can manage only their own restaurant data through `restaurant_users.user_id`.
+Authenticated restaurant users can manage only their own restaurant data through
+`restaurant_users.user_id` and an accepted membership.
 
 The current app uses server actions with `SUPABASE_SERVICE_ROLE_KEY` for admin operations and customer/order persistence. This keeps the service key server-only.
 

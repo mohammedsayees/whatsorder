@@ -61,6 +61,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG=chaixpress
 NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER=971551150068
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+ENABLE_DEMO_DATA=false
 ```
 
 Use `SUPABASE_SERVICE_ROLE_KEY` only on the server. Never expose it in browser code, screenshots, or client-side environment variables.
@@ -71,14 +72,21 @@ Run the schema and migrations in this order:
 
 ```text
 supabase/schema.sql
+supabase/customer_profile_loyalty_migration.sql
 supabase/super_admin_migration.sql
 supabase/security_hardening_migration.sql
 supabase/fulfilment_options_migration.sql
+supabase/arabic_menu_fields_migration.sql
 supabase/customer_feedback_migration.sql
 supabase/dine_in_migration.sql
+supabase/new_order_realtime_migration.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+
+For an existing Supabase project, do not rerun `schema.sql` merely because the
+application code changed. Apply only migrations that have not already been run,
+in the order shown above.
 
 ## Super Admin
 
@@ -154,4 +162,5 @@ Not included in V1:
 - Delivery fleet
 - Subscription billing
 
-The code includes comments and structure for adding payments, WhatsApp Business API, loyalty, campaigns, subscriptions, authentication, and multi-branch support later.
+The code includes comments and structure for adding payments, WhatsApp Business API, campaigns,
+subscriptions, and multi-branch support later.

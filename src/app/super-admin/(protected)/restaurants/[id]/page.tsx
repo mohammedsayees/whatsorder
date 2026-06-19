@@ -21,6 +21,7 @@ import {
 import { QrCodePanel } from "@/components/super-admin/QrCodePanel";
 import { RestaurantPlanBadge, RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 import { RestaurantForm } from "@/components/super-admin/RestaurantForm";
+import { RevokeTeamAccessButton } from "@/components/super-admin/RevokeTeamAccessButton";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
@@ -62,6 +63,7 @@ export default async function SuperAdminRestaurantDetailPage({
     error?: string;
     invited?: string;
     invite_error?: string;
+    access_revoked?: string;
   }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
@@ -151,6 +153,11 @@ export default async function SuperAdminRestaurantDetailPage({
       {query.invite_error ? (
         <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
           Owner invitation failed: {query.invite_error}
+        </p>
+      ) : null}
+      {query.access_revoked ? (
+        <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          {query.access_revoked}
         </p>
       ) : null}
 
@@ -333,21 +340,28 @@ export default async function SuperAdminRestaurantDetailPage({
                         {membership.role.replace("_", " ")}
                       </p>
                     </div>
-                    <span
-                      className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
-                        membership.accepted_at
-                          ? "bg-emerald-50 text-emerald-700"
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
+                          membership.accepted_at
+                            ? "bg-emerald-50 text-emerald-700"
+                            : membership.invited_at
+                              ? "bg-amber-50 text-amber-800"
+                              : "bg-stone-100 text-stone-600"
+                        }`}
+                      >
+                        {membership.accepted_at
+                          ? "Active"
                           : membership.invited_at
-                            ? "bg-amber-50 text-amber-800"
-                            : "bg-stone-100 text-stone-600"
-                      }`}
-                    >
-                      {membership.accepted_at
-                        ? "Active"
-                        : membership.invited_at
-                          ? "Invitation sent"
-                          : "Pending invite"}
-                    </span>
+                            ? "Invitation sent"
+                            : "Pending invite"}
+                      </span>
+                      <RevokeTeamAccessButton
+                        email={membership.email}
+                        membershipId={membership.id}
+                        restaurantId={restaurant.id}
+                      />
+                    </div>
                   </div>
                 ))}
                 {teamMemberships.length === 0 ? (
