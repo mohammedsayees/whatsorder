@@ -1,4 +1,5 @@
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
+import { isSameUaeCalendarDay } from "@/lib/date-time";
 import {
   demoCategories,
   demoCustomers,
@@ -191,8 +192,10 @@ export async function getCustomers(restaurantId: string): Promise<Customer[]> {
 }
 
 export function getAnalytics(orders: Order[], customers: Customer[]): Analytics {
-  const today = new Date().toDateString();
-  const todaysOrders = orders.filter((order) => new Date(order.created_at).toDateString() === today);
+  const now = new Date();
+  const todaysOrders = orders.filter((order) =>
+    isSameUaeCalendarDay(order.created_at, now)
+  );
   const completed = orders.filter((order) => order.status === "Completed");
   const itemCounts = new Map<string, number>();
 

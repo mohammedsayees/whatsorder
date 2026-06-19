@@ -1,5 +1,6 @@
 import { Check, EyeOff, Star } from "lucide-react";
 import { moderateFeedbackAction } from "@/app/feedback/actions";
+import { formatUaeDateTime } from "@/lib/date-time";
 import { getRestaurantFeedback } from "@/lib/feedback";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -82,7 +83,7 @@ export default async function AdminFeedbackPage() {
                   <p className="mt-3 text-sm text-stone-500">Rating only</p>
                 )}
                 <p className="mt-3 text-xs font-semibold text-stone-400">
-                  {new Date(review.submitted_at).toLocaleString("en-AE")}
+                  {formatUaeDateTime(review.submitted_at)}
                 </p>
               </div>
               <div className="flex gap-2">

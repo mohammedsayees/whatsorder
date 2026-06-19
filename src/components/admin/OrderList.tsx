@@ -1,4 +1,5 @@
 import { formatAED } from "@/lib/currency";
+import { formatUaeDateTime } from "@/lib/date-time";
 import type { Customer, Order } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
@@ -62,7 +63,7 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                 <p className="mt-1 text-sm text-stone-500">
                   {order.customer_phone}
                   {order.delivery_area ? ` · ${order.delivery_area}` : ""} ·{" "}
-                  {new Date(order.created_at).toLocaleString("en-AE")}
+                  {formatUaeDateTime(order.created_at)}
                 </p>
                 <div className="mt-3 space-y-1 text-sm">
                   {order.items.map((item) => (

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Building2, Eye, Plus, Search } from "lucide-react";
 import { RestaurantPlanBadge, RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
+import { formatUaeDate } from "@/lib/date-time";
 import { getSuperAdminRestaurants } from "@/lib/super-admin-data";
 import type { RestaurantStatus } from "@/lib/types";
 
@@ -107,7 +108,7 @@ export default async function SuperAdminRestaurantsPage({
                 <p className="text-xs text-stone-500">{restaurant.customers_count} customers</p>
               </div>
               <p className="text-sm text-stone-600">
-                {new Intl.DateTimeFormat("en-AE", { dateStyle: "medium" }).format(new Date(restaurant.created_at))}
+                {formatUaeDate(restaurant.created_at)}
               </p>
               <Link
                 aria-label={`View ${restaurant.name}`}
