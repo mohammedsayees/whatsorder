@@ -28,6 +28,7 @@ supabase/dine_in_migration.sql
 supabase/new_order_realtime_migration.sql
 supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
+supabase/20260620_lock_down_public_order_creation.sql
 ```
 
 For an existing project, apply only files that have not already been executed.
@@ -104,7 +105,10 @@ Public users can:
 - Read active restaurants
 - Read active categories
 - Read available menu items
-- Insert new orders with status `New` and processing consent
+
+Public and authenticated Supabase clients cannot insert directly into `orders`.
+Customer checkout must use the Next.js server action, which validates the order
+and calls the service-role-only `create_order_with_customer_v3` RPC.
 
 Authenticated restaurant users can manage only their own restaurant data through
 `restaurant_users.user_id` and an accepted membership.
@@ -117,6 +121,10 @@ The security hardening migration also creates:
 - database-backed public order rate limiting
 - service-role-only security functions
 - active membership indexes and corrected loyalty permissions
+
+The final public-order lockdown migration removes the legacy anonymous order
+insert policy and revokes direct order inserts from `PUBLIC`, `anon`, and
+`authenticated`.
 
 ## 5. Storage Bucket Notes
 
