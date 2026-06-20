@@ -4,6 +4,10 @@ export const MAX_CART_LINES = 50;
 export const MAX_ITEM_QUANTITY = 25;
 export const MAX_ORDER_QUANTITY = 100;
 
+export function minimumOrderRemaining(subtotal: number, minimumOrder: number) {
+  return Math.max(0, Number(minimumOrder) - Number(subtotal));
+}
+
 export function parseAndValidateCart(raw: string): CartLine[] {
   const parsed = JSON.parse(raw) as CartLine[];
 

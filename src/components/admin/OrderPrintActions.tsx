@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Files, Printer, ReceiptText } from "lucide-react";
+import { recordOrderPrintEventsAction } from "@/app/actions";
 import type { Order, Restaurant } from "@/lib/types";
 
 type PrintKind = "kot" | "receipt";
@@ -267,7 +268,7 @@ export function OrderPrintActions({
     });
   }
 
-  function print(selection: PrintSelection) {
+  async function print(selection: PrintSelection) {
     setPrintError(null);
     const kinds: PrintKind[] = selection === "both" ? ["kot", "receipt"] : [selection];
     const content = kinds
@@ -291,6 +292,15 @@ export function OrderPrintActions({
     );
     printWindow.document.close();
     printWindow.focus();
+
+    const trackingResult = await recordOrderPrintEventsAction(
+      order.id,
+      kinds.map((kind) => ({ kind, isReprint: printed[kind] })),
+      navigator.userAgent
+    );
+    if (!trackingResult.ok) {
+      setPrintError(trackingResult.error);
+    }
     markPrinted(kinds);
 
     window.setTimeout(() => {
@@ -304,7 +314,7 @@ export function OrderPrintActions({
         <button
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!kotAllowed}
-          onClick={() => print("kot")}
+          onClick={() => void print("kot")}
           title={kotAllowed ? "Print kitchen order ticket" : "Accept the order before printing the KOT"}
           type="button"
         >
@@ -314,7 +324,7 @@ export function OrderPrintActions({
         <button
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!receiptAllowed}
-          onClick={() => print("receipt")}
+          onClick={() => void print("receipt")}
           type="button"
         >
           <ReceiptText size={15} />
@@ -324,7 +334,7 @@ export function OrderPrintActions({
       <button
         className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-200 disabled:cursor-not-allowed disabled:opacity-45"
         disabled={!kotAllowed || !receiptAllowed}
-        onClick={() => print("both")}
+        onClick={() => void print("both")}
         title={kotAllowed ? "Print kitchen and customer copies" : "Accept the order before printing both copies"}
         type="button"
       >

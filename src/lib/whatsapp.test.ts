@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWhatsAppMessage } from "./whatsapp";
+import { buildWhatsAppMessage, normalizeCustomerPhone } from "./whatsapp";
 import type { Restaurant } from "./types";
 
 const restaurant: Restaurant = {
@@ -61,5 +61,14 @@ describe("WhatsApp fulfilment messages", () => {
     expect(message).toContain("New Dine-In Order");
     expect(message).toContain("Table: Outdoor 2");
     expect(message).not.toContain("Delivery Fee");
+  });
+});
+
+describe("customer phone normalization", () => {
+  it("maps common UAE formats to one canonical value", () => {
+    expect(normalizeCustomerPhone("050 123 4567")).toBe("971501234567");
+    expect(normalizeCustomerPhone("+971 50 123 4567")).toBe("971501234567");
+    expect(normalizeCustomerPhone("00971 50 123 4567")).toBe("971501234567");
+    expect(normalizeCustomerPhone("501234567")).toBe("971501234567");
   });
 });

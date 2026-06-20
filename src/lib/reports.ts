@@ -389,8 +389,12 @@ export function buildRestaurantReport(
   };
 }
 
-function csvCell(value: string | number | boolean) {
-  const stringValue = String(value);
+export function csvCell(value: string | number | boolean) {
+  const rawValue = String(value);
+  const stringValue =
+    typeof value === "string" && /^[\t\r ]*[=+\-@]/.test(rawValue)
+      ? `'${rawValue}`
+      : rawValue;
   return /[",\n]/.test(stringValue)
     ? `"${stringValue.replaceAll('"', '""')}"`
     : stringValue;

@@ -1,6 +1,7 @@
 import { Clock3, MapPin, MessageCircle, Sparkles, TrendingUp } from "lucide-react";
 import { redirect } from "next/navigation";
 import { PaginationNav } from "@/components/admin/PaginationNav";
+import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate, formatUaeDateTime } from "@/lib/date-time";
@@ -192,15 +193,21 @@ export default async function AdminCustomersPage({
                         : "No marketing consent"}
                     </p>
                     {hasMarketingConsent ? (
-                      <a
-                        className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-black text-white"
-                        href={buildWhatsAppUrl(customer.phone, marketingMessage)}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        <MessageCircle size={17} />
-                        Send WhatsApp
-                      </a>
+                      <>
+                        <a
+                          className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-black text-white"
+                          href={buildWhatsAppUrl(customer.phone, marketingMessage)}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <MessageCircle size={17} />
+                          Send WhatsApp
+                        </a>
+                        <WithdrawMarketingConsentButton
+                          customerId={customer.id}
+                          customerName={customer.name}
+                        />
+                      </>
                     ) : (
                       <p className="mt-1 text-xs leading-5 text-stone-500">
                         Promotional WhatsApp actions stay disabled unless the customer explicitly

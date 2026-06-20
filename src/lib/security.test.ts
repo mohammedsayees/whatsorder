@@ -5,6 +5,7 @@ import {
   isRestaurantAdminAccessAllowed,
   isOfferQuantityAllowed,
   isValidCustomerPhone,
+  minimumOrderRemaining,
   parseAndValidateCart
 } from "./security";
 
@@ -32,6 +33,12 @@ describe("invitation security", () => {
 });
 
 describe("public order input security", () => {
+  it("calculates the amount remaining before checkout", () => {
+    expect(minimumOrderRemaining(2, 15)).toBe(13);
+    expect(minimumOrderRemaining(15, 15)).toBe(0);
+    expect(minimumOrderRemaining(20, 15)).toBe(0);
+  });
+
   it("accepts a bounded valid cart", () => {
     const cart = parseAndValidateCart(
       JSON.stringify([{ item_id: "item-1", name: "Tea", price: 2, quantity: 2 }])

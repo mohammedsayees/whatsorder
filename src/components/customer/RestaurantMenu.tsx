@@ -19,6 +19,7 @@ import {
   X
 } from "lucide-react";
 import { formatAED } from "@/lib/currency";
+import { minimumOrderRemaining } from "@/lib/security";
 import {
   formatOpeningTime,
   isRestaurantOpen,
@@ -67,6 +68,11 @@ export function RestaurantMenu({
   tableNumber?: string;
 }) {
   const cart = useCart();
+  const amountRemaining = minimumOrderRemaining(
+    cart.subtotal,
+    restaurant.minimum_order_amount
+  );
+  const minimumReached = amountRemaining === 0;
   const { language, setLanguage } = useCustomerLanguage();
   const t = customerTranslations[language];
   const direction = getTextDirection(language);
@@ -793,16 +799,32 @@ export function RestaurantMenu({
               <p className="text-sm font-black">
                 {cart.count} {cart.count > 1 ? t.itemsInCart : t.itemInCart}
               </p>
+              {!minimumReached ? (
+                <p className="text-xs font-semibold text-white/70">
+                  {language === "ar"
+                    ? `أضف ${formatAED(amountRemaining)} لإتمام الحد الأدنى`
+                    : `Add ${formatAED(amountRemaining)} to reach the minimum`}
+                </p>
+              ) : null}
             </div>
-            <Link
-              href={`/r/${restaurant.slug}/checkout${
-                tableNumber ? `?table=${encodeURIComponent(tableNumber)}` : ""
-              }`}
-              className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
-            >
-              {t.viewCart}
-              <span>{formatAED(cart.subtotal)}</span>
-            </Link>
+            {minimumReached ? (
+              <Link
+                href={`/r/${restaurant.slug}/checkout${
+                  tableNumber ? `?table=${encodeURIComponent(tableNumber)}` : ""
+                }`}
+                className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
+              >
+                {t.viewCart}
+                <span>{formatAED(cart.subtotal)}</span>
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="inline-flex shrink-0 items-center rounded-full bg-white/15 px-4 py-2.5 text-sm font-black text-white/70"
+              >
+                {formatAED(cart.subtotal)}
+              </span>
+            )}
           </div>
         </div>
       ) : null}

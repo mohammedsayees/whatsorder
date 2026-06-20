@@ -2,7 +2,11 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
 import { OrderList } from "@/components/admin/OrderList";
-import { getAnalytics, getCustomers, getOrders } from "@/lib/data";
+import {
+  getCustomersByPhones,
+  getDashboardAnalytics,
+  getRecentOrders
+} from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminDashboardPage({
@@ -13,8 +17,14 @@ export default async function AdminDashboardPage({
   const query = await searchParams;
   const { restaurant } = await requireRestaurantAdmin();
 
-  const [orders, customers] = await Promise.all([getOrders(restaurant.id), getCustomers(restaurant.id)]);
-  const analytics = getAnalytics(orders, customers);
+  const [orders, analytics] = await Promise.all([
+    getRecentOrders(restaurant.id, 5),
+    getDashboardAnalytics(restaurant.id)
+  ]);
+  const customers = await getCustomersByPhones(
+    restaurant.id,
+    orders.map((order) => order.customer_phone)
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -55,7 +65,7 @@ export default async function AdminDashboardPage({
         </div>
         <OrderList
           customers={customers}
-          orders={orders.slice(0, 5)}
+          orders={orders}
           restaurant={restaurant}
         />
       </section>

@@ -21,6 +21,14 @@ Confirm these rows exist:
 - Chai Xpress menu categories
 - Chai Xpress menu items
 
+For an existing project, also apply the latest security and pilot migrations in
+the order listed in `SUPABASE_SETUP.md`, including:
+
+```text
+supabase/20260620_lock_down_public_order_creation.sql
+supabase/20260620_p1_pilot_operations.sql
+```
+
 ## 3. Deploy to Vercel
 
 Import the GitHub repository into Vercel.
@@ -65,10 +73,13 @@ https://your-domain/admin
 Before sharing the restaurant link:
 
 - Confirm `/r/chaixpress` loads from Supabase.
+- Confirm equivalent UAE phone formats create/update one customer profile.
+- Confirm a cart below the minimum order cannot enter checkout.
 - Confirm WhatsApp number in `restaurants.whatsapp_number`.
 - Place one test order.
 - Confirm the order appears in `/admin/orders`.
 - Change order status and confirm it saves.
+- Confirm an `order_status_events` row is created for each status change.
 - Confirm customer record was created or updated.
 - Confirm owner invitation email opens the production `/auth/invite` URL.
 - Confirm the invited owner can set a password and sign in.
@@ -80,6 +91,8 @@ Before sharing the restaurant link:
 - Test every enabled fulfilment option, including table number and car plate requirements.
 - Create an offer, confirm it appears in the swipe carousel, and verify the discounted price in checkout and WhatsApp.
 - Pause the restaurant and confirm its public menu and dashboard access become unavailable.
+- Print a KOT and receipt and confirm `order_print_events` rows are created.
+- Record a customer STOP/opt-out and confirm promotional WhatsApp actions disappear.
 
 ## 7. Security Notes
 

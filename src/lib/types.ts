@@ -171,6 +171,9 @@ export type Customer = {
   consent_order_processing: boolean;
   consent_marketing: boolean;
   consent_timestamp: string | null;
+  marketing_consent_updated_at?: string | null;
+  marketing_consent_source?: string | null;
+  marketing_consent_withdrawn_at?: string | null;
   loyalty_points_balance: number;
   lifetime_points_earned: number;
   created_at: string;

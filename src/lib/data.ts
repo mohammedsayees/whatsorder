@@ -258,6 +258,74 @@ export async function getOrders(restaurantId: string): Promise<Order[]> {
   return demoOrders.filter((order) => order.restaurant_id === restaurantId);
 }
 
+export async function getRecentOrders(
+  restaurantId: string,
+  limit = 5
+): Promise<Order[]> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false })
+      .limit(Math.min(20, Math.max(1, limit)));
+
+    if (!error && data) {
+      return data as Order[];
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Recent orders", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Recent orders");
+  }
+
+  return demoOrders
+    .filter((order) => order.restaurant_id === restaurantId)
+    .toSorted((first, second) => second.created_at.localeCompare(first.created_at))
+    .slice(0, limit);
+}
+
+export async function getDashboardAnalytics(
+  restaurantId: string
+): Promise<Analytics> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc(
+      "get_restaurant_dashboard_analytics",
+      { target_restaurant_id: restaurantId }
+    );
+
+    if (!error && data) {
+      const metrics = data as Record<string, string | number>;
+      return {
+        averageOrderValue: Number(metrics.averageOrderValue ?? 0),
+        completedOrders: Number(metrics.completedOrders ?? 0),
+        newOrders: Number(metrics.newOrders ?? 0),
+        repeatCustomers: Number(metrics.repeatCustomers ?? 0),
+        todaysOrders: Number(metrics.todaysOrders ?? 0),
+        todaysRevenue: Number(metrics.todaysRevenue ?? 0),
+        topSellingItem: String(metrics.topSellingItem ?? "No sales yet")
+      };
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Dashboard analytics", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Dashboard analytics");
+  }
+
+  return getAnalytics(
+    demoOrders.filter((order) => order.restaurant_id === restaurantId),
+    demoCustomers.filter((customer) => customer.restaurant_id === restaurantId)
+  );
+}
+
 export async function getOrdersForReport(
   restaurantId: string,
   startIso: string,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRestaurantReport,
+  csvCell,
   reportToCsv,
   resolveReportRange
 } from "./reports";
@@ -46,6 +47,15 @@ describe("report ranges", () => {
 });
 
 describe("restaurant reporting", () => {
+  it("neutralizes spreadsheet formulas in CSV text cells", () => {
+    expect(csvCell("=HYPERLINK(\"https://example.com\")")).toBe(
+      "\"'=HYPERLINK(\"\"https://example.com\"\")\""
+    );
+    expect(csvCell("+971501234567")).toBe("'+971501234567");
+    expect(csvCell(" @SUM(1,2)")).toBe("\"' @SUM(1,2)\"");
+    expect(csvCell(25)).toBe("25");
+  });
+
   it("uses completed orders for revenue and preserves cancelled counts", () => {
     const report = buildRestaurantReport(
       [

@@ -18,6 +18,7 @@ import {
 import { createOrderAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
+import { minimumOrderRemaining } from "@/lib/security";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -81,6 +82,10 @@ export function CheckoutForm({
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
   const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
   const total = cart.subtotal + appliedDeliveryFee;
+  const amountRemaining = minimumOrderRemaining(
+    cart.subtotal,
+    restaurant.minimum_order_amount
+  );
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
   const scheduleOpen = isRestaurantOpen(
     restaurant.opening_hours_enabled,
@@ -210,6 +215,35 @@ export function CheckoutForm({
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
         <h1 className="text-2xl font-black">{t.cartEmpty}</h1>
         <p className="mt-3 text-stone-600">{t.cartEmptyHint}</p>
+        <Link
+          className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
+        </Link>
+      </main>
+    );
+  }
+
+  if (amountRemaining > 0) {
+    return (
+      <main
+        className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center"
+        dir={direction}
+      >
+        <ShoppingBag className="mx-auto text-leaf" size={38} />
+        <h1 className="mt-5 text-2xl font-black">
+          {language === "ar" ? "لم تصل إلى الحد الأدنى للطلب" : "Minimum order not reached"}
+        </h1>
+        <p className="mt-3 text-stone-600">
+          {language === "ar"
+            ? `أضف ${formatAED(amountRemaining)} أخرى للمتابعة. الحد الأدنى هو ${formatAED(
+                restaurant.minimum_order_amount
+              )}.`
+            : `Add ${formatAED(amountRemaining)} more to continue. The minimum order is ${formatAED(
+                restaurant.minimum_order_amount
+              )}.`}
+        </p>
         <Link
           className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
           href={`/r/${restaurant.slug}`}
@@ -523,7 +557,12 @@ export function CheckoutForm({
           </label>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_marketing" type="checkbox" />
-            <span>{t.consentMarketing}</span>
+            <span>
+              {t.consentMarketing}{" "}
+              <Link className="font-black text-leaf underline" href="/privacy" target="_blank">
+                {language === "ar" ? "سياسة الخصوصية" : "Privacy notice"}
+              </Link>
+            </span>
           </label>
 
           {error ? (
@@ -543,7 +582,7 @@ export function CheckoutForm({
 
           <button
             className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isPending}
+            disabled={isPending || amountRemaining > 0}
             type="submit"
           >
             <Send size={18} />
