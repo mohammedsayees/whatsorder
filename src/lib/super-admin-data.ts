@@ -39,12 +39,14 @@ type RestaurantDetail = {
   }>;
 };
 
-function countByRestaurant(rows: Array<{ restaurant_id: string }>) {
-  return rows.reduce<Map<string, number>>((counts, row) => {
-    counts.set(row.restaurant_id, (counts.get(row.restaurant_id) ?? 0) + 1);
-    return counts;
-  }, new Map());
-}
+type RestaurantSummaryRow = {
+  restaurant_id: string;
+  orders_count: number | string;
+  customers_count: number | string;
+  onboarding_completed: number | string;
+  onboarding_total: number | string;
+  last_order_at: string | null;
+};
 
 export function getPublicAppUrl() {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
@@ -71,36 +73,35 @@ export async function getSuperAdminRestaurants(): Promise<SuperAdminRestaurant[]
     return [];
   }
 
-  const [{ data: restaurants }, { data: orders }, { data: customers }, { data: tasks }] =
-    await Promise.all([
-      supabase.from("restaurants").select("*").order("created_at", { ascending: false }),
-      supabase.from("orders").select("restaurant_id,created_at"),
-      supabase.from("customers").select("restaurant_id"),
-      supabase.from("onboarding_tasks").select("restaurant_id,is_completed")
-    ]);
-
-  const orderRows = (orders ?? []) as Array<{ restaurant_id: string; created_at: string }>;
-  const orderCounts = countByRestaurant(orderRows);
-  const customerCounts = countByRestaurant((customers ?? []) as Array<{ restaurant_id: string }>);
-  const taskRows = (tasks ?? []) as Array<{ restaurant_id: string; is_completed: boolean }>;
+  const [
+    { data: restaurants, error: restaurantsError },
+    { data: summaries, error: summariesError }
+  ] = await Promise.all([
+    supabase.from("restaurants").select("*").order("created_at", { ascending: false }),
+    supabase.rpc("get_super_admin_restaurant_summaries")
+  ]);
+  if (restaurantsError || summariesError) {
+    throw new Error("Super Admin restaurant summaries could not be loaded.");
+  }
+  const summaryByRestaurant = new Map(
+    ((summaries ?? []) as RestaurantSummaryRow[]).map((summary) => [
+      String(summary.restaurant_id),
+      summary
+    ])
+  );
 
   return ((restaurants ?? []) as Restaurant[]).map((restaurant) => {
-    const restaurantTasks = taskRows.filter((task) => task.restaurant_id === restaurant.id);
-    const restaurantOrders = orderRows.filter((order) => order.restaurant_id === restaurant.id);
+    const summary = summaryByRestaurant.get(restaurant.id);
 
     return {
       ...restaurant,
       status: restaurant.status ?? (restaurant.is_active ? "live" : "draft"),
       plan: restaurant.plan ?? "trial",
-      orders_count: orderCounts.get(restaurant.id) ?? 0,
-      customers_count: customerCounts.get(restaurant.id) ?? 0,
-      onboarding_completed: restaurantTasks.filter((task) => task.is_completed).length,
-      onboarding_total: restaurantTasks.length,
-      last_order_at:
-        restaurantOrders.sort(
-          (first, second) =>
-            new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
-        )[0]?.created_at ?? null
+      orders_count: Number(summary?.orders_count ?? 0),
+      customers_count: Number(summary?.customers_count ?? 0),
+      onboarding_completed: Number(summary?.onboarding_completed ?? 0),
+      onboarding_total: Number(summary?.onboarding_total ?? 0),
+      last_order_at: summary?.last_order_at ? String(summary.last_order_at) : null
     };
   });
 }
@@ -120,7 +121,9 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     { data: offers },
     { data: orders },
     { data: customers },
-    { data: teamMemberships }
+    { data: teamMemberships },
+    { count: ordersCount },
+    { count: customersCount }
   ] = await Promise.all([
     supabase.from("restaurants").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -140,17 +143,31 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
       .eq("restaurant_id", id)
       .order("display_order")
       .order("created_at"),
-    supabase.from("orders").select("*").eq("restaurant_id", id).order("created_at", {
-      ascending: false
-    }),
-    supabase.from("customers").select("*").eq("restaurant_id", id).order("updated_at", {
-      ascending: false
-    }),
+    supabase
+      .from("orders")
+      .select("*")
+      .eq("restaurant_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("customers")
+      .select("*")
+      .eq("restaurant_id", id)
+      .order("updated_at", { ascending: false })
+      .limit(20),
     supabase
       .from("restaurant_users")
       .select("id,user_id,email,role,invited_at,accepted_at")
       .eq("restaurant_id", id)
-      .order("created_at")
+      .order("created_at"),
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", id),
+    supabase
+      .from("customers")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", id)
   ]);
 
   if (!restaurant) {
@@ -177,8 +194,8 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
       ...(restaurant as Restaurant),
       status: (restaurant.status as Restaurant["status"]) ?? "draft",
       plan: (restaurant.plan as Restaurant["plan"]) ?? "trial",
-      orders_count: restaurantOrders.length,
-      customers_count: (customers ?? []).length,
+      orders_count: ordersCount ?? 0,
+      customers_count: customersCount ?? 0,
       onboarding_completed: restaurantTasks.filter((task) => task.is_completed).length,
       onboarding_total: restaurantTasks.length,
       last_order_at: restaurantOrders[0]?.created_at ?? null

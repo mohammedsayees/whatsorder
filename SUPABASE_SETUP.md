@@ -29,6 +29,7 @@ supabase/new_order_realtime_migration.sql
 supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
 supabase/20260620_lock_down_public_order_creation.sql
+supabase/20260620_p1_pilot_operations.sql
 ```
 
 For an existing project, apply only files that have not already been executed.

@@ -139,7 +139,7 @@ export function buildWhatsAppMessage(input: MessageInput) {
   ].join("\n");
 }
 
-export function normalizeWhatsAppNumber(number: string) {
+export function normalizeCustomerPhone(number: string) {
   const digits = number.replace(/[^\d]/g, "");
 
   if (digits.startsWith("00")) {
@@ -161,12 +161,14 @@ export function normalizeWhatsAppNumber(number: string) {
   return digits;
 }
 
+export const normalizeWhatsAppNumber = normalizeCustomerPhone;
+
 export function buildWhatsAppUrl(number: string, message: string) {
-  const cleanNumber = normalizeWhatsAppNumber(number);
+  const cleanNumber = normalizeCustomerPhone(number);
   return `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }
 
 export function buildWhatsAppAppUrl(number: string, message: string) {
-  const cleanNumber = normalizeWhatsAppNumber(number);
+  const cleanNumber = normalizeCustomerPhone(number);
   return `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }

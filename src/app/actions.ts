@@ -5,7 +5,13 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { buildWhatsAppAppUrl, buildWhatsAppMessage, buildWhatsAppUrl, normalizeWhatsAppNumber } from "@/lib/whatsapp";
+import {
+  buildWhatsAppAppUrl,
+  buildWhatsAppMessage,
+  buildWhatsAppUrl,
+  normalizeCustomerPhone,
+  normalizeWhatsAppNumber
+} from "@/lib/whatsapp";
 import { getCustomerLanguage } from "@/lib/customer-i18n";
 import {
   isRestaurantOpen,
@@ -346,7 +352,12 @@ export async function createOrderAction(
   }
 
   const customerName = limitedStringValue(formData, "customer_name", 120);
-  const customerPhone = limitedStringValue(formData, "customer_phone", 24);
+  const submittedCustomerPhone = limitedStringValue(
+    formData,
+    "customer_phone",
+    24
+  );
+  const customerPhone = normalizeCustomerPhone(submittedCustomerPhone);
   const fulfilmentType = limitedStringValue(
     formData,
     "fulfilment_type",
@@ -381,7 +392,10 @@ export async function createOrderAction(
     return { ok: false, error: "Please complete your contact details." };
   }
 
-  if (!isValidCustomerPhone(customerPhone)) {
+  if (
+    !isValidCustomerPhone(submittedCustomerPhone) ||
+    !isValidCustomerPhone(customerPhone)
+  ) {
     return { ok: false, error: "Please enter a valid phone number." };
   }
 
@@ -462,7 +476,7 @@ export async function createOrderAction(
     };
   }
 
-  const { data, error } = await supabase.rpc("create_order_with_customer_v3", {
+  const { data, error } = await supabase.rpc("create_order_with_customer_v4", {
     target_restaurant_id: restaurant.id,
     order_customer_name: customerName,
     order_customer_phone: customerPhone,
@@ -542,6 +556,7 @@ export async function updateOrderStatusAction(formData: FormData) {
   const session = await requireRestaurantAdmin();
   const orderId = stringValue(formData, "order_id");
   const status = stringValue(formData, "status") as OrderStatus;
+  const reason = limitedStringValue(formData, "reason", 300);
   const restaurant = session.restaurant;
   const supabase = getSupabaseAdmin();
 
@@ -551,8 +566,11 @@ export async function updateOrderStatusAction(formData: FormData) {
 
   if (supabase) {
     const { data: updatedOrderId, error } = await supabase.rpc(
-      "transition_order_status_and_award_loyalty",
+      "transition_order_status_and_record_event",
       {
+        event_actor_role: session.role,
+        event_actor_user_id: session.userId,
+        event_reason: reason || null,
         target_order_id: orderId,
         target_restaurant_id: restaurant.id,
         target_status: status
@@ -567,6 +585,74 @@ export async function updateOrderStatusAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
+}
+
+export async function recordOrderPrintEventsAction(
+  orderId: string,
+  events: Array<{ kind: "kot" | "receipt"; isReprint: boolean }>,
+  deviceLabel: string
+) {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const safeEvents = events
+    .filter((event) => event.kind === "kot" || event.kind === "receipt")
+    .slice(0, 2);
+
+  if (!supabase || !orderId || safeEvents.length === 0) {
+    return { ok: false as const, error: "Print tracking is unavailable." };
+  }
+
+  for (const event of safeEvents) {
+    const { error } = await supabase.rpc("record_order_print_event", {
+      event_actor_role: session.role,
+      event_actor_user_id: session.userId,
+      event_device_label: deviceLabel.slice(0, 160),
+      event_is_reprint: event.isReprint,
+      target_order_id: orderId,
+      target_print_kind: event.kind,
+      target_restaurant_id: session.restaurantId
+    });
+
+    if (error) {
+      console.error("WhatsOrder print event persistence failed", {
+        code: error.code,
+        orderId,
+        restaurantId: session.restaurantId
+      });
+      return {
+        ok: false as const,
+        error: "The print opened, but tracking could not be saved."
+      };
+    }
+  }
+
+  return { ok: true as const };
+}
+
+export async function withdrawCustomerMarketingConsentAction(formData: FormData) {
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const customerId = stringValue(formData, "customer_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase || !customerId) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("customers")
+    .update({
+      consent_marketing: false,
+      marketing_opt_in: false,
+      marketing_consent_source: "restaurant_recorded_stop",
+      marketing_consent_updated_at: now,
+      marketing_consent_withdrawn_at: now
+    })
+    .eq("id", customerId)
+    .eq("restaurant_id", session.restaurantId);
+  databaseFailure("Marketing consent withdrawal", error);
+
+  revalidatePath("/admin/customers");
 }
 
 export async function addMenuItemAction(formData: FormData) {

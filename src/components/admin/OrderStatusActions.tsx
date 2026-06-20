@@ -59,16 +59,25 @@ export function OrderStatusActions({
         <form
           action={updateOrderStatusAction}
           onSubmit={(event) => {
-            if (!window.confirm("Cancel this order? This action cannot be reversed.")) {
+            const reason = window.prompt(
+              "Why is this order being cancelled? This will be saved in the order history."
+            );
+
+            if (!reason?.trim()) {
               event.preventDefault();
               return;
             }
 
+            const reasonInput = event.currentTarget.elements.namedItem("reason");
+            if (reasonInput instanceof HTMLInputElement) {
+              reasonInput.value = reason.trim();
+            }
             setSubmittingStatus("Cancelled");
           }}
         >
           <input name="order_id" type="hidden" value={orderId} />
           <input name="status" type="hidden" value="Cancelled" />
+          <input name="reason" type="hidden" />
           <button
             className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-60"
             disabled={submittingStatus !== null}

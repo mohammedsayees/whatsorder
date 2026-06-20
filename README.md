@@ -39,6 +39,7 @@ The app remains multi-restaurant ready because every restaurant-owned table incl
 Use Node.js `20.9` or newer.
 
 ```bash
+nvm use
 npm install
 cp .env.example .env.local
 npm run dev
@@ -83,6 +84,7 @@ supabase/new_order_realtime_migration.sql
 supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
 supabase/20260620_lock_down_public_order_creation.sql
+supabase/20260620_p1_pilot_operations.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
