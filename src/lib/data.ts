@@ -17,6 +17,7 @@ import type {
   Order,
   OrderStatus,
   FulfilmentType,
+  PublicRestaurant,
   Restaurant
 } from "@/lib/types";
 
@@ -108,26 +109,46 @@ function productionDataFailure(resource: string, error?: { message?: string } | 
   );
 }
 
-export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
+function toPublicRestaurant(restaurant: Restaurant): PublicRestaurant {
+  return {
+    id: restaurant.id,
+    name: restaurant.name,
+    name_ar: restaurant.name_ar,
+    slug: restaurant.slug,
+    logo_url: restaurant.logo_url,
+    cover_image_url: restaurant.cover_image_url,
+    whatsapp_number: restaurant.whatsapp_number,
+    address: restaurant.address,
+    city: restaurant.city,
+    subtitle: restaurant.subtitle,
+    address_ar: restaurant.address_ar,
+    subtitle_ar: restaurant.subtitle_ar,
+    delivery_fee: restaurant.delivery_fee,
+    minimum_order_amount: restaurant.minimum_order_amount,
+    pickup_enabled: restaurant.pickup_enabled,
+    car_pickup_enabled: restaurant.car_pickup_enabled,
+    dine_in_enabled: restaurant.dine_in_enabled,
+    delivery_enabled: restaurant.delivery_enabled,
+    scheduled_orders_enabled: restaurant.scheduled_orders_enabled,
+    public_reviews_enabled: restaurant.public_reviews_enabled,
+    accepting_orders: restaurant.accepting_orders,
+    opening_hours_enabled: restaurant.opening_hours_enabled,
+    opening_hours: restaurant.opening_hours
+  };
+}
+
+export async function getRestaurantBySlug(
+  slug: string
+): Promise<PublicRestaurant | null> {
   const supabase = getSupabase();
 
   if (supabase) {
     const { data, error } = await supabase
-      .from("restaurants")
-      .select("*")
-      .eq("slug", slug)
-      .eq("is_active", true)
-      .single();
+      .rpc("get_public_restaurant", { target_slug: slug })
+      .maybeSingle();
 
     if (!error && data) {
-      const restaurant = data as Restaurant;
-      const unavailableStatuses = ["draft", "onboarding", "paused", "cancelled"];
-
-      if (restaurant.status && unavailableStatuses.includes(restaurant.status)) {
-        return null;
-      }
-
-      return restaurant;
+      return data as PublicRestaurant;
     }
 
     if (error && error.code !== "PGRST116" && !demoDataEnabled) {
@@ -138,7 +159,7 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
   }
 
   if (demoDataEnabled && slug === demoRestaurant.slug) {
-    return demoRestaurant;
+    return toPublicRestaurant(demoRestaurant);
   }
 
   return null;

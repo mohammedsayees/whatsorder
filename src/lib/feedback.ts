@@ -5,6 +5,7 @@ import { hashFeedbackToken } from "@/lib/feedback-utils";
 import type {
   CustomerFeedback,
   PublicFeedbackSummary,
+  PublicRestaurant,
   Restaurant
 } from "@/lib/types";
 
@@ -18,7 +19,7 @@ export const feedbackTags = [
 ] as const;
 
 export async function getPublicFeedback(
-  restaurant: Restaurant
+  restaurant: PublicRestaurant
 ): Promise<PublicFeedbackSummary> {
   if (!restaurant.public_reviews_enabled) {
     return { averageRating: null, reviewCount: 0, reviews: [] };

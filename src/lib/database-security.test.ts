@@ -14,6 +14,14 @@ describe("public order database boundary", () => {
   const pilotOperationsMigration = readProjectFile(
     "supabase/20260620_p1_pilot_operations.sql"
   );
+  const publicRestaurantProjectionMigration = readProjectFile(
+    "supabase/migrations/20260620161000_p0_2a_add_public_restaurant_projection.sql"
+  );
+  const publicRestaurantEnforcementMigration = readProjectFile(
+    "supabase/pending/20260620162000_p0_2b_enforce_public_restaurant_projection.sql"
+  );
+  const dataModule = readProjectFile("src/lib/data.ts");
+  const typeModule = readProjectFile("src/lib/types.ts");
 
   it("removes direct order inserts from public Supabase roles", () => {
     expect(migration).toContain(
@@ -70,5 +78,36 @@ describe("public order database boundary", () => {
     expect(pilotOperationsMigration).toMatch(
       /grant execute on function public\.create_order_with_customer_v4\([\s\S]*?\) to service_role;/
     );
+  });
+
+  it("exposes restaurants publicly only through a curated projection", () => {
+    expect(publicRestaurantProjectionMigration).toContain(
+      "create or replace function public.get_public_restaurant"
+    );
+    expect(publicRestaurantEnforcementMigration).toContain(
+      "revoke select on table public.restaurants from anon;"
+    );
+    expect(publicRestaurantProjectionMigration).not.toMatch(
+      /get_public_restaurant[\s\S]*?owner_(name|email|phone)/
+    );
+    expect(publicRestaurantProjectionMigration).not.toMatch(
+      /get_public_restaurant[\s\S]*?internal_notes/
+    );
+    expect(dataModule).toContain('.rpc("get_public_restaurant"');
+    expect(dataModule).not.toMatch(
+      /\.from\(["']restaurants["']\)\s*\.select\(["']\*["']\)/
+    );
+  });
+
+  it("keeps private restaurant fields out of the public DTO", () => {
+    const publicType = typeModule.match(
+      /export type PublicRestaurant = \{([\s\S]*?)\n\};/
+    )?.[1];
+
+    expect(publicType).toBeTruthy();
+    expect(publicType).not.toContain("owner_name");
+    expect(publicType).not.toContain("owner_email");
+    expect(publicType).not.toContain("owner_phone");
+    expect(publicType).not.toContain("internal_notes");
   });
 });

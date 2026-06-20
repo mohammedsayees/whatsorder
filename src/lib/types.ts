@@ -25,7 +25,7 @@ export type OrderStatus =
   | "Completed"
   | "Cancelled";
 
-export type Restaurant = {
+export type PublicRestaurant = {
   id: string;
   name: string;
   name_ar?: string | null;
@@ -33,9 +33,6 @@ export type Restaurant = {
   logo_url: string | null;
   cover_image_url?: string | null;
   whatsapp_number: string;
-  owner_name?: string | null;
-  owner_email?: string | null;
-  owner_phone?: string | null;
   address: string | null;
   city?: string | null;
   subtitle?: string | null;
@@ -52,6 +49,12 @@ export type Restaurant = {
   accepting_orders?: boolean;
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
+};
+
+export type Restaurant = PublicRestaurant & {
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   internal_notes?: string | null;

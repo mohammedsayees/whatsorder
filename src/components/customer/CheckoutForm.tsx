@@ -23,7 +23,7 @@ import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
-import type { FulfilmentType, Restaurant } from "@/lib/types";
+import type { FulfilmentType, PublicRestaurant } from "@/lib/types";
 
 type CapturedLocation = {
   latitude: number;
@@ -49,7 +49,7 @@ export function CheckoutForm({
   restaurant
 }: {
   initialTableNumber?: string;
-  restaurant: Restaurant;
+  restaurant: PublicRestaurant;
 }) {
   const router = useRouter();
   const cart = useCart();
