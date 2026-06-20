@@ -121,7 +121,11 @@ export default async function AdminOrdersPage({
 
       <div className="mt-5">
         {ordersPage.items.length > 0 ? (
-          <OrderList customers={customers} orders={ordersPage.items} />
+          <OrderList
+            customers={customers}
+            orders={ordersPage.items}
+            restaurant={restaurant}
+          />
         ) : (
           <div className="rounded-lg border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
             <p className="font-black">No orders in this view</p>
