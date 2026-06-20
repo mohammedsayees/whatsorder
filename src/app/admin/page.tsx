@@ -53,7 +53,11 @@ export default async function AdminDashboardPage({
             View all
           </Link>
         </div>
-        <OrderList customers={customers} orders={orders.slice(0, 5)} />
+        <OrderList
+          customers={customers}
+          orders={orders.slice(0, 5)}
+          restaurant={restaurant}
+        />
       </section>
     </main>
   );

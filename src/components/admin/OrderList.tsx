@@ -1,13 +1,22 @@
 import { formatAED } from "@/lib/currency";
 import { formatUaeDateTime } from "@/lib/date-time";
-import type { Customer, Order } from "@/lib/types";
+import type { Customer, Order, Restaurant } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
 import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
+import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
 import { CarFront, Gift, MapPin, ShoppingBag, Truck, Utensils } from "lucide-react";
 
-export function OrderList({ orders, customers = [] }: { orders: Order[]; customers?: Customer[] }) {
+export function OrderList({
+  orders,
+  restaurant,
+  customers = []
+}: {
+  orders: Order[];
+  restaurant: Restaurant;
+  customers?: Customer[];
+}) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
 
   return (
@@ -132,6 +141,7 @@ export function OrderList({ orders, customers = [] }: { orders: Order[]; custome
                   orderId={order.id}
                   status={order.status}
                 />
+                <OrderPrintActions order={order} restaurant={restaurant} />
                 {order.status === "Completed" ? (
                   <RequestFeedbackButton orderId={order.id} />
                 ) : null}
