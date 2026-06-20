@@ -18,7 +18,7 @@ describe("public order database boundary", () => {
     "supabase/migrations/20260620161000_p0_2a_add_public_restaurant_projection.sql"
   );
   const publicRestaurantEnforcementMigration = readProjectFile(
-    "supabase/pending/20260620162000_p0_2b_enforce_public_restaurant_projection.sql"
+    "supabase/migrations/20260620162000_p0_2b_enforce_public_restaurant_projection.sql"
   );
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
