@@ -2,13 +2,13 @@ import type {
   FulfilmentType,
   OrderItem,
   PaymentMethod,
-  Restaurant
+  PublicRestaurant
 } from "@/lib/types";
 import { formatAED } from "@/lib/currency";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 
 type MessageInput = {
-  restaurant: Restaurant;
+  restaurant: PublicRestaurant;
   customerName: string;
   customerPhone: string;
   fulfilmentType: FulfilmentType;

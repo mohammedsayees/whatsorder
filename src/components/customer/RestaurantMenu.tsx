@@ -36,7 +36,7 @@ import type {
   MenuItem,
   MenuOffer,
   PublicFeedbackSummary,
-  Restaurant
+  PublicRestaurant
 } from "@/lib/types";
 
 const CATEGORY_SCROLL_OFFSET = 172;
@@ -60,7 +60,7 @@ export function RestaurantMenu({
   offers,
   tableNumber
 }: {
-  restaurant: Restaurant;
+  restaurant: PublicRestaurant;
   categories: MenuCategory[];
   feedback: PublicFeedbackSummary;
   items: MenuItem[];
