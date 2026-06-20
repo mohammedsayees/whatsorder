@@ -258,6 +258,89 @@ export async function getOrders(restaurantId: string): Promise<Order[]> {
   return demoOrders.filter((order) => order.restaurant_id === restaurantId);
 }
 
+export async function getOrdersForReport(
+  restaurantId: string,
+  startIso: string,
+  endExclusiveIso: string
+): Promise<Order[]> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .gte("created_at", startIso)
+      .lt("created_at", endExclusiveIso)
+      .order("created_at", { ascending: true });
+
+    if (!error && data) {
+      return data as Order[];
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Report orders", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Report orders");
+  }
+
+  return demoOrders.filter(
+    (order) =>
+      order.restaurant_id === restaurantId &&
+      order.created_at >= startIso &&
+      order.created_at < endExclusiveIso
+  );
+}
+
+export async function getCustomersForReport(
+  restaurantId: string,
+  phones: string[]
+): Promise<Customer[]> {
+  const uniquePhones = [...new Set(phones.filter(Boolean))];
+
+  if (uniquePhones.length === 0) {
+    return [];
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const chunks: string[][] = [];
+
+    for (let index = 0; index < uniquePhones.length; index += 100) {
+      chunks.push(uniquePhones.slice(index, index + 100));
+    }
+
+    const results = await Promise.all(
+      chunks.map((phoneChunk) =>
+        supabase
+          .from("customers")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .in("phone", phoneChunk)
+      )
+    );
+    const failedResult = results.find((result) => result.error);
+
+    if (!failedResult) {
+      return results.flatMap((result) => (result.data ?? []) as Customer[]);
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Report customers", failedResult.error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Report customers");
+  }
+
+  return demoCustomers.filter(
+    (customer) =>
+      customer.restaurant_id === restaurantId &&
+      uniquePhones.includes(customer.phone)
+  );
+}
+
 export async function getOrdersPage(
   restaurantId: string,
   options: OrdersPageOptions = {}
