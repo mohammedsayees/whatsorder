@@ -261,13 +261,15 @@ export function buildRestaurantReport(
     daily.averageOrderValue = daily.sales / daily.orders;
     salesByDate.set(date, daily);
 
-    const payment = payments.get(order.payment_method) ?? {
-      amount: 0,
-      orderCount: 0
-    };
-    payment.amount += Number(order.total);
-    payment.orderCount += 1;
-    payments.set(order.payment_method, payment);
+    if (order.payment_method) {
+      const payment = payments.get(order.payment_method) ?? {
+        amount: 0,
+        orderCount: 0
+      };
+      payment.amount += Number(order.total);
+      payment.orderCount += 1;
+      payments.set(order.payment_method, payment);
+    }
 
     const fulfilment = fulfilments.get(order.fulfilment_type) ?? {
       amount: 0,

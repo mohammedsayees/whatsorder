@@ -169,7 +169,7 @@ function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
         <div class="grand-total"><span>Total</span><span>${escapeHtml(formatMoney(order.total))}</span></div>
       </div>
       <div class="section">
-        <div>Payment: ${escapeHtml(order.payment_method)}</div>
+        <div>Payment: ${escapeHtml(order.payment_method ?? "Unpaid")}</div>
         ${order.notes ? `<div>Notes: ${escapeHtml(order.notes)}</div>` : ""}
       </div>
       <footer>Thank you for your order.<br>This is an order receipt, not a tax invoice.</footer>

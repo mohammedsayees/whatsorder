@@ -55,6 +55,11 @@ export function OrderList({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-black">{order.customer_name}</h3>
                   <StatusBadge status={order.status} />
+                  {order.payment_method === null && order.status !== "Cancelled" ? (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
+                      Unpaid
+                    </span>
+                  ) : null}
                   <span
                     className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black ${fulfilment.className}`}
                   >
@@ -141,6 +146,7 @@ export function OrderList({
                   fulfilmentType={fulfilmentType}
                   key={`${order.id}-${order.status}`}
                   orderId={order.id}
+                  paymentMethod={order.payment_method}
                   status={order.status}
                 />
                 <OrderPrintActions order={order} restaurant={restaurant} />

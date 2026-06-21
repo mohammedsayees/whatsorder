@@ -139,7 +139,7 @@ export type Order = {
   delivery_address_text: string | null;
   delivery_landmark: string | null;
   notes: string | null;
-  payment_method: PaymentMethod;
+  payment_method: PaymentMethod | null;
   items: OrderItem[];
   subtotal: number;
   delivery_fee: number;
