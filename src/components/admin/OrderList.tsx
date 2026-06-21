@@ -1,3 +1,5 @@
+"use client";
+
 import { formatAED } from "@/lib/currency";
 import { formatUaeDateTime } from "@/lib/date-time";
 import type { Customer, Order, Restaurant } from "@/lib/types";
