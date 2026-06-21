@@ -116,6 +116,43 @@ export async function addShiftPaidOutAction(
   return { success: "Cash paid-out recorded." };
 }
 
+export async function assignUnassignedOrdersAction(
+  _previousState: ShiftActionState,
+  _formData: FormData
+): Promise<ShiftActionState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return { error: "Shift service is unavailable." };
+  }
+
+  const { data: openShift } = await supabase
+    .from("restaurant_shifts")
+    .select("id")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (!openShift) {
+    return { error: "No open shift found. Open a shift first." };
+  }
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ shift_id: openShift.id })
+    .eq("restaurant_id", session.restaurantId)
+    .eq("status", "Completed")
+    .is("shift_id", null);
+
+  if (error) {
+    return { error: "Could not reassign orders. Try again." };
+  }
+
+  refreshShiftViews();
+  return { success: "Unassigned orders moved to the current shift." };
+}
+
 export async function closeShiftAction(
   _previousState: ShiftActionState,
   formData: FormData

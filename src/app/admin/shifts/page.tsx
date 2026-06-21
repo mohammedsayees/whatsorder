@@ -1,5 +1,6 @@
 import { AlertTriangle, Banknote, CreditCard, ReceiptText, WalletCards } from "lucide-react";
 import {
+  AssignUnassignedOrdersButton,
   CloseShiftForm,
   OpenShiftForm,
   PaidOutForm
@@ -45,15 +46,24 @@ export default async function AdminShiftsPage() {
       {unassignedCompletedOrders > 0 ? (
         <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <AlertTriangle className="mt-0.5 shrink-0" size={20} />
-          <div>
+          <div className="flex-1">
             <p className="font-black">
               {unassignedCompletedOrders} completed order
               {unassignedCompletedOrders === 1 ? "" : "s"} unassigned
             </p>
             <p className="text-sm">
               These orders were completed while no shift was open. They are not
-              included in a shift’s expected cash.
+              included in a shift&apos;s expected cash.
             </p>
+            {currentShift ? (
+              <div className="mt-3">
+                <AssignUnassignedOrdersButton />
+              </div>
+            ) : (
+              <p className="mt-2 text-xs font-bold">
+                Open a shift to assign these orders to it.
+              </p>
+            )}
           </div>
         </div>
       ) : null}
