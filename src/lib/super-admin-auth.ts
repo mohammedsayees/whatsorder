@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import {
   accessTokenCookieName,
+  activeRestaurantCookieName,
   refreshTokenCookieName
 } from "@/lib/auth-cookies";
 import {
@@ -34,7 +35,15 @@ export type RestaurantSessionIssue =
   | "not_authenticated"
   | "no_membership"
   | "multiple_memberships"
+  | "restaurant_selection_required"
   | "restaurant_unavailable";
+
+export type SelectableRestaurant = {
+  restaurantId: string;
+  role: RestaurantAdminSession["role"];
+  name: string;
+  slug: string;
+};
 
 export type RestaurantSessionResolution =
   | { session: RestaurantAdminSession; issue: null }
@@ -106,19 +115,36 @@ export async function resolveRestaurantAdminSession(): Promise<RestaurantSession
     .select("restaurant_id,role,email")
     .eq("user_id", user.id)
     .not("accepted_at", "is", null)
-    .in("role", ["restaurant_admin", "staff", "owner", "manager"])
-    .limit(2);
+    .in("role", ["restaurant_admin", "staff", "owner", "manager"]);
 
   if (membershipError || !memberships) {
     return { session: null, issue: "no_membership" };
   }
 
   const membershipState = classifyMembershipCount(memberships.length);
-  if (membershipState !== "ok") {
-    return { session: null, issue: membershipState };
+  if (membershipState === "no_membership") {
+    return { session: null, issue: "no_membership" };
   }
 
-  const membership = memberships[0];
+  let membership = memberships[0];
+
+  // A user assigned to several restaurants must choose which one they are
+  // acting on. The choice is stored in a cookie and re-validated here against
+  // live memberships on every request, so it can never select a restaurant the
+  // user does not actually belong to.
+  if (membershipState === "multiple_memberships") {
+    const selectedRestaurantId = (await cookies()).get(activeRestaurantCookieName)?.value;
+    const selectedMembership = selectedRestaurantId
+      ? memberships.find((entry) => entry.restaurant_id === selectedRestaurantId)
+      : undefined;
+
+    if (!selectedMembership) {
+      return { session: null, issue: "restaurant_selection_required" };
+    }
+
+    membership = selectedMembership;
+  }
+
   const { data: restaurant } = await admin
     .from("restaurants")
     .select("*")
@@ -152,8 +178,15 @@ export async function getRestaurantAdminSession() {
 export async function requireRestaurantAdmin() {
   const resolution = await resolveRestaurantAdminSession();
 
+  if (resolution.issue === "restaurant_selection_required") {
+    redirect("/select-restaurant");
+  }
+
   if (!resolution.session) {
-    const messages: Record<RestaurantSessionIssue, string> = {
+    const messages: Record<
+      Exclude<RestaurantSessionIssue, "restaurant_selection_required">,
+      string
+    > = {
       not_authenticated: "Please sign in to continue.",
       no_membership: "This account does not have an active restaurant assignment.",
       multiple_memberships:
@@ -164,6 +197,55 @@ export async function requireRestaurantAdmin() {
   }
 
   return resolution.session;
+}
+
+export async function getSelectableRestaurants(): Promise<SelectableRestaurant[]> {
+  const user = await getAuthenticatedUser();
+  const admin = getSupabaseAdmin();
+
+  if (!user || !admin) {
+    return [];
+  }
+
+  const { data: memberships } = await admin
+    .from("restaurant_users")
+    .select("restaurant_id,role")
+    .eq("user_id", user.id)
+    .not("accepted_at", "is", null)
+    .in("role", ["restaurant_admin", "staff", "owner", "manager"]);
+
+  if (!memberships || memberships.length === 0) {
+    return [];
+  }
+
+  const restaurantIds = memberships.map((entry) => entry.restaurant_id as string);
+  const { data: restaurants } = await admin
+    .from("restaurants")
+    .select("id,name,slug,status")
+    .in("id", restaurantIds);
+  const restaurantsById = new Map(
+    (restaurants ?? []).map((restaurant) => [restaurant.id as string, restaurant])
+  );
+
+  return memberships
+    .map((membership) => {
+      const restaurant = restaurantsById.get(membership.restaurant_id as string);
+
+      if (
+        !restaurant ||
+        !isRestaurantAdminAccessAllowed(restaurant.status as Restaurant["status"])
+      ) {
+        return null;
+      }
+
+      return {
+        restaurantId: membership.restaurant_id as string,
+        role: membership.role as RestaurantAdminSession["role"],
+        name: restaurant.name as string,
+        slug: restaurant.slug as string
+      } satisfies SelectableRestaurant;
+    })
+    .filter((entry): entry is SelectableRestaurant => entry !== null);
 }
 
 export async function requireRestaurantRole(

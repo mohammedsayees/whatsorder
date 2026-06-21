@@ -9,6 +9,7 @@ import {
   resolveRestaurantAdminSession,
   superAdminCookieName
 } from "@/lib/super-admin-auth";
+import { activeRestaurantCookieName } from "@/lib/auth-cookies";
 
 function setAuthCookies(accessToken: string, refreshToken: string, expiresIn: number) {
   return cookies().then((cookieStore) => {
@@ -34,6 +35,7 @@ async function clearAuthCookies() {
   const cookieStore = await cookies();
   cookieStore.delete(superAdminCookieName);
   cookieStore.delete(refreshTokenCookieName);
+  cookieStore.delete(activeRestaurantCookieName);
 }
 
 export async function loginRestaurantAdminAction(formData: FormData) {
@@ -62,6 +64,12 @@ export async function loginRestaurantAdminAction(formData: FormData) {
   }
 
   const resolution = await resolveRestaurantAdminSession();
+
+  // Belonging to several restaurants is not an error — keep the session and let
+  // the user pick which restaurant to work on.
+  if (resolution.issue === "restaurant_selection_required") {
+    redirect("/select-restaurant");
+  }
 
   if (!resolution.session) {
     await clearAuthCookies();
