@@ -569,29 +569,59 @@ export async function getOrderFulfilmentCounts(
 }
 
 export async function getNewOrderCount(restaurantId: string): Promise<number> {
+  const state = await getNewOrderAlertState(restaurantId);
+  return state.newOrderCount;
+}
+
+export type NewOrderAlertState = {
+  newOrderCount: number;
+  pendingOrderIds: string[];
+};
+
+export async function getNewOrderAlertState(
+  restaurantId: string
+): Promise<NewOrderAlertState> {
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const { count, error } = await supabase
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "New");
+    const [{ count, error: countError }, { data, error: ordersError }] =
+      await Promise.all([
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId)
+          .eq("status", "New"),
+        supabase
+          .from("orders")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("status", "New")
+          .order("created_at", { ascending: false })
+          .limit(100)
+      ]);
 
-    if (!error) {
-      return count ?? 0;
+    if (!countError && !ordersError) {
+      return {
+        newOrderCount: count ?? 0,
+        pendingOrderIds: (data ?? []).map((order) => String(order.id))
+      };
     }
 
     if (!demoDataEnabled) {
-      productionDataFailure("New-order count", error);
+      productionDataFailure("New-order alert state", countError ?? ordersError);
     }
   } else if (!demoDataEnabled) {
-    productionDataFailure("New-order count");
+    productionDataFailure("New-order alert state");
   }
 
-  return demoOrders.filter(
+  const newOrders = demoOrders.filter(
     (order) => order.restaurant_id === restaurantId && order.status === "New"
-  ).length;
+  );
+
+  return {
+    newOrderCount: newOrders.length,
+    pendingOrderIds: newOrders.slice(0, 100).map((order) => order.id)
+  };
 }
 
 export async function getCustomers(restaurantId: string): Promise<Customer[]> {

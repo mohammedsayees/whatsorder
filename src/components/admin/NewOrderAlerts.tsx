@@ -8,6 +8,8 @@ import {
   getNewOrderAlertStateAction,
   getRealtimeAccessTokenAction
 } from "@/app/admin/alerts/actions";
+import type { NewOrderAlertState } from "@/lib/data";
+import { findUnseenOrderIds, rememberOrderIds } from "@/lib/new-order-alerts";
 
 const highlightDurationMs = 9_000;
 const repeatIntervalMs = 18_000;
@@ -24,7 +26,7 @@ const NewOrderAlertsContext = createContext<NewOrderAlertsContextValue>({
 
 type NewOrderAlertsProviderProps = {
   children: React.ReactNode;
-  initialNewOrderCount: number;
+  initialNewOrderAlertState: NewOrderAlertState;
   realtimeAccessToken: string | null;
   restaurantId: string;
 };
@@ -133,19 +135,26 @@ async function playSynthesizedChime() {
 
 export function NewOrderAlertsProvider({
   children,
-  initialNewOrderCount,
+  initialNewOrderAlertState,
   realtimeAccessToken,
   restaurantId
 }: NewOrderAlertsProviderProps) {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const pendingOrderIdsRef = useRef(new Set<string>());
-  const seenOrderIdsRef = useRef(new Set<string>());
+  const pendingOrderIdsRef = useRef(
+    new Set(initialNewOrderAlertState.pendingOrderIds)
+  );
+  const seenOrderIdsRef = useRef(
+    new Set(initialNewOrderAlertState.pendingOrderIds)
+  );
+  const highlightTimersRef = useRef(new Map<string, number>());
   const soundEnabledRef = useRef(false);
   const toastSequenceRef = useRef(0);
   const [highlightedOrderIds, setHighlightedOrderIds] = useState<Set<string>>(new Set());
-  const [newOrderCount, setNewOrderCount] = useState(initialNewOrderCount);
+  const [newOrderCount, setNewOrderCount] = useState(
+    initialNewOrderAlertState.newOrderCount
+  );
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [repeatEnabled, setRepeatEnabled] = useState(false);
   const [soundBlocked, setSoundBlocked] = useState(false);
@@ -153,12 +162,14 @@ export function NewOrderAlertsProvider({
     restaurantId && realtimeAccessToken && supabase ? "connecting" : "offline"
   );
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [activeRealtimeAccessToken, setActiveRealtimeAccessToken] =
     useState(realtimeAccessToken);
   const soundStorageKey = `whatsorder-sound-alerts:${restaurantId}`;
   const repeatStorageKey = `whatsorder-repeat-order-alerts:${restaurantId}`;
 
   useEffect(() => {
+    const highlightTimers = highlightTimersRef.current;
     const initializationTimer = window.setTimeout(() => {
       const storedSoundEnabled = storageBoolean(soundStorageKey);
       soundEnabledRef.current = storedSoundEnabled;
@@ -170,6 +181,10 @@ export function NewOrderAlertsProvider({
 
     return () => {
       window.clearTimeout(initializationTimer);
+      for (const timer of highlightTimers.values()) {
+        window.clearTimeout(timer);
+      }
+      highlightTimers.clear();
 
       if (audioRef.current) {
         audioRef.current.pause();
@@ -207,15 +222,76 @@ export function NewOrderAlertsProvider({
     return fallbackPlayed;
   }, []);
 
+  const surfaceNewOrders = useCallback(
+    (orderIds: readonly string[]) => {
+      const unseenOrderIds = findUnseenOrderIds(
+        orderIds,
+        seenOrderIdsRef.current
+      );
+
+      if (unseenOrderIds.length === 0) {
+        return 0;
+      }
+
+      rememberOrderIds(seenOrderIdsRef.current, unseenOrderIds);
+      for (const orderId of unseenOrderIds) {
+        pendingOrderIdsRef.current.add(orderId);
+      }
+
+      setHighlightedOrderIds((current) => {
+        const next = new Set(current);
+        unseenOrderIds.forEach((orderId) => next.add(orderId));
+        return next;
+      });
+      showToast(
+        unseenOrderIds.length === 1
+          ? "New order received"
+          : `${unseenOrderIds.length} new orders received`
+      );
+      router.refresh();
+
+      for (const orderId of unseenOrderIds) {
+        const existingTimer = highlightTimersRef.current.get(orderId);
+        if (existingTimer) {
+          window.clearTimeout(existingTimer);
+        }
+
+        const timer = window.setTimeout(() => {
+          setHighlightedOrderIds((current) => {
+            const next = new Set(current);
+            next.delete(orderId);
+            return next;
+          });
+          highlightTimersRef.current.delete(orderId);
+        }, highlightDurationMs);
+        highlightTimersRef.current.set(orderId, timer);
+      }
+
+      if (soundEnabledRef.current) {
+        const claimedOrderId = unseenOrderIds.find((orderId) =>
+          claimCrossTabSound(restaurantId, orderId)
+        );
+        if (claimedOrderId) {
+          void playAlertSound();
+        }
+      }
+
+      return unseenOrderIds.length;
+    },
+    [playAlertSound, restaurantId, router, showToast]
+  );
+
   const refreshAlertState = useCallback(async () => {
     try {
-      const state = await getNewOrderAlertStateAction([...pendingOrderIdsRef.current]);
+      const state = await getNewOrderAlertStateAction();
+      surfaceNewOrders(state.pendingOrderIds);
       pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
       setNewOrderCount(state.newOrderCount);
+      setLastSyncedAt(new Date());
     } catch {
       // A stale/expired login should not crash the dashboard alert UI.
     }
-  }, []);
+  }, [surfaceNewOrders]);
 
   const refreshRealtimeAccess = useCallback(async () => {
     try {
@@ -233,6 +309,10 @@ export function NewOrderAlertsProvider({
   }, [restaurantId]);
 
   useEffect(() => {
+    const initialRefreshTimer = window.setTimeout(() => {
+      void refreshAlertState();
+    }, 0);
+
     const interval = window.setInterval(() => {
       void refreshAlertState();
     }, 30_000);
@@ -244,6 +324,7 @@ export function NewOrderAlertsProvider({
     window.addEventListener("focus", handleFocus);
 
     return () => {
+      window.clearTimeout(initialRefreshTimer);
       window.clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
@@ -297,30 +378,8 @@ export function NewOrderAlertsProvider({
                 return;
               }
 
-              seenOrderIdsRef.current.add(orderId);
-              if (seenOrderIdsRef.current.size > 500) {
-                const oldestOrderId = seenOrderIdsRef.current.values().next().value;
-                if (oldestOrderId) {
-                  seenOrderIdsRef.current.delete(oldestOrderId);
-                }
-              }
-              pendingOrderIdsRef.current.add(orderId);
               setNewOrderCount((count) => count + 1);
-              setHighlightedOrderIds((current) => new Set(current).add(orderId));
-              showToast("New order received");
-              router.refresh();
-
-              window.setTimeout(() => {
-                setHighlightedOrderIds((current) => {
-                  const next = new Set(current);
-                  next.delete(orderId);
-                  return next;
-                });
-              }, highlightDurationMs);
-
-              if (soundEnabledRef.current && claimCrossTabSound(restaurantId, orderId)) {
-                void playAlertSound();
-              }
+              surfaceNewOrders([orderId]);
             }
           )
           .subscribe((status) => {
@@ -355,11 +414,9 @@ export function NewOrderAlertsProvider({
       }
     };
   }, [
-    playAlertSound,
     activeRealtimeAccessToken,
     restaurantId,
-    router,
-    showToast,
+    surfaceNewOrders,
     supabase
   ]);
 
@@ -370,11 +427,13 @@ export function NewOrderAlertsProvider({
 
     const interval = window.setInterval(async () => {
       try {
-        const state = await getNewOrderAlertStateAction([...pendingOrderIdsRef.current]);
+        const state = await getNewOrderAlertStateAction();
+        const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
         pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
         setNewOrderCount(state.newOrderCount);
+        setLastSyncedAt(new Date());
 
-        if (state.pendingOrderIds.length > 0) {
+        if (state.pendingOrderIds.length > 0 && surfacedOrderCount === 0) {
           await playAlertSound();
         }
       } catch {
@@ -385,7 +444,7 @@ export function NewOrderAlertsProvider({
     return () => {
       window.clearInterval(interval);
     };
-  }, [playAlertSound, repeatEnabled, soundEnabled]);
+  }, [playAlertSound, repeatEnabled, soundEnabled, surfaceNewOrders]);
 
   const enableSound = async () => {
     soundEnabledRef.current = true;
@@ -452,6 +511,23 @@ export function NewOrderAlertsProvider({
             <Radio size={14} />
             {connectionState === "live" ? "Live" : connectionState === "offline" ? "Offline" : "Connecting"}
           </span>
+          <span
+            className="text-xs font-semibold text-stone-400"
+            title="The dashboard also checks Supabase every 30 seconds for orders missed by Realtime."
+          >
+            {lastSyncedAt
+              ? `Checked ${lastSyncedAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit"
+                })}`
+              : "Checking orders…"}
+          </span>
+          {connectionState === "offline" ? (
+            <p className="w-full text-xs font-bold text-amber-700">
+              Live connection is unavailable. Orders are still checked every 30 seconds.
+            </p>
+          ) : null}
           {soundBlocked ? (
             <p className="w-full text-xs font-bold text-amber-700">
               Your browser blocked audio. Click “Enable Sound Alerts” to allow it.
