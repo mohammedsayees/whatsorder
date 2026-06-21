@@ -20,6 +20,12 @@ describe("public order database boundary", () => {
   const publicRestaurantEnforcementMigration = readProjectFile(
     "supabase/migrations/20260620162000_p0_2b_enforce_public_restaurant_projection.sql"
   );
+  const leastPrivilegeMigration = readProjectFile(
+    "supabase/migrations/20260620163000_p0_3_least_privilege_rls.sql"
+  );
+  const leastPrivilegeIntegrationTest = readProjectFile(
+    "supabase/tests/p0_3_least_privilege.sql"
+  );
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
 
@@ -109,5 +115,79 @@ describe("public order database boundary", () => {
     expect(publicType).not.toContain("owner_email");
     expect(publicType).not.toContain("owner_phone");
     expect(publicType).not.toContain("internal_notes");
+  });
+
+  it("replaces broad restaurant-user writes with role-scoped reads", () => {
+    expect(leastPrivilegeMigration).toContain(
+      'drop policy if exists "Restaurant users can manage own orders"'
+    );
+    expect(leastPrivilegeMigration).toContain(
+      'create policy "Restaurant users can read own orders"'
+    );
+    expect(leastPrivilegeMigration).toContain(
+      'create policy "Restaurant managers can read own customers"'
+    );
+    expect(leastPrivilegeMigration).toContain(
+      "grant select on table public.orders to authenticated;"
+    );
+    expect(leastPrivilegeMigration).not.toMatch(
+      /grant (insert|update|delete|all) on table public\.orders to authenticated;/i
+    );
+    expect(leastPrivilegeMigration).toContain(
+      "alter default privileges for role postgres in schema public"
+    );
+    for (const table of [
+      "restaurants",
+      "menu_categories",
+      "menu_items",
+      "menu_offers",
+      "orders",
+      "customers",
+      "loyalty_transactions",
+      "customer_feedback",
+      "restaurant_users"
+    ]) {
+      expect(leastPrivilegeMigration).toContain(
+        `revoke all on table public.${table} from anon, authenticated;`
+      );
+    }
+  });
+
+  it("keeps service-only tables and functions inaccessible to browser roles", () => {
+    expect(leastPrivilegeMigration).toContain(
+      "revoke all on table public.order_submission_keys from anon, authenticated;"
+    );
+    expect(leastPrivilegeMigration).toContain(
+      "revoke all on table public.feedback_requests from anon, authenticated;"
+    );
+    expect(leastPrivilegeMigration).toContain(
+      "revoke all on function public.handle_new_user_profile()"
+    );
+    expect(leastPrivilegeMigration).toContain(
+      "grant execute on function public.is_restaurant_member(uuid, text[])"
+    );
+  });
+
+  it("has a rollback-only database role matrix test", () => {
+    expect(leastPrivilegeIntegrationTest).toContain("begin;");
+    expect(leastPrivilegeIntegrationTest).toContain("rollback;");
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "Staff direct order update unexpectedly succeeded"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "Manager direct customer update unexpectedly succeeded"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "Owner direct restaurant update unexpectedly succeeded"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "Realtime order SELECT privilege was removed"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "transition_order_status_and_record_event"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "record_order_print_event"
+    );
   });
 });
