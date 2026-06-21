@@ -101,8 +101,68 @@ values
     'Test'
   );
 
+insert into public.menu_categories (
+  id, restaurant_id, name, is_active
+)
+values
+  ('60000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Tenant A Menu', true),
+  ('60000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'Tenant B Menu', true);
+
+insert into public.menu_items (
+  id,
+  restaurant_id,
+  category_id,
+  name,
+  price,
+  is_available
+)
+values
+  (
+    '70000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '60000000-0000-0000-0000-000000000001',
+    'Tenant A Item',
+    10,
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    '60000000-0000-0000-0000-000000000002',
+    'Tenant B Item',
+    10,
+    true
+  );
+
+-- Anonymous visitors can read active public menu data. They still cannot read
+-- private restaurant or order base tables.
+set local role anon;
+
+do $anon_checks$
+begin
+  if (select count(*) from public.menu_items) <> 2 then
+    raise exception 'Anon public menu SELECT failed';
+  end if;
+
+  begin
+    perform id from public.restaurants limit 1;
+    raise exception 'Anon private restaurant SELECT unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    perform id from public.orders limit 1;
+    raise exception 'Anon private order SELECT unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+end;
+$anon_checks$;
+
 -- All browser identities use the authenticated database role. JWT subject and
 -- membership role determine row visibility; table grants deny all mutations.
+reset role;
 set local role authenticated;
 select set_config(
   'request.jwt.claim.sub',
@@ -273,6 +333,18 @@ begin
 
   if not has_table_privilege('authenticated', 'public.orders', 'SELECT') then
     raise exception 'Realtime order SELECT privilege was removed';
+  end if;
+
+  if not has_function_privilege(
+    'anon',
+    'public.is_restaurant_member(uuid,text[])',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'anon',
+    'public.is_super_admin()',
+    'EXECUTE'
+  ) then
+    raise exception 'Anon cannot evaluate public menu policy helpers';
   end if;
 
   if not has_function_privilege(

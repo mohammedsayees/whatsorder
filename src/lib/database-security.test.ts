@@ -26,6 +26,9 @@ describe("public order database boundary", () => {
   const leastPrivilegeIntegrationTest = readProjectFile(
     "supabase/tests/p0_3_least_privilege.sql"
   );
+  const publicPolicyHelperMigration = readProjectFile(
+    "supabase/migrations/20260620163100_p0_3_allow_public_policy_helpers.sql"
+  );
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
 
@@ -188,6 +191,24 @@ describe("public order database boundary", () => {
     );
     expect(leastPrivilegeIntegrationTest).toContain(
       "record_order_print_event"
+    );
+    expect(leastPrivilegeIntegrationTest).toContain(
+      "Anon public menu SELECT failed"
+    );
+  });
+
+  it("lets anon evaluate boolean policy helpers without granting private reads", () => {
+    expect(publicPolicyHelperMigration).toContain(
+      "grant execute on function public.is_restaurant_member(uuid, text[])"
+    );
+    expect(publicPolicyHelperMigration).toContain(
+      "grant execute on function public.is_super_admin()"
+    );
+    expect(leastPrivilegeMigration).not.toContain(
+      "grant select on table public.restaurants to anon;"
+    );
+    expect(leastPrivilegeMigration).not.toContain(
+      "grant select on table public.orders to anon;"
     );
   });
 });
