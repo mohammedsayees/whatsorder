@@ -18,10 +18,10 @@ import {
   openingHoursFromFormData
 } from "@/lib/opening-hours";
 import {
-  isOfferQuantityAllowed,
   isValidCustomerPhone,
   parseAndValidateCart
 } from "@/lib/security";
+import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -307,49 +307,13 @@ export async function createOrderAction(
     getMenu(restaurant.id),
     getMenuOffers(restaurant.id)
   ]);
-  const menuItems = new Map(menu.items.map((item) => [item.id, item]));
-  const activeOffers = new Map(offers.map((offer) => [offer.id, offer]));
-  const verifiedItems: CartLine[] = [];
+  const verifiedCart = verifyCartAgainstMenu(items, menu, offers);
 
-  for (const cartItem of items) {
-    const menuItem = menuItems.get(cartItem.item_id);
-
-    if (!menuItem || !menuItem.is_available) {
-      return {
-        ok: false,
-        error: `${cartItem.name || "One item"} is no longer available. Please review your cart.`
-      };
-    }
-
-    const offer = cartItem.offer_id ? activeOffers.get(cartItem.offer_id) : null;
-
-    if (cartItem.offer_id && (!offer || offer.menu_item_id !== menuItem.id)) {
-      return {
-        ok: false,
-        error: `${menuItem.name}'s offer is no longer available. Please review your cart.`
-      };
-    }
-
-    if (
-      offer &&
-      !isOfferQuantityAllowed(cartItem.quantity, offer.max_quantity_per_order)
-    ) {
-      return {
-        ok: false,
-        error: `${offer.title} is limited to ${offer.max_quantity_per_order} per order.`
-      };
-    }
-
-    verifiedItems.push({
-      item_id: menuItem.id,
-      offer_id: offer?.id ?? null,
-      offer_max_quantity: offer?.max_quantity_per_order ?? null,
-      name: menuItem.name,
-      name_ar: menuItem.name_ar ?? null,
-      price: offer ? Number(offer.promotional_price) : menuItem.price,
-      quantity: Math.max(1, Math.floor(cartItem.quantity))
-    });
+  if (!verifiedCart.ok) {
+    return { ok: false, error: verifiedCart.error };
   }
+
+  const verifiedItems = verifiedCart.items;
 
   const customerName = limitedStringValue(formData, "customer_name", 120);
   const submittedCustomerPhone = limitedStringValue(
