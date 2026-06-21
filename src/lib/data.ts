@@ -255,30 +255,6 @@ export async function getMenuOffers(
   return [];
 }
 
-export async function getOrders(restaurantId: string): Promise<Order[]> {
-  const supabase = getSupabaseAdmin();
-
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      return data as Order[];
-    }
-
-    if (!demoDataEnabled) {
-      productionDataFailure("Orders", error);
-    }
-  } else if (!demoDataEnabled) {
-    productionDataFailure("Orders");
-  }
-
-  return demoOrders.filter((order) => order.restaurant_id === restaurantId);
-}
-
 export async function getRecentOrders(
   restaurantId: string,
   limit = 5
@@ -622,30 +598,6 @@ export async function getNewOrderAlertState(
     newOrderCount: newOrders.length,
     pendingOrderIds: newOrders.slice(0, 100).map((order) => order.id)
   };
-}
-
-export async function getCustomers(restaurantId: string): Promise<Customer[]> {
-  const supabase = getSupabaseAdmin();
-
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("updated_at", { ascending: false });
-
-    if (!error && data) {
-      return data as Customer[];
-    }
-
-    if (!demoDataEnabled) {
-      productionDataFailure("Customers", error);
-    }
-  } else if (!demoDataEnabled) {
-    productionDataFailure("Customers");
-  }
-
-  return demoCustomers.filter((customer) => customer.restaurant_id === restaurantId);
 }
 
 export async function getCustomersPage(
