@@ -16,7 +16,7 @@ function tokenExpiresSoon(token: string) {
   }
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get(accessTokenCookieName)?.value;
   const refreshToken = request.cookies.get(refreshTokenCookieName)?.value;
 
