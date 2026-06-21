@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { OrderList } from "@/components/admin/OrderList";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { CurrentShiftBanner } from "@/components/admin/CurrentShiftBanner";
@@ -72,10 +73,21 @@ export default async function AdminOrdersPage({
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-black">Orders</h1>
-      <p className="mt-2 text-stone-600">
-        Update statuses as orders move through the kitchen and delivery flow.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-black">Orders</h1>
+          <p className="mt-2 text-stone-600">
+            Update statuses as orders move through the kitchen and delivery flow.
+          </p>
+        </div>
+        <Link
+          className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white"
+          href="/admin/orders/new"
+        >
+          <Plus size={18} />
+          New order
+        </Link>
+      </div>
       <CurrentShiftBanner currentShift={currentShift} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
