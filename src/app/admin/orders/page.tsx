@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrderList } from "@/components/admin/OrderList";
 import { PaginationNav } from "@/components/admin/PaginationNav";
+import { CurrentShiftBanner } from "@/components/admin/CurrentShiftBanner";
 import {
   getCustomersByPhones,
   getOrderFulfilmentCounts,
@@ -10,6 +11,7 @@ import {
   type OrderStatusView
 } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { getCurrentShiftView } from "@/lib/shift-data";
 
 const statusTabs: { label: string; value: OrderStatusView }[] = [
   { label: "Active", value: "active" },
@@ -35,7 +37,8 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<{ fulfilment?: string; page?: string; status?: string }>;
 }) {
-  const { restaurant } = await requireRestaurantAdmin();
+  const session = await requireRestaurantAdmin();
+  const { restaurant } = session;
   const query = await searchParams;
   const status = statusTabs.some((tab) => tab.value === query.status)
     ? (query.status as OrderStatusView)
@@ -45,14 +48,15 @@ export default async function AdminOrdersPage({
     : "all";
   const requestedPage = positivePage(query.page);
 
-  const [ordersPage, fulfilmentCounts] = await Promise.all([
+  const [ordersPage, fulfilmentCounts, currentShift] = await Promise.all([
     getOrdersPage(restaurant.id, {
       fulfilment,
       page: requestedPage,
       pageSize: 25,
       status
     }),
-    getOrderFulfilmentCounts(restaurant.id, status)
+    getOrderFulfilmentCounts(restaurant.id, status),
+    getCurrentShiftView(session)
   ]);
 
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
@@ -72,6 +76,7 @@ export default async function AdminOrdersPage({
       <p className="mt-2 text-stone-600">
         Update statuses as orders move through the kitchen and delivery flow.
       </p>
+      <CurrentShiftBanner currentShift={currentShift} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
         <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Order status">

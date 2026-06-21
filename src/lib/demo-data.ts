@@ -397,6 +397,7 @@ export const demoOrders: Order[] = [
   {
     id: "WO-DEMO-1001",
     restaurant_id: demoRestaurant.id,
+    shift_id: null,
     customer_name: "Aisha Khan",
     customer_phone: "0501234567",
     fulfilment_type: "delivery",
@@ -434,6 +435,7 @@ export const demoOrders: Order[] = [
   {
     id: "WO-DEMO-1002",
     restaurant_id: demoRestaurant.id,
+    shift_id: null,
     customer_name: "Rahul Nair",
     customer_phone: "0559876543",
     fulfilment_type: "delivery",

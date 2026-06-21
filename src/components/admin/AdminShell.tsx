@@ -7,7 +7,8 @@ import {
   MessageSquareText,
   PieChart,
   Settings,
-  Users
+  Users,
+  WalletCards
 } from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 import { NewOrderAlertsProvider } from "@/components/admin/NewOrderAlerts";
@@ -17,6 +18,7 @@ import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: BarChart3, staff: true },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList, staff: true },
+  { href: "/admin/shifts", label: "Shifts", icon: WalletCards, staff: true },
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },
@@ -45,13 +47,13 @@ export function AdminShell({
           <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
           <p className="mt-0.5 text-xs capitalize text-stone-500">{session.role.replace("_", " ")}</p>
         </div>
-        <nav className={`grid gap-1 p-2 lg:block lg:space-y-1 lg:px-3 ${session.role === "staff" ? "grid-cols-3" : "grid-cols-7"}`}>
+        <nav className="flex gap-1 overflow-x-auto p-2 lg:block lg:space-y-1 lg:overflow-visible lg:px-3">
           {navItems.filter((item) => session.role !== "staff" || item.staff).map((item) => {
             const Icon = item.icon;
 
             return (
               <Link
-                className="focus-ring flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-bold text-stone-600 hover:bg-mint hover:text-leaf lg:flex-row lg:px-3 lg:py-3 lg:text-sm"
+                className="focus-ring flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-bold text-stone-600 hover:bg-mint hover:text-leaf lg:min-w-0 lg:flex-row lg:px-3 lg:py-3 lg:text-sm"
                 href={item.href}
                 key={item.href}
               >
