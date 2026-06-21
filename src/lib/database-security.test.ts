@@ -29,6 +29,12 @@ describe("public order database boundary", () => {
   const publicPolicyHelperMigration = readProjectFile(
     "supabase/migrations/20260620163100_p0_3_allow_public_policy_helpers.sql"
   );
+  const tenantForeignKeysMigration = readProjectFile(
+    "supabase/migrations/20260621100000_p0_4_tenant_consistent_foreign_keys.sql"
+  );
+  const tenantForeignKeysIntegrationTest = readProjectFile(
+    "supabase/tests/p0_4_tenant_consistent_foreign_keys.sql"
+  );
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
 
@@ -209,6 +215,36 @@ describe("public order database boundary", () => {
     );
     expect(leastPrivilegeMigration).not.toContain(
       "grant select on table public.orders to anon;"
+    );
+  });
+
+  it("enforces tenant-consistent relationships at the database boundary", () => {
+    for (const constraint of [
+      "menu_items_category_tenant_fkey",
+      "menu_offers_item_tenant_fkey",
+      "feedback_requests_order_tenant_fkey",
+      "customer_feedback_order_tenant_fkey",
+      "loyalty_transactions_customer_tenant_fkey",
+      "loyalty_transactions_order_tenant_fkey",
+      "order_submission_keys_order_tenant_fkey",
+      "order_status_events_order_tenant_fkey",
+      "order_print_events_order_tenant_fkey"
+    ]) {
+      expect(tenantForeignKeysMigration).toContain(constraint);
+      expect(tenantForeignKeysMigration).toContain(
+        `validate constraint ${constraint}`
+      );
+    }
+    expect(tenantForeignKeysMigration).toContain(
+      "P0-4 blocked:"
+    );
+    expect(tenantForeignKeysIntegrationTest).toContain("begin;");
+    expect(tenantForeignKeysIntegrationTest).toContain("rollback;");
+    expect(tenantForeignKeysIntegrationTest).toContain(
+      "Cross-tenant menu item unexpectedly succeeded"
+    );
+    expect(tenantForeignKeysIntegrationTest).toContain(
+      "Cross-tenant feedback request unexpectedly succeeded"
     );
   });
 });

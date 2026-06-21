@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "WhatsOrder",
   description: "Structured WhatsApp ordering for small UAE restaurants.",
   applicationName: "WhatsOrder",
+  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     title: "WhatsOrder",
