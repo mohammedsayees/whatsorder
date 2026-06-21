@@ -585,6 +585,7 @@ export async function updateOrderStatusAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
+  revalidatePath("/admin/shifts");
 }
 
 export async function recordOrderPrintEventsAction(

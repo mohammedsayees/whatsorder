@@ -123,6 +123,7 @@ export type OrderItem = CartLine;
 export type Order = {
   id: string;
   restaurant_id: string;
+  shift_id: string | null;
   customer_name: string;
   customer_phone: string;
   fulfilment_type: FulfilmentType;
@@ -153,6 +154,59 @@ export type Order = {
   consent_timestamp: string;
   created_at: string;
   updated_at: string;
+};
+
+export type ShiftStatus = "open" | "closed";
+
+export type ShiftFulfilmentSummary = Partial<
+  Record<FulfilmentType, { orders: number; sales: number }>
+>;
+
+export type ShiftSummary = {
+  completed_order_count: number;
+  completed_sales: number;
+  completed_cash_order_total: number;
+  card_on_delivery_total: number;
+  cash_paid_out_total: number;
+  cancelled_order_count: number;
+  fulfilment_breakdown: ShiftFulfilmentSummary;
+  expected_cash_amount: number;
+};
+
+export type RestaurantShift = {
+  id: string;
+  restaurant_id: string;
+  shift_name: string;
+  status: ShiftStatus;
+  opening_cash_amount: number;
+  cash_counted_amount: number | null;
+  completed_order_count: number;
+  completed_sales: number;
+  completed_cash_order_total: number;
+  card_on_delivery_total: number;
+  cash_paid_out_total: number;
+  cancelled_order_count: number;
+  fulfilment_breakdown: ShiftFulfilmentSummary;
+  expected_cash_amount: number | null;
+  difference_amount: number | null;
+  opened_by_user_id: string;
+  closed_by_user_id: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  opening_note: string | null;
+  closing_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ShiftCashPaidOut = {
+  id: string;
+  restaurant_id: string;
+  shift_id: string;
+  amount: number;
+  reason: string;
+  recorded_by_user_id: string;
+  recorded_at: string;
 };
 
 export type Customer = {

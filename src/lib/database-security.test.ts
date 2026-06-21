@@ -35,6 +35,12 @@ describe("public order database boundary", () => {
   const tenantForeignKeysIntegrationTest = readProjectFile(
     "supabase/tests/p0_4_tenant_consistent_foreign_keys.sql"
   );
+  const shiftCashMigration = readProjectFile(
+    "supabase/migrations/20260621120000_lightweight_shift_cash_summary.sql"
+  );
+  const shiftCashIntegrationTest = readProjectFile(
+    "supabase/tests/shift_cash_summary.sql"
+  );
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
 
@@ -246,5 +252,40 @@ describe("public order database boundary", () => {
     expect(tenantForeignKeysIntegrationTest).toContain(
       "Cross-tenant feedback request unexpectedly succeeded"
     );
+  });
+
+  it("keeps shift cash tenant-scoped and service-action only", () => {
+    expect(shiftCashMigration).toContain(
+      "create unique index if not exists idx_restaurant_shifts_one_open"
+    );
+    expect(shiftCashMigration).toContain(
+      "constraint orders_shift_tenant_fkey"
+    );
+    expect(shiftCashMigration).toContain("public.is_restaurant_member(");
+    expect(shiftCashMigration).toContain(
+      "revoke all on table public.restaurant_shifts from anon, authenticated;"
+    );
+    expect(shiftCashMigration).toContain(
+      "grant execute on function public.close_restaurant_shift("
+    );
+    expect(shiftCashMigration).toMatch(
+      /shift\.opening_cash_amount\s*\+\s*completed\.completed_cash_order_total\s*-\s*paid_outs\.cash_paid_out_total/
+    );
+    expect(shiftCashMigration).toContain(
+      "and nullif(trim(requested_closing_note), '') is null"
+    );
+    expect(shiftCashMigration).toContain(
+      "if target_status = 'Completed' and active_shift_id is not null then"
+    );
+    expect(shiftCashMigration).toContain(
+      "and shift_id is null;"
+    );
+    expect(shiftCashIntegrationTest).toContain(
+      "Second open shift unexpectedly succeeded"
+    );
+    expect(shiftCashIntegrationTest).toContain(
+      "Cross-tenant shift assignment unexpectedly succeeded"
+    );
+    expect(shiftCashIntegrationTest).toContain("rollback;");
   });
 });
