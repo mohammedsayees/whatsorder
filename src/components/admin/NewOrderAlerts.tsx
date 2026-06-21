@@ -373,6 +373,10 @@ export function NewOrderAlertsProvider({
               if (
                 !orderId ||
                 payload.new.restaurant_id !== restaurantId ||
+                // Only alert for genuinely new customer orders. Staff-entered
+                // tickets are created already accepted (Preparing), so they
+                // should not ring the new-order alert.
+                payload.new.status !== "New" ||
                 seenOrderIdsRef.current.has(orderId)
               ) {
                 return;

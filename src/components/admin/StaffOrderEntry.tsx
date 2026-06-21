@@ -7,7 +7,7 @@ import {
   type StaffOrderState
 } from "@/app/admin/orders/actions";
 import { formatAED } from "@/lib/currency";
-import type { CartLine, MenuWithCategories, PaymentMethod } from "@/lib/types";
+import type { CartLine, MenuWithCategories } from "@/lib/types";
 
 type StaffFulfilment = "takeaway" | "dine_in";
 
@@ -26,7 +26,6 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
   const [fulfilmentType, setFulfilmentType] = useState<StaffFulfilment>("takeaway");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash on Delivery");
 
   // Clear the ticket after a successful save so staff can punch the next order.
   useEffect(() => {
@@ -267,34 +266,6 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
             </label>
           ) : null}
 
-          {/* Payment */}
-          <fieldset className="mt-4">
-            <legend className="text-xs font-black uppercase tracking-wide text-stone-500">
-              Payment
-            </legend>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {(
-                [
-                  { value: "Cash on Delivery", label: "Cash" },
-                  { value: "Card on Delivery", label: "Card" }
-                ] as { value: PaymentMethod; label: string }[]
-              ).map((option) => (
-                <button
-                  className={`focus-ring rounded-lg border px-3 py-2 text-sm font-black ${
-                    paymentMethod === option.value
-                      ? "border-leaf bg-mint text-leaf"
-                      : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                  }`}
-                  key={option.value}
-                  onClick={() => setPaymentMethod(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
           {/* Optional customer + notes */}
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-bold text-stone-700">
@@ -331,7 +302,6 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
           {/* Hidden submitted values */}
           <input name="items" type="hidden" value={JSON.stringify(cartPayload)} />
           <input name="fulfilment_type" type="hidden" value={fulfilmentType} />
-          <input name="payment_method" type="hidden" value={paymentMethod} />
 
           {state.error || state.success ? (
             <p
@@ -344,25 +314,42 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
             </p>
           ) : null}
 
-          <div className="mt-4 grid gap-2">
-            <button
-              className="focus-ring rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-              disabled={pending || ticketLines.length === 0}
-              name="complete"
-              type="submit"
-              value="false"
-            >
-              {pending ? "Saving…" : "Send to kitchen"}
-            </button>
-            <button
-              className="focus-ring rounded-lg border border-leaf px-4 py-3 font-black text-leaf disabled:opacity-60"
-              disabled={pending || ticketLines.length === 0}
-              name="complete"
-              type="submit"
-              value="true"
-            >
-              Save &amp; mark completed
-            </button>
+          {/* Primary flow: payment is collected later, at completion. */}
+          <button
+            className="focus-ring mt-4 w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
+            disabled={pending || ticketLines.length === 0}
+            name="action"
+            type="submit"
+            value="kitchen"
+          >
+            {pending ? "Saving…" : "Send to kitchen"}
+          </button>
+
+          {/* Optional shortcut: customer pays up front. */}
+          <div className="mt-3 rounded-lg border border-stone-200 p-3">
+            <p className="text-xs font-black uppercase tracking-wide text-stone-500">
+              Or take payment now
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
+                disabled={pending || ticketLines.length === 0}
+                name="action"
+                type="submit"
+                value="paid_cash"
+              >
+                Paid · Cash
+              </button>
+              <button
+                className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
+                disabled={pending || ticketLines.length === 0}
+                name="action"
+                type="submit"
+                value="paid_card"
+              >
+                Paid · Card
+              </button>
+            </div>
           </div>
         </form>
       </section>
