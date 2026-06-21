@@ -39,8 +39,6 @@ function friendlyShiftError(message?: string) {
 }
 
 function refreshShiftViews() {
-  revalidatePath("/admin");
-  revalidatePath("/admin/orders");
   revalidatePath("/admin/shifts");
 }
 

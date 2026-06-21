@@ -11,7 +11,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
-import { NewOrderAlertsProvider } from "@/components/admin/NewOrderAlerts";
+import { AdminAlertsProvider } from "@/components/admin/AdminAlertsProvider";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 
@@ -72,13 +72,13 @@ export function AdminShell({
         </form>
       </aside>
       <div className="pb-24 lg:pb-0 lg:pl-64">
-        <NewOrderAlertsProvider
+        <AdminAlertsProvider
           initialNewOrderAlertState={initialNewOrderAlertState}
           realtimeAccessToken={realtimeAccessToken}
           restaurantId={session.restaurantId}
         >
           {children}
-        </NewOrderAlertsProvider>
+        </AdminAlertsProvider>
       </div>
     </div>
   );
