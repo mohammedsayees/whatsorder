@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   addShiftPaidOutAction,
+  assignUnassignedOrdersAction,
   closeShiftAction,
   openShiftAction,
   type ShiftActionState
@@ -29,6 +30,28 @@ function ActionMessage({ state }: { state: ShiftActionState }) {
     >
       {state.error ?? state.success}
     </p>
+  );
+}
+
+export function AssignUnassignedOrdersButton() {
+  const [state, action, pending] = useActionState(
+    assignUnassignedOrdersAction,
+    initialState
+  );
+
+  return (
+    <div className="space-y-2">
+      <form action={action}>
+        <button
+          className="focus-ring rounded-lg bg-amber-900 px-3 py-2 text-sm font-black text-white disabled:opacity-60"
+          disabled={pending}
+          type="submit"
+        >
+          {pending ? "Assigning…" : "Assign to current shift"}
+        </button>
+      </form>
+      <ActionMessage state={state} />
+    </div>
   );
 }
 
@@ -145,11 +168,14 @@ export function CloseShiftForm({
     initialState
   );
   const [cashCounted, setCashCounted] = useState("");
+  const [closingNote, setClosingNote] = useState("");
   const countedAmount = Number(cashCounted);
   const hasCount = cashCounted !== "" && Number.isFinite(countedAmount);
   const difference = hasCount
     ? calculateCashDifference(countedAmount, expectedCash)
     : null;
+  const noteRequired = difference !== null && difference !== 0;
+  const submitDisabled = pending || (noteRequired && closingNote.trim() === "");
 
   return (
     <form action={action} className="space-y-4">
@@ -185,7 +211,7 @@ export function CloseShiftForm({
           <p className="mt-1 text-xl font-black">{formatAED(difference)}</p>
           {difference !== 0 ? (
             <p className="mt-1 text-xs font-bold">
-              Add a closing note explaining the shortage or excess.
+              A closing note is required to explain the shortage or excess.
             </p>
           ) : null}
         </div>
@@ -193,18 +219,24 @@ export function CloseShiftForm({
       <label className="block text-sm font-bold text-stone-700">
         Closing note{" "}
         <span className="font-normal text-stone-400">
-          (required for a difference)
+          {noteRequired ? "(required)" : "(optional)"}
         </span>
         <textarea
-          className="focus-ring mt-1 block min-h-24 w-full rounded-lg border border-stone-200 px-3 py-3"
+          className={`focus-ring mt-1 block min-h-24 w-full rounded-lg border px-3 py-3 ${
+            noteRequired && closingNote.trim() === ""
+              ? "border-amber-400 bg-amber-50"
+              : "border-stone-200"
+          }`}
           maxLength={500}
           name="closing_note"
+          onChange={(event) => setClosingNote(event.target.value)}
+          value={closingNote}
         />
       </label>
       <ActionMessage state={state} />
       <button
         className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-        disabled={pending}
+        disabled={submitDisabled}
         type="submit"
       >
         {pending ? <Loader2 className="animate-spin" size={18} /> : null}
