@@ -7,6 +7,7 @@ import { CurrentShiftBanner } from "@/components/admin/CurrentShiftBanner";
 import {
   getCustomersByPhones,
   getOrderFulfilmentCounts,
+  getOrderPaymentChanges,
   getOrdersPage,
   type OrderFulfilmentView,
   type OrderStatusView
@@ -66,10 +67,16 @@ export default async function AdminOrdersPage({
     );
   }
 
-  const customers = await getCustomersByPhones(
-    restaurant.id,
-    ordersPage.items.map((order) => order.customer_phone)
-  );
+  const [customers, paymentChanges] = await Promise.all([
+    getCustomersByPhones(
+      restaurant.id,
+      ordersPage.items.map((order) => order.customer_phone)
+    ),
+    getOrderPaymentChanges(
+      restaurant.id,
+      ordersPage.items.map((order) => order.id)
+    )
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -141,6 +148,7 @@ export default async function AdminOrdersPage({
           <OrderList
             customers={customers}
             orders={ordersPage.items}
+            paymentChanges={paymentChanges}
             restaurant={restaurant}
           />
         ) : (

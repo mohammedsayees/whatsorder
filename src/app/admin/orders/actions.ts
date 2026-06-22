@@ -232,3 +232,104 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
   revalidatePath("/admin/orders");
   revalidatePath("/admin/shifts");
 }
+
+export type ChangePaymentState = {
+  error?: string;
+  success?: string;
+};
+
+const managementRoles = ["restaurant_admin", "owner", "manager"];
+
+// Lets staff correct a mis-punched Cash/Card. Changes are audited in
+// order_payment_events. Correcting an order in a CLOSED shift is restricted to
+// managers/owners, because it cannot retroactively fix that shift's already
+// finalized cash/card totals.
+export async function changeOrderPaymentMethodAction(
+  _previousState: ChangePaymentState,
+  formData: FormData
+): Promise<ChangePaymentState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const orderId = field(formData, "order_id", 80);
+  const newMethod = field(formData, "payment_method", 30) as PaymentMethod;
+
+  if (!supabase || !orderId) {
+    return { error: "Payment update is unavailable." };
+  }
+
+  if (!collectablePaymentMethods.includes(newMethod)) {
+    return { error: "Choose Cash or Card." };
+  }
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("payment_method, shift_id")
+    .eq("id", orderId)
+    .eq("restaurant_id", session.restaurantId)
+    .maybeSingle();
+
+  if (!order) {
+    return { error: "Order not found." };
+  }
+
+  const currentMethod = (order.payment_method as PaymentMethod | null) ?? null;
+
+  if (!currentMethod) {
+    return { error: "This order hasn't been paid yet. Set payment when you complete it." };
+  }
+
+  if (currentMethod === newMethod) {
+    return { success: "Payment method unchanged." };
+  }
+
+  // Closed-shift corrections are manager/owner only.
+  if (order.shift_id) {
+    const { data: shift } = await supabase
+      .from("restaurant_shifts")
+      .select("status")
+      .eq("id", order.shift_id)
+      .eq("restaurant_id", session.restaurantId)
+      .maybeSingle();
+
+    if (shift?.status === "closed" && !managementRoles.includes(session.role)) {
+      return {
+        error: "That order is in a closed shift — only a manager or owner can change its payment."
+      };
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ payment_method: newMethod })
+    .eq("id", orderId)
+    .eq("restaurant_id", session.restaurantId);
+
+  if (updateError) {
+    return { error: "The payment method could not be updated. Try again." };
+  }
+
+  const { error: auditError } = await supabase.from("order_payment_events").insert({
+    restaurant_id: session.restaurantId,
+    order_id: orderId,
+    from_method: currentMethod,
+    to_method: newMethod,
+    actor_user_id: session.userId,
+    actor_role: session.role
+  });
+
+  if (auditError) {
+    console.error("WhatsOrder payment-change audit failed", {
+      code: auditError.code,
+      orderId,
+      restaurantId: session.restaurantId
+    });
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/shifts");
+
+  return {
+    success: `Payment changed to ${newMethod === "Cash on Delivery" ? "Cash" : "Card"}.`
+  };
+}

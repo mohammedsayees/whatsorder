@@ -6,18 +6,22 @@ import type { Customer, Order, Restaurant } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
 import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
+import { PaymentMethodControl } from "@/components/admin/PaymentMethodControl";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
 import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
 import { CarFront, Gift, MapPin, ShoppingBag, Truck, Utensils } from "lucide-react";
+import type { OrderPaymentChange } from "@/lib/data";
 
 export function OrderList({
   orders,
   restaurant,
-  customers = []
+  customers = [],
+  paymentChanges = {}
 }: {
   orders: Order[];
   restaurant: Restaurant;
   customers?: Customer[];
+  paymentChanges?: Record<string, OrderPaymentChange>;
 }) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
 
@@ -149,6 +153,13 @@ export function OrderList({
                   paymentMethod={order.payment_method}
                   status={order.status}
                 />
+                {order.payment_method ? (
+                  <PaymentMethodControl
+                    change={paymentChanges[order.id] ?? null}
+                    orderId={order.id}
+                    paymentMethod={order.payment_method}
+                  />
+                ) : null}
                 <OrderPrintActions order={order} restaurant={restaurant} />
                 {order.status === "Completed" ? (
                   <RequestFeedbackButton orderId={order.id} />
