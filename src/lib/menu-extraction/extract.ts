@@ -1,0 +1,242 @@
+import "server-only";
+
+// A single extracted menu line. Prices are numbers in AED. Size variants in the
+// source (e.g. "AED 6/10") are split into separate items by the model.
+export type DraftMenuItem = {
+  category: string;
+  name: string;
+  name_ar: string | null;
+  description: string | null;
+  price: number;
+  is_featured: boolean;
+  confidence: "high" | "low";
+};
+
+const MENU_EXTRACTION_PROMPT = `You are extracting menu items from ONE page image of a restaurant menu.
+
+Return ONLY JSON of the shape:
+{ "items": [ { "category": string, "name": string, "name_ar": string|null, "description": string|null, "price": number, "is_featured": boolean, "confidence": "high"|"low" } ] }
+
+Rules:
+- "category" is the section the items belong to. Menus often print the section name as a large banner or heading on the page (e.g. "Fresh Burger", "Loaded Fries", "Mojitos"). Use that. Strip trailing punctuation.
+- "name" is the English item name. "name_ar" is the Arabic name if present on the card, otherwise null.
+- "price" is a number in AED. Read it from the price badge/label. If a single item shows two prices for sizes (e.g. "6/10" or "Small 6 Large 10"), output TWO items: "<name> (Small)" and "<name> (Large)" with their respective prices. Never put a slash or range in price.
+- "description" is any short descriptive line under the name, or null. Do not invent descriptions.
+- "is_featured" is true only if the card clearly shows a "BEST SELLER" / "POPULAR" style badge.
+- "confidence" is "low" if the name or price is blurry, ambiguous, or you are unsure; otherwise "high".
+- If the page is a cover, contact page, or section divider with no purchasable items, return { "items": [] }.
+- Do NOT invent items that are not visibly on the page. Do NOT include prices you cannot read.`;
+
+type GeminiResponse = {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+};
+
+function defaultModel() {
+  return process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+}
+
+function clampPrice(value: unknown): number | null {
+  const price = Number(value);
+  if (!Number.isFinite(price) || price < 0 || price > 100000) {
+    return null;
+  }
+  return Math.round(price * 100) / 100;
+}
+
+function normalizeItems(raw: unknown): DraftMenuItem[] {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+
+  const items = (raw as { items?: unknown }).items;
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const normalized: DraftMenuItem[] = [];
+
+  for (const entry of items) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const name = String(record.name ?? "").trim();
+    const price = clampPrice(record.price);
+
+    // Skip anything missing the two fields an order actually needs.
+    if (!name || price === null) {
+      continue;
+    }
+
+    const nameAr = String(record.name_ar ?? "").trim();
+    const description = String(record.description ?? "").trim();
+
+    normalized.push({
+      category: String(record.category ?? "").trim() || "Menu",
+      name: name.slice(0, 120),
+      name_ar: nameAr ? nameAr.slice(0, 120) : null,
+      description: description ? description.slice(0, 300) : null,
+      price,
+      is_featured: record.is_featured === true,
+      confidence: record.confidence === "low" ? "low" : "high"
+    });
+  }
+
+  return normalized;
+}
+
+/**
+ * Sends one rendered menu page to the vision model and returns the structured
+ * items found on it. Throws on a hard failure (missing key, network/model
+ * error) so the caller can surface a friendly message and let the user retry.
+ *
+ * The provider is Gemini today; swapping models is an env change (GEMINI_MODEL)
+ * and isolating it here keeps a future Claude/OpenAI provider a one-file change.
+ */
+export async function extractMenuPageItems(
+  imageBase64: string,
+  mimeType: string
+): Promise<DraftMenuItem[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("MENU_EXTRACTION_NOT_CONFIGURED");
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Fail fast rather than hang the serverless function (and the UI) if the
+      // model is slow or unreachable.
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: MENU_EXTRACTION_PROMPT },
+              { inline_data: { mime_type: mimeType, data: imageBase64 } }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json"
+        }
+      })
+    });
+  } catch (error) {
+    console.error("WhatsOrder menu extraction fetch failed", {
+      model: defaultModel(),
+      reason: error instanceof Error ? error.name + ": " + error.message : String(error)
+    });
+    throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("WhatsOrder menu extraction request failed", {
+      model: defaultModel(),
+      status: response.status,
+      detail: detail.slice(0, 800)
+    });
+    throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
+  }
+
+  const payload = (await response.json()) as GeminiResponse;
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+  if (!text) {
+    return [];
+  }
+
+  try {
+    return normalizeItems(JSON.parse(text));
+  } catch {
+    console.error("WhatsOrder menu extraction returned unparsable JSON");
+    throw new Error("MENU_EXTRACTION_BAD_RESPONSE");
+  }
+}
+
+/**
+ * Writes a short, appetizing description for each item in a single model call.
+ * Returns a name -> description map; names not returned are simply skipped.
+ * Used to fill in descriptions for menus that print only names and prices.
+ */
+export async function generateItemDescriptions(
+  items: { name: string; category: string }[]
+): Promise<Record<string, string>> {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || items.length === 0) {
+    return {};
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
+  const list = items
+    .slice(0, 200)
+    .map((item) => `- ${item.name} (${item.category})`)
+    .join("\n");
+  const prompt = `Write a short, appetizing menu description for each item below.
+
+Rules:
+- Max 12 words each. No price, no emojis, no quotes.
+- Natural, mouth-watering, specific to the item.
+- Return ONLY JSON: { "items": [ { "name": string, "description": string } ] }
+- Use the exact item names given.
+
+Items:
+${list}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.5, responseMimeType: "application/json" }
+      })
+    });
+  } catch (error) {
+    console.error("WhatsOrder description generation fetch failed", {
+      model: defaultModel(),
+      reason: error instanceof Error ? error.name : String(error)
+    });
+    throw new Error("DESCRIPTION_GENERATION_FAILED");
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("WhatsOrder description generation failed", {
+      model: defaultModel(),
+      status: response.status,
+      detail: detail.slice(0, 500)
+    });
+    throw new Error("DESCRIPTION_GENERATION_FAILED");
+  }
+
+  const payload = (await response.json()) as GeminiResponse;
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const map: Record<string, string> = {};
+
+  try {
+    const parsed = JSON.parse(text) as { items?: { name?: unknown; description?: unknown }[] };
+    for (const entry of parsed.items ?? []) {
+      const name = String(entry.name ?? "").trim();
+      const description = String(entry.description ?? "").trim();
+      if (name && description) {
+        map[name] = description.slice(0, 300);
+      }
+    }
+  } catch {
+    console.error("WhatsOrder description generation returned unparsable JSON");
+  }
+
+  return map;
+}
