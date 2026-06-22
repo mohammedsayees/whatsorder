@@ -54,14 +54,43 @@ async function renderPdfToImages(file: File): Promise<RenderedPage[]> {
   return pages;
 }
 
-async function fileToImagePage(file: File): Promise<RenderedPage[]> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("read failed"));
     reader.readAsDataURL(file);
   });
-  return [{ index: 0, dataUrl }];
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("image load failed"));
+    image.src = src;
+  });
+}
+
+async function fileToImagePage(file: File): Promise<RenderedPage[]> {
+  const rawUrl = await readAsDataUrl(file);
+  const image = await loadImage(rawUrl);
+  // Downscale large phone photos so the payload stays small and legible,
+  // mirroring how PDF pages are rendered. Menus need detail for small text,
+  // so target a generous 1600px on the long edge.
+  const maxEdge = 1600;
+  const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    return [{ index: 0, dataUrl: rawUrl }];
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return [{ index: 0, dataUrl: canvas.toDataURL("image/jpeg", 0.85) }];
 }
 
 export function MenuImport() {
@@ -114,6 +143,7 @@ export function MenuImport() {
 
     const collected: DraftRow[] = [];
     const failed: number[] = [];
+    let lastError: string | null = null;
 
     for (const page of rendered) {
       // Guard every call: a single page that errors or times out must not
@@ -134,9 +164,11 @@ export function MenuImport() {
           });
         } else {
           failed.push(page.index);
+          lastError = result.error;
         }
       } catch {
         failed.push(page.index);
+        lastError = "The connection dropped while reading a page. Please try again.";
       }
 
       setProgress((current) => ({ ...current, done: current.done + 1 }));
@@ -147,7 +179,10 @@ export function MenuImport() {
     setPhase("review");
 
     if (collected.length === 0 && failed.length > 0) {
-      setError("We couldn't read this menu automatically. You can add items by hand instead.");
+      setError(
+        lastError ??
+          "We couldn't read this menu automatically. You can add items by hand instead."
+      );
     }
   }
 

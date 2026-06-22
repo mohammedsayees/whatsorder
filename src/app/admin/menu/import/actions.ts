@@ -13,7 +13,7 @@ export type ImportResult = { ok: boolean; message: string };
 
 // One rendered page is ~0.1-0.4 MB as JPEG; base64 inflates ~33%. Reject
 // anything clearly too large to keep the request under the body-size limit.
-const MAX_IMAGE_BASE64_LENGTH = 6_000_000;
+const MAX_IMAGE_BASE64_LENGTH = 10_000_000;
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function extractMenuPageAction(input: {
@@ -27,11 +27,22 @@ export async function extractMenuPageAction(input: {
   }
 
   if (!allowedMimeTypes.has(input.mimeType)) {
+    console.error("WhatsOrder menu import rejected page", {
+      reason: "mime",
+      mimeType: input.mimeType
+    });
     return { ok: false, error: "Unsupported image type." };
   }
 
   if (!input.imageBase64 || input.imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
-    return { ok: false, error: "This page image is too large to read." };
+    console.error("WhatsOrder menu import rejected page", {
+      reason: "size",
+      length: input.imageBase64?.length ?? 0
+    });
+    return {
+      ok: false,
+      error: "This page image is too large to read. Try a smaller photo or a PDF."
+    };
   }
 
   try {
