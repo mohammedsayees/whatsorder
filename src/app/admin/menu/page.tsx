@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { getMenu, getMenuOffers } from "@/lib/data";
@@ -19,10 +21,23 @@ export default async function AdminMenuPage() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-black">Menu management</h1>
-      <p className="mt-2 text-stone-600">
-        Add items, edit prices, tag Best Sellers, and mark items unavailable when the kitchen runs out.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-black">Menu management</h1>
+          <p className="mt-2 text-stone-600">
+            Add items, edit prices, tag Best Sellers, and mark items unavailable when the kitchen runs out.
+          </p>
+        </div>
+        {canWrite ? (
+          <Link
+            className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf px-4 py-3 font-black text-leaf hover:bg-mint"
+            href="/admin/menu/import"
+          >
+            <Sparkles size={18} />
+            Import from PDF
+          </Link>
+        ) : null}
+      </div>
       {!hasDatabaseAccess ? (
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           Demo mode is read-only. Connect Supabase in .env.local to enable menu writes.
