@@ -22,6 +22,7 @@ import {
   parseAndValidateCart
 } from "@/lib/security";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
+import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -363,13 +364,7 @@ export async function createOrderAction(
     return { ok: false, error: "Please enter a valid phone number." };
   }
 
-  const fulfilmentEnabled =
-    (fulfilmentType === "delivery" && restaurant.delivery_enabled !== false) ||
-    (fulfilmentType === "takeaway" && restaurant.pickup_enabled === true) ||
-    (fulfilmentType === "car_pickup" && restaurant.car_pickup_enabled === true) ||
-    (fulfilmentType === "dine_in" && restaurant.dine_in_enabled === true);
-
-  if (!fulfilmentEnabled) {
+  if (!isFulfilmentEnabled(restaurant, fulfilmentType)) {
     return { ok: false, error: "Please choose an available order type." };
   }
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
 import { getMenu } from "@/lib/data";
+import { enabledFulfilmentTypes } from "@/lib/fulfilment";
 import { getCurrentShiftView } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -11,6 +12,7 @@ export default async function NewStaffOrderPage() {
     getMenu(session.restaurantId, { admin: true }),
     getCurrentShiftView(session)
   ]);
+  const orderTypes = enabledFulfilmentTypes(session.restaurant);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -34,9 +36,20 @@ export default async function NewStaffOrderPage() {
         </p>
       ) : null}
 
-      <div className="mt-6">
-        <StaffOrderEntry menu={menu} />
-      </div>
+      {orderTypes.length === 0 ? (
+        <p className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          No order types are enabled for this restaurant. Enable at least one in
+          Settings before taking orders.
+        </p>
+      ) : (
+        <div className="mt-6">
+          <StaffOrderEntry
+            deliveryFee={session.restaurant.delivery_fee}
+            menu={menu}
+            orderTypes={orderTypes}
+          />
+        </div>
+      )}
     </main>
   );
 }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getMenu, getMenuOffers } from "@/lib/data";
+import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -12,10 +13,6 @@ export type StaffOrderState = {
   error?: string;
   success?: string;
 };
-
-// Counter staff handle walk-in (takeaway) and dine-in tickets. Delivery and
-// car pickup remain customer self-service flows.
-const staffFulfilmentTypes: FulfilmentType[] = ["takeaway", "dine_in"];
 
 // How the punch screen's buttons map to the new order. "kitchen" sends an
 // unpaid ticket to the kitchen (payment collected later, at completion); the
@@ -71,14 +68,28 @@ export async function createStaffOrderAction(
 
   const fulfilmentType = field(formData, "fulfilment_type", 30) as FulfilmentType;
 
-  if (!staffFulfilmentTypes.includes(fulfilmentType)) {
-    return { error: "Choose takeaway or dine-in." };
+  // Mirror the customer checkout: only accept channels this restaurant offers.
+  if (!isFulfilmentEnabled(session.restaurant, fulfilmentType)) {
+    return { error: "That order type is not available for this restaurant." };
   }
 
   const tableNumber = field(formData, "table_number", 40);
+  const deliveryArea = field(formData, "delivery_area", 120);
+  const deliveryAddress = field(formData, "delivery_address", 500);
+  const deliveryLandmark = field(formData, "delivery_landmark", 250);
+  const carPlateNumber = field(formData, "car_plate_number", 40);
+  const carDescription = field(formData, "car_description", 120);
 
   if (fulfilmentType === "dine_in" && !tableNumber) {
     return { error: "Enter a table number for dine-in orders." };
+  }
+
+  if (fulfilmentType === "car_pickup" && !carPlateNumber) {
+    return { error: "Enter the car plate number for a bring-to-car order." };
+  }
+
+  if (fulfilmentType === "delivery" && (!deliveryArea || !deliveryAddress)) {
+    return { error: "Enter the delivery area and address." };
   }
 
   const orderAction = staffOrderActions[field(formData, "action", 20)];
@@ -96,7 +107,9 @@ export async function createStaffOrderAction(
 
   const notes = field(formData, "notes", 1000);
   const subtotal = verified.subtotal;
-  const total = subtotal;
+  const deliveryFee =
+    fulfilmentType === "delivery" ? Number(session.restaurant.delivery_fee) || 0 : 0;
+  const total = subtotal + deliveryFee;
 
   // Attach the open shift if one exists. The shift cash summary only counts
   // Completed orders, so an unpaid "send to kitchen" ticket will not affect
@@ -112,21 +125,25 @@ export async function createStaffOrderAction(
     .map((item) => `${item.quantity}x ${item.name}`)
     .join(", ");
 
+  const isDelivery = fulfilmentType === "delivery";
   const { error } = await supabase.from("orders").insert({
     restaurant_id: session.restaurantId,
     customer_name: customerName,
     customer_phone: customerPhone,
     fulfilment_type: fulfilmentType,
     table_number: fulfilmentType === "dine_in" ? tableNumber : null,
-    delivery_area: "",
-    delivery_address: "",
+    car_plate_number: fulfilmentType === "car_pickup" ? carPlateNumber : null,
+    car_description: fulfilmentType === "car_pickup" ? carDescription || null : null,
+    delivery_area: isDelivery ? deliveryArea : "",
+    delivery_address: isDelivery ? deliveryAddress : "",
+    delivery_landmark: isDelivery ? deliveryLandmark || null : null,
     notes: notes || null,
     // Empty until collected. Counter tickets sent to the kitchen are paid at
     // completion; "paid now" sales carry the method immediately.
     payment_method: orderAction.paymentMethod,
     items: verified.items,
     subtotal,
-    delivery_fee: 0,
+    delivery_fee: deliveryFee,
     total,
     status: orderAction.status,
     source: "staff",

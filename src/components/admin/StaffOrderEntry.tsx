@@ -7,9 +7,7 @@ import {
   type StaffOrderState
 } from "@/app/admin/orders/actions";
 import { formatAED } from "@/lib/currency";
-import type { CartLine, MenuWithCategories } from "@/lib/types";
-
-type StaffFulfilment = "takeaway" | "dine_in";
+import type { CartLine, FulfilmentType, MenuWithCategories } from "@/lib/types";
 
 type TicketLine = {
   itemId: string;
@@ -19,13 +17,28 @@ type TicketLine = {
   quantity: number;
 };
 
+const fulfilmentLabels: Record<FulfilmentType, string> = {
+  delivery: "Delivery",
+  takeaway: "Takeaway",
+  car_pickup: "Bring to My Car",
+  dine_in: "Dine-in"
+};
+
 const initialState: StaffOrderState = {};
 
-export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
+export function StaffOrderEntry({
+  deliveryFee,
+  menu,
+  orderTypes
+}: {
+  deliveryFee: number;
+  menu: MenuWithCategories;
+  orderTypes: FulfilmentType[];
+}) {
   const [state, action, pending] = useActionState(createStaffOrderAction, initialState);
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
-  const [fulfilmentType, setFulfilmentType] = useState<StaffFulfilment>("takeaway");
+  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(orderTypes[0]);
 
   // Clear the ticket after a successful save so staff can punch the next order.
   useEffect(() => {
@@ -58,6 +71,8 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
   const ticketLines = Object.values(lines);
   const subtotal = ticketLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const itemCount = ticketLines.reduce((sum, line) => sum + line.quantity, 0);
+  const appliedDeliveryFee = fulfilmentType === "delivery" ? deliveryFee : 0;
+  const total = subtotal + appliedDeliveryFee;
 
   function addItem(itemId: string, name: string, nameAr: string | null, price: number) {
     setLines((current) => {
@@ -223,20 +238,32 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
-            <span className="text-sm font-bold text-stone-600">
-              {itemCount} item{itemCount === 1 ? "" : "s"}
-            </span>
-            <span className="text-lg font-black">{formatAED(subtotal)}</span>
+          <div className="mt-3 space-y-1 border-t border-stone-100 pt-3">
+            <div className="flex items-center justify-between text-sm text-stone-600">
+              <span className="font-bold">
+                {itemCount} item{itemCount === 1 ? "" : "s"}
+              </span>
+              <span>{formatAED(subtotal)}</span>
+            </div>
+            {appliedDeliveryFee > 0 ? (
+              <div className="flex items-center justify-between text-sm text-stone-600">
+                <span className="font-bold">Delivery fee</span>
+                <span>{formatAED(appliedDeliveryFee)}</span>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm font-bold text-stone-600">Total</span>
+              <span className="text-lg font-black">{formatAED(total)}</span>
+            </div>
           </div>
 
-          {/* Order type */}
+          {/* Order type — only the channels this restaurant offers */}
           <fieldset className="mt-4">
             <legend className="text-xs font-black uppercase tracking-wide text-stone-500">
               Order type
             </legend>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {(["takeaway", "dine_in"] as StaffFulfilment[]).map((type) => (
+              {orderTypes.map((type) => (
                 <button
                   className={`focus-ring rounded-lg border px-3 py-2 text-sm font-black ${
                     fulfilmentType === type
@@ -247,11 +274,70 @@ export function StaffOrderEntry({ menu }: { menu: MenuWithCategories }) {
                   onClick={() => setFulfilmentType(type)}
                   type="button"
                 >
-                  {type === "takeaway" ? "Takeaway" : "Dine-in"}
+                  {fulfilmentLabels[type]}
                 </button>
               ))}
             </div>
           </fieldset>
+
+          {fulfilmentType === "delivery" ? (
+            <div className="mt-3 space-y-3">
+              <label className="block text-sm font-bold text-stone-700">
+                Delivery area
+                <input
+                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  maxLength={120}
+                  name="delivery_area"
+                  required
+                  type="text"
+                />
+              </label>
+              <label className="block text-sm font-bold text-stone-700">
+                Delivery address
+                <input
+                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  maxLength={500}
+                  name="delivery_address"
+                  required
+                  type="text"
+                />
+              </label>
+              <label className="block text-sm font-bold text-stone-700">
+                Landmark <span className="font-normal text-stone-400">(optional)</span>
+                <input
+                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  maxLength={250}
+                  name="delivery_landmark"
+                  type="text"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {fulfilmentType === "car_pickup" ? (
+            <div className="mt-3 space-y-3">
+              <label className="block text-sm font-bold text-stone-700">
+                Car plate number
+                <input
+                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  maxLength={40}
+                  name="car_plate_number"
+                  required
+                  type="text"
+                />
+              </label>
+              <label className="block text-sm font-bold text-stone-700">
+                Car colour / model{" "}
+                <span className="font-normal text-stone-400">(optional)</span>
+                <input
+                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  maxLength={120}
+                  name="car_description"
+                  type="text"
+                />
+              </label>
+            </div>
+          ) : null}
 
           {fulfilmentType === "dine_in" ? (
             <label className="mt-3 block text-sm font-bold text-stone-700">
