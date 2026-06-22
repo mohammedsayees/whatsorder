@@ -14,6 +14,20 @@ import {
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
+function formatShiftDuration(openedAt: string, closedAt: string | null) {
+  if (!closedAt) {
+    return "";
+  }
+  const ms = new Date(closedAt).getTime() - new Date(openedAt).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "";
+  }
+  const totalMinutes = Math.round(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
+}
+
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
   delivery: "Delivery",
@@ -290,7 +304,15 @@ export default async function AdminShiftsPage() {
                         <p className="font-black">{shift.shift_name}</p>
                         <p className="whitespace-nowrap text-xs text-stone-500">
                           {formatUaeShortDateTime(shift.opened_at)}
+                          {shift.closed_at
+                            ? ` → ${formatUaeShortDateTime(shift.closed_at)}`
+                            : ""}
                         </p>
+                        {shift.closed_at ? (
+                          <p className="whitespace-nowrap text-xs font-semibold text-stone-400">
+                            {formatShiftDuration(shift.opened_at, shift.closed_at)} shift
+                          </p>
+                        ) : null}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-bold">
                         {formatAED(Number(shift.completed_sales))}
