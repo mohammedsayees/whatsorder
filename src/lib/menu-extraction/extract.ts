@@ -161,3 +161,82 @@ export async function extractMenuPageItems(
     throw new Error("MENU_EXTRACTION_BAD_RESPONSE");
   }
 }
+
+/**
+ * Writes a short, appetizing description for each item in a single model call.
+ * Returns a name -> description map; names not returned are simply skipped.
+ * Used to fill in descriptions for menus that print only names and prices.
+ */
+export async function generateItemDescriptions(
+  items: { name: string; category: string }[]
+): Promise<Record<string, string>> {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || items.length === 0) {
+    return {};
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
+  const list = items
+    .slice(0, 200)
+    .map((item) => `- ${item.name} (${item.category})`)
+    .join("\n");
+  const prompt = `Write a short, appetizing menu description for each item below.
+
+Rules:
+- Max 12 words each. No price, no emojis, no quotes.
+- Natural, mouth-watering, specific to the item.
+- Return ONLY JSON: { "items": [ { "name": string, "description": string } ] }
+- Use the exact item names given.
+
+Items:
+${list}`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.5, responseMimeType: "application/json" }
+      })
+    });
+  } catch (error) {
+    console.error("WhatsOrder description generation fetch failed", {
+      model: defaultModel(),
+      reason: error instanceof Error ? error.name : String(error)
+    });
+    throw new Error("DESCRIPTION_GENERATION_FAILED");
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("WhatsOrder description generation failed", {
+      model: defaultModel(),
+      status: response.status,
+      detail: detail.slice(0, 500)
+    });
+    throw new Error("DESCRIPTION_GENERATION_FAILED");
+  }
+
+  const payload = (await response.json()) as GeminiResponse;
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const map: Record<string, string> = {};
+
+  try {
+    const parsed = JSON.parse(text) as { items?: { name?: unknown; description?: unknown }[] };
+    for (const entry of parsed.items ?? []) {
+      const name = String(entry.name ?? "").trim();
+      const description = String(entry.description ?? "").trim();
+      if (name && description) {
+        map[name] = description.slice(0, 300);
+      }
+    }
+  } catch {
+    console.error("WhatsOrder description generation returned unparsable JSON");
+  }
+
+  return map;
+}

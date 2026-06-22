@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { extractMenuPageItems, type DraftMenuItem } from "@/lib/menu-extraction/extract";
+import {
+  extractMenuPageItems,
+  generateItemDescriptions,
+  type DraftMenuItem
+} from "@/lib/menu-extraction/extract";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -9,7 +13,40 @@ export type ExtractPageResult =
   | { ok: true; items: DraftMenuItem[] }
   | { ok: false; error: string };
 
+export type DraftImportRow = {
+  category: string;
+  name: string;
+  name_ar: string | null;
+  description: string | null;
+  price: number;
+  is_featured: boolean;
+  image_url: string | null;
+};
+
 export type ImportResult = { ok: boolean; message: string };
+
+export type DescriptionResult =
+  | { ok: true; descriptions: Record<string, string> }
+  | { ok: false; error: string };
+
+export async function generateMenuDescriptionsAction(
+  items: { name: string; category: string }[]
+): Promise<DescriptionResult> {
+  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+
+  if (!process.env.GEMINI_API_KEY) {
+    return { ok: false, error: "AI descriptions aren't configured yet." };
+  }
+
+  try {
+    const descriptions = await generateItemDescriptions(
+      (Array.isArray(items) ? items : []).slice(0, 200)
+    );
+    return { ok: true, descriptions };
+  } catch {
+    return { ok: false, error: "AI couldn't write descriptions just now. Try again." };
+  }
+}
 
 // One rendered page is ~0.1-0.4 MB as JPEG; base64 inflates ~33%. Reject
 // anything clearly too large to keep the request under the body-size limit.
@@ -60,7 +97,7 @@ export async function extractMenuPageAction(input: {
   }
 }
 
-export async function importDraftMenuAction(rows: DraftMenuItem[]): Promise<ImportResult> {
+export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<ImportResult> {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const supabase = getSupabaseAdmin();
 
@@ -75,7 +112,8 @@ export async function importDraftMenuAction(rows: DraftMenuItem[]): Promise<Impo
       name_ar: row.name_ar ? String(row.name_ar).trim().slice(0, 120) : null,
       description: row.description ? String(row.description).trim().slice(0, 300) : null,
       price: Number(row.price),
-      is_featured: row.is_featured === true
+      is_featured: row.is_featured === true,
+      image_url: row.image_url ? String(row.image_url).trim() : null
     }))
     .filter((row) => row.name && Number.isFinite(row.price) && row.price >= 0)
     .slice(0, 300);
@@ -138,7 +176,7 @@ export async function importDraftMenuAction(rows: DraftMenuItem[]): Promise<Impo
         name_ar: row.name_ar,
         description: row.description,
         price: row.price,
-        image_url: null,
+        image_url: row.image_url,
         is_available: true,
         is_featured: row.is_featured
       };

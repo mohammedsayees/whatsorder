@@ -2,11 +2,13 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles, Trash2, Upload } from "lucide-react";
+import { ImagePlus, Loader2, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
 import {
   extractMenuPageAction,
+  generateMenuDescriptionsAction,
   importDraftMenuAction
 } from "@/app/admin/menu/import/actions";
+import { uploadMenuItemImageAction } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
 import type { DraftMenuItem } from "@/lib/menu-extraction/extract";
 
@@ -14,7 +16,7 @@ type Phase = "idle" | "working" | "review";
 
 type RenderedPage = { index: number; dataUrl: string };
 
-type DraftRow = DraftMenuItem & { id: string; pageIndex: number };
+type DraftRow = DraftMenuItem & { id: string; pageIndex: number; imageUrl: string | null };
 
 const MAX_PAGES = 30;
 const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -93,6 +95,28 @@ async function fileToImagePage(file: File): Promise<RenderedPage[]> {
   return [{ index: 0, dataUrl: canvas.toDataURL("image/jpeg", 0.85) }];
 }
 
+// Shrink a chosen item photo before upload so it stays well under the menu
+// image size limit, regardless of the source camera resolution.
+async function downscaleToFile(file: File, maxEdge: number): Promise<File> {
+  const image = await loadImage(await readAsDataUrl(file));
+  const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    return file;
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.85)
+  );
+
+  return blob ? new File([blob], "menu-item.jpg", { type: "image/jpeg" }) : file;
+}
+
 export function MenuImport() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +127,8 @@ export function MenuImport() {
   const [failedPages, setFailedPages] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
+  const [writingDescriptions, setWritingDescriptions] = useState(false);
 
   async function handleFile(file: File) {
     setError(null);
@@ -159,7 +185,8 @@ export function MenuImport() {
             collected.push({
               ...item,
               id: `${page.index}-${itemIndex}-${Math.random().toString(36).slice(2, 8)}`,
-              pageIndex: page.index
+              pageIndex: page.index,
+              imageUrl: null
             });
           });
         } else {
@@ -194,6 +221,53 @@ export function MenuImport() {
     setRows((current) => current.filter((row) => row.id !== id));
   }
 
+  async function uploadRowImage(id: string, file: File) {
+    setUploadingImageId(id);
+    setError(null);
+    try {
+      const optimized = await downscaleToFile(file, 1000);
+      const formData = new FormData();
+      formData.set("image", optimized);
+      formData.set("item_name", rows.find((row) => row.id === id)?.name || "menu-item");
+      const result = await uploadMenuItemImageAction(formData);
+      if (result.ok) {
+        updateRow(id, { imageUrl: result.publicUrl });
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError("Couldn't upload that image. Try a different one.");
+    } finally {
+      setUploadingImageId(null);
+    }
+  }
+
+  async function writeDescriptionsWithAi() {
+    const targets = rows.filter((row) => !row.description?.trim());
+    if (targets.length === 0) {
+      return;
+    }
+    setWritingDescriptions(true);
+    setError(null);
+    const result = await generateMenuDescriptionsAction(
+      targets.map((row) => ({ name: row.name, category: row.category }))
+    );
+    setWritingDescriptions(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setRows((current) =>
+      current.map((row) =>
+        row.description?.trim()
+          ? row
+          : { ...row, description: result.descriptions[row.name] ?? row.description }
+      )
+    );
+  }
+
   async function publish() {
     setPublishing(true);
     setError(null);
@@ -205,7 +279,7 @@ export function MenuImport() {
         description: row.description,
         price: row.price,
         is_featured: row.is_featured,
-        confidence: row.confidence
+        image_url: row.imageUrl
       }))
     );
     setPublishing(false);
@@ -225,19 +299,20 @@ export function MenuImport() {
       {phase === "idle" ? (
         <div className="rounded-lg border-2 border-dashed border-stone-300 bg-white p-10 text-center">
           <div className="mx-auto grid h-12 w-12 place-items-center rounded-lg bg-mint text-leaf">
-            <Upload size={24} />
+            <Sparkles size={24} />
           </div>
-          <p className="mt-4 font-black">Upload your menu</p>
+          <p className="mt-4 font-black">Let AI build your menu</p>
           <p className="mt-1 text-sm text-stone-500">
-            PDF or a clear photo. We read up to {MAX_PAGES} pages.
+            Drop in your menu PDF or a photo. Our AI reads every item, price, and
+            Arabic name for you — up to {MAX_PAGES} pages.
           </p>
           <button
             className="focus-ring mt-5 inline-flex items-center gap-2 rounded-lg bg-leaf px-5 py-3 font-black text-white"
             onClick={() => fileInputRef.current?.click()}
             type="button"
           >
-            <Sparkles size={18} />
-            Choose file
+            <Upload size={18} />
+            Upload menu
           </button>
           <input
             accept=".pdf,image/jpeg,image/png,image/webp"
@@ -264,10 +339,10 @@ export function MenuImport() {
           <p className="mt-4 font-black">
             {progress.total === 0
               ? "Opening your menu…"
-              : `Reading page ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`}
+              : `AI is reading page ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`}
           </p>
           <p className="mt-1 text-sm text-stone-500">
-            This takes a moment — we&rsquo;re reading each page with AI.
+            Hang tight — our AI is reading each item, price, and Arabic name.
           </p>
           {progress.total > 0 ? (
             <div className="mx-auto mt-4 h-2 w-full max-w-sm overflow-hidden rounded-full bg-stone-100">
@@ -284,11 +359,13 @@ export function MenuImport() {
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-4">
             <div>
-              <p className="font-black">
-                Found {rows.length} item{rows.length === 1 ? "" : "s"}
+              <p className="inline-flex items-center gap-1.5 font-black">
+                <Sparkles className="text-leaf" size={16} />
+                AI read {rows.length} item{rows.length === 1 ? "" : "s"} from your menu
               </p>
               <p className="mt-1 text-sm text-stone-500">
-                Review and fix anything below, then add them to your menu.
+                Review and tweak anything below — add photos and descriptions — then
+                publish to your live menu.
                 {lowConfidenceCount > 0
                   ? ` ${lowConfidenceCount} need a closer look (highlighted).`
                   : ""}
@@ -297,7 +374,20 @@ export function MenuImport() {
                   : ""}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf px-4 py-2.5 text-sm font-black text-leaf hover:bg-mint disabled:opacity-60"
+                disabled={writingDescriptions || rows.length === 0}
+                onClick={() => void writeDescriptionsWithAi()}
+                type="button"
+              >
+                {writingDescriptions ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Wand2 size={16} />
+                )}
+                Write descriptions with AI
+              </button>
               <button
                 className="focus-ring rounded-lg border border-stone-200 px-4 py-2.5 text-sm font-black text-stone-600 hover:bg-stone-50"
                 onClick={() => {
@@ -317,7 +407,7 @@ export function MenuImport() {
                 type="button"
               >
                 {publishing ? <Loader2 className="animate-spin" size={16} /> : null}
-                Add {rows.length} item{rows.length === 1 ? "" : "s"} to my menu
+                Publish {rows.length} item{rows.length === 1 ? "" : "s"}
               </button>
             </div>
           </div>
@@ -418,6 +508,50 @@ export function MenuImport() {
                           <Trash2 size={15} />
                         </button>
                       </div>
+
+                      <div className="mt-2 flex items-start gap-3">
+                        <div className="shrink-0 text-center">
+                          {row.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              alt={row.name}
+                              className="mb-1 h-16 w-16 rounded-lg border border-stone-200 object-cover"
+                              src={row.imageUrl}
+                            />
+                          ) : null}
+                          <label className="focus-ring inline-flex cursor-pointer items-center gap-1 rounded-lg border border-stone-200 px-2 py-1.5 text-xs font-bold text-stone-600 hover:bg-stone-50">
+                            {uploadingImageId === row.id ? (
+                              <Loader2 className="animate-spin" size={13} />
+                            ) : (
+                              <ImagePlus size={13} />
+                            )}
+                            {row.imageUrl ? "Change" : "Add photo"}
+                            <input
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              disabled={uploadingImageId === row.id}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) {
+                                  void uploadRowImage(row.id, file);
+                                }
+                                event.target.value = "";
+                              }}
+                              type="file"
+                            />
+                          </label>
+                        </div>
+                        <textarea
+                          aria-label="Description"
+                          className="focus-ring min-h-[3.5rem] flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm"
+                          onChange={(event) =>
+                            updateRow(row.id, { description: event.target.value || null })
+                          }
+                          placeholder="Short description (optional) — or use “Write descriptions with AI”"
+                          value={row.description ?? ""}
+                        />
+                      </div>
+
                       <p className="mt-1 text-right text-xs text-stone-400">
                         {formatAED(Number.isFinite(row.price) ? row.price : 0)}
                       </p>

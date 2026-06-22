@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { MenuImport } from "@/components/admin/MenuImport";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -19,10 +19,14 @@ export default async function ImportMenuPage() {
         <ArrowLeft size={16} />
         Back to menu
       </Link>
-      <h1 className="mt-2 text-3xl font-black">Import menu from PDF</h1>
+      <h1 className="mt-2 flex items-center gap-2 text-3xl font-black">
+        <Sparkles className="text-leaf" size={26} />
+        AI Menu Builder
+      </h1>
       <p className="mt-2 text-stone-600">
-        Upload your menu as a PDF or photo and we&rsquo;ll read the items for you.
-        Review and fix anything before adding it to your menu.
+        Upload your menu as a PDF or photo — our AI reads every item, price, and
+        Arabic name, can write descriptions, and you add photos in one pass. Review,
+        then publish to your live menu.
       </p>
 
       <div className="mt-6">

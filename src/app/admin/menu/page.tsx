@@ -34,7 +34,7 @@ export default async function AdminMenuPage() {
             href="/admin/menu/import"
           >
             <Sparkles size={18} />
-            Import from PDF
+            AI Menu Builder
           </Link>
         ) : null}
       </div>
