@@ -32,7 +32,7 @@ type GeminiResponse = {
 };
 
 function defaultModel() {
-  return process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+  return process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 }
 
 function clampPrice(value: unknown): number | null {
