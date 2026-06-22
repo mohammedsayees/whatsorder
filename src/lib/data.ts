@@ -723,6 +723,58 @@ export async function getOrdersForCustomerPhones(
     .toSorted((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+export type OrderPaymentChange = {
+  from: string | null;
+  to: string;
+  role: string | null;
+  at: string;
+};
+
+export async function getOrderPaymentChanges(
+  restaurantId: string,
+  orderIds: string[]
+): Promise<Record<string, OrderPaymentChange>> {
+  const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+
+  if (uniqueIds.length === 0) {
+    return {};
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("order_payment_events")
+    .select("order_id, from_method, to_method, actor_role, created_at")
+    .eq("restaurant_id", restaurantId)
+    .in("order_id", uniqueIds)
+    .order("created_at", { ascending: false });
+
+  // Table may not exist yet on un-migrated deployments — fail soft.
+  if (error || !data) {
+    return {};
+  }
+
+  const changes: Record<string, OrderPaymentChange> = {};
+
+  for (const row of data) {
+    const orderId = String(row.order_id);
+    if (!changes[orderId]) {
+      changes[orderId] = {
+        from: row.from_method ?? null,
+        to: String(row.to_method),
+        role: row.actor_role ?? null,
+        at: String(row.created_at)
+      };
+    }
+  }
+
+  return changes;
+}
+
 export function getAnalytics(orders: Order[], customers: Customer[]): Analytics {
   const now = new Date();
   const todaysOrders = orders.filter((order) =>
