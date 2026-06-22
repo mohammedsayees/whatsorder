@@ -116,20 +116,26 @@ export function MenuImport() {
     const failed: number[] = [];
 
     for (const page of rendered) {
-      const result = await extractMenuPageAction({
-        imageBase64: dataUrlToBase64(page.dataUrl),
-        mimeType: "image/jpeg"
-      });
-
-      if (result.ok) {
-        result.items.forEach((item, itemIndex) => {
-          collected.push({
-            ...item,
-            id: `${page.index}-${itemIndex}-${Math.random().toString(36).slice(2, 8)}`,
-            pageIndex: page.index
-          });
+      // Guard every call: a single page that errors or times out must not
+      // freeze the whole import — mark it failed and move on.
+      try {
+        const result = await extractMenuPageAction({
+          imageBase64: dataUrlToBase64(page.dataUrl),
+          mimeType: "image/jpeg"
         });
-      } else {
+
+        if (result.ok) {
+          result.items.forEach((item, itemIndex) => {
+            collected.push({
+              ...item,
+              id: `${page.index}-${itemIndex}-${Math.random().toString(36).slice(2, 8)}`,
+              pageIndex: page.index
+            });
+          });
+        } else {
+          failed.push(page.index);
+        }
+      } catch {
         failed.push(page.index);
       }
 

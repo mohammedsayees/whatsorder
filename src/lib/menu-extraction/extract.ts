@@ -32,7 +32,7 @@ type GeminiResponse = {
 };
 
 function defaultModel() {
-  return process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  return process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
 }
 
 function clampPrice(value: unknown): number | null {
@@ -106,30 +106,43 @@ export async function extractMenuPageItems(
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: MENU_EXTRACTION_PROMPT },
-            { inline_data: { mime_type: mimeType, data: imageBase64 } }
-          ]
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Fail fast rather than hang the serverless function (and the UI) if the
+      // model is slow or unreachable.
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: MENU_EXTRACTION_PROMPT },
+              { inline_data: { mime_type: mimeType, data: imageBase64 } }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json"
         }
-      ],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: "application/json"
-      }
-    })
-  });
+      })
+    });
+  } catch (error) {
+    console.error("WhatsOrder menu extraction fetch failed", {
+      model: defaultModel(),
+      reason: error instanceof Error ? error.name + ": " + error.message : String(error)
+    });
+    throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error("WhatsOrder menu extraction request failed", {
+      model: defaultModel(),
       status: response.status,
-      detail: detail.slice(0, 500)
+      detail: detail.slice(0, 800)
     });
     throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
   }

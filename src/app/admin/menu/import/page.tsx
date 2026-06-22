@@ -3,6 +3,10 @@ import { ArrowLeft } from "lucide-react";
 import { MenuImport } from "@/components/admin/MenuImport";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
+// Vision extraction can take 10-45s per page; allow the server action room to
+// finish instead of being killed at the platform default.
+export const maxDuration = 60;
+
 export default async function ImportMenuPage() {
   await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
 
