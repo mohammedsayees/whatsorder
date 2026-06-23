@@ -14,6 +14,7 @@ import {
   uploadMenuItemImageAction
 } from "@/app/actions";
 import { formatAED } from "@/lib/currency";
+import { compressMenuImage } from "@/lib/image-compression";
 import type { MenuCategory, MenuItem } from "@/lib/types";
 import {
   ArrowDown,
@@ -793,10 +794,16 @@ function ItemForm({
     }
 
     setPreviewUrl(URL.createObjectURL(file));
+    setImageStatus("Optimizing image...");
+
+    // Resize + convert to WebP in the browser so we upload ~30–80 kB instead of
+    // a multi-MB phone photo. Falls back to the original file on any failure.
+    const optimized = await compressMenuImage(file);
+
     setImageStatus("Uploading image...");
 
     const formData = new FormData();
-    formData.set("image", file);
+    formData.set("image", optimized);
     formData.set("item_name", itemName || "menu-item");
     if (restaurantId) {
       formData.set("restaurant_id", restaurantId);

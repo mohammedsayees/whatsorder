@@ -493,8 +493,10 @@ export function RestaurantMenu({
                         <img
                           alt={title}
                           className="h-full w-full object-cover"
+                          height={288}
                           loading="lazy"
                           src={item.image_url}
+                          width={384}
                         />
                       ) : (
                         <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.28),_transparent_48%),linear-gradient(135deg,#f7f4ec,#e7f6ee)] px-5 text-center text-lg font-black text-ink">
@@ -735,8 +737,10 @@ export function RestaurantMenu({
                             <img
                               alt={itemName}
                               className="h-full w-full object-cover"
+                              height={112}
                               loading="lazy"
                               src={item.image_url}
+                              width={112}
                             />
                           ) : (
                             <div className="grid h-full w-full place-items-center px-3 text-center text-xs font-bold text-ink/55">
