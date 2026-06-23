@@ -61,6 +61,9 @@ export type Restaurant = PublicRestaurant & {
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   internal_notes?: string | null;
+  // Aggregator commission percentage (e.g. 27) used to compute "commission
+  // kept". NULL/undefined → the app's labelled default applies.
+  commission_rate?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at?: string;

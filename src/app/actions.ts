@@ -135,6 +135,13 @@ function positiveDecimalValue(formData: FormData, key: string) {
   return value !== null && value > 0 ? value : null;
 }
 
+// A commission percentage in (0, 100]. Empty/invalid/out-of-range → null, which
+// the dashboard reads as "use the labelled 27% default".
+function commissionRateValue(formData: FormData, key: string) {
+  const value = decimalValue(formData, key);
+  return value !== null && value > 0 && value <= 100 ? value : null;
+}
+
 async function getMenuActionContext(formData: FormData) {
   const requestedRestaurantId = stringValue(formData, "restaurant_id");
   const supabase = getSupabaseAdmin();
@@ -1237,6 +1244,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       latitude: decimalValue(formData, "latitude"),
       longitude: decimalValue(formData, "longitude"),
       delivery_radius_km: positiveDecimalValue(formData, "delivery_radius_km"),
+      commission_rate: commissionRateValue(formData, "commission_rate"),
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);
