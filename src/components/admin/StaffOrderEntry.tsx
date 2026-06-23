@@ -38,6 +38,7 @@ export function StaffOrderEntry({
   const [state, action, pending] = useActionState(createStaffOrderAction, initialState);
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
   const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(orderTypes[0]);
 
   // Clear the ticket after a successful save so staff can punch the next order.
@@ -45,6 +46,7 @@ export function StaffOrderEntry({
     if (state.success) {
       setLines({});
       setSearch("");
+      setSelectedCategoryId("all");
     }
   }, [state]);
 
@@ -67,6 +69,15 @@ export function StaffOrderEntry({
         `${item.name} ${item.name_ar ?? ""}`.toLowerCase().includes(normalizedSearch)
       )
     : null;
+
+  // Categories that actually have available items, for the quick-pick chips.
+  const categoriesWithItems = orderedCategories.filter((category) =>
+    availableItems.some((item) => item.category_id === category.id)
+  );
+  const visibleCategories =
+    selectedCategoryId === "all"
+      ? orderedCategories
+      : orderedCategories.filter((category) => category.id === selectedCategoryId);
 
   const ticketLines = Object.values(lines);
   const subtotal = ticketLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -138,6 +149,40 @@ export function StaffOrderEntry({
           />
         </label>
 
+        {/* Quick category picker — hidden while searching (search spans all). */}
+        {!matchingItems && categoriesWithItems.length > 1 ? (
+          <div
+            aria-label="Menu categories"
+            className="mt-3 flex gap-2 overflow-x-auto pb-1"
+          >
+            <button
+              className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-black ${
+                selectedCategoryId === "all"
+                  ? "bg-ink text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              }`}
+              onClick={() => setSelectedCategoryId("all")}
+              type="button"
+            >
+              All
+            </button>
+            {categoriesWithItems.map((category) => (
+              <button
+                className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-black ${
+                  selectedCategoryId === category.id
+                    ? "bg-ink text-white"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                }`}
+                key={category.id}
+                onClick={() => setSelectedCategoryId(category.id)}
+                type="button"
+              >
+                {category.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <div className="mt-4 space-y-6">
           {matchingItems ? (
             <ItemGrid
@@ -150,7 +195,7 @@ export function StaffOrderEntry({
               onAdd={addItem}
             />
           ) : (
-            orderedCategories.map((category) => {
+            visibleCategories.map((category) => {
               const categoryItems = availableItems.filter(
                 (item) => item.category_id === category.id
               );
