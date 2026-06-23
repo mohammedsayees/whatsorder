@@ -37,6 +37,47 @@ const activeOrderStatuses: OrderStatus[] = [
   "Out for Delivery"
 ];
 
+// Explicit column list for order *list/report* reads. Mirrors the Order type
+// minus `whatsapp_message` — a large text column that is only needed when
+// (re)building a single order's WhatsApp link/ticket, and is never rendered in
+// any list or report. Selecting it on list/report paths wastes payload that
+// grows with order volume, so those reads use this projection instead of "*".
+const orderListColumns = [
+  "id",
+  "restaurant_id",
+  "shift_id",
+  "customer_name",
+  "customer_phone",
+  "fulfilment_type",
+  "car_plate_number",
+  "car_description",
+  "table_number",
+  "delivery_area",
+  "delivery_address",
+  "delivery_latitude",
+  "delivery_longitude",
+  "delivery_google_maps_url",
+  "delivery_place_id",
+  "delivery_address_text",
+  "delivery_landmark",
+  "notes",
+  "payment_method",
+  "items",
+  "subtotal",
+  "delivery_fee",
+  "total",
+  "points_earned",
+  "points_redeemed",
+  "loyalty_discount",
+  "status",
+  "source",
+  "consent_order_processing",
+  "consent_marketing",
+  "consent_timestamp",
+  "created_at",
+  "updated_at"
+].join(", ");
+
 export type OrderStatusView = "active" | "completed" | "cancelled";
 export type OrderFulfilmentView = "all" | FulfilmentType;
 
@@ -269,13 +310,13 @@ export async function getRecentOrders(
   if (supabase) {
     const { data, error } = await supabase
       .from("orders")
-      .select("*")
+      .select(orderListColumns)
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(Math.min(20, Math.max(1, limit)));
 
     if (!error && data) {
-      return data as Order[];
+      return data as unknown as Order[];
     }
 
     if (!demoDataEnabled) {
@@ -404,14 +445,14 @@ export async function getOrdersForReport(
   if (supabase) {
     const { data, error } = await supabase
       .from("orders")
-      .select("*")
+      .select(orderListColumns)
       .eq("restaurant_id", restaurantId)
       .gte("created_at", startIso)
       .lt("created_at", endExclusiveIso)
       .order("created_at", { ascending: true });
 
     if (!error && data) {
-      return data as Order[];
+      return data as unknown as Order[];
     }
 
     if (!demoDataEnabled) {
@@ -491,7 +532,11 @@ export async function getOrdersPage(
   if (supabase) {
     let query = supabase
       .from("orders")
-      .select("*", { count: "exact" })
+      // count: "estimated" returns an exact count while a tenant's matching
+      // rows stay below PostgREST's threshold (verified identical to "exact"
+      // at current volume) and switches to a planner estimate only once the
+      // set is large enough that an exact COUNT would scan O(n) per page load.
+      .select(orderListColumns, { count: "estimated" })
       .eq("restaurant_id", restaurantId);
 
     query = applyOrderStatusFilter(query, status);
@@ -508,7 +553,7 @@ export async function getOrdersPage(
       const total = count ?? 0;
 
       return {
-        items: data as Order[],
+        items: data as unknown as Order[],
         page,
         pageSize,
         total,
@@ -559,7 +604,9 @@ export async function getOrderFulfilmentCounts(
     const countForFulfilment = async (fulfilment?: FulfilmentType) => {
       let query = supabase
         .from("orders")
-        .select("id", { count: "exact", head: true })
+        // Estimated keeps these tab badges exact at current volume and avoids
+        // five O(n) COUNTs per orders-page load once a tenant grows large.
+        .select("id", { count: "estimated", head: true })
         .eq("restaurant_id", restaurantId);
 
       query = applyOrderStatusFilter(query, status);
@@ -770,13 +817,13 @@ export async function getOrdersForCustomerPhones(
   if (supabase) {
     const { data, error } = await supabase
       .from("orders")
-      .select("*")
+      .select(orderListColumns)
       .eq("restaurant_id", restaurantId)
       .in("customer_phone", uniquePhones)
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      return data as Order[];
+      return data as unknown as Order[];
     }
 
     if (!demoDataEnabled) {
