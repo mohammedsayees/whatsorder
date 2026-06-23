@@ -291,3 +291,93 @@ ${list}`;
 
   return map;
 }
+
+/**
+ * Writes a single short, appetizing English description for one item. Returns
+ * null when AI is not configured or the model returns nothing usable, so the
+ * caller can fall back to manual entry. Powers the "Generate" button on the
+ * single-item edit form.
+ */
+export async function generateSingleItemDescription(
+  name: string,
+  category: string
+): Promise<string | null> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const map = await generateItemDescriptions([{ name: trimmed, category: category.trim() }]);
+  return map[trimmed] ?? null;
+}
+
+export type ItemTranslation = {
+  name_ar: string | null;
+  description_ar: string | null;
+};
+
+/**
+ * Translates an item's English name and description into Modern Standard
+ * Arabic in a single model call. Returns nulls when AI is unconfigured or the
+ * response is unusable, so the caller can fall back to manual entry. Powers the
+ * "Translate → عربي" button on the single-item edit form.
+ */
+export async function translateItemToArabic(input: {
+  name: string;
+  description?: string | null;
+}): Promise<ItemTranslation> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const name = input.name.trim();
+  const description = (input.description ?? "").trim();
+
+  if (!apiKey || !name) {
+    return { name_ar: null, description_ar: null };
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
+  const prompt = `Translate this restaurant menu item into Modern Standard Arabic for a UAE menu.
+
+Rules:
+- Translate the meaning naturally; do not translate word-for-word.
+- For well-known dish or brand names, use the spelling UAE diners expect (transliterate when there is no common Arabic name).
+- Keep the description short and appetizing. No emojis, no quotes, no Latin letters unless a brand name has no Arabic form.
+- If a field is empty, return null for it.
+- Return ONLY JSON: { "name_ar": string|null, "description_ar": string|null }
+
+English name: ${name}
+English description: ${description || "(none)"}`;
+
+  const requestBody = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      // Same reason as extraction: skip the 2.5-flash thinking phase so the
+      // call stays inside the timeout and returns clean JSON.
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  });
+
+  const response = await fetchGeminiWithRetry(endpoint, requestBody, "item translation");
+  const payload = (await response.json()) as GeminiResponse;
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+  if (!text) {
+    return { name_ar: null, description_ar: null };
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { name_ar?: unknown; description_ar?: unknown };
+    const toValue = (value: unknown) => {
+      const str = String(value ?? "").trim();
+      return str ? str.slice(0, 300) : null;
+    };
+    return {
+      name_ar: toValue(parsed.name_ar),
+      description_ar: toValue(parsed.description_ar)
+    };
+  } catch {
+    console.error("WhatsOrder item translation returned unparsable JSON");
+    return { name_ar: null, description_ar: null };
+  }
+}
