@@ -132,9 +132,9 @@ export function StaffOrderEntry({
   }));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+    <div className="grid gap-6 pb-24 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:pb-0">
       {/* Menu picker */}
-      <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+      <section className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
         <label className="relative block">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -153,7 +153,7 @@ export function StaffOrderEntry({
         {!matchingItems && categoriesWithItems.length > 1 ? (
           <div
             aria-label="Menu categories"
-            className="mt-3 flex gap-2 overflow-x-auto pb-1"
+            className="mt-3 flex shrink-0 flex-wrap gap-2"
           >
             <button
               className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-black ${
@@ -183,7 +183,7 @@ export function StaffOrderEntry({
           </div>
         ) : null}
 
-        <div className="mt-4 space-y-6">
+        <div className="mt-4 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           {matchingItems ? (
             <ItemGrid
               items={matchingItems.map((item) => ({
@@ -229,11 +229,16 @@ export function StaffOrderEntry({
       </section>
 
       {/* Ticket */}
-      <section className="lg:sticky lg:top-6 lg:self-start">
-        <form action={action} className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-black">Ticket</h2>
+      <section className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
+        <form
+          action={action}
+          className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
+        >
+          <h2 className="shrink-0 text-lg font-black">Ticket</h2>
 
-          <div className="mt-3 space-y-2">
+          {/* Scrollable order body — totals and actions stay pinned below */}
+          <div className="mt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+          <div className="space-y-2">
             {ticketLines.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500">
                 Tap menu items to build the order.
@@ -281,25 +286,6 @@ export function StaffOrderEntry({
                 </div>
               ))
             )}
-          </div>
-
-          <div className="mt-3 space-y-1 border-t border-stone-100 pt-3">
-            <div className="flex items-center justify-between text-sm text-stone-600">
-              <span className="font-bold">
-                {itemCount} item{itemCount === 1 ? "" : "s"}
-              </span>
-              <span>{formatAED(subtotal)}</span>
-            </div>
-            {appliedDeliveryFee > 0 ? (
-              <div className="flex items-center justify-between text-sm text-stone-600">
-                <span className="font-bold">Delivery fee</span>
-                <span>{formatAED(appliedDeliveryFee)}</span>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-sm font-bold text-stone-600">Total</span>
-              <span className="text-lg font-black">{formatAED(total)}</span>
-            </div>
           </div>
 
           {/* Order type — only the channels this restaurant offers */}
@@ -430,38 +416,58 @@ export function StaffOrderEntry({
             </label>
           </div>
 
+          {/* Close scrollable order body */}
+          </div>
+
           {/* Hidden submitted values */}
           <input name="items" type="hidden" value={JSON.stringify(cartPayload)} />
           <input name="fulfilment_type" type="hidden" value={fulfilmentType} />
 
-          {state.error || state.success ? (
-            <p
-              className={`mt-4 rounded-lg px-3 py-2 text-sm font-bold ${
-                state.error ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"
-              }`}
-              role="status"
+          {/* Pinned footer: totals + actions stay visible without scrolling */}
+          <div className="mt-3 shrink-0 space-y-3 border-t border-stone-100 pt-3">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-sm text-stone-600">
+                <span className="font-bold">
+                  {itemCount} item{itemCount === 1 ? "" : "s"}
+                </span>
+                <span>{formatAED(subtotal)}</span>
+              </div>
+              {appliedDeliveryFee > 0 ? (
+                <div className="flex items-center justify-between text-sm text-stone-600">
+                  <span className="font-bold">Delivery fee</span>
+                  <span>{formatAED(appliedDeliveryFee)}</span>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-stone-600">Total</span>
+                <span className="text-lg font-black">{formatAED(total)}</span>
+              </div>
+            </div>
+
+            {state.error || state.success ? (
+              <p
+                className={`rounded-lg px-3 py-2 text-sm font-bold ${
+                  state.error ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"
+                }`}
+                role="status"
+              >
+                {state.error ?? state.success}
+              </p>
+            ) : null}
+
+            {/* Primary flow: payment is collected later, at completion. */}
+            <button
+              className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
+              disabled={pending || ticketLines.length === 0}
+              name="action"
+              type="submit"
+              value="kitchen"
             >
-              {state.error ?? state.success}
-            </p>
-          ) : null}
+              {pending ? "Saving…" : "Send to kitchen"}
+            </button>
 
-          {/* Primary flow: payment is collected later, at completion. */}
-          <button
-            className="focus-ring mt-4 w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-            disabled={pending || ticketLines.length === 0}
-            name="action"
-            type="submit"
-            value="kitchen"
-          >
-            {pending ? "Saving…" : "Send to kitchen"}
-          </button>
-
-          {/* Optional shortcut: customer pays up front. */}
-          <div className="mt-3 rounded-lg border border-stone-200 p-3">
-            <p className="text-xs font-black uppercase tracking-wide text-stone-500">
-              Or take payment now
-            </p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            {/* Optional shortcut: customer pays up front. */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
                 disabled={pending || ticketLines.length === 0}
@@ -482,6 +488,27 @@ export function StaffOrderEntry({
               </button>
             </div>
           </div>
+
+          {/* Mobile: keep billing one tap away without scrolling to the ticket */}
+          {ticketLines.length > 0 ? (
+            <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 border-t border-stone-200 bg-white p-3 shadow-lg lg:hidden">
+              <div className="flex-1">
+                <p className="text-xs font-bold text-stone-500">
+                  {itemCount} item{itemCount === 1 ? "" : "s"}
+                </p>
+                <p className="text-lg font-black">{formatAED(total)}</p>
+              </div>
+              <button
+                className="focus-ring rounded-lg bg-leaf px-5 py-3 font-black text-white disabled:opacity-60"
+                disabled={pending}
+                name="action"
+                type="submit"
+                value="kitchen"
+              >
+                {pending ? "Saving…" : "Send to kitchen"}
+              </button>
+            </div>
+          ) : null}
         </form>
       </section>
     </div>
