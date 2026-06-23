@@ -90,6 +90,24 @@ export async function extractMenuPageAction(input: {
     if (code === "MENU_EXTRACTION_NOT_CONFIGURED") {
       return { ok: false, error: "Menu import is not configured yet. Contact WhatsOrder support." };
     }
+
+    // fetchGeminiWithRetry throws "REQUEST_FAILED:<status|reason>". A transient
+    // overload/rate-limit survived the retries — tell the user to retry rather
+    // than implying their page is unreadable. A hard 4xx is a real config issue.
+    const status = code.startsWith("REQUEST_FAILED:") ? code.slice("REQUEST_FAILED:".length) : "";
+    if (status === "429" || status === "503" || status === "500" || status === "502" || status === "504") {
+      return {
+        ok: false,
+        error: "The AI reader is busy right now. Wait a few seconds and try again."
+      };
+    }
+    if (status === "400" || status === "401" || status === "403") {
+      return {
+        ok: false,
+        error: "The AI reader rejected the request — this needs a fix on our side. Contact WhatsOrder support."
+      };
+    }
+
     return {
       ok: false,
       error: "Couldn't read this page. Try again, or skip it and add those items by hand."
