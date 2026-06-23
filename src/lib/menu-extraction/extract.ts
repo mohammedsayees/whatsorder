@@ -86,6 +86,78 @@ function normalizeItems(raw: unknown): DraftMenuItem[] {
   return normalized;
 }
 
+// Statuses worth retrying: rate-limit and the transient server-side errors the
+// Gemini endpoint emits under load. A 4xx like 400/401/403 is a hard config
+// problem and is not retried.
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * POSTs to the Gemini endpoint, retrying transient failures (network/timeout,
+ * 429, 5xx) a few times with backoff. Throws an Error whose message carries the
+ * upstream status/reason (e.g. "REQUEST_FAILED:503") so the caller can tell a
+ * "busy, retry" case apart from a real misconfiguration.
+ */
+async function fetchGeminiWithRetry(
+  endpoint: string,
+  body: string,
+  label: string
+): Promise<Response> {
+  const maxAttempts = 3;
+  let lastReason = "network";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Fail fast rather than hang the serverless function (and the UI) if the
+        // model is slow or unreachable.
+        signal: AbortSignal.timeout(45000),
+        body
+      });
+    } catch (error) {
+      lastReason = error instanceof Error ? error.name : "network";
+      console.error(`WhatsOrder ${label} fetch failed`, {
+        model: defaultModel(),
+        attempt,
+        reason: error instanceof Error ? error.name + ": " + error.message : String(error)
+      });
+      if (attempt < maxAttempts) {
+        await sleep(500 * attempt);
+        continue;
+      }
+      throw new Error(`REQUEST_FAILED:${lastReason}`);
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    lastReason = String(response.status);
+    const detail = await response.text().catch(() => "");
+    console.error(`WhatsOrder ${label} request failed`, {
+      model: defaultModel(),
+      attempt,
+      status: response.status,
+      detail: detail.slice(0, 800)
+    });
+
+    if (RETRYABLE_STATUSES.has(response.status) && attempt < maxAttempts) {
+      await sleep(500 * attempt);
+      continue;
+    }
+    throw new Error(`REQUEST_FAILED:${response.status}`);
+  }
+
+  // Unreachable: the loop either returns a response or throws.
+  throw new Error(`REQUEST_FAILED:${lastReason}`);
+}
+
 /**
  * Sends one rendered menu page to the vision model and returns the structured
  * items found on it. Throws on a hard failure (missing key, network/model
@@ -105,53 +177,30 @@ export async function extractMenuPageItems(
   }
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${defaultModel()}:generateContent?key=${apiKey}`;
+  const requestBody = JSON.stringify({
+    contents: [
+      {
+        parts: [
+          { text: MENU_EXTRACTION_PROMPT },
+          { inline_data: { mime_type: mimeType, data: imageBase64 } }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: "application/json",
+      // gemini-2.5-flash is a thinking model; left on, it spends the
+      // response budget reasoning and either blows past the 45s timeout or
+      // truncates the JSON — both surface as "Couldn't read this page".
+      // Structured extraction needs none of it, so turn thinking off.
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  });
 
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // Fail fast rather than hang the serverless function (and the UI) if the
-      // model is slow or unreachable.
-      signal: AbortSignal.timeout(45000),
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: MENU_EXTRACTION_PROMPT },
-              { inline_data: { mime_type: mimeType, data: imageBase64 } }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: "application/json",
-          // gemini-2.5-flash is a thinking model; left on, it spends the
-          // response budget reasoning and either blows past the 45s timeout or
-          // truncates the JSON — both surface as "Couldn't read this page".
-          // Structured extraction needs none of it, so turn thinking off.
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      })
-    });
-  } catch (error) {
-    console.error("WhatsOrder menu extraction fetch failed", {
-      model: defaultModel(),
-      reason: error instanceof Error ? error.name + ": " + error.message : String(error)
-    });
-    throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
-  }
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error("WhatsOrder menu extraction request failed", {
-      model: defaultModel(),
-      status: response.status,
-      detail: detail.slice(0, 800)
-    });
-    throw new Error("MENU_EXTRACTION_REQUEST_FAILED");
-  }
-
+  // 2.5-flash routinely returns transient 503 "overloaded" / 429 rate-limit
+  // blips that succeed on a quick retry. Without this, a single blip surfaced
+  // to the user as "Couldn't read this page" even though the page was fine.
+  const response = await fetchGeminiWithRetry(endpoint, requestBody, "menu extraction");
   const payload = (await response.json()) as GeminiResponse;
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
@@ -197,41 +246,18 @@ Rules:
 Items:
 ${list}`;
 
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(45000),
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.5,
-          responseMimeType: "application/json",
-          // Same reason as extraction: skip the 2.5-flash thinking phase so the
-          // call stays inside the 45s timeout and returns clean JSON.
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      })
-    });
-  } catch (error) {
-    console.error("WhatsOrder description generation fetch failed", {
-      model: defaultModel(),
-      reason: error instanceof Error ? error.name : String(error)
-    });
-    throw new Error("DESCRIPTION_GENERATION_FAILED");
-  }
+  const requestBody = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.5,
+      responseMimeType: "application/json",
+      // Same reason as extraction: skip the 2.5-flash thinking phase so the
+      // call stays inside the 45s timeout and returns clean JSON.
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error("WhatsOrder description generation failed", {
-      model: defaultModel(),
-      status: response.status,
-      detail: detail.slice(0, 500)
-    });
-    throw new Error("DESCRIPTION_GENERATION_FAILED");
-  }
-
+  const response = await fetchGeminiWithRetry(endpoint, requestBody, "description generation");
   const payload = (await response.json()) as GeminiResponse;
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const map: Record<string, string> = {};
