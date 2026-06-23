@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
+import { CommissionKeptCard } from "@/components/admin/CommissionKeptCard";
 import { OrderList } from "@/components/admin/OrderList";
 import {
+  getCommissionKept,
   getCustomersByPhones,
   getDashboardAnalytics,
   getRecentOrders
@@ -17,9 +19,10 @@ export default async function AdminDashboardPage({
   const query = await searchParams;
   const { restaurant } = await requireRestaurantAdmin();
 
-  const [orders, analytics] = await Promise.all([
+  const [orders, analytics, commission] = await Promise.all([
     getRecentOrders(restaurant.id, 5),
-    getDashboardAnalytics(restaurant.id)
+    getDashboardAnalytics(restaurant.id),
+    getCommissionKept(restaurant)
   ]);
   const customers = await getCustomersByPhones(
     restaurant.id,
@@ -51,6 +54,10 @@ export default async function AdminDashboardPage({
           {query.error}
         </p>
       ) : null}
+
+      <div className="mt-6">
+        <CommissionKeptCard commission={commission} />
+      </div>
 
       <div className="mt-6">
         <AnalyticsCards analytics={analytics} />

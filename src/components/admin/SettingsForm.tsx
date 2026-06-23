@@ -128,6 +128,26 @@ export function SettingsForm({
           <span className="text-sm font-bold">Minimum order</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.minimum_order_amount} disabled={!canWrite} min="0" name="minimum_order_amount" step="0.01" type="number" required />
         </label>
+        <label className="block">
+          <span className="text-sm font-bold">Aggregator commission rate (%)</span>
+          <input
+            className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+            defaultValue={restaurant.commission_rate ?? ""}
+            disabled={!canWrite}
+            inputMode="decimal"
+            max="100"
+            min="0"
+            name="commission_rate"
+            placeholder="27"
+            step="0.5"
+            type="number"
+          />
+          <span className="mt-1 block text-xs font-medium text-stone-500">
+            What Talabat used to charge on delivery orders. Drives the
+            &ldquo;commission kept&rdquo; figure on your dashboard. Leave blank to
+            use the 27% default.
+          </span>
+        </label>
         <label className="block sm:col-span-2">
           <span className="text-sm font-bold">Address</span>
           <textarea className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.address ?? ""} disabled={!canWrite} name="address" />

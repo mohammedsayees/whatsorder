@@ -1,5 +1,10 @@
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
-import { isSameUaeCalendarDay } from "@/lib/date-time";
+import { getUaeMonthStartIso, isSameUaeCalendarDay } from "@/lib/date-time";
+import {
+  computeCommissionKept,
+  type CommissionKept,
+  type CommissionKeptTotals
+} from "@/lib/commission";
 import {
   demoCategories,
   demoCustomers,
@@ -321,6 +326,72 @@ export async function getDashboardAnalytics(
     demoOrders.filter((order) => order.restaurant_id === restaurantId),
     demoCustomers.filter((customer) => customer.restaurant_id === restaurantId)
   );
+}
+
+export async function getCommissionKept(
+  restaurant: Pick<Restaurant, "id" | "commission_rate">
+): Promise<CommissionKept> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc(
+      "get_restaurant_commission_kept",
+      { target_restaurant_id: restaurant.id }
+    );
+
+    if (!error && data) {
+      const totals = data as Record<string, string | number>;
+      return computeCommissionKept(
+        {
+          monthOrders: Number(totals.monthOrders ?? 0),
+          monthBase: Number(totals.monthBase ?? 0),
+          allTimeOrders: Number(totals.allTimeOrders ?? 0),
+          allTimeBase: Number(totals.allTimeBase ?? 0)
+        },
+        restaurant.commission_rate
+      );
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Commission kept", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Commission kept");
+  }
+
+  return computeCommissionKept(
+    commissionKeptTotalsFromOrders(
+      demoOrders.filter((order) => order.restaurant_id === restaurant.id)
+    ),
+    restaurant.commission_rate
+  );
+}
+
+// Mirror of the get_restaurant_commission_kept RPC for the demo-data fallback:
+// completed DELIVERY orders only, base = food subtotal (delivery fee excluded).
+function commissionKeptTotalsFromOrders(orders: Order[]): CommissionKeptTotals {
+  const monthStartIso = getUaeMonthStartIso();
+  let monthOrders = 0;
+  let monthBase = 0;
+  let allTimeOrders = 0;
+  let allTimeBase = 0;
+
+  for (const order of orders) {
+    if (order.fulfilment_type !== "delivery" || order.status !== "Completed") {
+      continue;
+    }
+
+    const base = Number(order.subtotal) || 0;
+    allTimeOrders += 1;
+    allTimeBase += base;
+
+    if (order.created_at >= monthStartIso) {
+      monthOrders += 1;
+      monthBase += base;
+    }
+  }
+
+  return { monthOrders, monthBase, allTimeOrders, allTimeBase };
 }
 
 export async function getOrdersForReport(
