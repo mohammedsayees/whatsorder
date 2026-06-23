@@ -23,6 +23,7 @@ import {
 } from "@/lib/security";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
+import { evaluateDeliveryRange } from "@/lib/geo";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -125,6 +126,13 @@ function decimalValue(formData: FormData, key: string) {
 
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+// A positive decimal, or null when empty/invalid/<=0. Used for the optional
+// delivery radius: empty or zero means "no limit".
+function positiveDecimalValue(formData: FormData, key: string) {
+  const value = decimalValue(formData, key);
+  return value !== null && value > 0 ? value : null;
 }
 
 async function getMenuActionContext(formData: FormData) {
@@ -370,6 +378,27 @@ export async function createOrderAction(
 
   if (fulfilmentType === "delivery" && (!deliveryArea || !deliveryAddress)) {
     return { ok: false, error: "Please complete your delivery details." };
+  }
+
+  // Optional delivery-radius gate. This is the real enforcement — the client
+  // check is UX only and can be bypassed. No-op when the restaurant has no
+  // radius set (backward-compatible).
+  if (fulfilmentType === "delivery") {
+    const range = evaluateDeliveryRange(restaurant, {
+      latitude: deliveryLatitude,
+      longitude: deliveryLongitude
+    });
+
+    if (range.enforced && !range.withinRange) {
+      const radiusKm = restaurant.delivery_radius_km ?? 0;
+      const error =
+        range.distanceKm === null
+          ? `${restaurant.name} only delivers within ${radiusKm} km. Please share your current location to confirm you're in range, or choose pickup or dine-in.`
+          : `Sorry — you're outside ${restaurant.name}'s delivery area (${radiusKm} km). You're about ${range.distanceKm.toFixed(
+              1
+            )} km away. You can still order for pickup or dine-in.`;
+      return { ok: false, error };
+    }
   }
 
   if (fulfilmentType === "car_pickup" && !carPlateNumber) {
@@ -1205,6 +1234,9 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       accepting_orders: formData.get("accepting_orders") === "on",
       opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
       opening_hours: openingHoursFromFormData(formData),
+      latitude: decimalValue(formData, "latitude"),
+      longitude: decimalValue(formData, "longitude"),
+      delivery_radius_km: positiveDecimalValue(formData, "delivery_radius_km"),
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);

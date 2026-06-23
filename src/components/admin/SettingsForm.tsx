@@ -140,6 +140,65 @@ export function SettingsForm({
           <span className="text-sm font-bold">Arabic subtitle / cuisine tags</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-right" defaultValue={restaurant.subtitle_ar ?? ""} dir="rtl" disabled={!canWrite} name="subtitle_ar" placeholder="مثال: كرك، برجر، شاورما" />
         </label>
+        <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <legend className="px-1 text-sm font-bold">Delivery area</legend>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            Set your restaurant location and a delivery radius to block delivery orders from
+            customers outside range. To get the coordinates, open{" "}
+            <a
+              className="font-bold text-leaf underline"
+              href="https://www.google.com/maps"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Google Maps
+            </a>
+            , right-click your restaurant and click the latitude, longitude pair to copy it.
+            Leave the radius empty for unlimited delivery (default).
+          </p>
+          <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            <label className="block">
+              <span className="text-sm font-bold">Latitude</span>
+              <input
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue={restaurant.latitude ?? ""}
+                disabled={!canWrite}
+                inputMode="decimal"
+                name="latitude"
+                placeholder="25.4052"
+                step="any"
+                type="number"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-bold">Longitude</span>
+              <input
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue={restaurant.longitude ?? ""}
+                disabled={!canWrite}
+                inputMode="decimal"
+                name="longitude"
+                placeholder="55.5136"
+                step="any"
+                type="number"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-bold">Delivery radius (km)</span>
+              <input
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue={restaurant.delivery_radius_km ?? ""}
+                disabled={!canWrite}
+                inputMode="decimal"
+                min="0"
+                name="delivery_radius_km"
+                placeholder="No limit"
+                step="0.1"
+                type="number"
+              />
+            </label>
+          </div>
+        </fieldset>
       </div>
       <button className="focus-ring mt-5 rounded-lg bg-leaf px-5 py-3 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
         Save settings

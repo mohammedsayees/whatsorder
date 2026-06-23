@@ -20,6 +20,7 @@ import { formatAED } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
+import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
@@ -91,6 +92,17 @@ export function CheckoutForm({
     restaurant.opening_hours_enabled,
     restaurant.opening_hours
   );
+  // Optional delivery-radius gate (client-side UX; the server re-checks). When
+  // the restaurant has no radius set, `enforced` is false and nothing changes.
+  const deliveryRange = evaluateDeliveryRange(
+    restaurant,
+    location ? { latitude: location.latitude, longitude: location.longitude } : null
+  );
+  const deliveryBlocked =
+    fulfilmentType === "delivery" &&
+    deliveryRange.enforced &&
+    !deliveryRange.withinRange;
+  const deliveryRadiusKm = restaurant.delivery_radius_km ?? 0;
 
   function captureLocation() {
     setLocationError(null);
@@ -131,6 +143,11 @@ export function CheckoutForm({
     event.preventDefault();
     setError(null);
     setFallbackWhatsappUrl(null);
+
+    if (deliveryBlocked) {
+      // Guard against a programmatic submit; the server re-checks regardless.
+      return;
+    }
 
     const formData = new FormData(event.currentTarget);
     formData.set("items", JSON.stringify(cart.lines));
@@ -411,6 +428,25 @@ export function CheckoutForm({
               </p>
             ) : null}
 
+            {deliveryRange.enforced && deliveryRange.distanceKm === null ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                {language === "ar"
+                  ? `يرجى مشاركة موقعك الحالي للتأكد من أنك ضمن منطقة توصيل ${restaurantName} (${deliveryRadiusKm} كم).`
+                  : `Please share your current location to confirm you're within ${restaurantName}'s delivery area (${deliveryRadiusKm} km).`}
+              </p>
+            ) : null}
+            {deliveryRange.enforced && deliveryBlocked && deliveryRange.distanceKm !== null ? (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {language === "ar"
+                  ? `عذراً — أنت خارج منطقة توصيل ${restaurantName} (${deliveryRadiusKm} كم). تبعد حوالي ${deliveryRange.distanceKm.toFixed(
+                      1
+                    )} كم. لا يزال بإمكانك الطلب للاستلام أو لتناول الطعام في المطعم.`
+                  : `Sorry — you're outside ${restaurantName}'s delivery area (${deliveryRadiusKm} km). You're about ${deliveryRange.distanceKm.toFixed(
+                      1
+                    )} km away. You can still order for pickup or dine-in.`}
+              </p>
+            ) : null}
+
             <div className="mt-4 space-y-4">
               <label className="block">
                 <span className="text-sm font-bold">{t.deliveryArea}</span>
@@ -582,7 +618,7 @@ export function CheckoutForm({
 
           <button
             className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isPending || amountRemaining > 0}
+            disabled={isPending || amountRemaining > 0 || deliveryBlocked}
             type="submit"
           >
             <Send size={18} />
