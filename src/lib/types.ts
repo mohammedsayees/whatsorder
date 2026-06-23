@@ -49,6 +49,9 @@ export type PublicRestaurant = {
   accepting_orders?: boolean;
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  delivery_radius_km?: number | null;
 };
 
 export type Restaurant = PublicRestaurant & {
