@@ -125,7 +125,12 @@ export async function extractMenuPageItems(
         ],
         generationConfig: {
           temperature: 0,
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          // gemini-2.5-flash is a thinking model; left on, it spends the
+          // response budget reasoning and either blows past the 45s timeout or
+          // truncates the JSON — both surface as "Couldn't read this page".
+          // Structured extraction needs none of it, so turn thinking off.
+          thinkingConfig: { thinkingBudget: 0 }
         }
       })
     });
@@ -200,7 +205,13 @@ ${list}`;
       signal: AbortSignal.timeout(45000),
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.5, responseMimeType: "application/json" }
+        generationConfig: {
+          temperature: 0.5,
+          responseMimeType: "application/json",
+          // Same reason as extraction: skip the 2.5-flash thinking phase so the
+          // call stays inside the 45s timeout and returns clean JSON.
+          thinkingConfig: { thinkingBudget: 0 }
+        }
       })
     });
   } catch (error) {
