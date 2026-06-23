@@ -236,13 +236,27 @@ ${list}`;
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const map: Record<string, string> = {};
 
+  // The prompt lists items as "Name (Category)" and tells the model to reuse the
+  // exact names, so it often echoes the whole "Name (Category)" string back as
+  // the name. Match returned names to the original input names on a normalized
+  // key and key the result by the original name — that's what the caller looks
+  // up. Without this the descriptions come back but never land on any item.
+  const normalizeName = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/\s*\([^()]*\)\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const inputByNormalized = new Map(items.map((item) => [normalizeName(item.name), item.name]));
+
   try {
     const parsed = JSON.parse(text) as { items?: { name?: unknown; description?: unknown }[] };
     for (const entry of parsed.items ?? []) {
       const name = String(entry.name ?? "").trim();
       const description = String(entry.description ?? "").trim();
       if (name && description) {
-        map[name] = description.slice(0, 300);
+        const inputName = inputByNormalized.get(normalizeName(name)) ?? name;
+        map[inputName] = description.slice(0, 300);
       }
     }
   } catch {
