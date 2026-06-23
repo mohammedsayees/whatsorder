@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import {
   extractMenuPageItems,
   generateItemDescriptions,
-  type DraftMenuItem
+  generateSingleItemDescription,
+  translateItemToArabic,
+  type DraftMenuItem,
+  type ItemTranslation
 } from "@/lib/menu-extraction/extract";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
@@ -45,6 +48,74 @@ export async function generateMenuDescriptionsAction(
     return { ok: true, descriptions };
   } catch {
     return { ok: false, error: "AI couldn't write descriptions just now. Try again." };
+  }
+}
+
+export type SingleDescriptionResult =
+  | { ok: true; description: string }
+  | { ok: false; error: string };
+
+// Writes one English description for a single item — powers the "Generate"
+// button on the menu item edit form. Admin/staff path only; the customer
+// bundle never imports this.
+export async function generateItemDescriptionAction(input: {
+  name: string;
+  category: string;
+}): Promise<SingleDescriptionResult> {
+  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+
+  if (!process.env.GEMINI_API_KEY) {
+    return { ok: false, error: "AI descriptions aren't configured yet." };
+  }
+
+  const name = String(input?.name ?? "").trim();
+  if (!name) {
+    return { ok: false, error: "Add an item name first." };
+  }
+
+  try {
+    const description = await generateSingleItemDescription(name, String(input?.category ?? ""));
+    if (!description) {
+      return { ok: false, error: "AI couldn't write a description just now. Try again." };
+    }
+    return { ok: true, description };
+  } catch {
+    return { ok: false, error: "AI couldn't write a description just now. Try again." };
+  }
+}
+
+export type TranslationResult =
+  | { ok: true; translation: ItemTranslation }
+  | { ok: false; error: string };
+
+// Translates an item's English name/description into Arabic — powers the
+// "Translate → عربي" button on the menu item edit form. Admin/staff path only.
+export async function translateItemAction(input: {
+  name: string;
+  description?: string | null;
+}): Promise<TranslationResult> {
+  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+
+  if (!process.env.GEMINI_API_KEY) {
+    return { ok: false, error: "AI translation isn't configured yet." };
+  }
+
+  const name = String(input?.name ?? "").trim();
+  if (!name) {
+    return { ok: false, error: "Add an item name first." };
+  }
+
+  try {
+    const translation = await translateItemToArabic({
+      name,
+      description: input?.description ?? null
+    });
+    if (!translation.name_ar && !translation.description_ar) {
+      return { ok: false, error: "AI couldn't translate just now. Try again." };
+    }
+    return { ok: true, translation };
+  } catch {
+    return { ok: false, error: "AI couldn't translate just now. Try again." };
   }
 }
 

@@ -13,6 +13,10 @@ import {
   updateMenuItemAction,
   uploadMenuItemImageAction
 } from "@/app/actions";
+import {
+  generateItemDescriptionAction,
+  translateItemAction
+} from "@/app/admin/menu/import/actions";
 import { formatAED } from "@/lib/currency";
 import { compressMenuImage } from "@/lib/image-compression";
 import type { MenuCategory, MenuItem } from "@/lib/types";
@@ -759,11 +763,21 @@ function ItemForm({
     [categories]
   );
   const [itemName, setItemName] = useState(item?.name ?? "");
+  const [nameAr, setNameAr] = useState(item?.name_ar ?? "");
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [descriptionAr, setDescriptionAr] = useState(item?.description_ar ?? "");
+  const [categoryId, setCategoryId] = useState(
+    item?.category_id ?? sortedCategories[0]?.id ?? ""
+  );
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -772,6 +786,65 @@ function ItemForm({
       }
     };
   }, [previewUrl]);
+
+  async function generateDescription() {
+    setAiError(null);
+    setAiStatus(null);
+
+    if (!itemName.trim()) {
+      setAiError("Add an item name first.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiStatus("Writing a description...");
+    const result = await generateItemDescriptionAction({
+      name: itemName,
+      category: categoryName(categories, categoryId)
+    });
+    setIsGenerating(false);
+
+    if (!result.ok) {
+      setAiStatus(null);
+      setAiError(result.error);
+      return;
+    }
+
+    setDescription(result.description);
+    setAiStatus("Description added. Review it before saving.");
+  }
+
+  async function translateToArabic() {
+    setAiError(null);
+    setAiStatus(null);
+
+    if (!itemName.trim()) {
+      setAiError("Add an item name first.");
+      return;
+    }
+
+    setIsTranslating(true);
+    setAiStatus("Translating to Arabic...");
+    const result = await translateItemAction({
+      name: itemName,
+      description
+    });
+    setIsTranslating(false);
+
+    if (!result.ok) {
+      setAiStatus(null);
+      setAiError(result.error);
+      return;
+    }
+
+    if (result.translation.name_ar) {
+      setNameAr(result.translation.name_ar);
+    }
+    if (result.translation.description_ar) {
+      setDescriptionAr(result.translation.description_ar);
+    }
+    setAiStatus("Arabic added. Review it before saving.");
+  }
 
   async function uploadImage(file: File | null) {
     setImageStatus(null);
@@ -860,26 +933,66 @@ function ItemForm({
         required
         value={itemName}
       />
+      <textarea
+        className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2"
+        disabled={!canWrite}
+        name="description"
+        onChange={(event) => setDescription(event.target.value)}
+        placeholder="Description"
+        value={description}
+      />
+      <div className="rounded-lg border border-dashed border-stone-200 bg-linen/60 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-black text-ink disabled:opacity-50"
+            disabled={!canWrite || isGenerating || isTranslating}
+            onClick={() => {
+              void generateDescription();
+            }}
+            type="button"
+          >
+            <Sparkles size={14} />
+            {isGenerating ? "Writing..." : "Generate description"}
+          </button>
+          <button
+            className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-black text-ink disabled:opacity-50"
+            disabled={!canWrite || isTranslating || isGenerating}
+            onClick={() => {
+              void translateToArabic();
+            }}
+            type="button"
+          >
+            <Sparkles size={14} />
+            {isTranslating ? "Translating..." : "Translate → عربي"}
+          </button>
+        </div>
+        {aiStatus ? <p className="mt-2 text-xs text-stone-500">{aiStatus}</p> : null}
+        {aiError ? <p className="mt-2 text-xs font-bold text-red-600">{aiError}</p> : null}
+        <p className="mt-2 text-[11px] text-stone-400">
+          AI fills the fields below — review and edit before saving.
+        </p>
+      </div>
       <input
         className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
-        defaultValue={item?.name_ar ?? ""}
         dir="rtl"
         disabled={!canWrite}
         name="name_ar"
+        onChange={(event) => setNameAr(event.target.value)}
         placeholder="اسم الصنف بالعربية"
+        value={nameAr}
       />
-      <textarea className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.description ?? ""} disabled={!canWrite} name="description" placeholder="Description" />
       <textarea
         className="focus-ring min-h-24 w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
-        defaultValue={item?.description_ar ?? ""}
         dir="rtl"
         disabled={!canWrite}
         name="description_ar"
+        onChange={(event) => setDescriptionAr(event.target.value)}
         placeholder="وصف الصنف بالعربية"
+        value={descriptionAr}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <input className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.price ?? ""} disabled={!canWrite} min="0" name="price" placeholder="Price" required step="0.01" type="number" />
-        <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={item?.category_id ?? sortedCategories[0]?.id} disabled={!canWrite} name="category_id" required>
+        <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="category_id" onChange={(event) => setCategoryId(event.target.value)} required value={categoryId}>
           {sortedCategories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
