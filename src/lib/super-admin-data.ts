@@ -247,7 +247,7 @@ export async function getSuperAdminDashboardData() {
       paidRestaurants: restaurants.filter(
         (restaurant) =>
           restaurant.status === "paid" ||
-          ["starter", "growth", "pro", "custom"].includes(restaurant.plan ?? "")
+          ["starter", "pro", "multi_branch"].includes(restaurant.plan ?? "")
       ).length,
       ordersThisMonth,
       totalCustomers,

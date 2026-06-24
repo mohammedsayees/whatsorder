@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LogOut,
   PlusCircle,
+  ReceiptText,
   ShieldCheck
 } from "lucide-react";
 import { logoutSuperAdminAction } from "@/app/super-admin/actions";
@@ -13,6 +14,7 @@ import type { SuperAdminSession } from "@/lib/super-admin-auth";
 const navItems = [
   { href: "/super-admin", label: "Overview", icon: LayoutDashboard },
   { href: "/super-admin/restaurants", label: "Restaurants", icon: Building2 },
+  { href: "/super-admin/billing", label: "Billing", icon: ReceiptText },
   { href: "/super-admin/onboarding", label: "Onboarding", icon: ClipboardCheck }
 ];
 
@@ -89,7 +91,7 @@ export function SuperAdminShell({
 
         <div className="pb-20 lg:pb-0">{children}</div>
 
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-stone-200 bg-white p-2 lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-stone-200 bg-white p-2 lg:hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
 

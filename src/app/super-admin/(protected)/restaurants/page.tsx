@@ -20,7 +20,7 @@ export default async function SuperAdminRestaurantsPage({
       activeFilter === "all" ||
       restaurant.status === activeFilter ||
       (activeFilter === "trial" && restaurant.plan === "trial") ||
-      (activeFilter === "paid" && ["starter", "growth", "pro", "custom"].includes(restaurant.plan ?? ""));
+      (activeFilter === "paid" && ["starter", "pro", "multi_branch"].includes(restaurant.plan ?? ""));
     const matchesSearch =
       !search ||
       restaurant.name.toLowerCase().includes(search) ||
