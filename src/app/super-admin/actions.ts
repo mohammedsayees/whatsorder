@@ -37,7 +37,7 @@ const restaurantStatuses: RestaurantStatus[] = [
   "cancelled"
 ];
 
-const restaurantPlans: RestaurantPlan[] = ["trial", "starter", "growth", "pro", "custom"];
+const restaurantPlans: RestaurantPlan[] = ["trial", "starter", "pro", "multi_branch"];
 
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();

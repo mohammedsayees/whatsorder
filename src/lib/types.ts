@@ -14,7 +14,9 @@ export type RestaurantStatus =
   | "paused"
   | "cancelled";
 
-export type RestaurantPlan = "trial" | "starter" | "growth" | "pro" | "custom";
+// Plan codes mirror the billing engine subscription `code` values
+// (starter / pro / multi_branch); `trial` is the pre-subscription state.
+export type RestaurantPlan = "trial" | "starter" | "pro" | "multi_branch";
 
 export type OrderStatus =
   | "New"

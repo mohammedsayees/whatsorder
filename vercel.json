@@ -1,4 +1,10 @@
 {
   "framework": "nextjs",
-  "buildCommand": "next build"
+  "buildCommand": "next build",
+  "crons": [
+    {
+      "path": "/api/cron/billing",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

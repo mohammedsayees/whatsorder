@@ -1,10 +1,19 @@
 import { SettingsForm } from "@/components/admin/SettingsForm";
+import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
+import { isManagementBlocked } from "@/lib/billing";
+import { getTenantAccess } from "@/lib/billing-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminSettingsPage() {
   const session = await requireRestaurantAdmin();
   const restaurant = session.restaurant;
+
+  const access = await getTenantAccess(session.restaurantId);
+  if (isManagementBlocked(access.access)) {
+    return <BillingSoftBlock surface="Restaurant settings" />;
+  }
+
   const canWrite = Boolean(getSupabaseAdmin()) && session.role !== "staff";
 
   return (

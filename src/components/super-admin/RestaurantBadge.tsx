@@ -18,10 +18,18 @@ export function RestaurantStatusBadge({ status }: { status: RestaurantStatus }) 
   );
 }
 
+const planLabels: Record<RestaurantPlan, string> = {
+  trial: "Trial",
+  starter: "Starter",
+  pro: "Pro",
+  multi_branch: "Multi-branch"
+};
+
 export function RestaurantPlanBadge({ plan }: { plan: RestaurantPlan }) {
+  const label = planLabels[plan] ?? plan;
   return (
-    <span className="inline-flex rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-black capitalize text-stone-700">
-      {plan}
+    <span className="inline-flex rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-black text-stone-700">
+      {label}
     </span>
   );
 }

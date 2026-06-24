@@ -2,12 +2,20 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
+import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
+import { isManagementBlocked } from "@/lib/billing";
+import { getTenantAccess } from "@/lib/billing-data";
 import { getMenu, getMenuOffers } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminMenuPage() {
   const { restaurant, role } = await requireRestaurantAdmin();
+
+  const access = await getTenantAccess(restaurant.id);
+  if (isManagementBlocked(access.access)) {
+    return <BillingSoftBlock surface="Menu management" />;
+  }
 
   const [menu, offers] = await Promise.all([
     getMenu(restaurant.id, { admin: true }),

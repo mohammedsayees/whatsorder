@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 import { AdminAlertsProvider } from "@/components/admin/AdminAlertsProvider";
+import { BillingBanner } from "@/components/admin/BillingBanner";
+import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 
@@ -28,11 +30,13 @@ const navItems = [
 
 export function AdminShell({
   children,
+  billingStatus,
   initialNewOrderAlertState,
   realtimeAccessToken,
   session
 }: {
   children: React.ReactNode;
+  billingStatus?: SubscriptionStatus | null;
   initialNewOrderAlertState: NewOrderAlertState;
   realtimeAccessToken: string | null;
   session: RestaurantAdminSession;
@@ -77,6 +81,7 @@ export function AdminShell({
           realtimeAccessToken={realtimeAccessToken}
           restaurantId={session.restaurantId}
         >
+          <BillingBanner status={billingStatus ?? null} />
           {children}
         </AdminAlertsProvider>
       </div>
