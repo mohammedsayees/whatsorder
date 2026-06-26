@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
+import { DailySummaryCard } from "@/components/admin/DailySummaryCard";
 import { OrderList } from "@/components/admin/OrderList";
 import {
   getCustomersByPhones,
   getDashboardAnalytics,
+  getLatestDailySummary,
   getRecentOrders
 } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -17,9 +19,10 @@ export default async function AdminDashboardPage({
   const query = await searchParams;
   const { restaurant } = await requireRestaurantAdmin();
 
-  const [orders, analytics] = await Promise.all([
+  const [orders, analytics, dailySummary] = await Promise.all([
     getRecentOrders(restaurant.id, 5),
-    getDashboardAnalytics(restaurant.id)
+    getDashboardAnalytics(restaurant.id),
+    getLatestDailySummary(restaurant.id)
   ]);
   const customers = await getCustomersByPhones(
     restaurant.id,
@@ -55,6 +58,12 @@ export default async function AdminDashboardPage({
       <div className="mt-6">
         <AnalyticsCards analytics={analytics} />
       </div>
+
+      {dailySummary ? (
+        <div className="mt-6">
+          <DailySummaryCard summary={dailySummary} />
+        </div>
+      ) : null}
 
       <section className="mt-8">
         <div className="mb-3 flex items-center justify-between">
