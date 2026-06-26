@@ -14,7 +14,9 @@ export type RestaurantStatus =
   | "paused"
   | "cancelled";
 
-export type RestaurantPlan = "trial" | "starter" | "growth" | "pro" | "custom";
+// Plan codes mirror the billing engine subscription `code` values
+// (starter / pro / multi_branch); `trial` is the pre-subscription state.
+export type RestaurantPlan = "trial" | "starter" | "pro" | "multi_branch";
 
 export type OrderStatus =
   | "New"
@@ -61,6 +63,9 @@ export type Restaurant = PublicRestaurant & {
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   internal_notes?: string | null;
+  // Aggregator commission percentage (e.g. 27) used to compute "commission
+  // kept". NULL/undefined → the app's labelled default applies.
+  commission_rate?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at?: string;

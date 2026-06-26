@@ -12,7 +12,7 @@ const statuses: RestaurantStatus[] = [
   "cancelled"
 ];
 
-const plans: RestaurantPlan[] = ["trial", "starter", "growth", "pro", "custom"];
+const plans: RestaurantPlan[] = ["trial", "starter", "pro", "multi_branch"];
 
 const inputClass =
   "focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm";
