@@ -22,6 +22,7 @@ import {
   parseAndValidateCart
 } from "@/lib/security";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
+import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import {
@@ -471,6 +472,11 @@ export async function createOrderAction(
     };
   }
 
+  // Stamp-card progress line for the confirmation message — free-form, inside the 24h
+  // WhatsApp service window. Returns "" when the restaurant's loyalty program is disabled.
+  const loyaltyLine = await loyaltyLineForOrder(supabase, restaurant.id, customerPhone);
+  const whatsappMessage = loyaltyLine ? `${message}\n\n${loyaltyLine}` : message;
+
   const { data, error } = await supabase.rpc("create_order_with_customer_v4", {
     target_restaurant_id: restaurant.id,
     order_customer_name: customerName,
@@ -495,7 +501,7 @@ export async function createOrderAction(
     order_subtotal: subtotal,
     order_delivery_fee: appliedDeliveryFee,
     order_total: total,
-    order_whatsapp_message: message,
+    order_whatsapp_message: whatsappMessage,
     order_consent_processing: consentOrderProcessing,
     order_consent_marketing: consentMarketing,
     order_consent_timestamp: consentTimestamp,
@@ -514,14 +520,14 @@ export async function createOrderAction(
         ok: false,
         error:
           "This order was not saved because a database update is pending. You can send it directly on WhatsApp.",
-        fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+        fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, whatsappMessage)
       };
     }
 
     return {
       ok: false,
       error: "This order was not saved to the dashboard. You can retry or send it directly on WhatsApp.",
-      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, whatsappMessage)
     };
   }
 
