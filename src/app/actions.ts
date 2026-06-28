@@ -1287,6 +1287,39 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
   revalidatePath(`/r/${restaurant.slug}`);
 }
 
+// Owner-only: the stamp-card terms (card size, reward text, qualifying minimum) change the
+// loyalty economics, so this is gated tighter than the general settings save above.
+export async function updateLoyaltySettingsAction(formData: FormData) {
+  const session = await requireRestaurantRole(["owner"]);
+  const restaurant = session.restaurant;
+  const supabase = getSupabaseAdmin();
+
+  if (!restaurant || !supabase) {
+    return;
+  }
+
+  // Card size must be a whole number of at least 1; reward text must be non-empty so the
+  // WhatsApp line and redeem banner never render "free <blank>".
+  const requiredRaw = Math.round(Number(stringValue(formData, "loyalty_stamps_required")));
+  const stampsRequired = Number.isFinite(requiredRaw) ? Math.min(Math.max(requiredRaw, 1), 100) : 10;
+  const rewardDescription =
+    stringValue(formData, "loyalty_reward_description").slice(0, 120) || "reward";
+
+  const { error } = await supabase
+    .from("restaurants")
+    .update({
+      loyalty_enabled: formData.get("loyalty_enabled") === "on",
+      loyalty_stamps_required: stampsRequired,
+      loyalty_reward_description: rewardDescription,
+      loyalty_qualifying_min_amount: positiveDecimalValue(formData, "loyalty_qualifying_min_amount")
+    })
+    .eq("id", restaurant.id);
+  databaseFailure("Loyalty settings update", error);
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/customers");
+}
+
 export async function addCategoryAction(formData: FormData) {
   const context = await getMenuActionContext(formData);
 

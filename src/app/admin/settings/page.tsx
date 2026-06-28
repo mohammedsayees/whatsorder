@@ -1,3 +1,4 @@
+import { LoyaltySettingsForm } from "@/components/admin/LoyaltySettingsForm";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -6,6 +7,7 @@ export default async function AdminSettingsPage() {
   const session = await requireRestaurantAdmin();
   const restaurant = session.restaurant;
   const canWrite = Boolean(getSupabaseAdmin()) && session.role !== "staff";
+  const isOwner = session.role === "owner";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -21,6 +23,11 @@ export default async function AdminSettingsPage() {
       <div className="mt-6">
         <SettingsForm restaurant={restaurant} canWrite={canWrite} />
       </div>
+      {isOwner ? (
+        <div className="mt-6">
+          <LoyaltySettingsForm restaurant={restaurant} canWrite={canWrite} />
+        </div>
+      ) : null}
     </main>
   );
 }
