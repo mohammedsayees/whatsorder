@@ -1287,10 +1287,11 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
   revalidatePath(`/r/${restaurant.slug}`);
 }
 
-// Owner-only: the stamp-card terms (card size, reward text, qualifying minimum) change the
-// loyalty economics, so this is gated tighter than the general settings save above.
+// Owner/admin-only: the stamp-card terms (card size, reward text, qualifying minimum) change
+// the loyalty economics, so this is gated tighter than the general settings save above —
+// managers and staff cannot retune them.
 export async function updateLoyaltySettingsAction(formData: FormData) {
-  const session = await requireRestaurantRole(["owner"]);
+  const session = await requireRestaurantRole(["owner", "restaurant_admin"]);
   const restaurant = session.restaurant;
   const supabase = getSupabaseAdmin();
 
