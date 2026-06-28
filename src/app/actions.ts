@@ -657,6 +657,41 @@ export async function withdrawCustomerMarketingConsentAction(formData: FormData)
   revalidatePath("/admin/customers");
 }
 
+export async function redeemLoyaltyRewardAction(formData: FormData) {
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const customerId = stringValue(formData, "customer_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase || !customerId) {
+    return;
+  }
+
+  // Tenant guard: redeem_loyalty_reward derives the restaurant from the customer and does
+  // not scope to the caller, so confirm this customer belongs to the session's restaurant
+  // before redeeming on their card.
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("id", customerId)
+    .eq("restaurant_id", session.restaurantId)
+    .maybeSingle();
+
+  if (!customer) {
+    return;
+  }
+
+  // The RPC deducts a full card, logs a 'redeemed' transaction, and returns
+  // { ok:false, reason:'not_enough_stamps' } if the balance fell short (the button is
+  // gated on eligibility, so that path only happens on a stale view).
+  const { error } = await supabase.rpc("redeem_loyalty_reward", {
+    p_customer_id: customerId,
+    p_order_id: null
+  });
+  databaseFailure("Loyalty reward redemption", error);
+
+  revalidatePath("/admin/customers");
+}
+
 export async function addMenuItemAction(formData: FormData) {
   const context = await getMenuActionContext(formData);
 
