@@ -62,6 +62,10 @@ export type Restaurant = PublicRestaurant & {
   plan?: RestaurantPlan;
   internal_notes?: string | null;
   is_active: boolean;
+  loyalty_enabled?: boolean;
+  loyalty_stamps_required?: number;
+  loyalty_reward_description?: string | null;
+  loyalty_qualifying_min_amount?: number | null;
   created_at: string;
   updated_at?: string;
 };

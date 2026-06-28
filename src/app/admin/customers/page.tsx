@@ -1,5 +1,6 @@
 import { Clock3, MapPin, MessageCircle, Sparkles, TrendingUp } from "lucide-react";
 import { redirect } from "next/navigation";
+import { LoyaltyRedeemButton } from "@/components/admin/LoyaltyRedeemButton";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -77,6 +78,11 @@ export default async function AdminCustomersPage({
           const insights = getCustomerInsights(history);
           const hasMarketingConsent =
             customer.marketing_opt_in && customer.consent_marketing;
+          const loyaltyEnabled = restaurant.loyalty_enabled !== false;
+          const stampsRequired = restaurant.loyalty_stamps_required ?? 10;
+          const rewardDescription = restaurant.loyalty_reward_description ?? "reward";
+          const rewardReady =
+            loyaltyEnabled && customer.loyalty_points_balance >= stampsRequired;
           const mostOrderedItem = insights.mostOrderedItems[0];
           const marketingMessage = [
             `Hi ${customer.name}, this is ${restaurant.name}.`,
@@ -114,8 +120,13 @@ export default async function AdminCustomersPage({
                       <p className="text-xl font-black">{formatAED(insights.averageOrderValue)}</p>
                     </div>
                     <div className="rounded-lg bg-stone-50 p-3">
-                      <p className="text-stone-500">Loyalty points</p>
-                      <p className="text-xl font-black text-leaf">{customer.loyalty_points_balance}</p>
+                      <p className="text-stone-500">Loyalty stamps</p>
+                      <p className="text-xl font-black text-leaf">
+                        {customer.loyalty_points_balance}
+                        {loyaltyEnabled ? (
+                          <span className="text-sm font-bold text-stone-400"> / {stampsRequired}</span>
+                        ) : null}
+                      </p>
                     </div>
                     <div className="rounded-lg bg-stone-50 p-3">
                       <p className="text-stone-500">Last completed</p>
@@ -132,6 +143,23 @@ export default async function AdminCustomersPage({
                       </p>
                     </div>
                   </div>
+
+                  {rewardReady ? (
+                    <div className="mt-4 rounded-lg border border-leaf/30 bg-mint/10 p-3">
+                      <p className="text-sm font-black text-leaf">
+                        Reward ready: {rewardDescription}
+                      </p>
+                      <p className="mt-1 text-xs text-stone-500">
+                        {customer.loyalty_points_balance} of {stampsRequired} stamps collected.
+                        Redeeming clears one full card.
+                      </p>
+                      <LoyaltyRedeemButton
+                        customerId={customer.id}
+                        customerName={customer.name}
+                        rewardDescription={rewardDescription}
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
                     <div className="flex items-center gap-2">
