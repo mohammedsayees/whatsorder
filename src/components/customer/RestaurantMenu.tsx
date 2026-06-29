@@ -499,7 +499,7 @@ export function RestaurantMenu({
                     className="w-[82%] shrink-0 snap-start overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm sm:w-[48%]"
                     key={offer.id}
                   >
-                    <div className="relative h-36 bg-linen">
+                    <div className="relative aspect-square bg-linen">
                       {item.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
