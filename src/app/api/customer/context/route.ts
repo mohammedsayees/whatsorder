@@ -2,17 +2,15 @@
 //
 // Returns the signed-in customer's prefill payload for a café in one shot:
 //   { signedIn, profile, loyalty, recentOrders }
-// Backed by the get_customer_context(restaurant_id, phone) Postgres function,
-// which is service_role-only (it bypasses RLS), so this MUST run server-side.
+// Backed by get_customer_context (service_role-only, bypasses RLS) via the
+// shared server-side loader, so this MUST run server-side.
 //
-// The PWA calls this right after load:
-//   GET /api/customer/context?restaurantId=<uuid>
-// and uses the result to prefill name + address, show stamps, and render the
-// reorder strip — before the menu finishes rendering.
+// The PWA's server components read the same payload directly via
+// loadCustomerContext(); this route exists for any client-side caller that
+// needs to re-check after load (e.g. a future OTP cold-open flow).
 
 import { NextRequest, NextResponse } from "next/server";
-import { getCustomerSession } from "@/lib/customer-auth/cookies";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { loadCustomerContext } from "@/lib/customer-auth/context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,45 +21,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "restaurantId required" }, { status: 400 });
   }
 
-  // Are they signed in AT THIS café? (Per-café cookie; null = cold open.)
-  const identity = await getCustomerSession(restaurantId);
-  if (!identity) {
+  const ctx = await loadCustomerContext(restaurantId);
+
+  if (!ctx.signedIn) {
     return NextResponse.json({ signedIn: false }, { status: 200 });
   }
 
-  // Reuse the repo's single service-role client (src/lib/supabase.ts); it
-  // bypasses RLS, which get_customer_context requires.
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return NextResponse.json(
-      { signedIn: true, error: "service_unavailable" },
-      { status: 503 },
-    );
+  if (ctx.error) {
+    const status = ctx.error === "service_unavailable" ? 503 : 502;
+    return NextResponse.json({ signedIn: true, error: ctx.error }, { status });
   }
 
-  const { data, error } = await supabase.rpc("get_customer_context", {
-    p_restaurant_id: identity.restaurantId,
-    p_phone: identity.phone,
-  });
-
-  if (error) {
-    return NextResponse.json(
-      { signedIn: true, error: "context_lookup_failed" },
-      { status: 502 },
-    );
-  }
-
-  // `data` is the jsonb the function returns: { profile, loyalty, recent_orders }.
-  // A brand-new phone (no profile yet) returns profile: null — the PWA should
-  // render the "first order" empty state in that case.
   return NextResponse.json(
     {
       signedIn: true,
-      phone: identity.phone,
-      profile: data?.profile ?? null,
-      loyalty: data?.loyalty ?? null,
-      recentOrders: data?.recent_orders ?? [],
+      phone: ctx.phone,
+      profile: ctx.profile,
+      loyalty: ctx.loyalty,
+      recentOrders: ctx.recentOrders
     },
-    { status: 200 },
+    { status: 200 }
   );
 }

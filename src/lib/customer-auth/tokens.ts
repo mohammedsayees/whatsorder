@@ -15,7 +15,12 @@
 
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 
-const SECRET = (() => {
+// Resolve the secret lazily (per call), NOT at module load. This module sits on
+// the customer menu's render path via loadCustomerContext, so a module-level
+// throw would 500 the whole menu when the secret is unset. Lazy + thrown-at-use
+// means verifySessionToken's callers (which catch) degrade to "not signed in"
+// instead, while the mint/link paths still fail loudly as they should.
+function getSecret(): Uint8Array {
   const raw = process.env.CUSTOMER_AUTH_SECRET;
   if (!raw || raw.length < 32) {
     throw new Error(
@@ -24,7 +29,7 @@ const SECRET = (() => {
     );
   }
   return new TextEncoder().encode(raw);
-})();
+}
 
 const ALG = "HS256";
 const AUD_LINK = "wo:customer:link";
@@ -72,12 +77,12 @@ export async function mintLinkToken(identity: CustomerIdentity): Promise<string>
     .setIssuedAt()
     .setAudience(AUD_LINK)
     .setExpirationTime(LINK_TTL)
-    .sign(SECRET);
+    .sign(getSecret());
 }
 
 /** Verify a deep-link token. Throws if expired, wrong audience, or tampered. */
 export async function verifyLinkToken(token: string): Promise<CustomerIdentity> {
-  const { payload } = await jwtVerify<IdentityClaims>(token, SECRET, {
+  const { payload } = await jwtVerify<IdentityClaims>(token, getSecret(), {
     audience: AUD_LINK,
   });
   if (!payload.rid || !payload.phone) throw new Error("Malformed link token.");
@@ -92,12 +97,12 @@ export async function mintSessionToken(identity: CustomerIdentity): Promise<stri
     .setIssuedAt()
     .setAudience(AUD_SESSION)
     .setExpirationTime(SESSION_TTL)
-    .sign(SECRET);
+    .sign(getSecret());
 }
 
 /** Verify a session token. Throws if expired, wrong audience, or tampered. */
 export async function verifySessionToken(token: string): Promise<CustomerIdentity> {
-  const { payload } = await jwtVerify<IdentityClaims>(token, SECRET, {
+  const { payload } = await jwtVerify<IdentityClaims>(token, getSecret(), {
     audience: AUD_SESSION,
   });
   if (!payload.rid || !payload.phone) throw new Error("Malformed session token.");
