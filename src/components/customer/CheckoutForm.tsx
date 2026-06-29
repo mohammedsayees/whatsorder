@@ -24,6 +24,7 @@ import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
+import type { CustomerProfile } from "@/lib/customer-auth/context";
 import type { FulfilmentType, PublicRestaurant } from "@/lib/types";
 
 type CapturedLocation = {
@@ -47,9 +48,11 @@ function isMobileWhatsAppHandoff() {
 
 export function CheckoutForm({
   initialTableNumber = "",
+  prefill = null,
   restaurant
 }: {
   initialTableNumber?: string;
+  prefill?: CustomerProfile | null;
   restaurant: PublicRestaurant;
 }) {
   const router = useRouter();
@@ -311,6 +314,14 @@ export function CheckoutForm({
         <p className="mt-2 text-stone-600">
           {language === "ar" ? `أرسل طلبا واضحا إلى ${restaurantName} عبر واتساب.` : `Send a clear order to ${restaurantName} on WhatsApp.`}
         </p>
+        {prefill ? (
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-mint/20 px-3 py-1.5 text-sm font-bold text-leaf">
+            <CheckCircle2 size={15} />
+            {language === "ar"
+              ? `مرحباً بعودتك${prefill.name ? `، ${prefill.name}` : ""}! تم ملء بياناتك مسبقاً.`
+              : `Welcome back${prefill.name ? `, ${prefill.name}` : ""}! We've filled in your details.`}
+          </p>
+        ) : null}
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <input name="order_language" readOnly type="hidden" value={language} />
@@ -367,6 +378,7 @@ export function CheckoutForm({
               <span className="text-sm font-bold">{t.name}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                defaultValue={prefill?.name ?? ""}
                 maxLength={120}
                 name="customer_name"
                 required
@@ -376,6 +388,7 @@ export function CheckoutForm({
               <span className="text-sm font-bold">{t.phoneNumber}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                defaultValue={prefill?.phone ?? ""}
                 inputMode="tel"
                 maxLength={24}
                 name="customer_phone"
@@ -452,6 +465,7 @@ export function CheckoutForm({
                 <span className="text-sm font-bold">{t.deliveryArea}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.delivery_area ?? ""}
                   name="delivery_area"
                   placeholder={t.deliveryAreaPlaceholder}
                   required
@@ -461,6 +475,7 @@ export function CheckoutForm({
                 <span className="text-sm font-bold">{t.address}</span>
                 <textarea
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.delivery_address ?? prefill?.default_address_text ?? ""}
                   maxLength={500}
                   name="delivery_address"
                   placeholder={t.addressPlaceholder}
@@ -471,6 +486,7 @@ export function CheckoutForm({
                 <span className="text-sm font-bold">{t.landmark}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.default_landmark ?? ""}
                   name="delivery_landmark"
                   placeholder={t.landmarkPlaceholder}
                 />

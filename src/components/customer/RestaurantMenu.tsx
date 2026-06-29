@@ -30,7 +30,9 @@ import {
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
+import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerPanel";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
+import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type {
   MenuCategory,
   MenuItem,
@@ -58,6 +60,8 @@ export function RestaurantMenu({
   feedback,
   items,
   offers,
+  loyalty = null,
+  recentOrders = [],
   tableNumber
 }: {
   restaurant: PublicRestaurant;
@@ -65,6 +69,8 @@ export function RestaurantMenu({
   feedback: PublicFeedbackSummary;
   items: MenuItem[];
   offers: MenuOffer[];
+  loyalty?: CustomerLoyalty | null;
+  recentOrders?: CustomerRecentOrder[];
   tableNumber?: string;
 }) {
   const cart = useCart();
@@ -428,6 +434,12 @@ export function RestaurantMenu({
           </div>
         </section>
 
+        <ReturningCustomerPanel
+          language={language}
+          loyalty={loyalty}
+          recentOrders={recentOrders}
+        />
+
         {isSearchOpen ? (
           <section className="px-4 pt-4">
             <label className="block">
@@ -487,7 +499,7 @@ export function RestaurantMenu({
                     className="w-[82%] shrink-0 snap-start overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm sm:w-[48%]"
                     key={offer.id}
                   >
-                    <div className="relative h-36 bg-linen">
+                    <div className="relative aspect-square bg-linen">
                       {item.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img

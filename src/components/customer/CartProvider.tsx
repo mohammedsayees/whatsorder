@@ -17,6 +17,7 @@ type CartContextValue = {
   isReady: boolean;
   addItem: (item: MenuItem) => void;
   addOffer: (item: MenuItem, offer: MenuOffer) => void;
+  addLines: (lines: CartLine[]) => void;
   incrementOffer: (itemId: string, offer: MenuOffer) => void;
   increment: (itemId: string) => void;
   decrement: (itemId: string) => void;
@@ -142,6 +143,40 @@ export function CartProvider({
     });
   }, []);
 
+  // Merge a set of historical lines (e.g. "reorder" from a past order) into the
+  // cart, summing quantities for items already present. Prices/availability are
+  // re-validated server-side at order creation, so we trust the saved snapshot
+  // here only for a fast "add to cart" UX.
+  const addLines = useCallback((incoming: CartLine[]) => {
+    if (incoming.length === 0) {
+      return;
+    }
+
+    setLines((current) => {
+      const merged = [...current];
+
+      for (const line of incoming) {
+        const index = merged.findIndex((existing) => existing.item_id === line.item_id);
+
+        if (index === -1) {
+          merged.push({ ...line });
+          continue;
+        }
+
+        const cap =
+          merged[index].offer_id && merged[index].offer_max_quantity
+            ? merged[index].offer_max_quantity ?? Infinity
+            : Infinity;
+        merged[index] = {
+          ...merged[index],
+          quantity: Math.min(merged[index].quantity + line.quantity, cap)
+        };
+      }
+
+      return merged;
+    });
+  }, []);
+
   const incrementOffer = useCallback((itemId: string, offer: MenuOffer) => {
     setLines((current) =>
       current.map((line) =>
@@ -187,12 +222,13 @@ export function CartProvider({
       subtotal: lines.reduce((sum, line) => sum + line.price * line.quantity, 0),
       addItem,
       addOffer,
+      addLines,
       incrementOffer,
       increment,
       decrement,
       clearCart
     }),
-    [addItem, addOffer, clearCart, decrement, increment, incrementOffer, isReady, lines]
+    [addItem, addLines, addOffer, clearCart, decrement, increment, incrementOffer, isReady, lines]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
