@@ -17,6 +17,7 @@ import {
   generateItemDescriptionAction,
   translateItemAction
 } from "@/app/admin/menu/import/actions";
+import { AiImageGenerator } from "@/components/admin/AiImageGenerator";
 import { formatAED } from "@/lib/currency";
 import { compressMenuImage } from "@/lib/image-compression";
 import type { MenuCategory, MenuItem } from "@/lib/types";
@@ -1005,8 +1006,22 @@ function ItemForm({
           <div>
             <h3 className="text-sm font-black">Item image</h3>
             <p className="mt-1 text-xs text-stone-500">Optional. JPG, PNG, or WebP up to 2MB.</p>
+            <p className="mt-1 text-xs text-stone-500">Create a professional food photo using AI.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <AiImageGenerator
+              canWrite={canWrite}
+              itemId={item?.id}
+              itemName={itemName}
+              restaurantId={restaurantId}
+              onApplied={(url) => {
+                setImageUrl(url);
+                setPreviewUrl(null);
+                setImageStatus("AI image applied.");
+                setImageError(null);
+                router.refresh();
+              }}
+            />
             <label className="focus-ring inline-flex cursor-pointer items-center justify-center rounded-lg bg-ink px-3 py-2 text-sm font-black text-white aria-disabled:cursor-not-allowed aria-disabled:opacity-50" aria-disabled={!canWrite || isUploading}>
               {isUploading ? "Uploading..." : "Upload image"}
               <input
