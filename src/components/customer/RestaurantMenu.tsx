@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -49,6 +50,17 @@ type CategoryWithItems = {
   items: MenuItem[];
   availableItemCount: number;
 };
+
+// next/image optimization is configured for Supabase Storage hosts only
+// (next.config.ts remotePatterns). Admin-entered external image URLs still
+// render, just without the optimizer, instead of crashing the menu.
+function isOptimizableImageUrl(url: string) {
+  try {
+    return new URL(url).hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
+}
 
 function getCategorySectionId(categoryId: string) {
   return `category-${categoryId}`;
@@ -257,12 +269,14 @@ export function RestaurantMenu({
         <section className="relative">
           <div className="relative h-44 overflow-hidden bg-ink sm:h-56">
             {coverImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 alt={restaurantName}
-                className="h-full w-full object-cover"
-                loading="eager"
+                className="object-cover"
+                fill
+                priority
+                sizes="(min-width: 768px) 768px, 100vw"
                 src={coverImageUrl}
+                unoptimized={!isOptimizableImageUrl(coverImageUrl)}
               />
             ) : (
               <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(52,211,153,0.35),_transparent_45%),linear-gradient(135deg,#0f172a_0%,#1f2937_48%,#111827_100%)]" />
@@ -320,11 +334,13 @@ export function RestaurantMenu({
               </div>
               <div className="flex items-start gap-3">
                 {restaurant.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     alt={`${restaurantName} logo`}
                     className="h-16 w-16 rounded-2xl object-cover ring-1 ring-stone-200"
+                    height={64}
                     src={restaurant.logo_url}
+                    unoptimized={!isOptimizableImageUrl(restaurant.logo_url)}
+                    width={64}
                   />
                 ) : (
                   <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-mint/20 text-lg font-black text-leaf">
@@ -501,14 +517,14 @@ export function RestaurantMenu({
                   >
                     <div className="relative aspect-square bg-linen">
                       {item.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           alt={title}
-                          className="h-full w-full object-cover"
-                          height={288}
+                          className="object-cover"
+                          fill
                           loading="lazy"
+                          sizes="(min-width: 640px) 360px, 82vw"
                           src={item.image_url}
-                          width={384}
+                          unoptimized={!isOptimizableImageUrl(item.image_url)}
                         />
                       ) : (
                         <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.28),_transparent_48%),linear-gradient(135deg,#f7f4ec,#e7f6ee)] px-5 text-center text-lg font-black text-ink">
@@ -745,13 +761,13 @@ export function RestaurantMenu({
 
                         <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
                           {item.image_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
+                            <Image
                               alt={itemName}
                               className="h-full w-full object-cover"
                               height={112}
                               loading="lazy"
                               src={item.image_url}
+                              unoptimized={!isOptimizableImageUrl(item.image_url)}
                               width={112}
                             />
                           ) : (

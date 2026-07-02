@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
@@ -304,6 +305,10 @@ export async function createRestaurantAction(formData: FormData) {
     );
   }
 
+  // A pre-launch probe of the public URL may have cached a not-found for this
+  // slug — clear it so the new restaurant is reachable immediately.
+  revalidatePublicRestaurantCache({ id: restaurant.id, slug });
+
   if (ownerEmail) {
     const { error: ownerMembershipError } = await supabase.from("restaurant_users").upsert(
       {
@@ -462,6 +467,14 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
   const plan = restaurantPlans.includes(planValue) ? planValue : "trial";
   const slug = slugify(stringValue(formData, "slug"));
 
+  // The slug can change here — capture the current one so the old slug's
+  // cached public entry is invalidated alongside the new one.
+  const { data: existingRestaurant } = await supabase
+    .from("restaurants")
+    .select("slug")
+    .eq("id", restaurantId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("restaurants")
     .update({
@@ -503,6 +516,13 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
   revalidatePath("/super-admin/restaurants");
   revalidatePath(`/super-admin/restaurants/${restaurantId}`);
   revalidatePath(`/r/${slug}`);
+  revalidatePublicRestaurantCache({ id: restaurantId, slug });
+  if (existingRestaurant?.slug && existingRestaurant.slug !== slug) {
+    revalidatePublicRestaurantCache({
+      id: restaurantId,
+      slug: existingRestaurant.slug
+    });
+  }
   redirect(`/super-admin/restaurants/${restaurantId}?tab=settings&saved=1`);
 }
 

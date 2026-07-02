@@ -69,8 +69,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!ok) {
       return new NextResponse("Invalid signature", { status: 401 });
     }
+  } else if (process.env.WHATSAPP_ACCESS_TOKEN) {
+    // Fail closed: a send-capable deployment must never act on unverified
+    // payloads, or forged POSTs could spam arbitrary phones from our number.
+    return new NextResponse("Webhook signature verification is not configured", {
+      status: 401
+    });
   }
-  // If no app secret is set we're pre-configuration; accept and no-op below.
+  // With neither secret nor access token we're pre-configuration; accept and
+  // no-op below.
 
   let payload: WhatsAppInbound;
   try {
@@ -80,11 +87,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // Collect distinct sender phones from this batch of inbound text messages.
+  // Capped: Meta batches a handful of messages per delivery, so anything
+  // beyond this is a malformed or forged payload — never fan out unbounded
+  // outbound sends from a single POST.
+  const MAX_SENDERS_PER_DELIVERY = 5;
   const senders = new Set<string>();
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
       for (const message of change.value?.messages ?? []) {
-        if (message.from) {
+        if (message.from && senders.size < MAX_SENDERS_PER_DELIVERY) {
           senders.add(message.from);
         }
       }

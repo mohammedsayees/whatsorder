@@ -1,7 +1,12 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { hashFeedbackToken } from "@/lib/feedback-utils";
+import {
+  PUBLIC_CACHE_TTL_SECONDS,
+  publicFeedbackTag
+} from "@/lib/public-cache";
 import type {
   CustomerFeedback,
   PublicFeedbackSummary,
@@ -18,6 +23,46 @@ export const feedbackTags = [
   "Great car pickup"
 ] as const;
 
+// Cached public-review summary for the customer menu page. Failures throw so
+// they are never cached; feedback submission/moderation revalidates the tag.
+const fetchPublicFeedback = (restaurantId: string) =>
+  unstable_cache(
+    async (): Promise<PublicFeedbackSummary> => {
+      const supabase = getSupabaseAdmin();
+      if (!supabase) {
+        throw new Error("Supabase is not configured");
+      }
+
+      const { data, error } = await supabase
+        .from("customer_feedback")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("moderation_status", "approved")
+        .order("submitted_at", { ascending: false });
+
+      if (error || !data) {
+        throw new Error(error?.message ?? "Feedback could not be read");
+      }
+
+      const feedback = data as CustomerFeedback[];
+      const reviewCount = feedback.length;
+      const averageRating =
+        reviewCount > 0
+          ? feedback.reduce((sum, review) => sum + Number(review.rating), 0) / reviewCount
+          : null;
+      const reviews = feedback
+        .filter((review) => Boolean(review.comment?.trim()))
+        .slice(0, 3);
+
+      return { averageRating, reviewCount, reviews };
+    },
+    ["public-feedback", restaurantId],
+    {
+      revalidate: PUBLIC_CACHE_TTL_SECONDS,
+      tags: [publicFeedbackTag(restaurantId)]
+    }
+  )();
+
 export async function getPublicFeedback(
   restaurant: PublicRestaurant
 ): Promise<PublicFeedbackSummary> {
@@ -25,33 +70,12 @@ export async function getPublicFeedback(
     return { averageRating: null, reviewCount: 0, reviews: [] };
   }
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
+  try {
+    return await fetchPublicFeedback(restaurant.id);
+  } catch {
+    // Reviews are decorative on the menu — fail soft, never block the page.
     return { averageRating: null, reviewCount: 0, reviews: [] };
   }
-
-  const { data, error } = await supabase
-    .from("customer_feedback")
-    .select("*")
-    .eq("restaurant_id", restaurant.id)
-    .eq("moderation_status", "approved")
-    .order("submitted_at", { ascending: false });
-
-  if (error || !data) {
-    return { averageRating: null, reviewCount: 0, reviews: [] };
-  }
-
-  const feedback = data as CustomerFeedback[];
-  const reviewCount = feedback.length;
-  const averageRating =
-    reviewCount > 0
-      ? feedback.reduce((sum, review) => sum + Number(review.rating), 0) / reviewCount
-      : null;
-  const reviews = feedback
-    .filter((review) => Boolean(review.comment?.trim()))
-    .slice(0, 3);
-
-  return { averageRating, reviewCount, reviews };
 }
 
 export async function getRestaurantFeedback(restaurantId: string) {

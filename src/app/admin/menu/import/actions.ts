@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import {
   extractMenuPageItems,
   generateItemDescriptions,
@@ -280,6 +281,7 @@ export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<Imp
 
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${session.restaurant.slug}`);
+  revalidatePublicRestaurantCache(session.restaurant);
 
   return { ok: true, message: `Imported ${itemsToInsert.length} items.` };
 }

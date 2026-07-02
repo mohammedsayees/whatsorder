@@ -22,6 +22,7 @@ import {
   parseAndValidateCart
 } from "@/lib/security";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
+import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
@@ -170,6 +171,7 @@ function revalidateMenuPaths(restaurant: { id: string; slug: string }) {
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath(`/super-admin/restaurants/${restaurant.id}`);
+  revalidatePublicRestaurantCache(restaurant);
 }
 
 async function completeOnboardingTasks(
@@ -263,13 +265,22 @@ async function checkOrderRateLimit(restaurantId: string) {
     window_size_seconds: 600
   });
 
-  // Deployments that have not applied the security migration continue working,
-  // while input limits below still provide a baseline defense.
-  if (error?.code === "PGRST202" || error?.message?.includes("Could not find the function")) {
+  // The limiter is a throttle, not a correctness gate: customer order-taking
+  // must never be disabled by a missing migration or a transient database
+  // error, so ANY error fails open. Only an explicit "over the limit" answer
+  // from the RPC blocks the submission.
+  if (error) {
+    if (error.code !== "PGRST202" && !error.message?.includes("Could not find the function")) {
+      console.error("WhatsOrder order rate-limit check failed open", {
+        code: error.code,
+        message: error.message,
+        restaurantId
+      });
+    }
     return true;
   }
 
-  return !error && data === true;
+  return data === true;
 }
 
 export async function createOrderAction(
@@ -941,6 +952,7 @@ export async function uploadRestaurantBrandImageAction(
   revalidatePath("/admin/settings");
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath(`/super-admin/restaurants/${restaurant.id}`);
+  revalidatePublicRestaurantCache(restaurant);
 
   return {
     ok: true,
@@ -1293,6 +1305,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath(`/r/${restaurant.slug}`);
+  revalidatePublicRestaurantCache(restaurant);
 }
 
 // Owner/admin-only: the stamp-card terms (card size, reward text, qualifying minimum) change
