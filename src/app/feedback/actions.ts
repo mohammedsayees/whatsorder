@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import {
@@ -9,6 +9,7 @@ import {
   getFeedbackPageContext
 } from "@/lib/feedback";
 import { customerDisplayName, hashFeedbackToken } from "@/lib/feedback-utils";
+import { publicFeedbackTag } from "@/lib/public-cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin, requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getPublicAppUrl } from "@/lib/super-admin-data";
@@ -113,6 +114,7 @@ export async function moderateFeedbackAction(formData: FormData) {
 
   revalidatePath("/admin/feedback");
   revalidatePath(`/r/${session.restaurant.slug}`);
+  revalidateTag(publicFeedbackTag(session.restaurantId));
 }
 
 export async function submitFeedbackAction(token: string, formData: FormData) {
@@ -165,6 +167,10 @@ export async function submitFeedbackAction(token: string, formData: FormData) {
     .from("feedback_requests")
     .update({ used_at: new Date().toISOString() })
     .eq("id", context.request.id);
+
+  // Comment-free feedback publishes immediately, so the cached public summary
+  // must refresh (moderated feedback refreshes again on approval).
+  revalidateTag(publicFeedbackTag(context.request.restaurant_id));
 
   redirect(`/feedback/${encodeURIComponent(token)}?submitted=1`);
 }

@@ -6,6 +6,7 @@ import {
   DEFAULT_AI_IMAGE_STYLE_PRESET,
   isAiImageStylePreset
 } from "@/lib/ai/image-style-presets";
+import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   requireRestaurantRole,
@@ -330,6 +331,7 @@ export async function confirmGeneratedMenuItemImageAction(input: {
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath(`/super-admin/restaurants/${restaurant.id}`);
+  revalidatePublicRestaurantCache(restaurant);
 
   return { ok: true, imageUrl: generation.image_url };
 }

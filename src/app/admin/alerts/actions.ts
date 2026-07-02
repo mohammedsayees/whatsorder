@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import {
   accessTokenCookieName,
+  activeRestaurantCookieName,
   refreshTokenCookieName
 } from "@/lib/auth-cookies";
 import {
@@ -50,14 +51,34 @@ async function validateRealtimeRestaurantAccess(accessToken: string) {
     .select("restaurant_id")
     .eq("user_id", userData.user.id)
     .not("accepted_at", "is", null)
-    .in("role", ["restaurant_admin", "staff", "owner", "manager"])
-    .limit(2);
+    .in("role", ["restaurant_admin", "staff", "owner", "manager"]);
 
-  if (membershipError || memberships?.length !== 1) {
+  if (membershipError || !memberships || memberships.length === 0) {
     return null;
   }
 
-  const restaurantId = String(memberships[0].restaurant_id);
+  let restaurantId = String(memberships[0].restaurant_id);
+
+  // Multi-restaurant staff: honor the same active-restaurant cookie the rest
+  // of the admin session uses, re-validated against live memberships so it can
+  // never select a restaurant the user does not belong to. Realtime alerts
+  // previously just disabled themselves for these users.
+  if (memberships.length > 1) {
+    const selectedRestaurantId = (await cookies()).get(
+      activeRestaurantCookieName
+    )?.value;
+    const selectedMembership = selectedRestaurantId
+      ? memberships.find(
+          (entry) => String(entry.restaurant_id) === selectedRestaurantId
+        )
+      : undefined;
+
+    if (!selectedMembership) {
+      return null;
+    }
+
+    restaurantId = String(selectedMembership.restaurant_id);
+  }
   const { data: restaurant } = await admin
     .from("restaurants")
     .select("status")

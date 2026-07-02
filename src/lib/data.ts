@@ -1,5 +1,12 @@
+import { unstable_cache } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { getUaeMonthStartIso, isSameUaeCalendarDay } from "@/lib/date-time";
+import { isOfferOrderable } from "@/lib/order-pricing";
+import {
+  PUBLIC_CACHE_TTL_SECONDS,
+  publicMenuTag,
+  publicRestaurantTag
+} from "@/lib/public-cache";
 import {
   computeCommissionKept,
   type CommissionKept,
@@ -183,25 +190,48 @@ function toPublicRestaurant(restaurant: Restaurant): PublicRestaurant {
   };
 }
 
+// Cached public-restaurant read. Failures throw so they are never cached;
+// only real lookups (found or not-found) are stored, and admin edits
+// revalidate the tag immediately.
+const fetchPublicRestaurant = (slug: string) =>
+  unstable_cache(
+    async (): Promise<PublicRestaurant | null> => {
+      const supabase = getSupabase();
+
+      if (!supabase) {
+        throw new Error("Supabase is not configured");
+      }
+
+      const { data, error } = await supabase
+        .rpc("get_public_restaurant", { target_slug: slug })
+        .maybeSingle();
+
+      if (error && error.code !== "PGRST116") {
+        throw new Error(error.message);
+      }
+
+      return (data as PublicRestaurant | null) ?? null;
+    },
+    ["public-restaurant", slug],
+    { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [publicRestaurantTag(slug)] }
+  )();
+
 export async function getRestaurantBySlug(
   slug: string
 ): Promise<PublicRestaurant | null> {
-  const supabase = getSupabase();
+  try {
+    const restaurant = await fetchPublicRestaurant(slug);
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .rpc("get_public_restaurant", { target_slug: slug })
-      .maybeSingle();
-
-    if (!error && data) {
-      return data as PublicRestaurant;
+    if (restaurant) {
+      return restaurant;
     }
-
-    if (error && error.code !== "PGRST116" && !demoDataEnabled) {
-      productionDataFailure("Restaurant", error);
+  } catch (error) {
+    if (!demoDataEnabled) {
+      productionDataFailure(
+        "Restaurant",
+        error instanceof Error ? error : undefined
+      );
     }
-  } else if (!demoDataEnabled) {
-    productionDataFailure("Restaurant");
   }
 
   if (demoDataEnabled && slug === demoRestaurant.slug) {
@@ -219,39 +249,81 @@ type GetMenuOptions = {
   admin?: boolean;
 };
 
+async function readMenu(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  restaurantId: string
+): Promise<MenuWithCategories | null> {
+  const [{ data: categories }, { data: items }] = await Promise.all([
+    supabase
+      .from("menu_categories")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .order("display_order"),
+    supabase
+      .from("menu_items")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: true })
+  ]);
+
+  if (!categories || !items) {
+    return null;
+  }
+
+  return {
+    categories: categories as MenuCategory[],
+    items: items as MenuItem[]
+  };
+}
+
+// Cached public-menu read for the customer path (menu page + order
+// re-pricing). Admin reads stay uncached so the editor always sees live data.
+// Failures throw so they are never cached; menu edits revalidate the tag.
+const fetchPublicMenu = (restaurantId: string) =>
+  unstable_cache(
+    async (): Promise<MenuWithCategories> => {
+      const supabase = getSupabase();
+
+      if (!supabase) {
+        throw new Error("Supabase is not configured");
+      }
+
+      const menu = await readMenu(supabase, restaurantId);
+
+      if (!menu) {
+        throw new Error("Menu could not be read");
+      }
+
+      return menu;
+    },
+    ["public-menu", restaurantId],
+    { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [publicMenuTag(restaurantId)] }
+  )();
+
 export async function getMenu(
   restaurantId: string,
   options: GetMenuOptions = {}
 ): Promise<MenuWithCategories> {
-  const supabase = options.admin ? getSupabaseAdmin() : getSupabase();
+  if (options.admin) {
+    const supabase = getSupabaseAdmin();
+    const menu = supabase ? await readMenu(supabase, restaurantId) : null;
 
-  if (supabase) {
-    const [{ data: categories }, { data: items }] = await Promise.all([
-      supabase
-        .from("menu_categories")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true)
-        .order("display_order"),
-      supabase
-        .from("menu_items")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .order("created_at", { ascending: true })
-    ]);
-
-    if (categories && items) {
-      return {
-        categories: categories as MenuCategory[],
-        items: items as MenuItem[]
-      };
+    if (menu) {
+      return menu;
     }
 
     if (!demoDataEnabled) {
       productionDataFailure("Menu");
     }
-  } else if (!demoDataEnabled) {
-    productionDataFailure("Menu");
+  } else {
+    try {
+      return await fetchPublicMenu(restaurantId);
+    } catch (error) {
+      if (!demoDataEnabled) {
+        productionDataFailure("Menu", error instanceof Error ? error : undefined);
+      }
+    }
   }
 
   return {
@@ -260,45 +332,90 @@ export async function getMenu(
   };
 }
 
+function normalizeMenuOffers(rows: Record<string, unknown>[]): MenuOffer[] {
+  return rows.map((offer) => ({
+    ...offer,
+    promotional_price: Number(offer.promotional_price),
+    max_quantity_per_order: Number(offer.max_quantity_per_order ?? 1)
+  })) as MenuOffer[];
+}
+
+// Cached active-offer read for the customer path. The starts_at/ends_at
+// window is enforced OUTSIDE the cache (below) so a cached list can never
+// keep selling an offer past its end time.
+const fetchPublicMenuOffers = (restaurantId: string) =>
+  unstable_cache(
+    async (): Promise<MenuOffer[]> => {
+      const supabase = getSupabase();
+
+      if (!supabase) {
+        throw new Error("Supabase is not configured");
+      }
+
+      const { data, error } = await supabase
+        .from("menu_offers")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .order("display_order")
+        .order("created_at");
+
+      if (error || !data) {
+        throw new Error(error?.message ?? "Menu offers could not be read");
+      }
+
+      return normalizeMenuOffers(data);
+    },
+    ["public-menu-offers", restaurantId],
+    { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [publicMenuTag(restaurantId)] }
+  )();
+
 export async function getMenuOffers(
   restaurantId: string,
   options: GetMenuOptions = {}
 ): Promise<MenuOffer[]> {
-  const supabase = options.admin ? getSupabaseAdmin() : getSupabase();
+  if (options.admin) {
+    const supabase = getSupabaseAdmin();
 
-  if (!supabase) {
-    if (!demoDataEnabled) {
-      productionDataFailure("Menu offers");
+    if (!supabase) {
+      if (!demoDataEnabled) {
+        productionDataFailure("Menu offers");
+      }
+      return [];
     }
+
+    const { data, error } = await supabase
+      .from("menu_offers")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("display_order")
+      .order("created_at");
+
+    if (!error && data) {
+      return normalizeMenuOffers(data);
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Menu offers", error);
+    }
+
     return [];
   }
 
-  let query = supabase
-    .from("menu_offers")
-    .select("*")
-    .eq("restaurant_id", restaurantId)
-    .order("display_order")
-    .order("created_at");
-
-  if (!options.admin) {
-    query = query.eq("is_active", true);
+  try {
+    const offers = await fetchPublicMenuOffers(restaurantId);
+    // Customer-facing: only offers inside their date window are shown or
+    // priced. Expired-but-still-active offers no longer display or sell.
+    return offers.filter((offer) => isOfferOrderable(offer));
+  } catch (error) {
+    if (!demoDataEnabled) {
+      productionDataFailure(
+        "Menu offers",
+        error instanceof Error ? error : undefined
+      );
+    }
+    return [];
   }
-
-  const { data, error } = await query;
-
-  if (!error && data) {
-    return data.map((offer) => ({
-      ...offer,
-      promotional_price: Number(offer.promotional_price),
-      max_quantity_per_order: Number(offer.max_quantity_per_order ?? 1)
-    })) as MenuOffer[];
-  }
-
-  if (!demoDataEnabled) {
-    productionDataFailure("Menu offers", error);
-  }
-
-  return [];
 }
 
 export async function getRecentOrders(
