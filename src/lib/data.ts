@@ -24,7 +24,11 @@ import type {
   Customer,
   MenuCategory,
   MenuItem,
+  MenuItemOptionGroupLink,
   MenuOffer,
+  MenuOption,
+  MenuOptionCatalog,
+  MenuOptionGroup,
   MenuWithCategories,
   Order,
   OrderStatus,
@@ -415,6 +419,118 @@ export async function getMenuOffers(
       );
     }
     return [];
+  }
+}
+
+const EMPTY_OPTION_CATALOG: MenuOptionCatalog = {
+  groups: [],
+  options: [],
+  links: []
+};
+
+async function readOptionCatalog(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  restaurantId: string
+): Promise<MenuOptionCatalog | null> {
+  const [{ data: groups }, { data: options }, { data: links }] =
+    await Promise.all([
+      supabase
+        .from("menu_option_groups")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("display_order"),
+      supabase
+        .from("menu_options")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("display_order"),
+      supabase
+        .from("menu_item_option_groups")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("display_order")
+    ]);
+
+  if (!groups || !options || !links) {
+    return null;
+  }
+
+  return {
+    // numeric/int columns arrive as strings from PostgREST — normalize once.
+    groups: groups.map((group) => ({
+      ...group,
+      min_select: Number(group.min_select ?? 0),
+      max_select: group.max_select === null ? null : Number(group.max_select),
+      display_order: Number(group.display_order ?? 0)
+    })) as MenuOptionGroup[],
+    options: options.map((option) => ({
+      ...option,
+      price_delta: Number(option.price_delta ?? 0),
+      display_order: Number(option.display_order ?? 0)
+    })) as MenuOption[],
+    links: links.map((link) => ({
+      ...link,
+      display_order: Number(link.display_order ?? 0)
+    })) as MenuItemOptionGroupLink[]
+  };
+}
+
+// Cached public option-catalog read for the customer path (menu sheet + order
+// re-pricing). RLS hides unavailable options from anon, which the customer
+// verification path relies on. Admin reads stay uncached and see everything.
+const fetchPublicOptionCatalog = (restaurantId: string) =>
+  unstable_cache(
+    async (): Promise<MenuOptionCatalog> => {
+      const supabase = getSupabase();
+
+      if (!supabase) {
+        throw new Error("Supabase is not configured");
+      }
+
+      const catalog = await readOptionCatalog(supabase, restaurantId);
+
+      if (!catalog) {
+        throw new Error("Menu options could not be read");
+      }
+
+      return catalog;
+    },
+    ["public-menu-options", restaurantId],
+    { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [publicMenuTag(restaurantId)] }
+  )();
+
+export async function getMenuOptionCatalog(
+  restaurantId: string,
+  options: GetMenuOptions = {}
+): Promise<MenuOptionCatalog> {
+  if (options.admin) {
+    const supabase = getSupabaseAdmin();
+    const catalog = supabase
+      ? await readOptionCatalog(supabase, restaurantId)
+      : null;
+
+    if (catalog) {
+      return catalog;
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Menu options");
+    }
+
+    return EMPTY_OPTION_CATALOG;
+  }
+
+  try {
+    return await fetchPublicOptionCatalog(restaurantId);
+  } catch (error) {
+    // Un-migrated deployments have no option tables yet — options are an
+    // additive feature, so degrade to "no options" instead of failing the
+    // menu or order path.
+    console.error("WhatsOrder option catalog read failed", {
+      restaurantId,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+    return EMPTY_OPTION_CATALOG;
   }
 }
 

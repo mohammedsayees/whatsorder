@@ -120,14 +120,72 @@ export type MenuOffer = {
   updated_at: string;
 };
 
+// A reusable option group (restaurant-level). min_select = 1 && max_select = 1
+// behaves as a single-choice variant (Size); anything else as multi-select
+// add-ons. max_select null = unlimited.
+export type MenuOptionGroup = {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  name_ar?: string | null;
+  min_select: number;
+  max_select: number | null;
+  display_order: number;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type MenuOption = {
+  id: string;
+  restaurant_id: string;
+  group_id: string;
+  name: string;
+  name_ar?: string | null;
+  price_delta: number;
+  is_available: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type MenuItemOptionGroupLink = {
+  id: string;
+  restaurant_id: string;
+  menu_item_id: string;
+  group_id: string;
+  display_order: number;
+};
+
+// The full option catalog for one restaurant, bundled so verification and UI
+// take a single argument instead of three parallel arrays.
+export type MenuOptionCatalog = {
+  groups: MenuOptionGroup[];
+  options: MenuOption[];
+  links: MenuItemOptionGroupLink[];
+};
+
+// A selected option snapshot on a cart/order line. name/name_ar/price_delta
+// are denormalized at verification time from DB truth, so historical orders
+// keep rendering after options are renamed or deleted.
+export type CartLineOption = {
+  option_id: string;
+  group_id: string;
+  name: string;
+  name_ar?: string | null;
+  price_delta: number;
+};
+
 export type CartLine = {
   item_id: string;
   offer_id?: string | null;
   offer_max_quantity?: number | null;
   name: string;
   name_ar?: string | null;
+  // Final unit price INCLUDING option deltas — every downstream money
+  // computation is price * quantity, so deltas must already be baked in.
   price: number;
   quantity: number;
+  options?: CartLineOption[];
 };
 
 export type OrderItem = CartLine;

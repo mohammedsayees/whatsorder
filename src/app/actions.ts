@@ -3,7 +3,12 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
+import {
+  getMenu,
+  getMenuOffers,
+  getMenuOptionCatalog,
+  getRestaurantBySlug
+} from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   buildWhatsAppAppUrl,
@@ -331,11 +336,12 @@ export async function createOrderAction(
     };
   }
 
-  const [menu, offers] = await Promise.all([
+  const [menu, offers, optionCatalog] = await Promise.all([
     getMenu(restaurant.id),
-    getMenuOffers(restaurant.id)
+    getMenuOffers(restaurant.id),
+    getMenuOptionCatalog(restaurant.id)
   ]);
-  const verifiedCart = verifyCartAgainstMenu(items, menu, offers);
+  const verifiedCart = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
 
   if (!verifiedCart.ok) {
     return { ok: false, error: verifiedCart.error };
