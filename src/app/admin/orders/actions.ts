@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
+import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
@@ -229,6 +230,15 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
   if (!completedOrderId) {
     throw new Error("This order could not be completed. Refresh and try again.");
   }
+
+  // Free in-window WhatsApp "completed" update (includes the stamp-card line).
+  // Best-effort: never throws, never blocks payment collection.
+  await sendOrderStatusNotification({
+    supabase,
+    restaurant: session.restaurant,
+    orderId,
+    status: "Completed"
+  });
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");

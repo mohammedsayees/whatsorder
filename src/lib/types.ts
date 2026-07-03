@@ -49,6 +49,7 @@ export type PublicRestaurant = {
   scheduled_orders_enabled?: boolean;
   public_reviews_enabled?: boolean;
   accepting_orders?: boolean;
+  status_notifications_enabled?: boolean;
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
   latitude?: number | null;
