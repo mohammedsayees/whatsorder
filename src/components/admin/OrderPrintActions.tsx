@@ -96,7 +96,15 @@ function itemsTable(order: Order, includePrices: boolean) {
       (item) => `
         <tr>
           <td class="quantity">${escapeHtml(item.quantity)}×</td>
-          <td>${escapeHtml(item.name)}</td>
+          <td>
+            ${escapeHtml(item.name)}
+            ${(item.options ?? [])
+              .map(
+                (option) =>
+                  `<div class="option-line">+ ${escapeHtml(option.name)}</div>`
+              )
+              .join("")}
+          </td>
           ${
             includePrices
               ? `<td class="money">${escapeHtml(formatMoney(item.price * item.quantity))}</td>`
@@ -202,6 +210,7 @@ function printableDocument(content: string, title: string) {
           th { border-bottom: 1px solid #000; padding: 4px 2px; text-align: left; }
           td { border-bottom: 1px dotted #777; padding: 7px 2px; vertical-align: top; font-size: 13px; font-weight: 700; }
           .quantity { width: 12mm; font-size: 16px; font-weight: 900; }
+          .option-line { margin-top: 2px; padding-left: 6px; font-size: 12px; font-weight: 900; }
           .money { text-align: right; white-space: nowrap; }
           .notes { margin: 8px 0; border: 2px solid #000; padding: 7px; font-size: 14px; }
           .totals { border-top: 1px dashed #000; padding: 7px 0; }

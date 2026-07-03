@@ -3,7 +3,12 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
+import {
+  getMenu,
+  getMenuOffers,
+  getMenuOptionCatalog,
+  getRestaurantBySlug
+} from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   buildWhatsAppAppUrl,
@@ -331,11 +336,12 @@ export async function createOrderAction(
     };
   }
 
-  const [menu, offers] = await Promise.all([
+  const [menu, offers, optionCatalog] = await Promise.all([
     getMenu(restaurant.id),
-    getMenuOffers(restaurant.id)
+    getMenuOffers(restaurant.id),
+    getMenuOptionCatalog(restaurant.id)
   ]);
-  const verifiedCart = verifyCartAgainstMenu(items, menu, offers);
+  const verifiedCart = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
 
   if (!verifiedCart.ok) {
     return { ok: false, error: verifiedCart.error };
@@ -716,19 +722,29 @@ export async function addMenuItemAction(formData: FormData) {
     throw new Error("The selected category does not belong to this restaurant.");
   }
   const imageUrl = stringValue(formData, "image_url") || null;
-  const { error } = await supabase.from("menu_items").insert({
-    restaurant_id: restaurant.id,
-    category_id: categoryId,
-    name: stringValue(formData, "name"),
-    name_ar: stringValue(formData, "name_ar") || null,
-    description: stringValue(formData, "description") || null,
-    description_ar: stringValue(formData, "description_ar") || null,
-    price: Number(stringValue(formData, "price")),
-    image_url: imageUrl,
-    is_available: formData.get("is_available") === "on",
-    is_featured: formData.get("is_featured") === "on"
-  });
+  const { data: createdItem, error } = await supabase
+    .from("menu_items")
+    .insert({
+      restaurant_id: restaurant.id,
+      category_id: categoryId,
+      name: stringValue(formData, "name"),
+      name_ar: stringValue(formData, "name_ar") || null,
+      description: stringValue(formData, "description") || null,
+      description_ar: stringValue(formData, "description_ar") || null,
+      price: Number(stringValue(formData, "price")),
+      image_url: imageUrl,
+      is_available: formData.get("is_available") === "on",
+      is_featured: formData.get("is_featured") === "on"
+    })
+    .select("id")
+    .single();
   databaseFailure("Menu item creation", error);
+
+  const optionGroupIds = optionGroupIdsFromForm(formData);
+  if (createdItem && optionGroupIds !== null) {
+    await syncItemOptionGroups(supabase, restaurant.id, createdItem.id, optionGroupIds);
+  }
+
   await completeOnboardingTasks(supabase, restaurant.id, [
     "items_added",
     ...(imageUrl ? ["images_added"] : [])
@@ -767,6 +783,12 @@ export async function updateMenuItemAction(formData: FormData) {
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Menu item update", error);
+
+  const optionGroupIds = optionGroupIdsFromForm(formData);
+  if (optionGroupIds !== null) {
+    await syncItemOptionGroups(supabase, restaurant.id, itemId, optionGroupIds);
+  }
+
   if (imageUrl) {
     await completeOnboardingTasks(supabase, restaurant.id, ["images_added"]);
   }
@@ -1401,6 +1423,427 @@ export async function moveCategoryAction(formData: FormData) {
     updateCategoryDisplayOrder(supabase, currentCategory, targetCategory.display_order),
     updateCategoryDisplayOrder(supabase, targetCategory, currentCategory.display_order)
   ]);
+
+  revalidateMenuPaths(restaurant);
+}
+
+// ── Option groups (variants & modifiers) ────────────────────────────────────
+
+async function optionGroupBelongsToRestaurant(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string,
+  groupId: string
+) {
+  const { data, error } = await supabase
+    .from("menu_option_groups")
+    .select("id")
+    .eq("id", groupId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  databaseFailure("Option group validation", error);
+  return Boolean(data);
+}
+
+// min/max from the form: the UI's "Variant" kind submits min=1/max=1; the
+// "Add-ons" kind submits min=0 and an optional max. Server re-validates so a
+// crafted request can't create an impossible group.
+function optionGroupSelectionBounds(formData: FormData) {
+  const minRaw = Math.round(Number(stringValue(formData, "min_select")));
+  const maxValue = stringValue(formData, "max_select");
+  const maxRaw = maxValue === "" ? null : Math.round(Number(maxValue));
+  const minSelect = Number.isFinite(minRaw) ? Math.min(Math.max(minRaw, 0), 10) : 0;
+  const maxSelect =
+    maxRaw !== null && Number.isFinite(maxRaw)
+      ? Math.min(Math.max(maxRaw, Math.max(minSelect, 1)), 10)
+      : null;
+
+  return { minSelect, maxSelect };
+}
+
+export async function addOptionGroupAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+
+  if (!context) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const name = limitedStringValue(formData, "name", 120);
+
+  if (!name) {
+    throw new Error("Option group name is required.");
+  }
+
+  const { minSelect, maxSelect } = optionGroupSelectionBounds(formData);
+  const { count } = await supabase
+    .from("menu_option_groups")
+    .select("id", { count: "exact", head: true })
+    .eq("restaurant_id", restaurant.id);
+  const { error } = await supabase.from("menu_option_groups").insert({
+    restaurant_id: restaurant.id,
+    name,
+    name_ar: limitedStringValue(formData, "name_ar", 120) || null,
+    min_select: minSelect,
+    max_select: maxSelect,
+    display_order: count ?? 0
+  });
+  databaseFailure("Option group creation", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function updateOptionGroupAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const groupId = stringValue(formData, "group_id");
+
+  if (!context || !groupId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const name = limitedStringValue(formData, "name", 120);
+
+  if (!name) {
+    throw new Error("Option group name is required.");
+  }
+
+  const { minSelect, maxSelect } = optionGroupSelectionBounds(formData);
+  const { error } = await supabase
+    .from("menu_option_groups")
+    .update({
+      name,
+      name_ar: limitedStringValue(formData, "name_ar", 120) || null,
+      min_select: minSelect,
+      max_select: maxSelect
+    })
+    .eq("id", groupId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Option group update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function deleteOptionGroupAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const groupId = stringValue(formData, "group_id");
+
+  if (!context || !groupId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  // Cascades delete the group's options and item links.
+  const { error } = await supabase
+    .from("menu_option_groups")
+    .delete()
+    .eq("id", groupId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Option group deletion", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function moveOptionGroupAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const groupId = stringValue(formData, "group_id");
+  const direction = stringValue(formData, "direction");
+
+  if (!context || !groupId || !["up", "down"].includes(direction)) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { data: groups, error } = await supabase
+    .from("menu_option_groups")
+    .select("id,display_order")
+    .eq("restaurant_id", restaurant.id)
+    .order("display_order");
+  databaseFailure("Option group ordering", error);
+
+  const ordered = groups ?? [];
+  const currentIndex = ordered.findIndex((group) => group.id === groupId);
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+    return;
+  }
+
+  const current = ordered[currentIndex];
+  const target = ordered[targetIndex];
+  await Promise.all([
+    supabase
+      .from("menu_option_groups")
+      .update({ display_order: target.display_order })
+      .eq("id", current.id)
+      .eq("restaurant_id", restaurant.id),
+    supabase
+      .from("menu_option_groups")
+      .update({ display_order: current.display_order })
+      .eq("id", target.id)
+      .eq("restaurant_id", restaurant.id)
+  ]);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function addMenuOptionAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const groupId = stringValue(formData, "group_id");
+
+  if (!context || !groupId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+
+  if (!(await optionGroupBelongsToRestaurant(supabase, restaurant.id, groupId))) {
+    throw new Error("The selected option group does not belong to this restaurant.");
+  }
+
+  const name = limitedStringValue(formData, "name", 120);
+
+  if (!name) {
+    throw new Error("Option name is required.");
+  }
+
+  const priceDelta = decimalValue(formData, "price_delta") ?? 0;
+  const { count } = await supabase
+    .from("menu_options")
+    .select("id", { count: "exact", head: true })
+    .eq("group_id", groupId);
+  const { error } = await supabase.from("menu_options").insert({
+    restaurant_id: restaurant.id,
+    group_id: groupId,
+    name,
+    name_ar: limitedStringValue(formData, "name_ar", 120) || null,
+    price_delta: priceDelta,
+    is_available: formData.get("is_available") !== "false",
+    display_order: count ?? 0
+  });
+  databaseFailure("Option creation", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function updateMenuOptionAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const optionId = stringValue(formData, "option_id");
+
+  if (!context || !optionId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const name = limitedStringValue(formData, "name", 120);
+
+  if (!name) {
+    throw new Error("Option name is required.");
+  }
+
+  const { error } = await supabase
+    .from("menu_options")
+    .update({
+      name,
+      name_ar: limitedStringValue(formData, "name_ar", 120) || null,
+      price_delta: decimalValue(formData, "price_delta") ?? 0
+    })
+    .eq("id", optionId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Option update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function toggleMenuOptionAvailabilityAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const optionId = stringValue(formData, "option_id");
+
+  if (!context || !optionId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { error } = await supabase
+    .from("menu_options")
+    .update({ is_available: stringValue(formData, "is_available") === "true" })
+    .eq("id", optionId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Option availability update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function deleteMenuOptionAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const optionId = stringValue(formData, "option_id");
+
+  if (!context || !optionId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { error } = await supabase
+    .from("menu_options")
+    .delete()
+    .eq("id", optionId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Option deletion", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function moveMenuOptionAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const optionId = stringValue(formData, "option_id");
+  const direction = stringValue(formData, "direction");
+
+  if (!context || !optionId || !["up", "down"].includes(direction)) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { data: option } = await supabase
+    .from("menu_options")
+    .select("id,group_id")
+    .eq("id", optionId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+
+  if (!option) {
+    return;
+  }
+
+  const { data: options, error } = await supabase
+    .from("menu_options")
+    .select("id,display_order")
+    .eq("group_id", option.group_id)
+    .eq("restaurant_id", restaurant.id)
+    .order("display_order");
+  databaseFailure("Option ordering", error);
+
+  const ordered = options ?? [];
+  const currentIndex = ordered.findIndex((entry) => entry.id === optionId);
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+    return;
+  }
+
+  const current = ordered[currentIndex];
+  const target = ordered[targetIndex];
+  await Promise.all([
+    supabase
+      .from("menu_options")
+      .update({ display_order: target.display_order })
+      .eq("id", current.id)
+      .eq("restaurant_id", restaurant.id),
+    supabase
+      .from("menu_options")
+      .update({ display_order: current.display_order })
+      .eq("id", target.id)
+      .eq("restaurant_id", restaurant.id)
+  ]);
+
+  revalidateMenuPaths(restaurant);
+}
+
+// Replace-set the option groups attached to a menu item. Called from the item
+// form (hidden option_group_ids JSON) and usable standalone.
+async function syncItemOptionGroups(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string,
+  itemId: string,
+  groupIds: string[]
+) {
+  const uniqueGroupIds = [...new Set(groupIds)].slice(0, 20);
+
+  if (uniqueGroupIds.length > 0) {
+    const { data: ownedGroups, error: ownedError } = await supabase
+      .from("menu_option_groups")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .in("id", uniqueGroupIds);
+    databaseFailure("Option group ownership check", ownedError);
+
+    if ((ownedGroups ?? []).length !== uniqueGroupIds.length) {
+      throw new Error("One of the selected option groups does not belong to this restaurant.");
+    }
+  }
+
+  const { error: deleteError } = uniqueGroupIds.length
+    ? await supabase
+        .from("menu_item_option_groups")
+        .delete()
+        .eq("menu_item_id", itemId)
+        .eq("restaurant_id", restaurantId)
+        .not("group_id", "in", `(${uniqueGroupIds.join(",")})`)
+    : await supabase
+        .from("menu_item_option_groups")
+        .delete()
+        .eq("menu_item_id", itemId)
+        .eq("restaurant_id", restaurantId);
+  databaseFailure("Option group detach", deleteError);
+
+  if (uniqueGroupIds.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("menu_item_option_groups")
+      .upsert(
+        uniqueGroupIds.map((groupId, index) => ({
+          restaurant_id: restaurantId,
+          menu_item_id: itemId,
+          group_id: groupId,
+          display_order: index
+        })),
+        { onConflict: "menu_item_id,group_id" }
+      );
+    databaseFailure("Option group attach", upsertError);
+  }
+}
+
+// Parses the item form's optional hidden field. Returns null when the field is
+// absent so forms that don't know about option groups never clear links.
+function optionGroupIdsFromForm(formData: FormData): string[] | null {
+  const raw = formData.get("option_group_ids");
+
+  if (raw === null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(String(raw));
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setItemOptionGroupsAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const itemId = stringValue(formData, "item_id");
+
+  if (!context || !itemId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const { data: item } = await supabase
+    .from("menu_items")
+    .select("id")
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+
+  if (!item) {
+    throw new Error("The selected item does not belong to this restaurant.");
+  }
+
+  await syncItemOptionGroups(
+    supabase,
+    restaurant.id,
+    itemId,
+    optionGroupIdsFromForm(formData) ?? []
+  );
 
   revalidateMenuPaths(restaurant);
 }

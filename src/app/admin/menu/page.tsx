@@ -2,10 +2,11 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
+import { OptionGroupsManager } from "@/components/admin/OptionGroupsManager";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
-import { getMenu, getMenuOffers } from "@/lib/data";
+import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -17,9 +18,10 @@ export default async function AdminMenuPage() {
     return <BillingSoftBlock surface="Menu management" />;
   }
 
-  const [menu, offers] = await Promise.all([
+  const [menu, offers, optionCatalog] = await Promise.all([
     getMenu(restaurant.id, { admin: true }),
-    getMenuOffers(restaurant.id, { admin: true })
+    getMenuOffers(restaurant.id, { admin: true }),
+    getMenuOptionCatalog(restaurant.id, { admin: true })
   ]);
   const hasDatabaseAccess = Boolean(getSupabaseAdmin());
   const canWrite =
@@ -63,7 +65,10 @@ export default async function AdminMenuPage() {
         />
       </div>
       <div className="mt-6">
-        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} restaurantSlug={restaurant.slug} />
+        <OptionGroupsManager canWrite={canWrite} catalog={optionCatalog} />
+      </div>
+      <div className="mt-6">
+        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} optionCatalog={optionCatalog} restaurantSlug={restaurant.slug} />
       </div>
     </main>
   );

@@ -4,6 +4,7 @@ import type {
   PaymentMethod,
   PublicRestaurant
 } from "@/lib/types";
+import { formatOrderItemName } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 
@@ -31,9 +32,10 @@ type MessageInput = {
 export function buildWhatsAppMessage(input: MessageInput) {
   const lines = input.items.map(
     (item) =>
-      `${item.quantity} x ${
-        input.language === "ar" && item.name_ar ? item.name_ar : item.name
-      } - ${formatAED(item.price * item.quantity)}`
+      `${item.quantity} x ${formatOrderItemName(
+        item,
+        input.language ?? "en"
+      )} - ${formatAED(item.price * item.quantity)}`
   );
 
   if (input.language === "ar") {

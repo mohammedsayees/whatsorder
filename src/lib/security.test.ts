@@ -6,6 +6,7 @@ import {
   isOfferQuantityAllowed,
   isValidCustomerPhone,
   minimumOrderRemaining,
+  MAX_OPTIONS_PER_LINE,
   parseAndValidateCart
 } from "./security";
 
@@ -92,5 +93,97 @@ describe("public order input security", () => {
     expect(isValidCustomerPhone("+971 55 123 4567")).toBe(true);
     expect(isValidCustomerPhone("0551234567")).toBe(true);
     expect(isValidCustomerPhone("not-a-phone")).toBe(false);
+  });
+});
+
+describe("cart option input security", () => {
+  const baseLine = {
+    item_id: "item-1",
+    name: "Karak",
+    quantity: 1,
+    price: 5
+  };
+  const validOption = {
+    option_id: "opt-1",
+    group_id: "grp-1",
+    name: "Large",
+    price_delta: 3
+  };
+
+  it("passes options through with whitelisted fields only", () => {
+    const [line] = parseAndValidateCart(
+      JSON.stringify([
+        { ...baseLine, options: [{ ...validOption, injected: "x", name_ar: "كبير" }] }
+      ])
+    );
+
+    expect(line.options).toEqual([
+      {
+        option_id: "opt-1",
+        group_id: "grp-1",
+        name: "Large",
+        name_ar: "كبير",
+        price_delta: 3
+      }
+    ]);
+  });
+
+  it("omits the options key for optionless lines", () => {
+    const [line] = parseAndValidateCart(JSON.stringify([baseLine]));
+    expect(line).not.toHaveProperty("options");
+
+    const [emptyLine] = parseAndValidateCart(
+      JSON.stringify([{ ...baseLine, options: [] }])
+    );
+    expect(emptyLine).not.toHaveProperty("options");
+  });
+
+  it("rejects the whole cart on malformed options", () => {
+    const malformed = [
+      { ...baseLine, options: "not-an-array" },
+      undefined
+    ][0];
+    expect(parseAndValidateCart(JSON.stringify([malformed]))).toEqual([]);
+
+    expect(
+      parseAndValidateCart(
+        JSON.stringify([{ ...baseLine, options: [{ ...validOption, option_id: "" }] }])
+      )
+    ).toEqual([]);
+
+    expect(
+      parseAndValidateCart(
+        JSON.stringify([
+          { ...baseLine, options: [{ ...validOption, price_delta: "abc" }] }
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it("rejects duplicate options on a line", () => {
+    expect(
+      parseAndValidateCart(
+        JSON.stringify([{ ...baseLine, options: [validOption, validOption] }])
+      )
+    ).toEqual([]);
+  });
+
+  it("rejects more than MAX_OPTIONS_PER_LINE options", () => {
+    const tooMany = Array.from({ length: MAX_OPTIONS_PER_LINE + 1 }, (_, index) => ({
+      ...validOption,
+      option_id: `opt-${index}`
+    }));
+    expect(
+      parseAndValidateCart(JSON.stringify([{ ...baseLine, options: tooMany }]))
+    ).toEqual([]);
+  });
+
+  it("truncates oversized option names", () => {
+    const [line] = parseAndValidateCart(
+      JSON.stringify([
+        { ...baseLine, options: [{ ...validOption, name: "x".repeat(500) }] }
+      ])
+    );
+    expect(line.options?.[0].name).toHaveLength(120);
   });
 });

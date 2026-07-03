@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMenu, getMenuOffers } from "@/lib/data";
+import { formatOrderItemName } from "@/lib/cart-line";
+import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
@@ -56,11 +57,12 @@ export async function createStaffOrderAction(
   }
 
   // Prices are re-verified against the live menu — never trusted from the form.
-  const [menu, offers] = await Promise.all([
+  const [menu, offers, optionCatalog] = await Promise.all([
     getMenu(session.restaurantId, { admin: true }),
-    getMenuOffers(session.restaurantId, { admin: true })
+    getMenuOffers(session.restaurantId, { admin: true }),
+    getMenuOptionCatalog(session.restaurantId, { admin: true })
   ]);
-  const verified = verifyCartAgainstMenu(items, menu, offers);
+  const verified = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
 
   if (!verified.ok) {
     return { error: verified.error };
@@ -122,7 +124,7 @@ export async function createStaffOrderAction(
     .maybeSingle();
 
   const ticketSummary = verified.items
-    .map((item) => `${item.quantity}x ${item.name}`)
+    .map((item) => `${item.quantity}x ${formatOrderItemName(item)}`)
     .join(", ");
 
   const isDelivery = fulfilmentType === "delivery";

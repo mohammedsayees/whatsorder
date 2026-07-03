@@ -1,8 +1,60 @@
-import type { CartLine, RestaurantStatus } from "@/lib/types";
+import type { CartLine, CartLineOption, RestaurantStatus } from "@/lib/types";
 
 export const MAX_CART_LINES = 50;
 export const MAX_ITEM_QUANTITY = 25;
 export const MAX_ORDER_QUANTITY = 100;
+export const MAX_OPTIONS_PER_LINE = 10;
+
+// Options are optional on a line; when present they must be a small, sane
+// list. Prices/names are re-snapshotted from the database during
+// verifyCartAgainstMenu — this only guards shape, not truth.
+function isValidOptionList(raw: unknown): raw is CartLineOption[] | undefined {
+  if (raw === undefined || raw === null) {
+    return true;
+  }
+
+  if (!Array.isArray(raw) || raw.length > MAX_OPTIONS_PER_LINE) {
+    return false;
+  }
+
+  const seenOptionIds = new Set<string>();
+
+  for (const option of raw as CartLineOption[]) {
+    if (
+      !option ||
+      typeof option.option_id !== "string" ||
+      !option.option_id ||
+      typeof option.group_id !== "string" ||
+      !option.group_id ||
+      typeof option.name !== "string" ||
+      !option.name ||
+      !Number.isFinite(Number(option.price_delta)) ||
+      seenOptionIds.has(option.option_id)
+    ) {
+      return false;
+    }
+
+    seenOptionIds.add(option.option_id);
+  }
+
+  return true;
+}
+
+function mapOptions(raw: CartLineOption[] | undefined | null) {
+  if (!raw || raw.length === 0) {
+    return {};
+  }
+
+  return {
+    options: raw.map((option) => ({
+      option_id: String(option.option_id),
+      group_id: String(option.group_id),
+      name: String(option.name).slice(0, 120),
+      name_ar: option.name_ar ? String(option.name_ar).slice(0, 120) : null,
+      price_delta: Number(option.price_delta)
+    }))
+  };
+}
 
 export function minimumOrderRemaining(subtotal: number, minimumOrder: number) {
   return Math.max(0, Number(minimumOrder) - Number(subtotal));
@@ -24,7 +76,8 @@ export function parseAndValidateCart(raw: string): CartLine[] {
         item.quantity > 0 &&
         item.quantity <= MAX_ITEM_QUANTITY &&
         Number.isFinite(Number(item.price)) &&
-        item.price >= 0
+        item.price >= 0 &&
+        isValidOptionList(item.options)
     )
     .map((item) => ({
       item_id: String(item.item_id),
@@ -35,7 +88,8 @@ export function parseAndValidateCart(raw: string): CartLine[] {
       name: String(item.name),
       name_ar: item.name_ar ? String(item.name_ar) : null,
       quantity: Math.floor(Number(item.quantity)),
-      price: Number(item.price)
+      price: Number(item.price),
+      ...mapOptions(item.options)
     }));
 
   if (

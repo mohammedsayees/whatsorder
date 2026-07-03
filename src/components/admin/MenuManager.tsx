@@ -20,7 +20,7 @@ import {
 import { AiImageGenerator } from "@/components/admin/AiImageGenerator";
 import { formatAED } from "@/lib/currency";
 import { compressMenuImage } from "@/lib/image-compression";
-import type { MenuCategory, MenuItem } from "@/lib/types";
+import type { MenuCategory, MenuItem, MenuOptionCatalog } from "@/lib/types";
 import {
   ArrowDown,
   ArrowUp,
@@ -185,12 +185,14 @@ export function MenuManager({
   categories,
   items,
   canWrite,
+  optionCatalog,
   restaurantId,
   restaurantSlug
 }: {
   categories: MenuCategory[];
   items: MenuItem[];
   canWrite: boolean;
+  optionCatalog?: MenuOptionCatalog;
   restaurantId?: string;
   restaurantSlug: string;
 }) {
@@ -613,7 +615,7 @@ export function MenuManager({
 
       {addItemOpen ? (
         <Dialog title="Add menu item" onClose={() => setAddItemOpen(false)}>
-          <ItemForm categories={categories} canWrite={canWrite} onDone={() => { setAddItemOpen(false); router.refresh(); }} restaurantId={restaurantId} />
+          <ItemForm categories={categories} canWrite={canWrite} onDone={() => { setAddItemOpen(false); router.refresh(); }} optionCatalog={optionCatalog} restaurantId={restaurantId} />
         </Dialog>
       ) : null}
 
@@ -668,7 +670,7 @@ export function MenuManager({
 
       {editingItem ? (
         <Dialog title={`Edit ${editingItem.name}`} onClose={() => setEditingItem(null)}>
-          <ItemForm categories={categories} canWrite={canWrite} item={editingItem} onDone={() => { setEditingItem(null); router.refresh(); }} restaurantId={restaurantId} />
+          <ItemForm categories={categories} canWrite={canWrite} item={editingItem} onDone={() => { setEditingItem(null); router.refresh(); }} optionCatalog={optionCatalog} restaurantId={restaurantId} />
         </Dialog>
       ) : null}
 
@@ -749,12 +751,14 @@ function ItemForm({
   categories,
   item,
   onDone,
+  optionCatalog,
   restaurantId
 }: {
   canWrite: boolean;
   categories: MenuCategory[];
   item?: MenuItem;
   onDone: () => void;
+  optionCatalog?: MenuOptionCatalog;
   restaurantId?: string;
 }) {
   const action = item ? updateMenuItemAction : addMenuItemAction;
@@ -763,6 +767,29 @@ function ItemForm({
     () => [...categories].sort((first, second) => first.display_order - second.display_order),
     [categories]
   );
+  const sortedOptionGroups = useMemo(
+    () =>
+      [...(optionCatalog?.groups ?? [])].sort(
+        (first, second) => first.display_order - second.display_order
+      ),
+    [optionCatalog]
+  );
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(() =>
+    item && optionCatalog
+      ? optionCatalog.links
+          .filter((link) => link.menu_item_id === item.id)
+          .sort((first, second) => first.display_order - second.display_order)
+          .map((link) => link.group_id)
+      : []
+  );
+
+  const toggleGroup = (groupId: string) => {
+    setSelectedGroupIds((current) =>
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId]
+    );
+  };
   const [itemName, setItemName] = useState(item?.name ?? "");
   const [nameAr, setNameAr] = useState(item?.name_ar ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
@@ -1084,6 +1111,38 @@ function ItemForm({
           />
         </details>
       </div>
+      {optionCatalog && sortedOptionGroups.length > 0 ? (
+        <div className="rounded-lg border border-stone-200 p-3">
+          <h3 className="text-sm font-black">Variants &amp; add-ons</h3>
+          <p className="mt-1 text-xs text-stone-500">
+            Attach option groups to this item. Manage the groups themselves in the
+            Variants &amp; add-ons section above.
+          </p>
+          <input
+            name="option_group_ids"
+            type="hidden"
+            value={JSON.stringify(selectedGroupIds)}
+          />
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            {sortedOptionGroups.map((group) => (
+              <label className="flex items-center gap-2 font-semibold" key={group.id}>
+                <input
+                  checked={selectedGroupIds.includes(group.id)}
+                  disabled={!canWrite}
+                  onChange={() => toggleGroup(group.id)}
+                  type="checkbox"
+                />
+                {group.name}
+                <span className="text-xs font-bold text-stone-400">
+                  {group.min_select === 1 && group.max_select === 1
+                    ? "variant"
+                    : "add-ons"}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2 font-semibold">
           <input defaultChecked={item?.is_available ?? true} disabled={!canWrite} name="is_available" type="checkbox" />
