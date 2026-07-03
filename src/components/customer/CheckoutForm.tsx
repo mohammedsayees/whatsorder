@@ -10,12 +10,15 @@ import {
   Loader2,
   MapPin,
   MessageCircle,
+  Minus,
+  Plus,
   Send,
   ShoppingBag,
   Truck,
   Utensils
 } from "lucide-react";
 import { createOrderAction } from "@/app/actions";
+import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
@@ -646,15 +649,43 @@ export function CheckoutForm({
       <aside className="h-fit rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-5">
         <h2 className="text-lg font-black">{t.orderSummary}</h2>
         <div className="mt-4 space-y-3">
-          {cart.lines.map((line) => (
-            <div className="flex items-start justify-between gap-3 text-sm" key={line.item_id}>
-              <div>
-                <p className="font-bold">{language === "ar" && line.name_ar ? line.name_ar : line.name}</p>
-                <p className="text-stone-500">{t.quantityShort} {line.quantity}</p>
+          {cart.lines.map((line) => {
+            const lineKey = cartLineKey(line);
+            const optionsText = formatLineOptions(line.options, language);
+
+            return (
+              <div className="flex items-start justify-between gap-3 text-sm" key={lineKey}>
+                <div className="min-w-0">
+                  <p className="font-bold">{language === "ar" && line.name_ar ? line.name_ar : line.name}</p>
+                  {optionsText ? (
+                    <p className="text-xs text-stone-500">{optionsText}</p>
+                  ) : null}
+                  <div className="mt-1 flex items-center gap-2">
+                    <button
+                      aria-label={`${t.remove} ${line.name}`}
+                      className="focus-ring grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-stone-600"
+                      onClick={() => cart.decrement(lineKey)}
+                      type="button"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="min-w-5 text-center text-xs font-black">
+                      {line.quantity}
+                    </span>
+                    <button
+                      aria-label={`${t.addMore} ${line.name}`}
+                      className="focus-ring grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-stone-600"
+                      onClick={() => cart.increment(lineKey)}
+                      type="button"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+                <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
               </div>
-              <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="mt-5 space-y-2 border-t border-stone-200 pt-4 text-sm">
           <div className="flex justify-between">

@@ -29,6 +29,11 @@ import {
   weekDays
 } from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
+import { cartLineKey } from "@/lib/cart-line";
+import {
+  ItemOptionsSheet,
+  type ResolvedOptionGroup
+} from "@/components/customer/ItemOptionsSheet";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerPanel";
@@ -38,6 +43,8 @@ import type {
   MenuCategory,
   MenuItem,
   MenuOffer,
+  MenuOption,
+  MenuOptionCatalog,
   PublicFeedbackSummary,
   PublicRestaurant
 } from "@/lib/types";
@@ -73,6 +80,7 @@ export function RestaurantMenu({
   items,
   offers,
   loyalty = null,
+  optionCatalog,
   recentOrders = [],
   tableNumber
 }: {
@@ -82,6 +90,7 @@ export function RestaurantMenu({
   items: MenuItem[];
   offers: MenuOffer[];
   loyalty?: CustomerLoyalty | null;
+  optionCatalog?: MenuOptionCatalog;
   recentOrders?: CustomerRecentOrder[];
   tableNumber?: string;
 }) {
@@ -108,7 +117,62 @@ export function RestaurantMenu({
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [optionsSheet, setOptionsSheet] = useState<{
+    item: MenuItem;
+    offer: MenuOffer | null;
+  } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Option groups attached to each item, in link order, with only available
+  // options. Items with an entry here open the options sheet instead of the
+  // instant add / stepper controls.
+  const resolvedGroupsByItemId = useMemo(() => {
+    const map = new Map<string, ResolvedOptionGroup[]>();
+
+    if (!optionCatalog) {
+      return map;
+    }
+
+    const groupsById = new Map(optionCatalog.groups.map((group) => [group.id, group]));
+    const optionsByGroupId = new Map<string, MenuOption[]>();
+    for (const option of [...optionCatalog.options].sort(
+      (first, second) => first.display_order - second.display_order
+    )) {
+      if (!option.is_available) {
+        continue;
+      }
+      const list = optionsByGroupId.get(option.group_id) ?? [];
+      list.push(option);
+      optionsByGroupId.set(option.group_id, list);
+    }
+    for (const link of [...optionCatalog.links].sort(
+      (first, second) => first.display_order - second.display_order
+    )) {
+      const group = groupsById.get(link.group_id);
+      const groupOptions = optionsByGroupId.get(link.group_id) ?? [];
+      if (!group || groupOptions.length === 0) {
+        continue;
+      }
+      const entries = map.get(link.menu_item_id) ?? [];
+      entries.push({ group, options: groupOptions });
+      map.set(link.menu_item_id, entries);
+    }
+
+    return map;
+  }, [optionCatalog]);
+
+  // With options, one item can span several cart lines — badges show the
+  // per-item aggregate, and offer caps apply to the per-offer aggregate.
+  const itemQuantityInCart = (itemId: string) =>
+    cart.lines.reduce(
+      (sum, line) => (line.item_id === itemId ? sum + line.quantity : sum),
+      0
+    );
+  const offerQuantityInCart = (offerId: string) =>
+    cart.lines.reduce(
+      (sum, line) => (line.offer_id === offerId ? sum + line.quantity : sum),
+      0
+    );
 
   const categoriesWithItems = useMemo<CategoryWithItems[]>(
     () => {
@@ -504,9 +568,9 @@ export function RestaurantMenu({
                     : offer.description;
                 const itemName =
                   language === "ar" && item.name_ar ? item.name_ar : item.name;
-                const cartLine = cart.lines.find((line) => line.item_id === item.id);
-                const offerQuantity =
-                  cartLine?.offer_id === offer.id ? cartLine.quantity : 0;
+                const hasOptions = (resolvedGroupsByItemId.get(item.id) ?? []).length > 0;
+                const offerLineKey = cartLineKey({ item_id: item.id, offer_id: offer.id });
+                const offerQuantity = offerQuantityInCart(offer.id);
                 const maximumReached =
                   offerQuantity >= offer.max_quantity_per_order;
 
@@ -549,12 +613,23 @@ export function RestaurantMenu({
                             {formatAED(offer.promotional_price)}
                           </p>
                         </div>
-                        {offerQuantity > 0 ? (
+                        {hasOptions ? (
+                          <button
+                            aria-label={`${t.customize} ${title}`}
+                            className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+                            disabled={!orderingAvailable || maximumReached}
+                            onClick={() => setOptionsSheet({ item, offer })}
+                            type="button"
+                          >
+                            <Plus size={17} />
+                            {offerQuantity > 0 ? `${t.add} · ${offerQuantity}` : t.add}
+                          </button>
+                        ) : offerQuantity > 0 ? (
                           <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                             <button
                               aria-label={`${t.remove} ${title}`}
                               className="focus-ring grid h-10 w-10 place-items-center text-stone-700"
-                              onClick={() => cart.decrement(item.id)}
+                              onClick={() => cart.decrement(offerLineKey)}
                               type="button"
                             >
                               <Minus size={16} />
@@ -566,7 +641,7 @@ export function RestaurantMenu({
                               aria-label={`${t.addMore} ${title}`}
                               className="focus-ring grid h-10 w-10 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
                               disabled={maximumReached || !orderingAvailable}
-                              onClick={() => cart.incrementOffer(item.id, offer)}
+                              onClick={() => cart.incrementOffer(offerLineKey, offer)}
                               type="button"
                             >
                               <Plus size={16} />
@@ -661,8 +736,19 @@ export function RestaurantMenu({
 
               <div className="space-y-3">
                 {categoryItems.map((item) => {
-                  const cartLine = cart.lines.find((line) => line.item_id === item.id);
                   const activeOffer = offersByItemId.get(item.id);
+                  const hasOptions =
+                    (resolvedGroupsByItemId.get(item.id) ?? []).length > 0;
+                  // Optionless items keep the single-line stepper; option-ful
+                  // items get an Add button + aggregate badge (their lines are
+                  // managed per configuration in the checkout summary).
+                  const plainLineKey = activeOffer
+                    ? cartLineKey({ item_id: item.id, offer_id: activeOffer.id })
+                    : cartLineKey({ item_id: item.id });
+                  const cartLine = hasOptions
+                    ? undefined
+                    : cart.lines.find((line) => cartLineKey(line) === plainLineKey);
+                  const totalQuantity = itemQuantityInCart(item.id);
                   const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
                   const itemDescription =
                     language === "ar" && item.description_ar ? item.description_ar : item.description;
@@ -710,12 +796,32 @@ export function RestaurantMenu({
                               ) : null}
                             </div>
 
-                            {cartLine ? (
+                            {hasOptions ? (
+                              <div className="flex items-center gap-2">
+                                {totalQuantity > 0 ? (
+                                  <span className="grid h-7 min-w-7 place-items-center rounded-full bg-mint/25 px-2 text-xs font-black text-leaf">
+                                    {totalQuantity}
+                                  </span>
+                                ) : null}
+                                <button
+                                  aria-label={`${t.customize} ${itemName}`}
+                                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
+                                  data-testid={`add-item-${item.id}`}
+                                  disabled={!item.is_available || !orderingAvailable}
+                                  onClick={() =>
+                                    setOptionsSheet({ item, offer: activeOffer ?? null })
+                                  }
+                                  type="button"
+                                >
+                                  <Plus size={18} />
+                                </button>
+                              </div>
+                            ) : cartLine ? (
                               <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                                 <button
                                   aria-label={`${t.remove} ${itemName}`}
                                   className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
-                                  onClick={() => cart.decrement(item.id)}
+                                  onClick={() => cart.decrement(plainLineKey)}
                                   type="button"
                                 >
                                   <Minus size={16} />
@@ -727,13 +833,13 @@ export function RestaurantMenu({
                                   disabled={
                                     !orderingAvailable ||
                                     (Boolean(activeOffer) &&
-                                      cartLine.quantity >=
+                                      offerQuantityInCart(activeOffer?.id ?? "") >=
                                         (activeOffer?.max_quantity_per_order ?? 1))
                                   }
                                   onClick={() =>
                                     activeOffer
-                                      ? cart.incrementOffer(item.id, activeOffer)
-                                      : cart.increment(item.id)
+                                      ? cart.incrementOffer(plainLineKey, activeOffer)
+                                      : cart.increment(plainLineKey)
                                   }
                                   type="button"
                                 >
@@ -916,6 +1022,39 @@ export function RestaurantMenu({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {optionsSheet ? (
+        <ItemOptionsSheet
+          basePrice={
+            optionsSheet.offer
+              ? optionsSheet.offer.promotional_price
+              : optionsSheet.item.price
+          }
+          groups={resolvedGroupsByItemId.get(optionsSheet.item.id) ?? []}
+          item={optionsSheet.item}
+          language={language}
+          maxQuantity={
+            optionsSheet.offer
+              ? Math.max(
+                  0,
+                  optionsSheet.offer.max_quantity_per_order -
+                    offerQuantityInCart(optionsSheet.offer.id)
+                )
+              : undefined
+          }
+          offer={optionsSheet.offer}
+          onAdd={(options, quantity) => {
+            cart.addConfiguredLine({
+              item: optionsSheet.item,
+              offer: optionsSheet.offer,
+              options,
+              quantity
+            });
+            setOptionsSheet(null);
+          }}
+          onClose={() => setOptionsSheet(null)}
+        />
       ) : null}
     </div>
   );

@@ -1,7 +1,12 @@
 import { notFound } from "next/navigation";
 import { CartProvider } from "@/components/customer/CartProvider";
 import { RestaurantMenu } from "@/components/customer/RestaurantMenu";
-import { getMenu, getMenuOffers, getRestaurantBySlug } from "@/lib/data";
+import {
+  getMenu,
+  getMenuOffers,
+  getMenuOptionCatalog,
+  getRestaurantBySlug
+} from "@/lib/data";
 import { getPublicFeedback } from "@/lib/feedback";
 import { loadCustomerContext } from "@/lib/customer-auth/context";
 
@@ -20,9 +25,10 @@ export default async function RestaurantPage({
     notFound();
   }
 
-  const [menu, offers, feedback, customer] = await Promise.all([
+  const [menu, offers, optionCatalog, feedback, customer] = await Promise.all([
     getMenu(restaurant.id),
     getMenuOffers(restaurant.id),
+    getMenuOptionCatalog(restaurant.id),
     getPublicFeedback(restaurant),
     // Signed-in returning customer → loyalty card + reorder strip. Cold open
     // returns immediately without a DB hit.
@@ -38,6 +44,7 @@ export default async function RestaurantPage({
         items={menu.items}
         loyalty={customer.loyalty}
         offers={offers}
+        optionCatalog={optionCatalog}
         recentOrders={customer.recentOrders}
         tableNumber={tableNumber}
       />
