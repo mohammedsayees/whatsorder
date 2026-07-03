@@ -29,6 +29,7 @@ import {
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
+import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import {
@@ -599,6 +600,15 @@ export async function updateOrderStatusAction(formData: FormData) {
     if (!updatedOrderId) {
       throw new Error("This order could not be updated. Refresh and try again.");
     }
+
+    // Free in-window WhatsApp update ("accepted", "ready", ...). Best-effort:
+    // never throws, never blocks the status change.
+    await sendOrderStatusNotification({
+      supabase,
+      restaurant,
+      orderId,
+      status
+    });
   }
 
   revalidatePath("/admin");
@@ -1314,6 +1324,8 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       dine_in_enabled: formData.get("dine_in_enabled") === "on",
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       accepting_orders: formData.get("accepting_orders") === "on",
+      status_notifications_enabled:
+        formData.get("status_notifications_enabled") === "on",
       opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
       opening_hours: openingHoursFromFormData(formData),
       latitude: decimalValue(formData, "latitude"),

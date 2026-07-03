@@ -27,6 +27,7 @@ import {
   verifyMetaSignature
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { getDefaultRestaurant } from "@/lib/data";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,6 +111,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
 
     if (restaurant) {
+      // Every inbound message opens Meta's 24h customer-service window —
+      // record it so order-status notifications know free-form sends are
+      // allowed (src/lib/order-notifications.ts). Best-effort: a failed
+      // upsert must not affect the ack or the deep-link reply.
+      const admin = getSupabaseAdmin();
+      if (admin) {
+        const nowIso = new Date().toISOString();
+        const { error: windowError } = await admin
+          .from("whatsapp_service_windows")
+          .upsert(
+            [...senders].map((phone) => ({
+              restaurant_id: restaurant.id,
+              phone,
+              last_inbound_at: nowIso
+            })),
+            { onConflict: "restaurant_id,phone" }
+          );
+        if (windowError) {
+          console.error("WhatsOrder service-window upsert failed", {
+            code: windowError.code,
+            restaurantId: restaurant.id
+          });
+        }
+      }
+
       await Promise.all(
         [...senders].map(async (phone) => {
           const token = await mintLinkToken({ restaurantId: restaurant.id, phone });

@@ -91,6 +91,25 @@ export function SettingsForm({
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <input
+            className="mt-1"
+            defaultChecked={restaurant.status_notifications_enabled !== false}
+            disabled={!canWrite}
+            name="status_notifications_enabled"
+            type="checkbox"
+          />
+          <span>
+            <span className="block text-sm font-black">
+              Send order status updates to customers on WhatsApp
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-stone-500">
+              Customers who ordered via WhatsApp get a free message when their order is
+              accepted, ready, out for delivery, completed, or cancelled. Sent only inside
+              the free 24-hour reply window — never billed.
+            </span>
+          </span>
+        </label>
         <div className="sm:col-span-2">
           <WeeklyHoursFields
             canWrite={canWrite}
