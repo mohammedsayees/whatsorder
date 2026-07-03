@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
-import { getMenu } from "@/lib/data";
+import { getMenu, getMenuOptionCatalog } from "@/lib/data";
 import { enabledFulfilmentTypes } from "@/lib/fulfilment";
 import { getCurrentShiftView } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function NewStaffOrderPage() {
   const session = await requireRestaurantAdmin();
-  const [menu, currentShift] = await Promise.all([
+  const [menu, optionCatalog, currentShift] = await Promise.all([
     getMenu(session.restaurantId, { admin: true }),
+    getMenuOptionCatalog(session.restaurantId, { admin: true }),
     getCurrentShiftView(session)
   ]);
   const orderTypes = enabledFulfilmentTypes(session.restaurant);
@@ -46,6 +47,7 @@ export default async function NewStaffOrderPage() {
           <StaffOrderEntry
             deliveryFee={session.restaurant.delivery_fee}
             menu={menu}
+            optionCatalog={optionCatalog}
             orderTypes={orderTypes}
           />
         </div>

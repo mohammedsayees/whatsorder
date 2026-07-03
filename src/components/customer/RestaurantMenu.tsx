@@ -32,7 +32,7 @@ import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
 import {
   ItemOptionsSheet,
-  type ResolvedOptionGroup
+  resolveOptionGroupsByItem
 } from "@/components/customer/ItemOptionsSheet";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -43,7 +43,6 @@ import type {
   MenuCategory,
   MenuItem,
   MenuOffer,
-  MenuOption,
   MenuOptionCatalog,
   PublicFeedbackSummary,
   PublicRestaurant
@@ -126,40 +125,10 @@ export function RestaurantMenu({
   // Option groups attached to each item, in link order, with only available
   // options. Items with an entry here open the options sheet instead of the
   // instant add / stepper controls.
-  const resolvedGroupsByItemId = useMemo(() => {
-    const map = new Map<string, ResolvedOptionGroup[]>();
-
-    if (!optionCatalog) {
-      return map;
-    }
-
-    const groupsById = new Map(optionCatalog.groups.map((group) => [group.id, group]));
-    const optionsByGroupId = new Map<string, MenuOption[]>();
-    for (const option of [...optionCatalog.options].sort(
-      (first, second) => first.display_order - second.display_order
-    )) {
-      if (!option.is_available) {
-        continue;
-      }
-      const list = optionsByGroupId.get(option.group_id) ?? [];
-      list.push(option);
-      optionsByGroupId.set(option.group_id, list);
-    }
-    for (const link of [...optionCatalog.links].sort(
-      (first, second) => first.display_order - second.display_order
-    )) {
-      const group = groupsById.get(link.group_id);
-      const groupOptions = optionsByGroupId.get(link.group_id) ?? [];
-      if (!group || groupOptions.length === 0) {
-        continue;
-      }
-      const entries = map.get(link.menu_item_id) ?? [];
-      entries.push({ group, options: groupOptions });
-      map.set(link.menu_item_id, entries);
-    }
-
-    return map;
-  }, [optionCatalog]);
+  const resolvedGroupsByItemId = useMemo(
+    () => resolveOptionGroupsByItem(optionCatalog),
+    [optionCatalog]
+  );
 
   // With options, one item can span several cart lines — badges show the
   // per-item aggregate, and offer caps apply to the per-offer aggregate.

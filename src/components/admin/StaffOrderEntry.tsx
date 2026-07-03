@@ -6,15 +6,31 @@ import {
   createStaffOrderAction,
   type StaffOrderState
 } from "@/app/admin/orders/actions";
+import {
+  ItemOptionsSheet,
+  resolveOptionGroupsByItem
+} from "@/components/customer/ItemOptionsSheet";
+import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
-import type { CartLine, FulfilmentType, MenuWithCategories } from "@/lib/types";
+import type {
+  CartLine,
+  CartLineOption,
+  FulfilmentType,
+  MenuItem,
+  MenuOptionCatalog,
+  MenuWithCategories
+} from "@/lib/types";
 
+// Ticket lines are keyed by cartLineKey (item + selected options) so the same
+// item can sit on the ticket twice with different configurations — matching
+// the customer cart and the server's verification model.
 type TicketLine = {
   itemId: string;
   name: string;
   nameAr: string | null;
   price: number;
   quantity: number;
+  options?: CartLineOption[];
 };
 
 const fulfilmentLabels: Record<FulfilmentType, string> = {
@@ -29,10 +45,12 @@ const initialState: StaffOrderState = {};
 export function StaffOrderEntry({
   deliveryFee,
   menu,
+  optionCatalog,
   orderTypes
 }: {
   deliveryFee: number;
   menu: MenuWithCategories;
+  optionCatalog?: MenuOptionCatalog;
   orderTypes: FulfilmentType[];
 }) {
   const [state, action, pending] = useActionState(createStaffOrderAction, initialState);
@@ -40,6 +58,12 @@ export function StaffOrderEntry({
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
   const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(orderTypes[0]);
+  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+
+  const resolvedGroupsByItemId = useMemo(
+    () => resolveOptionGroupsByItem(optionCatalog),
+    [optionCatalog]
+  );
 
   // Clear the ticket after a successful save so staff can punch the next order.
   useEffect(() => {
@@ -85,40 +109,59 @@ export function StaffOrderEntry({
   const appliedDeliveryFee = fulfilmentType === "delivery" ? deliveryFee : 0;
   const total = subtotal + appliedDeliveryFee;
 
-  function addItem(itemId: string, name: string, nameAr: string | null, price: number) {
+  // Tap-to-add: option-ful items open the picker, plain items add instantly.
+  function handleAdd(itemId: string) {
+    const item = availableItems.find((entry) => entry.id === itemId);
+
+    if (!item) {
+      return;
+    }
+
+    if ((resolvedGroupsByItemId.get(item.id) ?? []).length > 0) {
+      setPickerItem(item);
+      return;
+    }
+
+    addTicketLine(item, [], 1);
+  }
+
+  function addTicketLine(item: MenuItem, options: CartLineOption[], quantity: number) {
+    const key = cartLineKey({ item_id: item.id, options });
+
     setLines((current) => {
-      const existing = current[itemId];
+      const existing = current[key];
       return {
         ...current,
-        [itemId]: {
-          itemId,
-          name,
-          nameAr,
-          price,
-          quantity: (existing?.quantity ?? 0) + 1
+        [key]: {
+          itemId: item.id,
+          name: item.name,
+          nameAr: item.name_ar ?? null,
+          price: configuredUnitPrice(item.price, options),
+          quantity: (existing?.quantity ?? 0) + quantity,
+          ...(options.length > 0 ? { options } : {})
         }
       };
     });
   }
 
-  function changeQuantity(itemId: string, delta: number) {
+  function changeQuantity(lineKey: string, delta: number) {
     setLines((current) => {
-      const existing = current[itemId];
+      const existing = current[lineKey];
       if (!existing) {
         return current;
       }
       const nextQuantity = existing.quantity + delta;
       if (nextQuantity < 1) {
-        const { [itemId]: _removed, ...rest } = current;
+        const { [lineKey]: _removed, ...rest } = current;
         return rest;
       }
-      return { ...current, [itemId]: { ...existing, quantity: nextQuantity } };
+      return { ...current, [lineKey]: { ...existing, quantity: nextQuantity } };
     });
   }
 
-  function removeItem(itemId: string) {
+  function removeItem(lineKey: string) {
     setLines((current) => {
-      const { [itemId]: _removed, ...rest } = current;
+      const { [lineKey]: _removed, ...rest } = current;
       return rest;
     });
   }
@@ -128,7 +171,8 @@ export function StaffOrderEntry({
     name: line.name,
     name_ar: line.nameAr,
     price: line.price,
-    quantity: line.quantity
+    quantity: line.quantity,
+    ...(line.options && line.options.length > 0 ? { options: line.options } : {})
   }));
 
   return (
@@ -189,10 +233,10 @@ export function StaffOrderEntry({
               items={matchingItems.map((item) => ({
                 id: item.id,
                 name: item.name,
-                nameAr: item.name_ar ?? null,
+                hasOptions: (resolvedGroupsByItemId.get(item.id) ?? []).length > 0,
                 price: item.price
               }))}
-              onAdd={addItem}
+              onAdd={handleAdd}
             />
           ) : (
             visibleCategories.map((category) => {
@@ -211,10 +255,10 @@ export function StaffOrderEntry({
                     items={categoryItems.map((item) => ({
                       id: item.id,
                       name: item.name,
-                      nameAr: item.name_ar ?? null,
+                      hasOptions: (resolvedGroupsByItemId.get(item.id) ?? []).length > 0,
                       price: item.price
                     }))}
-                    onAdd={addItem}
+                    onAdd={handleAdd}
                   />
                 </div>
               );
@@ -244,47 +288,58 @@ export function StaffOrderEntry({
                 Tap menu items to build the order.
               </p>
             ) : (
-              ticketLines.map((line) => (
-                <div
-                  className="flex items-center gap-2 rounded-lg border border-stone-100 px-3 py-2"
-                  key={line.itemId}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{line.name}</p>
-                    <p className="text-xs text-stone-500">{formatAED(line.price)}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      aria-label={`Reduce ${line.name}`}
-                      className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                      onClick={() => changeQuantity(line.itemId, -1)}
-                      type="button"
-                    >
-                      <Minus size={15} />
-                    </button>
-                    <span className="w-6 text-center text-sm font-black">{line.quantity}</span>
-                    <button
-                      aria-label={`Add ${line.name}`}
-                      className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                      onClick={() => changeQuantity(line.itemId, 1)}
-                      type="button"
-                    >
-                      <Plus size={15} />
-                    </button>
-                  </div>
-                  <span className="w-16 text-right text-sm font-black">
-                    {formatAED(line.price * line.quantity)}
-                  </span>
-                  <button
-                    aria-label={`Remove ${line.name}`}
-                    className="focus-ring grid h-8 w-8 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
-                    onClick={() => removeItem(line.itemId)}
-                    type="button"
+              ticketLines.map((line) => {
+                const lineKey = cartLineKey({
+                  item_id: line.itemId,
+                  options: line.options
+                });
+                const optionsText = formatLineOptions(line.options);
+
+                return (
+                  <div
+                    className="flex items-center gap-2 rounded-lg border border-stone-100 px-3 py-2"
+                    key={lineKey}
                   >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{line.name}</p>
+                      {optionsText ? (
+                        <p className="truncate text-xs text-stone-500">{optionsText}</p>
+                      ) : null}
+                      <p className="text-xs text-stone-500">{formatAED(line.price)}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        aria-label={`Reduce ${line.name}`}
+                        className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
+                        onClick={() => changeQuantity(lineKey, -1)}
+                        type="button"
+                      >
+                        <Minus size={15} />
+                      </button>
+                      <span className="w-6 text-center text-sm font-black">{line.quantity}</span>
+                      <button
+                        aria-label={`Add ${line.name}`}
+                        className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
+                        onClick={() => changeQuantity(lineKey, 1)}
+                        type="button"
+                      >
+                        <Plus size={15} />
+                      </button>
+                    </div>
+                    <span className="w-16 text-right text-sm font-black">
+                      {formatAED(line.price * line.quantity)}
+                    </span>
+                    <button
+                      aria-label={`Remove ${line.name}`}
+                      className="focus-ring grid h-8 w-8 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
+                      onClick={() => removeItem(lineKey)}
+                      type="button"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -511,6 +566,20 @@ export function StaffOrderEntry({
           ) : null}
         </form>
       </section>
+
+      {pickerItem ? (
+        <ItemOptionsSheet
+          basePrice={pickerItem.price}
+          groups={resolvedGroupsByItemId.get(pickerItem.id) ?? []}
+          item={pickerItem}
+          language="en"
+          onAdd={(options, quantity) => {
+            addTicketLine(pickerItem, options, quantity);
+            setPickerItem(null);
+          }}
+          onClose={() => setPickerItem(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -519,8 +588,8 @@ function ItemGrid({
   items,
   onAdd
 }: {
-  items: { id: string; name: string; nameAr: string | null; price: number }[];
-  onAdd: (id: string, name: string, nameAr: string | null, price: number) => void;
+  items: { id: string; name: string; hasOptions: boolean; price: number }[];
+  onAdd: (id: string) => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -528,11 +597,18 @@ function ItemGrid({
         <button
           className="focus-ring flex h-full flex-col justify-between gap-2 rounded-lg border border-stone-200 p-3 text-left hover:border-leaf hover:bg-mint"
           key={item.id}
-          onClick={() => onAdd(item.id, item.name, item.nameAr, item.price)}
+          onClick={() => onAdd(item.id)}
           type="button"
         >
           <span className="text-sm font-bold leading-tight">{item.name}</span>
-          <span className="text-sm font-black text-leaf">{formatAED(item.price)}</span>
+          <span className="flex items-center gap-2 text-sm font-black text-leaf">
+            {formatAED(item.price)}
+            {item.hasOptions ? (
+              <span className="rounded-full bg-mint/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-leaf">
+                Options
+              </span>
+            ) : null}
+          </span>
         </button>
       ))}
     </div>
