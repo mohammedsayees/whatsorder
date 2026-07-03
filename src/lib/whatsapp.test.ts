@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatAED } from "./currency";
 import { buildWhatsAppMessage, normalizeCustomerPhone } from "./whatsapp";
 import type { Restaurant } from "./types";
 
@@ -70,5 +71,54 @@ describe("customer phone normalization", () => {
     expect(normalizeCustomerPhone("+971 50 123 4567")).toBe("971501234567");
     expect(normalizeCustomerPhone("00971 50 123 4567")).toBe("971501234567");
     expect(normalizeCustomerPhone("501234567")).toBe("971501234567");
+  });
+});
+
+describe("WhatsApp option rendering", () => {
+  const optionItems = [
+    {
+      item_id: "karak",
+      name: "Karak",
+      name_ar: "كرك",
+      price: 8,
+      quantity: 2,
+      options: [
+        {
+          option_id: "opt-large",
+          group_id: "grp-size",
+          name: "Large",
+          name_ar: "كبير",
+          price_delta: 3
+        },
+        {
+          option_id: "opt-nosugar",
+          group_id: "grp-sugar",
+          name: "No sugar",
+          name_ar: null,
+          price_delta: 0
+        }
+      ]
+    }
+  ];
+
+  it("appends option names to the item line", () => {
+    const message = buildWhatsAppMessage({
+      ...baseInput,
+      items: optionItems,
+      fulfilmentType: "takeaway"
+    });
+
+    expect(message).toContain(`2 x Karak (Large, No sugar) - ${formatAED(16)}`);
+  });
+
+  it("uses Arabic option names with English fallback", () => {
+    const message = buildWhatsAppMessage({
+      ...baseInput,
+      items: optionItems,
+      fulfilmentType: "takeaway",
+      language: "ar"
+    });
+
+    expect(message).toContain("2 x كرك (كبير, No sugar)");
   });
 });

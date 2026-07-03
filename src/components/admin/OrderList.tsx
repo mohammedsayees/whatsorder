@@ -1,5 +1,6 @@
 "use client";
 
+import { formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDateTime } from "@/lib/date-time";
 import type { Customer, Order, Restaurant } from "@/lib/types";
@@ -86,10 +87,19 @@ export function OrderList({
                   {formatUaeDateTime(order.created_at)}
                 </p>
                 <div className="mt-3 space-y-1 text-sm">
-                  {order.items.map((item) => (
-                    <p key={`${order.id}-${item.item_id}`}>
-                      {item.quantity}x {item.name}
-                    </p>
+                  {order.items.map((item, index) => (
+                    // Index in the key: the same item can appear on several
+                    // lines with different option configurations.
+                    <div key={`${order.id}-${index}-${item.item_id}`}>
+                      <p>
+                        {item.quantity}x {item.name}
+                      </p>
+                      {formatLineOptions(item.options) ? (
+                        <p className="pl-4 text-xs text-stone-500">
+                          {formatLineOptions(item.options)}
+                        </p>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
                 {fulfilmentType === "delivery" ? (
