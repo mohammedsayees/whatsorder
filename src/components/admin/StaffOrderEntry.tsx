@@ -284,6 +284,13 @@ export function StaffOrderEntry({
           message: result.success ?? "Order saved.",
           order: result.order
         });
+        // Fire the kitchen copy automatically the moment a ticket is sent to
+        // the kitchen — staff shouldn't need a second tap. The Print buttons
+        // stay for reprints and the customer bill. (Paid-now sales don't
+        // auto-print; the counter decides whether a bill is needed.)
+        if (action === "kitchen" && result.order) {
+          printSavedOrder(result.order, ["kot"]);
+        }
       }
     } catch {
       // Timed out or the request threw (offline / slow) — queue it.
