@@ -1,17 +1,23 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
+import { submitStaffOrderAction } from "@/app/admin/orders/actions";
 import {
-  createStaffOrderAction,
-  type StaffOrderState
-} from "@/app/admin/orders/actions";
+  QueuedOrdersPanel,
+  useStaffOrderQueue,
+  withTimeout
+} from "@/components/admin/StaffOrderQueue";
 import {
   ItemOptionsSheet,
   resolveOptionGroupsByItem
 } from "@/components/customer/ItemOptionsSheet";
 import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
+import {
+  isStaffOrderActionKind,
+  type StaffOrderPayload
+} from "@/lib/staff-order-payload";
 import type {
   CartLine,
   CartLineOption,
@@ -40,39 +46,51 @@ const fulfilmentLabels: Record<FulfilmentType, string> = {
   dine_in: "Dine-in"
 };
 
-const initialState: StaffOrderState = {};
+// How the punch submit resolved, shown in the ticket footer. "queued" means
+// the internet was down or too slow, so the order is safely stored on the
+// device and will sync automatically — staff can keep punching.
+type SubmitFeedback =
+  | { kind: "success"; message: string }
+  | { kind: "queued"; message: string }
+  | { kind: "error"; message: string };
+
+// Live punch waits only briefly before falling back to the offline queue, so
+// staff are never left staring at a spinner on a dead connection.
+const LIVE_SUBMIT_TIMEOUT_MS = 8_000;
 
 export function StaffOrderEntry({
   deliveryFee,
   menu,
   optionCatalog,
-  orderTypes
+  orderTypes,
+  restaurantId
 }: {
   deliveryFee: number;
   menu: MenuWithCategories;
   optionCatalog?: MenuOptionCatalog;
   orderTypes: FulfilmentType[];
+  restaurantId: string;
 }) {
-  const [state, action, pending] = useActionState(createStaffOrderAction, initialState);
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
   const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(orderTypes[0]);
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
+
+  const { queue, syncingId, enqueue, retry, discard } = useStaffOrderQueue(restaurantId);
 
   const resolvedGroupsByItemId = useMemo(
     () => resolveOptionGroupsByItem(optionCatalog),
     [optionCatalog]
   );
 
-  // Clear the ticket after a successful save so staff can punch the next order.
-  useEffect(() => {
-    if (state.success) {
-      setLines({});
-      setSearch("");
-      setSelectedCategoryId("all");
-    }
-  }, [state]);
+  function clearTicket() {
+    setLines({});
+    setSearch("");
+    setSelectedCategoryId("all");
+  }
 
   const availableItems = useMemo(
     () => menu.items.filter((item) => item.is_available),
@@ -175,8 +193,109 @@ export function StaffOrderEntry({
     ...(line.options && line.options.length > 0 ? { options: line.options } : {})
   }));
 
+  // Build the payload, try to send it live within a short timeout, and fall
+  // back to the device outbox on any network/timeout failure. Either way the
+  // ticket clears so staff can immediately punch the next order — a slow or
+  // dead connection never blocks the counter.
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (ticketLines.length === 0 || pending) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as
+      | HTMLButtonElement
+      | null;
+    const action = submitter?.value ?? "kitchen";
+
+    if (!isStaffOrderActionKind(action)) {
+      return;
+    }
+
+    const formData = new FormData(form);
+    const readField = (key: string) => String(formData.get(key) ?? "").trim();
+
+    const payload: StaffOrderPayload = {
+      clientOrderId: crypto.randomUUID(),
+      restaurantId,
+      punchedAt: new Date().toISOString(),
+      action,
+      fulfilmentType,
+      items: cartPayload,
+      tableNumber: readField("table_number"),
+      deliveryArea: readField("delivery_area"),
+      deliveryAddress: readField("delivery_address"),
+      deliveryLandmark: readField("delivery_landmark"),
+      carPlateNumber: readField("car_plate_number"),
+      carDescription: readField("car_description"),
+      customerName: readField("customer_name"),
+      customerPhone: readField("customer_phone"),
+      notes: readField("notes")
+    };
+
+    setPending(true);
+    setFeedback(null);
+
+    const queueOffline = async () => {
+      try {
+        await enqueue(payload, total);
+        clearTicket();
+        setFeedback({
+          kind: "queued",
+          message: "No connection — order saved on this device. It will sync automatically."
+        });
+      } catch {
+        setFeedback({
+          kind: "error",
+          message: "Offline saving isn't available on this device. Check your connection and try again."
+        });
+      }
+    };
+
+    try {
+      // Offline devices skip the doomed round-trip and queue immediately.
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await queueOffline();
+        return;
+      }
+
+      const result = await withTimeout(
+        submitStaffOrderAction(payload),
+        LIVE_SUBMIT_TIMEOUT_MS
+      );
+
+      if (result.error) {
+        // A real server rejection (e.g. item unavailable) — surface it and
+        // keep the ticket so staff can fix it. Not a connectivity problem.
+        setFeedback({ kind: "error", message: result.error });
+      } else {
+        clearTicket();
+        setFeedback({
+          kind: "success",
+          message: result.success ?? "Order saved."
+        });
+      }
+    } catch {
+      // Timed out or the request threw (offline / slow) — queue it.
+      await queueOffline();
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <div className="grid gap-6 pb-24 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:pb-0">
+    <div className="space-y-6">
+      {/* Offline queue — orders punched while disconnected, waiting to sync. */}
+      <QueuedOrdersPanel
+        onDiscard={discard}
+        onRetry={retry}
+        queue={queue}
+        syncingId={syncingId}
+      />
+
+      <div className="grid gap-6 pb-24 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:pb-0">
       {/* Menu picker */}
       <section className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
         <label className="relative block">
@@ -275,8 +394,8 @@ export function StaffOrderEntry({
       {/* Ticket */}
       <section className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
         <form
-          action={action}
           className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
+          onSubmit={handleSubmit}
         >
           <h2 className="shrink-0 text-lg font-black">Ticket</h2>
 
@@ -474,10 +593,6 @@ export function StaffOrderEntry({
           {/* Close scrollable order body */}
           </div>
 
-          {/* Hidden submitted values */}
-          <input name="items" type="hidden" value={JSON.stringify(cartPayload)} />
-          <input name="fulfilment_type" type="hidden" value={fulfilmentType} />
-
           {/* Pinned footer: totals + actions stay visible without scrolling */}
           <div className="mt-3 shrink-0 space-y-3 border-t border-stone-100 pt-3">
             <div className="space-y-1">
@@ -499,14 +614,18 @@ export function StaffOrderEntry({
               </div>
             </div>
 
-            {state.error || state.success ? (
+            {feedback ? (
               <p
                 className={`rounded-lg px-3 py-2 text-sm font-bold ${
-                  state.error ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-800"
+                  feedback.kind === "error"
+                    ? "bg-rose-50 text-rose-700"
+                    : feedback.kind === "queued"
+                      ? "bg-amber-50 text-amber-800"
+                      : "bg-emerald-50 text-emerald-800"
                 }`}
                 role="status"
               >
-                {state.error ?? state.success}
+                {feedback.message}
               </p>
             ) : null}
 
@@ -566,6 +685,7 @@ export function StaffOrderEntry({
           ) : null}
         </form>
       </section>
+      </div>
 
       {pickerItem ? (
         <ItemOptionsSheet
