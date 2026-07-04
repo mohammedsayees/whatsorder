@@ -7,6 +7,14 @@ import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
+import {
+  clampPunchedAt,
+  isClientOrderId,
+  isDuplicateClientOrderError,
+  isStaffOrderActionKind,
+  payloadField,
+  type StaffOrderPayload
+} from "@/lib/staff-order-payload";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import type { FulfilmentType, OrderStatus, PaymentMethod } from "@/lib/types";
@@ -34,9 +42,12 @@ function field(formData: FormData, key: string, maxLength: number) {
   return String(formData.get(key) ?? "").trim().slice(0, maxLength);
 }
 
-export async function createStaffOrderAction(
-  _previousState: StaffOrderState,
-  formData: FormData
+// Single entry point for punched orders: the punch screen calls it live, and
+// the device outbox replays the identical payload after an outage. The
+// client_order_id unique index makes replays idempotent, so a retry can never
+// double-punch an order.
+export async function submitStaffOrderAction(
+  payload: StaffOrderPayload
 ): Promise<StaffOrderState> {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
@@ -45,10 +56,20 @@ export async function createStaffOrderAction(
     return { error: "Order service is unavailable." };
   }
 
+  // A queued order from a device whose login has since switched restaurants
+  // must never sync into the wrong tenant.
+  if (payload?.restaurantId !== session.restaurantId) {
+    return { error: "This order was punched under a different restaurant login." };
+  }
+
+  if (!isClientOrderId(payload.clientOrderId)) {
+    return { error: "The order could not be read. Please rebuild the ticket." };
+  }
+
   let items;
 
   try {
-    items = parseAndValidateCart(String(formData.get("items") ?? ""));
+    items = parseAndValidateCart(JSON.stringify(payload.items ?? []));
   } catch {
     return { error: "The order items could not be read. Please rebuild the ticket." };
   }
@@ -57,7 +78,9 @@ export async function createStaffOrderAction(
     return { error: "Add at least one item to the order." };
   }
 
-  // Prices are re-verified against the live menu — never trusted from the form.
+  // Prices are re-verified against the live menu — never trusted from the
+  // device. A queued order punched against a stale cached menu still gets the
+  // current server-side price check at sync time.
   const [menu, offers, optionCatalog] = await Promise.all([
     getMenu(session.restaurantId, { admin: true }),
     getMenuOffers(session.restaurantId, { admin: true }),
@@ -69,19 +92,19 @@ export async function createStaffOrderAction(
     return { error: verified.error };
   }
 
-  const fulfilmentType = field(formData, "fulfilment_type", 30) as FulfilmentType;
+  const fulfilmentType = payloadField(payload.fulfilmentType, 30) as FulfilmentType;
 
   // Mirror the customer checkout: only accept channels this restaurant offers.
   if (!isFulfilmentEnabled(session.restaurant, fulfilmentType)) {
     return { error: "That order type is not available for this restaurant." };
   }
 
-  const tableNumber = field(formData, "table_number", 40);
-  const deliveryArea = field(formData, "delivery_area", 120);
-  const deliveryAddress = field(formData, "delivery_address", 500);
-  const deliveryLandmark = field(formData, "delivery_landmark", 250);
-  const carPlateNumber = field(formData, "car_plate_number", 40);
-  const carDescription = field(formData, "car_description", 120);
+  const tableNumber = payloadField(payload.tableNumber, 40);
+  const deliveryArea = payloadField(payload.deliveryArea, 120);
+  const deliveryAddress = payloadField(payload.deliveryAddress, 500);
+  const deliveryLandmark = payloadField(payload.deliveryLandmark, 250);
+  const carPlateNumber = payloadField(payload.carPlateNumber, 40);
+  const carDescription = payloadField(payload.carDescription, 120);
 
   if (fulfilmentType === "dine_in" && !tableNumber) {
     return { error: "Enter a table number for dine-in orders." };
@@ -95,20 +118,19 @@ export async function createStaffOrderAction(
     return { error: "Enter the delivery area and address." };
   }
 
-  const orderAction = staffOrderActions[field(formData, "action", 20)];
-
-  if (!orderAction) {
+  if (!isStaffOrderActionKind(payload.action)) {
     return { error: "Choose how to save the order." };
   }
 
-  const customerName = field(formData, "customer_name", 120) || "Walk-in customer";
-  const customerPhone = field(formData, "customer_phone", 24);
+  const orderAction = staffOrderActions[payload.action];
+  const customerName = payloadField(payload.customerName, 120) || "Walk-in customer";
+  const customerPhone = payloadField(payload.customerPhone, 24);
 
   if (customerPhone && !isValidCustomerPhone(customerPhone)) {
     return { error: "Enter a valid phone number, or leave it blank." };
   }
 
-  const notes = field(formData, "notes", 1000);
+  const notes = payloadField(payload.notes, 1000);
   const subtotal = verified.subtotal;
   const deliveryFee =
     fulfilmentType === "delivery" ? Number(session.restaurant.delivery_fee) || 0 : 0;
@@ -131,6 +153,8 @@ export async function createStaffOrderAction(
   const isDelivery = fulfilmentType === "delivery";
   const { error } = await supabase.from("orders").insert({
     restaurant_id: session.restaurantId,
+    client_order_id: payload.clientOrderId,
+    punched_at: clampPunchedAt(payload.punchedAt),
     customer_name: customerName,
     customer_phone: customerPhone,
     fulfilment_type: fulfilmentType,
@@ -158,6 +182,13 @@ export async function createStaffOrderAction(
   });
 
   if (error) {
+    // A replay of an order that already landed (e.g. the first attempt timed
+    // out on slow internet after the insert succeeded) is a success, not a
+    // failure — the outbox can safely drop it.
+    if (isDuplicateClientOrderError(error)) {
+      return { success: "Order already synced." };
+    }
+
     console.error("WhatsOrder staff order creation failed", {
       code: error.code,
       message: error.message,
