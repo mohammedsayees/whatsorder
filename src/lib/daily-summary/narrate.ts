@@ -21,47 +21,43 @@ const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 const SYSTEM_PROMPT = `You are the sharpest café general manager in the UAE, writing a short WhatsApp
 update to the owner about YESTERDAY's trading. You are given the numbers as JSON.
-You don't just report — you read the numbers, find the ONE thing that matters
-most today, and tell the owner exactly what to do about it.
+You don't just report — you find the ONE change or opportunity that matters most
+and tell the owner exactly what to do to grow orders or basket size.
 
-How you think (do this silently, then write):
-1. DIAGNOSE — find the single biggest signal in the data. Is it a problem
-   (falling orders, shrinking baskets, cancellations, a dead hour) or an
-   opportunity (a hot combo, a strong hero item, a busy hour to exploit)?
-   Compare against prev_count and last_week_count — a great manager remembers
-   yesterday and last week, not just today.
-2. PRESCRIBE — give ONE specific, time-boxed action the owner can run TODAY with
-   what they already have. Not "run a promo" — say what, when, and roughly how.
-3. QUANTIFY — where the data supports it, hint at the upside so it's worth their
-   morning ("your 3pm hour is empty — filling it is where the next orders are").
+How you think (silently, then write):
+1. DIAGNOSE the single biggest signal. Judge the day against dow_avg_count (its
+   own weekday's 4-week average) and last_week_count — not just yesterday. A day
+   can look big against a slow prior day yet be soft for its weekday.
+2. PRESCRIBE one specific, time-boxed action the owner can run TODAY.
+3. QUANTIFY the upside from the data where you can.
 
-Pick the action that fits the data:
-- Quietest hour (deadest_hour): a targeted offer aimed only at that window.
-- Busiest hour (busiest_hour): pre-batch the top item / cut wait times so you
-  stop losing walk-outs at peak.
-- Items ordered together (top_combo): turn the pair into a named, priced combo
-  to lift average order value.
-- Average order value falling: add one upsell prompt at checkout.
-- Orders down but each bigger: it's a reach problem — push a broadcast to
-  lapsed customers.
-- Cancellations rising (cancelled_count): it's operational, not demand — check
-  prep times at peak.
-- One item carrying the day (top_item): feature it as the hero in today's
-  broadcast; lean into what's already winning.
+Signals and the growth move each points to:
+- contact_capture_rate low: most customers are anonymous and can't be brought
+  back. Push to capture contacts (ask at checkout / loyalty stamp). Suggest
+  messaging past customers ONLY if marketable_count > 0 — never tell them to
+  message people who did not consent.
+- item_riser: lean in — make it today's hero.
+- item_faller: a fading item — feature it or retire it.
+- aov_this_week below aov_prev_week: baskets are shrinking — add an upsell or combo.
+- top_combo: turn the pair into a named, priced combo to lift basket size.
+- deadest_hour: a targeted offer aimed only at that quiet window.
+- busiest_hour: pre-batch / cut waits so you stop losing people at peak.
+- cancelled_count high: operational — check prep time at peak.
 
 Style:
-- 4 to 6 short lines. Lead with the verdict, not a number ("Solid day, but your
-  afternoon is the weak spot").
-- Warm, direct, and a little opinionated — you have a point of view.
-- End with the single action. One insight, one action — never a list of tips.
+- 4 to 6 short lines. Lead with the verdict, not a number.
+- Keep the useful facts (busy/quiet hour, top item) AND end with ONE clear action.
+- Warm, direct, a little opinionated. One insight, one action — never a list.
 
 Hard rules (never break these):
 - Use ONLY the numbers provided. Never invent, change, or round any figure.
-- Put "AED" only in front of the gross_revenue and avg_order_value figures, nowhere else.
+- Put "AED" only in front of money figures (gross_revenue, avg_order_value,
+  aov_this_week, aov_prev_week), nowhere else.
 - If order_count is 0, write ONE encouraging line with one concrete idea to pull
   people in today, and nothing else.
 - Mention the week-over-week change ONLY if last_week_count is greater than 0.
 - Mention cancellations ONLY if cancelled_count is greater than 0.
+- Never suggest messaging customers unless marketable_count is greater than 0.
 - No greeting fluff, no markdown, no emojis (one is fine only if it truly fits).`;
 
 /**
@@ -132,7 +128,12 @@ async function geminiGenerate(prompt: string): Promise<string> {
  * the narration is rejected and the caller uses the deterministic template.
  */
 export function aedAmountsGrounded(text: string, numbers: DailyNumbers): boolean {
-  const allowed = [numbers.gross_revenue, numbers.avg_order_value];
+  const allowed = [
+    numbers.gross_revenue,
+    numbers.avg_order_value,
+    numbers.aov_this_week,
+    numbers.aov_prev_week
+  ];
   const matches = text.matchAll(/AED\s*([\d,]+(?:\.\d+)?)/gi);
   for (const match of matches) {
     const value = Number(match[1].replace(/,/g, ""));
@@ -158,51 +159,87 @@ export function buildTemplateMessage(numbers: DailyNumbers, name: string): strin
 
   const lines: string[] = [];
 
-  // Lead with a verdict, keep the day-over-day delta framing.
-  const verdict =
-    numbers.delta_vs_prev > 0
-      ? "good day"
-      : numbers.delta_vs_prev < 0
-        ? "slower day"
-        : "steady day";
-  const delta =
-    numbers.delta_vs_prev === 0
-      ? "same as the day before"
-      : numbers.delta_vs_prev > 0
-        ? `up ${numbers.delta_vs_prev} on the day before`
-        : `down ${Math.abs(numbers.delta_vs_prev)} on the day before`;
+  // Verdict prefers the same-day-last-week comparison (steadier than a single
+  // prior day); falls back to day-over-day when there's no last-week baseline.
+  const wow = numbers.last_week_count > 0;
+  const trend = wow ? numbers.delta_vs_last_week : numbers.delta_vs_prev;
+  const verdict = trend > 0 ? "good day" : trend < 0 ? "slower day" : "steady day";
+  const compare =
+    trend === 0
+      ? wow
+        ? "level with the same day last week"
+        : "same as the day before"
+      : `${trend > 0 ? "up" : "down"} ${Math.abs(trend)} ${
+          wow ? "on the same day last week" : "on the day before"
+        }`;
 
   lines.push(
-    `${name}: ${verdict} yesterday — ${numbers.order_count} orders (${delta}), ${formatAED(
+    `${name}: ${verdict} yesterday — ${numbers.order_count} orders (${compare}), ${formatAED(
       numbers.gross_revenue
     )} in.`
   );
-  lines.push(`Each basket averaged ${formatAED(numbers.avg_order_value)}.`);
 
-  // Manager discipline: one insight, one action. Surface only the single most
-  // important signal, in priority order, rather than dumping every stat.
-  if (numbers.cancelled_count > 0) {
-    lines.push(
-      `${numbers.cancelled_count} order(s) cancelled — usually prep time at peak, not lost demand. Worth a quick check.`
-    );
-  } else if (numbers.top_combo) {
-    lines.push(
-      `${numbers.top_combo.a} + ${numbers.top_combo.b} keep getting ordered together — turn that pair into a named combo to lift the average basket.`
-    );
-  } else if (
-    numbers.deadest_hour !== null &&
-    numbers.deadest_hour !== numbers.busiest_hour
-  ) {
-    lines.push(
-      `Your ${numbers.deadest_hour}:00 lull is the empty seat to target — run a small offer aimed only at that window.`
-    );
-  } else if (numbers.top_item) {
-    lines.push(
-      `${numbers.top_item.name} carried the day (${numbers.top_item.qty} sold) — make it the hero in today's broadcast.`
-    );
+  // Keep the operational facts the owner runs the shop on (top item, hours).
+  const facts: string[] = [];
+  if (numbers.top_item) {
+    facts.push(`${numbers.top_item.name} led (${numbers.top_item.qty} sold)`);
+  }
+  if (numbers.busiest_hour !== null) {
+    const quiet =
+      numbers.deadest_hour !== null && numbers.deadest_hour !== numbers.busiest_hour
+        ? `, quiet at ${numbers.deadest_hour}:00`
+        : "";
+    facts.push(`busiest ${numbers.busiest_hour}:00${quiet}`);
+  }
+  if (facts.length > 0) {
+    lines.push(`${facts.join("; ")}.`);
   }
 
+  // ...then ONE growth action, most important signal first.
+  lines.push(managerAction(numbers));
+
   return lines.join("\n");
+}
+
+/**
+ * The single most valuable action for the day, chosen deterministically. Ordered
+ * so a real leak (material cancellations) beats a growth lever, and a trivial
+ * one never wins. Mirrors the LLM's "one insight, one action" discipline so the
+ * fallback reads like the same manager.
+ */
+function managerAction(n: DailyNumbers): string {
+  // A real operational leak — material, not one stray cancellation.
+  if (n.cancelled_count >= 3 && n.cancelled_count > n.order_count * 0.05) {
+    return `${n.cancelled_count} cancellations — usually prep time at peak. Tighten the busy hour so you stop losing them.`;
+  }
+  // The biggest lever when most customers stay anonymous: capture contacts.
+  if (n.contact_capture_rate !== null && n.contact_capture_rate < 0.5) {
+    const pct = Math.round(n.contact_capture_rate * 100);
+    return `Only ${pct}% left a contact — the rest you can't win back. Ask for a number or offer a loyalty stamp at checkout to build a base you can re-market to.`;
+  }
+  // A fading favourite worth defending.
+  if (n.item_faller && n.item_faller.this_week < n.item_faller.prev_week) {
+    return `${n.item_faller.name} is sliding (${n.item_faller.prev_week} to ${n.item_faller.this_week} this week) — feature it today or swap it out.`;
+  }
+  // Shrinking baskets — lift the average with a bundle.
+  if (n.aov_this_week < n.aov_prev_week && n.top_combo) {
+    return `Baskets are shrinking. ${n.top_combo.a} + ${n.top_combo.b} keep selling together — make it a named combo to lift the average.`;
+  }
+  if (n.top_combo) {
+    return `${n.top_combo.a} + ${n.top_combo.b} keep selling together — make it a named combo to lift the basket.`;
+  }
+  // A dead window to fill.
+  if (n.deadest_hour !== null && n.deadest_hour !== n.busiest_hour) {
+    return `${n.deadest_hour}:00 is your quiet window — run a small offer aimed only at that hour.`;
+  }
+  // Lean into a rising or leading item.
+  if (n.item_riser) {
+    return `${n.item_riser.name} is climbing (${n.item_riser.prev_week} to ${n.item_riser.this_week}) — push it as today's hero.`;
+  }
+  if (n.top_item) {
+    return `${n.top_item.name} carried the day — make it the hero in today's broadcast.`;
+  }
+  return "Pick one item to feature today and push it in a quick broadcast.";
 }
 
 /**
