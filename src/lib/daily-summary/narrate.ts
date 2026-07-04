@@ -19,17 +19,50 @@ function sleep(ms: number) {
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-const SYSTEM_PROMPT = `You write a short daily WhatsApp update for a café owner in the UAE about YESTERDAY's trading.
-You are given the numbers as JSON. Write 4 to 6 short lines in plain, warm language.
+const SYSTEM_PROMPT = `You are the sharpest café general manager in the UAE, writing a short WhatsApp
+update to the owner about YESTERDAY's trading. You are given the numbers as JSON.
+You don't just report — you read the numbers, find the ONE thing that matters
+most today, and tell the owner exactly what to do about it.
 
-Hard rules:
+How you think (do this silently, then write):
+1. DIAGNOSE — find the single biggest signal in the data. Is it a problem
+   (falling orders, shrinking baskets, cancellations, a dead hour) or an
+   opportunity (a hot combo, a strong hero item, a busy hour to exploit)?
+   Compare against prev_count and last_week_count — a great manager remembers
+   yesterday and last week, not just today.
+2. PRESCRIBE — give ONE specific, time-boxed action the owner can run TODAY with
+   what they already have. Not "run a promo" — say what, when, and roughly how.
+3. QUANTIFY — where the data supports it, hint at the upside so it's worth their
+   morning ("your 3pm hour is empty — filling it is where the next orders are").
+
+Pick the action that fits the data:
+- Quietest hour (deadest_hour): a targeted offer aimed only at that window.
+- Busiest hour (busiest_hour): pre-batch the top item / cut wait times so you
+  stop losing walk-outs at peak.
+- Items ordered together (top_combo): turn the pair into a named, priced combo
+  to lift average order value.
+- Average order value falling: add one upsell prompt at checkout.
+- Orders down but each bigger: it's a reach problem — push a broadcast to
+  lapsed customers.
+- Cancellations rising (cancelled_count): it's operational, not demand — check
+  prep times at peak.
+- One item carrying the day (top_item): feature it as the hero in today's
+  broadcast; lean into what's already winning.
+
+Style:
+- 4 to 6 short lines. Lead with the verdict, not a number ("Solid day, but your
+  afternoon is the weak spot").
+- Warm, direct, and a little opinionated — you have a point of view.
+- End with the single action. One insight, one action — never a list of tips.
+
+Hard rules (never break these):
 - Use ONLY the numbers provided. Never invent, change, or round any figure.
 - Put "AED" only in front of the gross_revenue and avg_order_value figures, nowhere else.
-- If order_count is 0, write ONE encouraging line and nothing else.
+- If order_count is 0, write ONE encouraging line with one concrete idea to pull
+  people in today, and nothing else.
 - Mention the week-over-week change ONLY if last_week_count is greater than 0.
 - Mention cancellations ONLY if cancelled_count is greater than 0.
-- No greeting fluff, no emojis (one is fine only if it truly fits), no markdown.
-End with ONE concrete, actionable suggestion drawn from the data.`;
+- No greeting fluff, no markdown, no emojis (one is fine only if it truly fits).`;
 
 /**
  * Low-level text generation via Gemini, mirroring the retry-on-503/429 shape of
@@ -120,40 +153,53 @@ export function aedAmountsGrounded(text: string, numbers: DailyNumbers): boolean
  */
 export function buildTemplateMessage(numbers: DailyNumbers, name: string): string {
   if (numbers.order_count === 0) {
-    return `${name}: quiet day yesterday — 0 orders. Want to push a 3–5pm offer to pull people in?`;
+    return `${name}: quiet one yesterday — no orders came through. Don't let today go the same way: send a WhatsApp broadcast this morning with one clear offer to pull people in.`;
   }
 
   const lines: string[] = [];
 
+  // Lead with a verdict, keep the day-over-day delta framing.
+  const verdict =
+    numbers.delta_vs_prev > 0
+      ? "good day"
+      : numbers.delta_vs_prev < 0
+        ? "slower day"
+        : "steady day";
   const delta =
     numbers.delta_vs_prev === 0
       ? "same as the day before"
       : numbers.delta_vs_prev > 0
-        ? `up ${numbers.delta_vs_prev} from ${numbers.prev_count} the day before`
-        : `down ${Math.abs(numbers.delta_vs_prev)} from ${numbers.prev_count} the day before`;
+        ? `up ${numbers.delta_vs_prev} on the day before`
+        : `down ${Math.abs(numbers.delta_vs_prev)} on the day before`;
 
   lines.push(
-    `${name}: yesterday you had ${numbers.order_count} orders (${delta}), ${formatAED(
+    `${name}: ${verdict} yesterday — ${numbers.order_count} orders (${delta}), ${formatAED(
       numbers.gross_revenue
-    )} in sales.`
+    )} in.`
   );
-  lines.push(`Average order was ${formatAED(numbers.avg_order_value)}.`);
+  lines.push(`Each basket averaged ${formatAED(numbers.avg_order_value)}.`);
 
-  if (numbers.top_item) {
-    lines.push(`Top seller: ${numbers.top_item.name} (${numbers.top_item.qty} sold).`);
-  }
-  if (numbers.top_combo) {
-    lines.push(`Most ordered together: ${numbers.top_combo.a} + ${numbers.top_combo.b}.`);
-  }
-  if (numbers.busiest_hour !== null) {
-    const dead =
-      numbers.deadest_hour !== null && numbers.deadest_hour !== numbers.busiest_hour
-        ? `, quietest around ${numbers.deadest_hour}:00`
-        : "";
-    lines.push(`Busiest around ${numbers.busiest_hour}:00${dead}.`);
-  }
+  // Manager discipline: one insight, one action. Surface only the single most
+  // important signal, in priority order, rather than dumping every stat.
   if (numbers.cancelled_count > 0) {
-    lines.push(`${numbers.cancelled_count} order(s) were cancelled — worth a quick look.`);
+    lines.push(
+      `${numbers.cancelled_count} order(s) cancelled — usually prep time at peak, not lost demand. Worth a quick check.`
+    );
+  } else if (numbers.top_combo) {
+    lines.push(
+      `${numbers.top_combo.a} + ${numbers.top_combo.b} keep getting ordered together — turn that pair into a named combo to lift the average basket.`
+    );
+  } else if (
+    numbers.deadest_hour !== null &&
+    numbers.deadest_hour !== numbers.busiest_hour
+  ) {
+    lines.push(
+      `Your ${numbers.deadest_hour}:00 lull is the empty seat to target — run a small offer aimed only at that window.`
+    );
+  } else if (numbers.top_item) {
+    lines.push(
+      `${numbers.top_item.name} carried the day (${numbers.top_item.qty} sold) — make it the hero in today's broadcast.`
+    );
   }
 
   return lines.join("\n");
