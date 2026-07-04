@@ -47,7 +47,7 @@ describe("aedAmountsGrounded", () => {
 describe("buildTemplateMessage", () => {
   it("renders an encouraging one-liner on a zero-order day", () => {
     const message = buildTemplateMessage(numbers({ order_count: 0 }), "Chai Xpress");
-    expect(message).toContain("0 orders");
+    expect(message).toContain("no orders");
     expect(message.split("\n")).toHaveLength(1);
   });
 
@@ -55,8 +55,26 @@ describe("buildTemplateMessage", () => {
     const n = numbers();
     const message = buildTemplateMessage(n, "Chai Xpress");
     expect(message).toContain("110 orders");
-    expect(message).toContain("Karak Tea");
+    // Highest-priority insight for this data is the cancellation, not the hero item.
+    expect(message).toContain("cancelled");
     expect(aedAmountsGrounded(message, n)).toBe(true);
+  });
+
+  it("surfaces a single insight in priority order (cancellation wins over combo)", () => {
+    const message = buildTemplateMessage(numbers(), "Chai Xpress");
+    // One insight, one action: with a cancellation present the combo line is held back.
+    expect(message).toContain("cancelled");
+    expect(message).not.toContain("ordered together");
+  });
+
+  it("falls through to the hero item when no cancellation, combo, or dead hour applies", () => {
+    const message = buildTemplateMessage(
+      // deadest_hour === busiest_hour disables the lull line.
+      numbers({ cancelled_count: 0, top_combo: null, deadest_hour: 18 }),
+      "Chai Xpress"
+    );
+    expect(message).toContain("Karak Tea");
+    expect(message).not.toContain("cancelled");
   });
 
   it("omits the combo and cancellation lines when absent", () => {
