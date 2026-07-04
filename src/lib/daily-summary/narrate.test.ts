@@ -13,9 +13,16 @@ function numbers(overrides: Partial<DailyNumbers> = {}): DailyNumbers {
     last_week_count: 0,
     delta_vs_prev: 22,
     delta_vs_last_week: 110,
+    dow_avg_count: 90,
     cancelled_count: 1,
+    contact_capture_rate: 0.15,
+    marketable_count: 4,
     top_item: { name: "Karak Tea", qty: 73 },
     top_combo: { a: "cake", b: "Karak Tea", count: 5 },
+    item_riser: { name: "Iced latte", this_week: 40, prev_week: 25 },
+    item_faller: { name: "Samosa", this_week: 10, prev_week: 30 },
+    aov_this_week: 4.9,
+    aov_prev_week: 5.2,
     busiest_hour: 18,
     deadest_hour: 6,
     ...overrides
@@ -42,6 +49,11 @@ describe("aedAmountsGrounded", () => {
     const text = "110 orders, AED 522.50. Try a 3-5pm offer to lift the 6:00 lull.";
     expect(aedAmountsGrounded(text, numbers())).toBe(true);
   });
+
+  it("accepts the weekly basket-size figures (aov_this_week / aov_prev_week)", () => {
+    const text = "Baskets softened from AED 5.20 to AED 4.90 this week.";
+    expect(aedAmountsGrounded(text, numbers())).toBe(true);
+  });
 });
 
 describe("buildTemplateMessage", () => {
@@ -51,39 +63,44 @@ describe("buildTemplateMessage", () => {
     expect(message.split("\n")).toHaveLength(1);
   });
 
-  it("includes only grounded figures and stays AED-grounded", () => {
+  it("keeps the operational facts AND ends with a growth action, staying AED-grounded", () => {
     const n = numbers();
     const message = buildTemplateMessage(n, "Chai Xpress");
     expect(message).toContain("110 orders");
-    // Highest-priority insight for this data is the cancellation, not the hero item.
-    expect(message).toContain("cancelled");
+    // Facts the owner runs the shop on are retained.
+    expect(message).toContain("Karak Tea");
+    expect(message).toContain("18:00");
+    // ...and it closes on a real action — here the low contact-capture lever.
+    expect(message).toContain("15%");
     expect(aedAmountsGrounded(message, n)).toBe(true);
   });
 
-  it("surfaces a single insight in priority order (cancellation wins over combo)", () => {
-    const message = buildTemplateMessage(numbers(), "Chai Xpress");
-    // One insight, one action: with a cancellation present the combo line is held back.
-    expect(message).toContain("cancelled");
-    expect(message).not.toContain("ordered together");
-  });
-
-  it("falls through to the hero item when no cancellation, combo, or dead hour applies", () => {
+  it("uses the same-day-last-week comparison for the verdict when available", () => {
     const message = buildTemplateMessage(
-      // deadest_hour === busiest_hour disables the lull line.
-      numbers({ cancelled_count: 0, top_combo: null, deadest_hour: 18 }),
+      numbers({ last_week_count: 120, delta_vs_last_week: -10 }),
       "Chai Xpress"
     );
-    expect(message).toContain("Karak Tea");
-    expect(message).not.toContain("cancelled");
+    expect(message).toContain("slower day");
+    expect(message).toContain("same day last week");
   });
 
-  it("omits the combo and cancellation lines when absent", () => {
+  it("lets a material cancellation count headline the action", () => {
+    const message = buildTemplateMessage(numbers({ cancelled_count: 6 }), "Chai Xpress");
+    expect(message).toContain("cancellations");
+  });
+
+  it("never lets a single trivial cancellation win the action", () => {
+    const message = buildTemplateMessage(numbers({ cancelled_count: 1 }), "Chai Xpress");
+    expect(message).not.toContain("cancellations");
+  });
+
+  it("defends a fading item once contacts are captured and there is no leak", () => {
     const message = buildTemplateMessage(
-      numbers({ top_combo: null, cancelled_count: 0 }),
+      numbers({ contact_capture_rate: 0.9, cancelled_count: 0 }),
       "Chai Xpress"
     );
-    expect(message).not.toContain("ordered together");
-    expect(message).not.toContain("cancelled");
+    expect(message).toContain("Samosa");
+    expect(message).toContain("sliding");
   });
 });
 
