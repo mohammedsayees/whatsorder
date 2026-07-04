@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CloudOff, RefreshCw, Trash2 } from "lucide-react";
+import { CloudOff, Printer, RefreshCw, Trash2 } from "lucide-react";
 import { submitStaffOrderAction } from "@/app/admin/orders/actions";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
@@ -13,7 +13,14 @@ import {
   updateQueuedOrder,
   type QueuedStaffOrder
 } from "@/lib/offline-outbox";
-import type { StaffOrderActionKind, StaffOrderPayload } from "@/lib/staff-order-payload";
+import { renderOrderTickets } from "@/lib/order-print";
+import { printHtmlDocument } from "@/lib/print-ticket";
+import {
+  staffPayloadToPrintableOrder,
+  type StaffOrderActionKind,
+  type StaffOrderPayload
+} from "@/lib/staff-order-payload";
+import type { Restaurant } from "@/lib/types";
 
 // Sync replays wait longer than a live punch: nothing is blocked on them, and
 // slow connections deserve the extra patience before we call it unreachable.
@@ -167,16 +174,31 @@ function punchTimeLabel(isoTime: string) {
 export function QueuedOrdersPanel({
   queue,
   syncingId,
+  restaurant,
   onRetry,
   onDiscard
 }: {
   queue: QueuedStaffOrder[];
   syncingId: string | null;
+  restaurant: Restaurant;
   onRetry: (clientOrderId: string) => void;
   onDiscard: (clientOrderId: string) => void;
 }) {
   if (queue.length === 0) {
     return null;
+  }
+
+  // Kitchen copy for an order still waiting to sync — the KOT hides prices, so
+  // the offline-only totals are never shown to anyone.
+  function printQueuedKot(entry: QueuedStaffOrder) {
+    printHtmlDocument(
+      renderOrderTickets({
+        order: staffPayloadToPrintableOrder(entry.payload),
+        restaurant,
+        kinds: ["kot"],
+        reprint: { kot: false, receipt: false }
+      })
+    );
   }
 
   return (
@@ -224,6 +246,14 @@ export function QueuedOrdersPanel({
                   </p>
                   <button
                     className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2 py-1 text-xs font-black text-stone-600 hover:bg-stone-50"
+                    onClick={() => printQueuedKot(entry)}
+                    type="button"
+                  >
+                    <Printer size={13} />
+                    KOT
+                  </button>
+                  <button
+                    className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2 py-1 text-xs font-black text-stone-600 hover:bg-stone-50"
                     onClick={() => onRetry(entry.clientOrderId)}
                     type="button"
                   >
@@ -248,9 +278,19 @@ export function QueuedOrdersPanel({
                   </button>
                 </div>
               ) : (
-                <p className="mt-1 text-xs font-bold text-amber-700">
-                  {syncing ? "Syncing…" : "Waiting for connection"}
-                </p>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-amber-700">
+                    {syncing ? "Syncing…" : "Waiting for connection"}
+                  </p>
+                  <button
+                    className="focus-ring inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs font-black text-amber-800 hover:bg-amber-100"
+                    onClick={() => printQueuedKot(entry)}
+                    type="button"
+                  >
+                    <Printer size={13} />
+                    Print KOT
+                  </button>
+                </div>
               )}
             </li>
           );

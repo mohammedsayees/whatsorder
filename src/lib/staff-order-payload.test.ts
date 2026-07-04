@@ -4,7 +4,9 @@ import {
   isClientOrderId,
   isDuplicateClientOrderError,
   isStaffOrderActionKind,
-  payloadField
+  payloadField,
+  staffPayloadToPrintableOrder,
+  type StaffOrderPayload
 } from "@/lib/staff-order-payload";
 
 describe("isClientOrderId", () => {
@@ -84,5 +86,47 @@ describe("payloadField", () => {
     expect(payloadField("abcdef", 3)).toBe("abc");
     expect(payloadField(123, 10)).toBe("");
     expect(payloadField(undefined, 10)).toBe("");
+  });
+});
+
+describe("staffPayloadToPrintableOrder", () => {
+  const basePayload: StaffOrderPayload = {
+    clientOrderId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    restaurantId: "rest-1",
+    punchedAt: "2026-07-04T10:00:00.000Z",
+    action: "paid_cash",
+    fulfilmentType: "dine_in",
+    items: [
+      { item_id: "i1", name: "Green tea", price: 1, quantity: 2 },
+      { item_id: "i2", name: "Cake", price: 3, quantity: 1 }
+    ],
+    tableNumber: "5",
+    deliveryArea: "",
+    deliveryAddress: "",
+    deliveryLandmark: "",
+    carPlateNumber: "",
+    carDescription: "",
+    customerName: "",
+    customerPhone: "",
+    notes: "extra hot"
+  };
+
+  it("projects a queued payload into a printable Order with mapped status", () => {
+    const order = staffPayloadToPrintableOrder(basePayload);
+    expect(order.id).toBe(basePayload.clientOrderId);
+    expect(order.status).toBe("Completed");
+    expect(order.payment_method).toBe("Cash on Delivery");
+    expect(order.table_number).toBe("5");
+    expect(order.customer_name).toBe("Walk-in customer");
+    expect(order.notes).toBe("extra hot");
+    // Indicative subtotal from client prices: 2×1 + 1×3 = 5.
+    expect(order.subtotal).toBe(5);
+    expect(order.created_at).toBe(basePayload.punchedAt);
+  });
+
+  it("maps a kitchen ticket to Preparing with no payment method", () => {
+    const order = staffPayloadToPrintableOrder({ ...basePayload, action: "kitchen" });
+    expect(order.status).toBe("Preparing");
+    expect(order.payment_method).toBeNull();
   });
 });

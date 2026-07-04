@@ -17,11 +17,14 @@ import {
 } from "@/lib/staff-order-payload";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
-import type { FulfilmentType, OrderStatus, PaymentMethod } from "@/lib/types";
+import type { FulfilmentType, Order, OrderStatus, PaymentMethod } from "@/lib/types";
 
 export type StaffOrderState = {
   error?: string;
   success?: string;
+  // The saved order, returned so the punch screen can print its KOT/receipt
+  // without navigating away. Absent on errors and on idempotent replays.
+  order?: Order;
 };
 
 // How the punch screen's buttons map to the new order. "kitchen" sends an
@@ -151,35 +154,40 @@ export async function submitStaffOrderAction(
     .join(", ");
 
   const isDelivery = fulfilmentType === "delivery";
-  const { error } = await supabase.from("orders").insert({
-    restaurant_id: session.restaurantId,
-    client_order_id: payload.clientOrderId,
-    punched_at: clampPunchedAt(payload.punchedAt),
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    fulfilment_type: fulfilmentType,
-    table_number: fulfilmentType === "dine_in" ? tableNumber : null,
-    car_plate_number: fulfilmentType === "car_pickup" ? carPlateNumber : null,
-    car_description: fulfilmentType === "car_pickup" ? carDescription || null : null,
-    delivery_area: isDelivery ? deliveryArea : "",
-    delivery_address: isDelivery ? deliveryAddress : "",
-    delivery_landmark: isDelivery ? deliveryLandmark || null : null,
-    notes: notes || null,
-    // Empty until collected. Counter tickets sent to the kitchen are paid at
-    // completion; "paid now" sales carry the method immediately.
-    payment_method: orderAction.paymentMethod,
-    items: verified.items,
-    subtotal,
-    delivery_fee: deliveryFee,
-    total,
-    status: orderAction.status,
-    source: "staff",
-    shift_id: openShift?.id ?? null,
-    whatsapp_message: ticketSummary,
-    consent_order_processing: true,
-    consent_marketing: false,
-    consent_timestamp: new Date().toISOString()
-  });
+  const { data: insertedOrder, error } = await supabase
+    .from("orders")
+    .insert({
+      restaurant_id: session.restaurantId,
+      client_order_id: payload.clientOrderId,
+      punched_at: clampPunchedAt(payload.punchedAt),
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      fulfilment_type: fulfilmentType,
+      table_number: fulfilmentType === "dine_in" ? tableNumber : null,
+      car_plate_number: fulfilmentType === "car_pickup" ? carPlateNumber : null,
+      car_description: fulfilmentType === "car_pickup" ? carDescription || null : null,
+      delivery_area: isDelivery ? deliveryArea : "",
+      delivery_address: isDelivery ? deliveryAddress : "",
+      delivery_landmark: isDelivery ? deliveryLandmark || null : null,
+      notes: notes || null,
+      // Empty until collected. Counter tickets sent to the kitchen are paid at
+      // completion; "paid now" sales carry the method immediately.
+      payment_method: orderAction.paymentMethod,
+      items: verified.items,
+      subtotal,
+      delivery_fee: deliveryFee,
+      total,
+      status: orderAction.status,
+      source: "staff",
+      shift_id: openShift?.id ?? null,
+      whatsapp_message: ticketSummary,
+      consent_order_processing: true,
+      consent_marketing: false,
+      consent_timestamp: new Date().toISOString()
+    })
+    // Return the saved row so the punch screen can print it immediately.
+    .select("*")
+    .single();
 
   if (error) {
     // A replay of an order that already landed (e.g. the first attempt timed
@@ -205,7 +213,8 @@ export async function submitStaffOrderAction(
     success:
       orderAction.status === "Completed"
         ? "Order saved and marked paid."
-        : "Order sent to the kitchen."
+        : "Order sent to the kitchen.",
+    order: (insertedOrder as Order | null) ?? undefined
   };
 }
 
