@@ -49,7 +49,7 @@ export default async function NewStaffOrderPage() {
             menu={menu}
             optionCatalog={optionCatalog}
             orderTypes={orderTypes}
-            restaurantId={session.restaurantId}
+            restaurant={session.restaurant}
           />
         </div>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Minus, Plus, Search, Trash2 } from "lucide-react";
+import { Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
+import { recordOrderPrintEventsAction } from "@/app/actions";
 import { submitStaffOrderAction } from "@/app/admin/orders/actions";
 import {
   QueuedOrdersPanel,
@@ -14,6 +15,8 @@ import {
 } from "@/components/customer/ItemOptionsSheet";
 import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
+import { renderOrderTickets, type PrintKind } from "@/lib/order-print";
+import { printHtmlDocument } from "@/lib/print-ticket";
 import {
   isStaffOrderActionKind,
   type StaffOrderPayload
@@ -24,7 +27,9 @@ import type {
   FulfilmentType,
   MenuItem,
   MenuOptionCatalog,
-  MenuWithCategories
+  MenuWithCategories,
+  Order,
+  Restaurant
 } from "@/lib/types";
 
 // Ticket lines are keyed by cartLineKey (item + selected options) so the same
@@ -48,9 +53,10 @@ const fulfilmentLabels: Record<FulfilmentType, string> = {
 
 // How the punch submit resolved, shown in the ticket footer. "queued" means
 // the internet was down or too slow, so the order is safely stored on the
-// device and will sync automatically — staff can keep punching.
+// device and will sync automatically — staff can keep punching. On success the
+// saved order rides along so its KOT/receipt can be printed on the spot.
 type SubmitFeedback =
-  | { kind: "success"; message: string }
+  | { kind: "success"; message: string; order?: Order }
   | { kind: "queued"; message: string }
   | { kind: "error"; message: string };
 
@@ -63,14 +69,15 @@ export function StaffOrderEntry({
   menu,
   optionCatalog,
   orderTypes,
-  restaurantId
+  restaurant
 }: {
   deliveryFee: number;
   menu: MenuWithCategories;
   optionCatalog?: MenuOptionCatalog;
   orderTypes: FulfilmentType[];
-  restaurantId: string;
+  restaurant: Restaurant;
 }) {
+  const restaurantId = restaurant.id;
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
@@ -274,7 +281,8 @@ export function StaffOrderEntry({
         clearTicket();
         setFeedback({
           kind: "success",
-          message: result.success ?? "Order saved."
+          message: result.success ?? "Order saved.",
+          order: result.order
         });
       }
     } catch {
@@ -285,6 +293,26 @@ export function StaffOrderEntry({
     }
   }
 
+  // Prints the just-saved order's KOT and/or receipt from the punch screen, so
+  // staff never have to navigate back to the orders list. Reprints are tracked
+  // the same way the orders list does.
+  function printSavedOrder(order: Order, kinds: PrintKind[]) {
+    printHtmlDocument(
+      renderOrderTickets({
+        order,
+        restaurant,
+        kinds,
+        reprint: { kot: false, receipt: false }
+      })
+    );
+
+    void recordOrderPrintEventsAction(
+      order.id,
+      kinds.map((kind) => ({ kind, isReprint: false })),
+      navigator.userAgent
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Offline queue — orders punched while disconnected, waiting to sync. */}
@@ -292,6 +320,7 @@ export function StaffOrderEntry({
         onDiscard={discard}
         onRetry={retry}
         queue={queue}
+        restaurant={restaurant}
         syncingId={syncingId}
       />
 
@@ -627,6 +656,41 @@ export function StaffOrderEntry({
               >
                 {feedback.message}
               </p>
+            ) : null}
+
+            {/* Print the order that was just saved, without leaving the screen. */}
+            {feedback?.kind === "success" && feedback.order ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
+                <p className="mb-2 text-center text-xs font-black uppercase tracking-wide text-emerald-700">
+                  Print for order #{feedback.order.id.slice(-8).toUpperCase()}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
+                    onClick={() => printSavedOrder(feedback.order!, ["kot"])}
+                    type="button"
+                  >
+                    <Printer size={15} />
+                    Print KOT
+                  </button>
+                  <button
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
+                    onClick={() => printSavedOrder(feedback.order!, ["receipt"])}
+                    type="button"
+                  >
+                    <ReceiptText size={15} />
+                    Print Bill
+                  </button>
+                </div>
+                <button
+                  className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-200"
+                  onClick={() => printSavedOrder(feedback.order!, ["kot", "receipt"])}
+                  type="button"
+                >
+                  <Files size={15} />
+                  Print Both
+                </button>
+              </div>
             ) : null}
 
             {/* Primary flow: payment is collected later, at completion. */}
