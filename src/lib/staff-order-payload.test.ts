@@ -93,7 +93,7 @@ describe("staffPayloadToPrintableOrder", () => {
   const basePayload: StaffOrderPayload = {
     clientOrderId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
     restaurantId: "rest-1",
-    punchedAt: "2026-07-04T10:00:00.000Z",
+    punchedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     action: "paid_cash",
     fulfilmentType: "dine_in",
     items: [

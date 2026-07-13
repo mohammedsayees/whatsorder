@@ -14,8 +14,6 @@ import { isRestaurantAdminAccessAllowed } from "@/lib/security";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
-export type { NewOrderAlertState };
-
 export type RealtimeAccess = {
   accessToken: string;
   restaurantId: string;

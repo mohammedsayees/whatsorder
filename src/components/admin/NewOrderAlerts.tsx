@@ -9,7 +9,11 @@ import {
   getRealtimeAccessTokenAction
 } from "@/app/admin/alerts/actions";
 import type { NewOrderAlertState } from "@/lib/data";
-import { findUnseenOrderIds, rememberOrderIds } from "@/lib/new-order-alerts";
+import {
+  createInitialSeenOrderIds,
+  findUnseenOrderIds,
+  rememberOrderIds
+} from "@/lib/new-order-alerts";
 
 const highlightDurationMs = 9_000;
 const repeatIntervalMs = 18_000;
@@ -145,9 +149,9 @@ export function NewOrderAlertsProvider({
   const pendingOrderIdsRef = useRef(
     new Set(initialNewOrderAlertState.pendingOrderIds)
   );
-  const seenOrderIdsRef = useRef(
-    new Set(initialNewOrderAlertState.pendingOrderIds)
-  );
+  // Pending orders present at startup have not been acknowledged on this device.
+  // The first reconciliation must surface them instead of silently marking them seen.
+  const seenOrderIdsRef = useRef(createInitialSeenOrderIds());
   const highlightTimersRef = useRef(new Map<string, number>());
   const soundEnabledRef = useRef(false);
   const toastSequenceRef = useRef(0);
