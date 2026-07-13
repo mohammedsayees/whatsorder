@@ -31,6 +31,7 @@ const activeOrderStatuses: OrderStatus[] = [
   "Ready to Serve",
   "Out for Delivery"
 ];
+const maxSynchronousReportOrders = 10_000;
 
 export type OrderStatusView = "active" | "completed" | "cancelled";
 export type OrderFulfilmentView = "all" | FulfilmentType;
@@ -361,9 +362,15 @@ export async function getOrdersForReport(
       .eq("restaurant_id", restaurantId)
       .gte("created_at", startIso)
       .lt("created_at", endExclusiveIso)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(maxSynchronousReportOrders + 1);
 
     if (!error && data) {
+      if (data.length > maxSynchronousReportOrders) {
+        throw new Error(
+          "This report contains too many orders for a synchronous export. Choose a shorter range."
+        );
+      }
       return data as Order[];
     }
 
@@ -401,23 +408,29 @@ export async function getCustomersForReport(
       chunks.push(uniquePhones.slice(index, index + 100));
     }
 
-    const results = await Promise.all(
-      chunks.map((phoneChunk) =>
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("restaurant_id", restaurantId)
-          .in("phone", phoneChunk)
-      )
-    );
-    const failedResult = results.find((result) => result.error);
+    const customers: Customer[] = [];
+    let customerQueryFailed = false;
 
-    if (!failedResult) {
-      return results.flatMap((result) => (result.data ?? []) as Customer[]);
+    for (const phoneChunk of chunks) {
+      const result = await supabase
+        .from("customers")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("phone", phoneChunk);
+
+      if (result.error) {
+        customerQueryFailed = true;
+        if (!demoDataEnabled) {
+          productionDataFailure("Report customers", result.error);
+        }
+        break;
+      }
+
+      customers.push(...((result.data ?? []) as Customer[]));
     }
 
-    if (!demoDataEnabled) {
-      productionDataFailure("Report customers", failedResult.error);
+    if (!customerQueryFailed) {
+      return customers;
     }
   } else if (!demoDataEnabled) {
     productionDataFailure("Report customers");

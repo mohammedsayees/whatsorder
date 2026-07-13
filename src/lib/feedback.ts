@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { hashFeedbackToken } from "@/lib/feedback-utils";
 import type {
   CustomerFeedback,
+  PublicCustomerFeedback,
   PublicFeedbackSummary,
   PublicRestaurant,
   Restaurant
@@ -32,7 +33,7 @@ export async function getPublicFeedback(
 
   const { data, error } = await supabase
     .from("customer_feedback")
-    .select("*")
+    .select("id,rating,comment,customer_display_name")
     .eq("restaurant_id", restaurant.id)
     .eq("moderation_status", "approved")
     .order("submitted_at", { ascending: false });
@@ -41,7 +42,7 @@ export async function getPublicFeedback(
     return { averageRating: null, reviewCount: 0, reviews: [] };
   }
 
-  const feedback = data as CustomerFeedback[];
+  const feedback = data as PublicCustomerFeedback[];
   const reviewCount = feedback.length;
   const averageRating =
     reviewCount > 0

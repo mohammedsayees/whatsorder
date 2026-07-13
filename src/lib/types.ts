@@ -265,10 +265,15 @@ export type CustomerFeedback = {
   published_at: string | null;
 };
 
+export type PublicCustomerFeedback = Pick<
+  CustomerFeedback,
+  "id" | "rating" | "comment" | "customer_display_name"
+>;
+
 export type PublicFeedbackSummary = {
   averageRating: number | null;
   reviewCount: number;
-  reviews: CustomerFeedback[];
+  reviews: PublicCustomerFeedback[];
 };
 
 export type RestaurantUser = {

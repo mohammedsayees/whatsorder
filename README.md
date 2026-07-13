@@ -85,6 +85,13 @@ supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
 supabase/20260620_lock_down_public_order_creation.sql
 supabase/20260620_p1_pilot_operations.sql
+supabase/migrations/20260620161000_p0_2a_add_public_restaurant_projection.sql
+supabase/migrations/20260620162000_p0_2b_enforce_public_restaurant_projection.sql
+supabase/migrations/20260620163000_p0_3_least_privilege_rls.sql
+supabase/migrations/20260620163100_p0_3_allow_public_policy_helpers.sql
+supabase/migrations/20260621100000_p0_4_tenant_consistent_foreign_keys.sql
+supabase/migrations/20260621120000_lightweight_shift_cash_summary.sql
+supabase/migrations/20260713000000_security_and_reliability_fixes.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).

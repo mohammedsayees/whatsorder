@@ -9,6 +9,10 @@ export function findUnseenOrderIds(
   );
 }
 
+export function createInitialSeenOrderIds() {
+  return new Set<string>();
+}
+
 export function rememberOrderIds(
   seenOrderIds: Set<string>,
   orderIds: readonly string[],

@@ -11,6 +11,12 @@ to anon, authenticated, service_role;
 grant execute on function public.is_super_admin()
 to anon, authenticated, service_role;
 
+grant execute on function public.is_public_restaurant(uuid)
+to anon, authenticated, service_role;
+
+grant execute on function public.get_public_restaurant(text)
+to anon, authenticated, service_role;
+
 notify pgrst, 'reload schema';
 
 -- Rollback consideration:

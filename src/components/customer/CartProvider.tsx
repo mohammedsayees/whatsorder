@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import type { CartLine, MenuItem, MenuOffer } from "@/lib/types";
+import { parseAndValidateCart } from "@/lib/security";
 
 type CartContextValue = {
   lines: CartLine[];
@@ -44,13 +45,28 @@ export function CartProvider({
         return;
       }
 
-      const saved = window.localStorage.getItem(storageKey);
+      try {
+        const saved = window.localStorage.getItem(storageKey);
 
-      if (saved) {
-        setLines(JSON.parse(saved) as CartLine[]);
+        if (saved) {
+          const savedLines = parseAndValidateCart(saved);
+          setLines(savedLines);
+
+          if (savedLines.length === 0) {
+            window.localStorage.removeItem(storageKey);
+          }
+        }
+      } catch {
+        try {
+          window.localStorage.removeItem(storageKey);
+        } catch {
+          // Storage may be unavailable entirely; an in-memory cart still works.
+        }
+      } finally {
+        if (isMounted) {
+          setIsReady(true);
+        }
       }
-
-      setIsReady(true);
     });
 
     return () => {
@@ -63,8 +79,37 @@ export function CartProvider({
       return;
     }
 
-    window.localStorage.setItem(storageKey, JSON.stringify(lines));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(lines));
+    } catch {
+      // Keep the active in-memory cart usable when storage is unavailable or full.
+    }
   }, [isReady, lines, storageKey]);
+
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== storageKey) {
+        return;
+      }
+
+      if (event.newValue === null) {
+        setLines([]);
+        return;
+      }
+
+      try {
+        const nextLines = parseAndValidateCart(event.newValue);
+        if (nextLines.length > 0 || event.newValue === "[]") {
+          setLines(nextLines);
+        }
+      } catch {
+        // Ignore malformed updates from another tab.
+      }
+    }
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [storageKey]);
 
   const addItem = useCallback((item: MenuItem) => {
     setLines((current) => {

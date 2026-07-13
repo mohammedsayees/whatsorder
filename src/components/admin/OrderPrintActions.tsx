@@ -230,6 +230,7 @@ export function OrderPrintActions({
     receipt: false
   });
   const [printError, setPrintError] = useState<string | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
   const kotAllowed = order.status !== "New" && order.status !== "Cancelled";
   const receiptAllowed = order.status !== "Cancelled";
 
@@ -268,7 +269,12 @@ export function OrderPrintActions({
     });
   }
 
-  async function print(selection: PrintSelection) {
+  function print(selection: PrintSelection) {
+    if (isPrinting) {
+      return;
+    }
+
+    setIsPrinting(true);
     setPrintError(null);
     const kinds: PrintKind[] = selection === "both" ? ["kot", "receipt"] : [selection];
     const content = kinds
@@ -282,6 +288,7 @@ export function OrderPrintActions({
 
     if (!printWindow) {
       setPrintError("Allow pop-ups for WhatsOrder to print this order.");
+      setIsPrinting(false);
       return;
     }
 
@@ -293,19 +300,29 @@ export function OrderPrintActions({
     printWindow.document.close();
     printWindow.focus();
 
-    const trackingResult = await recordOrderPrintEventsAction(
-      order.id,
-      kinds.map((kind) => ({ kind, isReprint: printed[kind] })),
-      navigator.userAgent
-    );
-    if (!trackingResult.ok) {
-      setPrintError(trackingResult.error);
-    }
     markPrinted(kinds);
 
     window.setTimeout(() => {
-      printWindow.print();
+      try {
+        printWindow.print();
+      } finally {
+        setIsPrinting(false);
+      }
     }, 250);
+
+    void recordOrderPrintEventsAction(
+      order.id,
+      kinds.map((kind) => ({ kind, isReprint: printed[kind] })),
+      navigator.userAgent
+    )
+      .then((trackingResult) => {
+        if (!trackingResult.ok) {
+          setPrintError(trackingResult.error);
+        }
+      })
+      .catch(() => {
+        setPrintError("The print opened, but tracking could not be saved.");
+      });
   }
 
   return (
@@ -313,7 +330,7 @@ export function OrderPrintActions({
       <div className="grid grid-cols-2 gap-2">
         <button
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!kotAllowed}
+          disabled={!kotAllowed || isPrinting}
           onClick={() => void print("kot")}
           title={kotAllowed ? "Print kitchen order ticket" : "Accept the order before printing the KOT"}
           type="button"
@@ -323,7 +340,7 @@ export function OrderPrintActions({
         </button>
         <button
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!receiptAllowed}
+          disabled={!receiptAllowed || isPrinting}
           onClick={() => void print("receipt")}
           type="button"
         >
@@ -333,7 +350,7 @@ export function OrderPrintActions({
       </div>
       <button
         className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-200 disabled:cursor-not-allowed disabled:opacity-45"
-        disabled={!kotAllowed || !receiptAllowed}
+        disabled={!kotAllowed || !receiptAllowed || isPrinting}
         onClick={() => void print("both")}
         title={kotAllowed ? "Print kitchen and customer copies" : "Accept the order before printing both copies"}
         type="button"

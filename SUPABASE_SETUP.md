@@ -30,6 +30,13 @@ supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
 supabase/20260620_lock_down_public_order_creation.sql
 supabase/20260620_p1_pilot_operations.sql
+supabase/migrations/20260620161000_p0_2a_add_public_restaurant_projection.sql
+supabase/migrations/20260620162000_p0_2b_enforce_public_restaurant_projection.sql
+supabase/migrations/20260620163000_p0_3_least_privilege_rls.sql
+supabase/migrations/20260620163100_p0_3_allow_public_policy_helpers.sql
+supabase/migrations/20260621100000_p0_4_tenant_consistent_foreign_keys.sql
+supabase/migrations/20260621120000_lightweight_shift_cash_summary.sql
+supabase/migrations/20260713000000_security_and_reliability_fixes.sql
 ```
 
 For an existing project, apply only files that have not already been executed.
@@ -103,16 +110,17 @@ Seeded menu:
 
 Public users can:
 
-- Read active restaurants
+- Read a curated active-restaurant projection through `get_public_restaurant`
 - Read active categories
 - Read available menu items
 
 Public and authenticated Supabase clients cannot insert directly into `orders`.
 Customer checkout must use the Next.js server action, which validates the order
-and calls the service-role-only `create_order_with_customer_v3` RPC.
+and calls the service-role-only `create_order_with_customer_v4` RPC.
 
-Authenticated restaurant users can manage only their own restaurant data through
-`restaurant_users.user_id` and an accepted membership.
+Authenticated restaurant users have tenant-scoped, role-appropriate reads.
+All writes use authenticated server actions and service-role-only RPCs; direct
+browser/JWT table mutations are revoked by the least-privilege migration.
 
 The current app uses server actions with `SUPABASE_SERVICE_ROLE_KEY` for admin operations and customer/order persistence. This keeps the service key server-only.
 
