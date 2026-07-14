@@ -3,6 +3,12 @@ import type { OpeningHours } from "@/lib/opening-hours";
 export type PaymentMethod = "Cash on Delivery" | "Card on Delivery" | "UPI";
 export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
 export type CountryCode = "AE" | "IN";
+export type ShiftMarketplaceChannel =
+  | "talabat"
+  | "noon"
+  | "smiles"
+  | "keeta"
+  | "deliveroo";
 
 export type RestaurantLocalization = {
   country_code: CountryCode;
@@ -59,6 +65,7 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
   public_reviews_enabled?: boolean;
   accepting_orders?: boolean;
   status_notifications_enabled?: boolean;
+  shift_marketplace_channels?: ShiftMarketplaceChannel[];
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
   latitude?: number | null;
@@ -273,6 +280,16 @@ export type RestaurantShift = {
   fulfilment_breakdown: ShiftFulfilmentSummary;
   expected_cash_amount: number | null;
   difference_amount: number | null;
+  card_terminal_total: number | null;
+  card_difference_amount: number | null;
+  upi_reported_total: number | null;
+  upi_difference_amount: number | null;
+  marketplace_sales: ShiftMarketplaceSale[];
+  marketplace_sales_total: number;
+  combined_operational_sales: number;
+  close_report_snapshot: ShiftCloseReportSnapshot | null;
+  close_report_generated_at: string | null;
+  close_report_version: number;
   opened_by_user_id: string;
   closed_by_user_id: string | null;
   opened_at: string;
@@ -281,6 +298,66 @@ export type RestaurantShift = {
   closing_note: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ShiftMarketplaceStatus = "entered" | "zero" | "unavailable";
+
+export type ShiftMarketplaceSale = {
+  channel: ShiftMarketplaceChannel;
+  status: ShiftMarketplaceStatus;
+  order_count: number | null;
+  gross_sales: number | null;
+  note: string | null;
+};
+
+export type ShiftCloseReportSnapshot = {
+  schema_version: number;
+  report_version: number;
+  restaurant_id: string;
+  restaurant_name: string;
+  country_code: CountryCode;
+  currency_code: "AED" | "INR";
+  time_zone: "Asia/Dubai" | "Asia/Kolkata";
+  shift_id: string;
+  shift_name: string;
+  opened_at: string;
+  closed_at: string;
+  opened_by_user_id: string;
+  closed_by_user_id: string;
+  opening_note: string | null;
+  closing_note: string | null;
+  opening_cash_amount: number;
+  expected_cash_amount: number;
+  cash_counted_amount: number;
+  cash_difference_amount: number;
+  expected_card_amount: number;
+  card_terminal_total: number;
+  card_difference_amount: number;
+  expected_upi_amount: number;
+  upi_reported_total: number | null;
+  upi_difference_amount: number | null;
+  completed_order_count: number;
+  completed_sales: number;
+  completed_cash_order_total: number;
+  cash_paid_out_total: number;
+  cancelled_order_count: number;
+  fulfilment_breakdown: ShiftFulfilmentSummary;
+  marketplace_sales: ShiftMarketplaceSale[];
+  marketplace_sales_total: number;
+  combined_operational_sales: number;
+  report_generated_at: string;
+  correction_reason: string | null;
+};
+
+export type ShiftCloseReport = {
+  id: string;
+  restaurant_id: string;
+  shift_id: string;
+  version: number;
+  snapshot: ShiftCloseReportSnapshot;
+  correction_reason: string | null;
+  created_by_user_id: string;
+  created_at: string;
 };
 
 export type ShiftCashPaidOut = {

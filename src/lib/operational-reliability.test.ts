@@ -138,6 +138,23 @@ describe("restaurant operational reliability boundaries", () => {
     expect(shiftForm).toContain("activeOrderCount > 0");
   });
 
+  it("creates shift reports atomically and keeps correction history", () => {
+    const migration = source(
+      "supabase/migrations/20260715130000_shift_close_reconciliation_reports.sql"
+    );
+    const action = source("src/app/admin/shifts/actions.ts");
+    const reportData = source("src/lib/shift-data.ts");
+
+    expect(migration).toContain("create or replace function public.close_restaurant_shift_v2");
+    expect(migration).toContain("insert into public.shift_close_reports");
+    expect(migration).toContain("Cannot close shift while active orders remain");
+    expect(migration).toContain("constraint shift_close_reports_shift_tenant_fkey");
+    expect(migration).toContain("Only restaurant management can correct a closed shift report");
+    expect(action).toContain('supabase.rpc("close_restaurant_shift_v2"');
+    expect(action).toContain("session.restaurantId");
+    expect(reportData).toContain('.eq("restaurant_id", session.restaurantId)');
+  });
+
   it("adds items through a tenant-scoped, idempotent online staff workflow", () => {
     const action = source("src/app/admin/orders/actions.ts");
     const entry = source("src/components/admin/StaffOrderEntry.tsx");
