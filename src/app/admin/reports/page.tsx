@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Download, TrendingUp } from "lucide-react";
-import { formatAED } from "@/lib/currency";
-import { formatUaeDate, formatUaeShortDateTime } from "@/lib/date-time";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantDate, formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCustomersForReport,
   getOrdersForReport
@@ -83,11 +83,21 @@ export default async function AdminReportsPage({
     "owner",
     "manager"
   ]);
+  const money = (value: number) => formatCurrency(value, restaurant);
+  const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
+  const formatDateTime = (value: string | Date) =>
+    formatRestaurantShortDateTime(value, restaurant);
   const query = await searchParams;
   const activeTab = reportTabs.some((tab) => tab.value === query.tab)
     ? (query.tab as ReportTab)
     : "overview";
-  const range = resolveReportRange(query.preset, query.start, query.end);
+  const range = resolveReportRange(
+    query.preset,
+    query.start,
+    query.end,
+    new Date(),
+    restaurant
+  );
   const orders = await getOrdersForReport(
     restaurant.id,
     range.startIso,
@@ -101,7 +111,7 @@ export default async function AdminReportsPage({
     )
   ];
   const customers = await getCustomersForReport(restaurant.id, customerPhones);
-  const report = buildRestaurantReport(orders, customers);
+  const report = buildRestaurantReport(orders, customers, restaurant);
   const exportQuery = new URLSearchParams({
     end: range.endDate,
     preset: range.preset,
@@ -209,8 +219,8 @@ export default async function AdminReportsPage({
       <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["Completed orders", report.completedOrders],
-          ["Completed sales", formatAED(report.sales)],
-          ["Average order", formatAED(report.averageOrderValue)],
+          ["Completed sales", money(report.sales)],
+          ["Average order", money(report.averageOrderValue)],
           ["Cancelled orders", report.cancelledOrders]
         ].map(([label, value]) => (
           <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm" key={label}>
@@ -232,8 +242,8 @@ export default async function AdminReportsPage({
                   {report.salesRows.map((row) => (
                     <div key={row.date}>
                       <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-bold">{formatUaeDate(`${row.date}T00:00:00+04:00`)}</span>
-                        <span className="font-black">{formatAED(row.sales)}</span>
+                        <span className="font-bold">{formatDate(`${row.date}T00:00:00+04:00`)}</span>
+                        <span className="font-black">{money(row.sales)}</span>
                       </div>
                       <PercentageBar value={(row.sales / maximumDailySales) * 100} />
                     </div>
@@ -254,7 +264,7 @@ export default async function AdminReportsPage({
                           <p className="text-xs text-stone-500">{product.quantity} sold</p>
                         </div>
                       </div>
-                      <span className="font-black">{formatAED(product.sales)}</span>
+                      <span className="font-black">{money(product.sales)}</span>
                     </div>
                   ))}
                 </div>
@@ -266,7 +276,7 @@ export default async function AdminReportsPage({
                     <div key={row.fulfilment}>
                       <div className="flex justify-between gap-3 text-sm">
                         <span className="font-bold">{getFulfilmentReportLabel(row.fulfilment)}</span>
-                        <span className="font-black">{row.orderCount} · {formatAED(row.amount)}</span>
+                        <span className="font-black">{row.orderCount} · {money(row.amount)}</span>
                       </div>
                       <PercentageBar value={row.salesShare} />
                     </div>
@@ -318,12 +328,12 @@ export default async function AdminReportsPage({
                   <tbody className="divide-y divide-stone-100">
                     {report.salesRows.map((row) => (
                       <tr key={row.date}>
-                        <td className="px-4 py-3 font-bold">{formatUaeDate(`${row.date}T00:00:00+04:00`)}</td>
+                        <td className="px-4 py-3 font-bold">{formatDate(`${row.date}T00:00:00+04:00`)}</td>
                         <td className="px-4 py-3">{row.orders}</td>
-                        <td className="px-4 py-3 font-black">{formatAED(row.sales)}</td>
-                        <td className="px-4 py-3">{formatAED(row.averageOrderValue)}</td>
-                        <td className="px-4 py-3">{formatAED(row.deliveryFees)}</td>
-                        <td className="px-4 py-3">{formatAED(row.discounts)}</td>
+                        <td className="px-4 py-3 font-black">{money(row.sales)}</td>
+                        <td className="px-4 py-3">{money(row.averageOrderValue)}</td>
+                        <td className="px-4 py-3">{money(row.deliveryFees)}</td>
+                        <td className="px-4 py-3">{money(row.discounts)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -341,7 +351,7 @@ export default async function AdminReportsPage({
               {report.paymentRows.map((row) => (
                 <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm" key={row.method}>
                   <h2 className="font-black">{row.method}</h2>
-                  <p className="mt-3 text-2xl font-black">{formatAED(row.amount)}</p>
+                  <p className="mt-3 text-2xl font-black">{money(row.amount)}</p>
                   <p className="mt-1 text-sm text-stone-500">{row.orderCount} completed orders · {row.salesShare.toFixed(1)}% of sales</p>
                   <PercentageBar value={row.salesShare} />
                 </section>
@@ -376,10 +386,10 @@ export default async function AdminReportsPage({
                         <td className="px-4 py-3 font-black">{row.name}</td>
                         <td className="px-4 py-3">{row.quantity}</td>
                         <td className="px-4 py-3">{row.orderCount}</td>
-                        <td className="px-4 py-3 font-black">{formatAED(row.sales)}</td>
-                        <td className="px-4 py-3">{formatAED(row.averageSellingPrice)}</td>
+                        <td className="px-4 py-3 font-black">{money(row.sales)}</td>
+                        <td className="px-4 py-3">{money(row.averageSellingPrice)}</td>
                         <td className="px-4 py-3">{row.salesShare.toFixed(1)}%</td>
-                        <td className="px-4 py-3">{formatUaeShortDateTime(row.lastSoldAt)}</td>
+                        <td className="px-4 py-3">{formatDateTime(row.lastSoldAt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -411,7 +421,7 @@ export default async function AdminReportsPage({
                         <td className="px-4 py-3 font-black">{row.name}</td>
                         <td className="px-4 py-3">{row.phone}</td>
                         <td className="px-4 py-3">{row.completedOrders}</td>
-                        <td className="px-4 py-3 font-black">{formatAED(row.spend)}</td>
+                        <td className="px-4 py-3 font-black">{money(row.spend)}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-black ${row.marketingConsent ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"}`}>
                             {row.marketingConsent ? "Opted in" : "Not opted in"}
@@ -437,9 +447,9 @@ export default async function AdminReportsPage({
                     <h2 className="font-black">{getFulfilmentReportLabel(row.fulfilment)}</h2>
                     <TrendingUp className="text-leaf" size={18} />
                   </div>
-                  <p className="mt-3 text-2xl font-black">{formatAED(row.amount)}</p>
+                  <p className="mt-3 text-2xl font-black">{money(row.amount)}</p>
                   <p className="mt-1 text-sm text-stone-500">
-                    {row.orderCount} orders · {formatAED(row.averageOrderValue)} average
+                    {row.orderCount} orders · {money(row.averageOrderValue)} average
                   </p>
                   <PercentageBar value={row.salesShare} />
                   <p className="mt-2 text-xs font-bold text-stone-500">{row.salesShare.toFixed(1)}% of completed sales</p>
@@ -451,7 +461,7 @@ export default async function AdminReportsPage({
       </div>
 
       <p className="mt-5 text-xs leading-5 text-stone-500">
-        Reports are generated from the current order records at {formatUaeShortDateTime(new Date())}.
+        Reports are generated from the current order records at {formatDateTime(new Date())}.
         Product revenue uses the item names and prices saved with each order, so later menu edits do
         not rewrite historical sales.
       </p>

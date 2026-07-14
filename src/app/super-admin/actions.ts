@@ -15,6 +15,11 @@ import {
 import { getPublicAppUrl } from "@/lib/super-admin-data";
 import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
 import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
+import {
+  countryProfileFields,
+  getCountryProfile,
+  isCountryCode
+} from "@/lib/localization";
 
 const onboardingTaskTemplates = [
   ["restaurant_details", "Restaurant details added"],
@@ -242,7 +247,13 @@ export async function createRestaurantAction(formData: FormData) {
 
   const name = stringValue(formData, "name");
   const slug = slugify(stringValue(formData, "slug") || name);
-  const whatsappNumber = normalizeWhatsAppNumber(stringValue(formData, "whatsapp_number"));
+  const submittedCountryCode = stringValue(formData, "country_code");
+  const countryCode = isCountryCode(submittedCountryCode) ? submittedCountryCode : "AE";
+  const countryProfile = getCountryProfile(countryCode);
+  const whatsappNumber = normalizeWhatsAppNumber(
+    stringValue(formData, "whatsapp_number"),
+    countryProfile.phoneCountryCode
+  );
   const ownerEmail = stringValue(formData, "owner_email").toLowerCase();
   const statusValue = stringValue(formData, "status") as RestaurantStatus;
   const planValue = stringValue(formData, "plan") as RestaurantPlan;
@@ -262,9 +273,14 @@ export async function createRestaurantAction(formData: FormData) {
       name,
       slug,
       whatsapp_number: whatsappNumber,
+      ...countryProfileFields(countryCode),
       owner_name: stringValue(formData, "owner_name") || null,
       owner_email: ownerEmail || null,
-      owner_phone: stringValue(formData, "owner_phone") || null,
+      owner_phone:
+        normalizeWhatsAppNumber(
+          stringValue(formData, "owner_phone"),
+          countryProfile.phoneCountryCode
+        ) || null,
       address: stringValue(formData, "address") || null,
       city: stringValue(formData, "city") || null,
       subtitle: stringValue(formData, "subtitle") || null,
@@ -468,24 +484,37 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
   const status = restaurantStatuses.includes(statusValue) ? statusValue : "draft";
   const plan = restaurantPlans.includes(planValue) ? planValue : "trial";
   const slug = slugify(stringValue(formData, "slug"));
-
   // The slug can change here — capture the current one so the old slug's
-  // cached public entry is invalidated alongside the new one.
+  // cached public entry is invalidated alongside the new one. Country is
+  // intentionally immutable after onboarding because changing it would
+  // reinterpret historical money and phone data without conversion.
   const { data: existingRestaurant } = await supabase
     .from("restaurants")
-    .select("slug")
+    .select("slug, country_code")
     .eq("id", restaurantId)
     .maybeSingle();
+  const countryCode = isCountryCode(existingRestaurant?.country_code)
+    ? existingRestaurant.country_code
+    : "AE";
+  const countryProfile = getCountryProfile(countryCode);
 
   const { error } = await supabase
     .from("restaurants")
     .update({
       name: stringValue(formData, "name"),
       slug,
-      whatsapp_number: normalizeWhatsAppNumber(stringValue(formData, "whatsapp_number")),
+      whatsapp_number: normalizeWhatsAppNumber(
+        stringValue(formData, "whatsapp_number"),
+        countryProfile.phoneCountryCode
+      ),
+      ...countryProfileFields(countryCode),
       owner_name: stringValue(formData, "owner_name") || null,
       owner_email: stringValue(formData, "owner_email").toLowerCase() || null,
-      owner_phone: stringValue(formData, "owner_phone") || null,
+      owner_phone:
+        normalizeWhatsAppNumber(
+          stringValue(formData, "owner_phone"),
+          countryProfile.phoneCountryCode
+        ) || null,
       logo_url: stringValue(formData, "logo_url") || null,
       cover_image_url: stringValue(formData, "cover_image_url") || null,
       address: stringValue(formData, "address") || null,

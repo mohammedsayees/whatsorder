@@ -18,9 +18,9 @@ import {
   translateItemAction
 } from "@/app/admin/menu/import/actions";
 import { AiImageGenerator } from "@/components/admin/AiImageGenerator";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { compressMenuImage } from "@/lib/image-compression";
-import type { MenuCategory, MenuItem, MenuOptionCatalog } from "@/lib/types";
+import type { MenuCategory, MenuItem, MenuOptionCatalog, Restaurant } from "@/lib/types";
 import {
   ArrowDown,
   ArrowUp,
@@ -186,6 +186,7 @@ export function MenuManager({
   items,
   canWrite,
   optionCatalog,
+  restaurant,
   restaurantId,
   restaurantSlug
 }: {
@@ -193,6 +194,7 @@ export function MenuManager({
   items: MenuItem[];
   canWrite: boolean;
   optionCatalog?: MenuOptionCatalog;
+  restaurant: Restaurant;
   restaurantId?: string;
   restaurantSlug: string;
 }) {
@@ -582,7 +584,7 @@ export function MenuManager({
                     </div>
                   </div>
                   <p className="text-sm font-bold text-stone-600">{categoryName(categories, item.category_id)}</p>
-                  <p className="font-black text-leaf">{formatAED(item.price)}</p>
+                  <p className="font-black text-leaf">{formatCurrency(item.price, restaurant)}</p>
                   <form action={toggleMenuItemAvailabilityAction}>
                     {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                     <input name="item_id" type="hidden" value={item.id} />

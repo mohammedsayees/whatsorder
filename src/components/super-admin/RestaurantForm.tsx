@@ -1,6 +1,7 @@
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
 import type { Restaurant, RestaurantPlan, RestaurantStatus } from "@/lib/types";
+import { countryProfiles, getCountryProfile } from "@/lib/localization";
 
 const statuses: RestaurantStatus[] = [
   "draft",
@@ -26,6 +27,8 @@ export function RestaurantForm({
   restaurant?: Restaurant;
   mode: "create" | "edit";
 }) {
+  const restaurantProfile = getCountryProfile(restaurant?.country_code);
+
   return (
     <form action={action} className="space-y-6">
       {restaurant ? <input name="restaurant_id" type="hidden" value={restaurant.id} /> : null}
@@ -48,6 +51,30 @@ export function RestaurantForm({
               required
             />
           </label>
+          {restaurant ? (
+            <div className="block">
+              <span className="text-sm font-bold">Country profile</span>
+              <input name="country_code" type="hidden" value={restaurantProfile.countryCode} />
+              <p className={`${inputClass} bg-stone-50 text-stone-600`}>
+                {restaurantProfile.countryName} · {restaurantProfile.currencyCode} ·{" "}
+                {restaurantProfile.timeZone}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                Fixed after onboarding to protect historical prices and customer phones.
+              </p>
+            </div>
+          ) : (
+            <label className="block">
+              <span className="text-sm font-bold">Country profile</span>
+              <select className={inputClass} defaultValue="AE" name="country_code">
+                {Object.values(countryProfiles).map((profile) => (
+                  <option key={profile.countryCode} value={profile.countryCode}>
+                    {profile.countryName} · {profile.currencyCode} · {profile.timeZone}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="text-sm font-bold">WhatsApp order number</span>
             <input
@@ -55,7 +82,9 @@ export function RestaurantForm({
               defaultValue={restaurant?.whatsapp_number ?? ""}
               inputMode="tel"
               name="whatsapp_number"
-              placeholder="971554822424"
+              placeholder={
+                countryProfiles[restaurant?.country_code ?? "AE"].phoneExample
+              }
               required
             />
           </label>
@@ -181,6 +210,7 @@ export function RestaurantForm({
             <WeeklyHoursFields
               enabled={restaurant?.opening_hours_enabled === true}
               openingHours={restaurant?.opening_hours}
+              timeZone={restaurant?.time_zone}
             />
           </div>
         </section>

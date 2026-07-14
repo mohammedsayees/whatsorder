@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Check, RotateCcw } from "lucide-react";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { useCart } from "@/components/customer/CartProvider";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
+import type { PublicRestaurant } from "@/lib/types";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type { CartLine } from "@/lib/types";
 
@@ -77,10 +78,12 @@ function StampCard({ loyalty, isAr }: { loyalty: CustomerLoyalty; isAr: boolean 
 
 function ReorderStrip({
   orders,
-  isAr
+  isAr,
+  restaurant
 }: {
   orders: CustomerRecentOrder[];
   isAr: boolean;
+  restaurant: PublicRestaurant;
 }) {
   const cart = useCart();
   const [addedId, setAddedId] = useState<string | null>(null);
@@ -113,7 +116,7 @@ function ReorderStrip({
               </p>
               <p className="mt-1 text-xs font-semibold text-stone-500">
                 {itemCount} {isAr ? "صنف" : itemCount === 1 ? "item" : "items"} ·{" "}
-                {formatAED(order.total)}
+                {formatCurrency(order.total, restaurant)}
               </p>
               <button
                 className="focus-ring mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-3 py-2 text-sm font-black text-white transition disabled:opacity-70"
@@ -150,11 +153,13 @@ function ReorderStrip({
 export function ReturningCustomerPanel({
   loyalty,
   recentOrders,
-  language
+  language,
+  restaurant
 }: {
   loyalty: CustomerLoyalty | null;
   recentOrders: CustomerRecentOrder[];
   language: CustomerLanguage;
+  restaurant: PublicRestaurant;
 }) {
   const isAr = language === "ar";
   const showLoyalty = Boolean(loyalty?.enabled && (loyalty?.stamps_required ?? 0) > 0);
@@ -167,7 +172,9 @@ export function ReturningCustomerPanel({
   return (
     <section className="mt-5 space-y-4 px-4" dir={isAr ? "rtl" : "ltr"}>
       {showLoyalty && loyalty ? <StampCard isAr={isAr} loyalty={loyalty} /> : null}
-      {hasReorder ? <ReorderStrip isAr={isAr} orders={recentOrders} /> : null}
+      {hasReorder ? (
+        <ReorderStrip isAr={isAr} orders={recentOrders} restaurant={restaurant} />
+      ) : null}
     </section>
   );
 }

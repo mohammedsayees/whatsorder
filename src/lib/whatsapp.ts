@@ -5,7 +5,7 @@ import type {
   PublicRestaurant
 } from "@/lib/types";
 import { formatOrderItemName } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 
 type MessageInput = {
@@ -35,12 +35,16 @@ export function buildWhatsAppMessage(input: MessageInput) {
       `${item.quantity} x ${formatOrderItemName(
         item,
         input.language ?? "en"
-      )} - ${formatAED(item.price * item.quantity)}`
+      )} - ${formatCurrency(item.price * item.quantity, input.restaurant)}`
   );
 
   if (input.language === "ar") {
     const paymentLabel =
-      input.paymentMethod === "Cash on Delivery" ? "الدفع نقدا عند الاستلام" : "بطاقة عند الاستلام";
+      input.paymentMethod === "Cash on Delivery"
+        ? "الدفع نقدا عند الاستلام"
+        : input.paymentMethod === "UPI"
+          ? "UPI"
+          : "بطاقة عند الاستلام";
     const fulfilmentLabel =
       input.fulfilmentType === "delivery"
         ? "توصيل"
@@ -81,9 +85,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
       "الأصناف:",
       ...lines,
       "",
-      `المجموع الفرعي: ${formatAED(input.subtotal)}`,
-      ...(input.deliveryFee > 0 ? [`رسوم التوصيل: ${formatAED(input.deliveryFee)}`] : []),
-      `الإجمالي: ${formatAED(input.total)}`,
+      `المجموع الفرعي: ${formatCurrency(input.subtotal, input.restaurant)}`,
+      ...(input.deliveryFee > 0 ? [`رسوم التوصيل: ${formatCurrency(input.deliveryFee, input.restaurant)}`] : []),
+      `الإجمالي: ${formatCurrency(input.total, input.restaurant)}`,
       "",
       `طريقة الدفع: ${paymentLabel}`,
       "",
@@ -131,9 +135,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
     "Items:",
     ...lines,
     "",
-    `Subtotal: ${formatAED(input.subtotal)}`,
-    ...(input.deliveryFee > 0 ? [`Delivery Fee: ${formatAED(input.deliveryFee)}`] : []),
-    `Total: ${formatAED(input.total)}`,
+    `Subtotal: ${formatCurrency(input.subtotal, input.restaurant)}`,
+    ...(input.deliveryFee > 0 ? [`Delivery Fee: ${formatCurrency(input.deliveryFee, input.restaurant)}`] : []),
+    `Total: ${formatCurrency(input.total, input.restaurant)}`,
     "",
     `Payment: ${input.paymentMethod}`,
     "",
@@ -141,23 +145,31 @@ export function buildWhatsAppMessage(input: MessageInput) {
   ].join("\n");
 }
 
-export function normalizeCustomerPhone(number: string) {
+export function normalizeCustomerPhone(number: string, phoneCountryCode = "971") {
   const digits = number.replace(/[^\d]/g, "");
 
   if (digits.startsWith("00")) {
     return digits.slice(2);
   }
 
-  if (digits.startsWith("971")) {
+  if (digits.startsWith(phoneCountryCode)) {
     return digits;
   }
 
-  if (digits.startsWith("05") && digits.length === 10) {
+  if (phoneCountryCode === "971" && digits.startsWith("05") && digits.length === 10) {
     return `971${digits.slice(1)}`;
   }
 
-  if (digits.startsWith("5") && digits.length === 9) {
+  if (phoneCountryCode === "971" && digits.startsWith("5") && digits.length === 9) {
     return `971${digits}`;
+  }
+
+  if (phoneCountryCode === "91" && /^[6-9]\d{9}$/.test(digits)) {
+    return `91${digits}`;
+  }
+
+  if (phoneCountryCode === "91" && /^0[6-9]\d{9}$/.test(digits)) {
+    return `91${digits.slice(1)}`;
   }
 
   return digits;
@@ -165,12 +177,12 @@ export function normalizeCustomerPhone(number: string) {
 
 export const normalizeWhatsAppNumber = normalizeCustomerPhone;
 
-export function buildWhatsAppUrl(number: string, message: string) {
-  const cleanNumber = normalizeCustomerPhone(number);
+export function buildWhatsAppUrl(number: string, message: string, phoneCountryCode = "971") {
+  const cleanNumber = normalizeCustomerPhone(number, phoneCountryCode);
   return `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }
 
-export function buildWhatsAppAppUrl(number: string, message: string) {
-  const cleanNumber = normalizeCustomerPhone(number);
+export function buildWhatsAppAppUrl(number: string, message: string, phoneCountryCode = "971") {
+  const cleanNumber = normalizeCustomerPhone(number, phoneCountryCode);
   return `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 }

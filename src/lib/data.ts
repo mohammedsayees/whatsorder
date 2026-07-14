@@ -1,6 +1,9 @@
 import { unstable_cache } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
-import { getUaeMonthStartIso, isSameUaeCalendarDay } from "@/lib/date-time";
+import {
+  getRestaurantMonthStartIso,
+  isSameUaeCalendarDay
+} from "@/lib/date-time";
 import { isOfferOrderable } from "@/lib/order-pricing";
 import {
   PUBLIC_CACHE_TTL_SECONDS,
@@ -198,7 +201,12 @@ function toPublicRestaurant(restaurant: Restaurant): PublicRestaurant {
     public_reviews_enabled: restaurant.public_reviews_enabled,
     accepting_orders: restaurant.accepting_orders,
     opening_hours_enabled: restaurant.opening_hours_enabled,
-    opening_hours: restaurant.opening_hours
+    opening_hours: restaurant.opening_hours,
+    country_code: restaurant.country_code,
+    currency_code: restaurant.currency_code,
+    locale: restaurant.locale,
+    phone_country_code: restaurant.phone_country_code,
+    time_zone: restaurant.time_zone
   };
 }
 
@@ -673,7 +681,16 @@ export async function getDashboardAnalytics(
 }
 
 export async function getCommissionKept(
-  restaurant: Pick<Restaurant, "id" | "commission_rate">
+  restaurant: Pick<
+    Restaurant,
+    | "id"
+    | "commission_rate"
+    | "country_code"
+    | "currency_code"
+    | "locale"
+    | "phone_country_code"
+    | "time_zone"
+  >
 ): Promise<CommissionKept> {
   const supabase = getSupabaseAdmin();
 
@@ -705,7 +722,8 @@ export async function getCommissionKept(
 
   return computeCommissionKept(
     commissionKeptTotalsFromOrders(
-      demoOrders.filter((order) => order.restaurant_id === restaurant.id)
+      demoOrders.filter((order) => order.restaurant_id === restaurant.id),
+      restaurant
     ),
     restaurant.commission_rate
   );
@@ -713,8 +731,11 @@ export async function getCommissionKept(
 
 // Mirror of the get_restaurant_commission_kept RPC for the demo-data fallback:
 // completed DELIVERY orders only, base = food subtotal (delivery fee excluded).
-function commissionKeptTotalsFromOrders(orders: Order[]): CommissionKeptTotals {
-  const monthStartIso = getUaeMonthStartIso();
+function commissionKeptTotalsFromOrders(
+  orders: Order[],
+  restaurant: Pick<Restaurant, "country_code" | "currency_code" | "locale" | "phone_country_code" | "time_zone">
+): CommissionKeptTotals {
+  const monthStartIso = getRestaurantMonthStartIso(new Date(), restaurant);
   let monthOrders = 0;
   let monthBase = 0;
   let allTimeOrders = 0;

@@ -8,7 +8,7 @@ import { requireRestaurantRole } from "@/lib/super-admin-auth";
 export const maxDuration = 60;
 
 export default async function ImportMenuPage() {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
@@ -30,7 +30,7 @@ export default async function ImportMenuPage() {
       </p>
 
       <div className="mt-6">
-        <MenuImport />
+        <MenuImport restaurant={restaurant} />
       </div>
     </main>
   );

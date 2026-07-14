@@ -9,8 +9,9 @@ import {
   importDraftMenuAction
 } from "@/app/admin/menu/import/actions";
 import { uploadMenuItemImageAction } from "@/app/actions";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import type { DraftMenuItem } from "@/lib/menu-extraction/extract";
+import type { Restaurant } from "@/lib/types";
 
 type Phase = "idle" | "working" | "review";
 
@@ -117,7 +118,7 @@ async function downscaleToFile(file: File, maxEdge: number): Promise<File> {
   return blob ? new File([blob], "menu-item.jpg", { type: "image/jpeg" }) : file;
 }
 
-export function MenuImport() {
+export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -476,7 +477,9 @@ export function MenuImport() {
                             value={row.category}
                           />
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-stone-500">AED</span>
+                            <span className="text-sm font-bold text-stone-500">
+                              {restaurant.currency_code ?? "AED"}
+                            </span>
                             <input
                               aria-label="Price"
                               className="focus-ring w-24 rounded-lg border border-stone-200 px-3 py-2 text-sm font-bold"
@@ -553,7 +556,7 @@ export function MenuImport() {
                       </div>
 
                       <p className="mt-1 text-right text-xs text-stone-400">
-                        {formatAED(Number.isFinite(row.price) ? row.price : 0)}
+                        {formatCurrency(Number.isFinite(row.price) ? row.price : 0, restaurant)}
                       </p>
                     </div>
                   ))}

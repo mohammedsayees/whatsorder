@@ -21,6 +21,7 @@ export type CurrentShiftView = {
 const emptySummary: ShiftSummary = {
   cancelled_order_count: 0,
   card_on_delivery_total: 0,
+  upi_total: 0,
   cash_paid_out_total: 0,
   completed_cash_order_total: 0,
   completed_order_count: 0,
@@ -43,6 +44,7 @@ function numericSummary(value: unknown) {
   return {
     cancelled_order_count: Number(summary.cancelled_order_count ?? 0),
     card_on_delivery_total: Number(summary.card_on_delivery_total ?? 0),
+    upi_total: Number(summary.upi_total ?? 0),
     cash_paid_out_total: Number(summary.cash_paid_out_total ?? 0),
     completed_cash_order_total: Number(
       summary.completed_cash_order_total ?? 0

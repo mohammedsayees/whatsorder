@@ -1,7 +1,7 @@
 import "server-only";
 
-// A single extracted menu line. Prices are numbers in AED. Size variants in the
-// source (e.g. "AED 6/10") are split into separate items by the model.
+// A single extracted menu line. Prices are numeric values in the tenant's
+// configured currency; size variants are split into separate items.
 export type DraftMenuItem = {
   category: string;
   name: string;
@@ -12,7 +12,8 @@ export type DraftMenuItem = {
   confidence: "high" | "low";
 };
 
-const MENU_EXTRACTION_PROMPT = `You are extracting menu items from ONE page image of a restaurant menu.
+function menuExtractionPrompt(currencyCode: string) {
+  return `You are extracting menu items from ONE page image of a restaurant menu.
 
 Return ONLY JSON of the shape:
 { "items": [ { "category": string, "name": string, "name_ar": string|null, "description": string|null, "price": number, "is_featured": boolean, "confidence": "high"|"low" } ] }
@@ -20,12 +21,13 @@ Return ONLY JSON of the shape:
 Rules:
 - "category" is the section the items belong to. Menus often print the section name as a large banner or heading on the page (e.g. "Fresh Burger", "Loaded Fries", "Mojitos"). Use that. Strip trailing punctuation.
 - "name" is the English item name. "name_ar" is the Arabic name if present on the card, otherwise null.
-- "price" is a number in AED. Read it from the price badge/label. If a single item shows two prices for sizes (e.g. "6/10" or "Small 6 Large 10"), output TWO items: "<name> (Small)" and "<name> (Large)" with their respective prices. Never put a slash or range in price.
+- "price" is a number in ${currencyCode}. Read it from the price badge/label. If a single item shows two prices for sizes (e.g. "6/10" or "Small 6 Large 10"), output TWO items: "<name> (Small)" and "<name> (Large)" with their respective prices. Never put a slash or range in price.
 - "description" is any short descriptive line under the name, or null. Do not invent descriptions.
 - "is_featured" is true only if the card clearly shows a "BEST SELLER" / "POPULAR" style badge.
 - "confidence" is "low" if the name or price is blurry, ambiguous, or you are unsure; otherwise "high".
 - If the page is a cover, contact page, or section divider with no purchasable items, return { "items": [] }.
 - Do NOT invent items that are not visibly on the page. Do NOT include prices you cannot read.`;
+}
 
 type GeminiResponse = {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -168,7 +170,8 @@ async function fetchGeminiWithRetry(
  */
 export async function extractMenuPageItems(
   imageBase64: string,
-  mimeType: string
+  mimeType: string,
+  currencyCode = "AED"
 ): Promise<DraftMenuItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -181,7 +184,7 @@ export async function extractMenuPageItems(
     contents: [
       {
         parts: [
-          { text: MENU_EXTRACTION_PROMPT },
+          { text: menuExtractionPrompt(currencyCode) },
           { inline_data: { mime_type: mimeType, data: imageBase64 } }
         ]
       }

@@ -17,7 +17,7 @@ import {
   resolveOptionGroupsByItem
 } from "@/components/customer/ItemOptionsSheet";
 import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { renderOrderTickets, type PrintKind } from "@/lib/order-print";
 import { printHtmlDocument } from "@/lib/print-ticket";
 import {
@@ -491,6 +491,7 @@ export function StaffOrderEntry({
                 price: item.price
               }))}
               onAdd={handleAdd}
+              restaurant={restaurant}
             />
           ) : (
             visibleCategories.map((category) => {
@@ -513,6 +514,7 @@ export function StaffOrderEntry({
                       price: item.price
                     }))}
                     onAdd={handleAdd}
+                    restaurant={restaurant}
                   />
                 </div>
               );
@@ -559,7 +561,7 @@ export function StaffOrderEntry({
                       {optionsText ? (
                         <p className="truncate text-xs text-stone-500">{optionsText}</p>
                       ) : null}
-                      <p className="text-xs text-stone-500">{formatAED(line.price)}</p>
+                      <p className="text-xs text-stone-500">{formatCurrency(line.price, restaurant)}</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -581,7 +583,7 @@ export function StaffOrderEntry({
                       </button>
                     </div>
                     <span className="w-16 text-right text-sm font-black">
-                      {formatAED(line.price * line.quantity)}
+                      {formatCurrency(line.price * line.quantity, restaurant)}
                     </span>
                     <button
                       aria-label={`Remove ${line.name}`}
@@ -753,17 +755,17 @@ export function StaffOrderEntry({
                 <span className="font-bold">
                   {itemCount} item{itemCount === 1 ? "" : "s"}
                 </span>
-                <span>{formatAED(subtotal)}</span>
+                <span>{formatCurrency(subtotal, restaurant)}</span>
               </div>
               {appliedDeliveryFee > 0 ? (
                 <div className="flex items-center justify-between text-sm text-stone-600">
                   <span className="font-bold">Delivery fee</span>
-                  <span>{formatAED(appliedDeliveryFee)}</span>
+                  <span>{formatCurrency(appliedDeliveryFee, restaurant)}</span>
                 </div>
               ) : null}
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-stone-600">Total</span>
-                <span className="text-lg font-black">{formatAED(total)}</span>
+                <span className="text-lg font-black">{formatCurrency(total, restaurant)}</span>
               </div>
             </div>
 
@@ -865,6 +867,17 @@ export function StaffOrderEntry({
               >
                 Paid · Card
               </button>
+              {restaurant.country_code === "IN" ? (
+                <button
+                  className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-3 text-sm font-black text-violet-800 disabled:opacity-50"
+                  disabled={pending || ticketLines.length === 0}
+                  type="submit"
+                  value="paid_upi"
+                >
+                  <ReceiptText size={16} />
+                  Paid · UPI
+                </button>
+              ) : null}
             </div> : null}
           </div>
 
@@ -875,7 +888,7 @@ export function StaffOrderEntry({
                 <p className="text-xs font-bold text-stone-500">
                   {itemCount} item{itemCount === 1 ? "" : "s"}
                 </p>
-                <p className="text-lg font-black">{formatAED(total)}</p>
+                <p className="text-lg font-black">{formatCurrency(total, restaurant)}</p>
               </div>
               <button
                 className="focus-ring rounded-lg bg-leaf px-5 py-3 font-black text-white disabled:opacity-60"
@@ -902,6 +915,7 @@ export function StaffOrderEntry({
           groups={resolvedGroupsByItemId.get(pickerItem.id) ?? []}
           item={pickerItem}
           language="en"
+          restaurant={restaurant}
           onAdd={(options, quantity) => {
             addTicketLine(pickerItem, options, quantity);
             setPickerItem(null);
@@ -915,10 +929,12 @@ export function StaffOrderEntry({
 
 function ItemGrid({
   items,
-  onAdd
+  onAdd,
+  restaurant
 }: {
   items: { id: string; name: string; hasOptions: boolean; price: number }[];
   onAdd: (id: string) => void;
+  restaurant: Restaurant;
 }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -931,7 +947,7 @@ function ItemGrid({
         >
           <span className="text-sm font-bold leading-tight">{item.name}</span>
           <span className="flex items-center gap-2 text-sm font-black text-leaf">
-            {formatAED(item.price)}
+            {formatCurrency(item.price, restaurant)}
             {item.hasOptions ? (
               <span className="rounded-full bg-mint/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-leaf">
                 Options

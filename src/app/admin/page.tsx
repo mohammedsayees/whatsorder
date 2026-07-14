@@ -59,11 +59,11 @@ export default async function AdminDashboardPage({
       ) : null}
 
       <div className="mt-6">
-        <CommissionKeptCard commission={commission} />
+        <CommissionKeptCard commission={commission} restaurant={restaurant} />
       </div>
 
       <div className="mt-6">
-        <AnalyticsCards analytics={analytics} />
+        <AnalyticsCards analytics={analytics} restaurant={restaurant} />
       </div>
 
       {dailySummary ? (

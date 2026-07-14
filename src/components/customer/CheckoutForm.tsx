@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { createOrderAction } from "@/app/actions";
 import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
@@ -96,7 +96,9 @@ export function CheckoutForm({
   const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
   const scheduleOpen = isRestaurantOpen(
     restaurant.opening_hours_enabled,
-    restaurant.opening_hours
+    restaurant.opening_hours,
+    new Date(),
+    restaurant.time_zone
   );
   // Optional delivery-radius gate (client-side UX; the server re-checks). When
   // the restaurant has no radius set, `enforced` is false and nothing changes.
@@ -260,11 +262,13 @@ export function CheckoutForm({
         </h1>
         <p className="mt-3 text-stone-600">
           {language === "ar"
-            ? `أضف ${formatAED(amountRemaining)} أخرى للمتابعة. الحد الأدنى هو ${formatAED(
-                restaurant.minimum_order_amount
+            ? `أضف ${formatCurrency(amountRemaining, restaurant)} أخرى للمتابعة. الحد الأدنى هو ${formatCurrency(
+                restaurant.minimum_order_amount,
+                restaurant
               )}.`
-            : `Add ${formatAED(amountRemaining)} more to continue. The minimum order is ${formatAED(
-                restaurant.minimum_order_amount
+            : `Add ${formatCurrency(amountRemaining, restaurant)} more to continue. The minimum order is ${formatCurrency(
+                restaurant.minimum_order_amount,
+                restaurant
               )}.`}
         </p>
         <Link
@@ -592,7 +596,10 @@ export function CheckoutForm({
                       : language === "ar"
                         ? "بطاقة عند الاستلام"
                         : "Card on collection"
-                }
+                },
+                ...(restaurant.country_code === "IN"
+                  ? [{ value: "UPI", label: "UPI" }]
+                  : [])
               ].map((method) => (
                 <label
                   className="flex items-center gap-3 rounded-lg border border-stone-200 px-3 py-3 text-sm font-semibold"
@@ -682,7 +689,7 @@ export function CheckoutForm({
                     </button>
                   </div>
                 </div>
-                <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
+                <p className="font-bold">{formatCurrency(line.price * line.quantity, restaurant)}</p>
               </div>
             );
           })}
@@ -690,17 +697,17 @@ export function CheckoutForm({
         <div className="mt-5 space-y-2 border-t border-stone-200 pt-4 text-sm">
           <div className="flex justify-between">
             <span>{t.subtotal}</span>
-            <strong>{formatAED(cart.subtotal)}</strong>
+            <strong>{formatCurrency(cart.subtotal, restaurant)}</strong>
           </div>
           {fulfilmentType === "delivery" ? (
             <div className="flex justify-between">
               <span>{t.delivery}</span>
-              <strong>{formatAED(appliedDeliveryFee)}</strong>
+              <strong>{formatCurrency(appliedDeliveryFee, restaurant)}</strong>
             </div>
           ) : null}
           <div className="flex justify-between text-lg">
             <span className="font-black">{t.total}</span>
-            <strong>{formatAED(total)}</strong>
+            <strong>{formatCurrency(total, restaurant)}</strong>
           </div>
         </div>
       </aside>

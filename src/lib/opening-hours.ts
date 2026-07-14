@@ -88,12 +88,12 @@ function timeToMinutes(time: string) {
   return hours * 60 + minutes;
 }
 
-function uaeClock(value: Date) {
+function restaurantClock(value: Date, timeZone = restaurantTimeZone) {
   const parts = new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     hour12: false,
     minute: "2-digit",
-    timeZone: restaurantTimeZone,
+    timeZone,
     weekday: "long"
   }).formatToParts(value);
   const values = new Map(parts.map((part) => [part.type, part.value]));
@@ -107,14 +107,15 @@ function uaeClock(value: Date) {
 export function isRestaurantOpen(
   hoursEnabled: boolean | null | undefined,
   rawHours: unknown,
-  value: Date = new Date()
+  value: Date = new Date(),
+  timeZone = restaurantTimeZone
 ) {
   if (!hoursEnabled) {
     return true;
   }
 
   const hours = normalizeOpeningHours(rawHours);
-  const clock = uaeClock(value);
+  const clock = restaurantClock(value, timeZone);
   const currentIndex = weekDays.indexOf(clock.day);
   const today = hours[clock.day];
 
@@ -158,8 +159,12 @@ export function formatOpeningTime(time: string) {
   return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
-export function todayOpeningHours(rawHours: unknown, value: Date = new Date()) {
+export function todayOpeningHours(
+  rawHours: unknown,
+  value: Date = new Date(),
+  timeZone = restaurantTimeZone
+) {
   const hours = normalizeOpeningHours(rawHours);
-  const { day } = uaeClock(value);
+  const { day } = restaurantClock(value, timeZone);
   return { day, ...hours[day] };
 }

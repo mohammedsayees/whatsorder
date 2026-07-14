@@ -6,8 +6,8 @@ import { CustomerSearchForm } from "@/components/admin/CustomerSearchForm";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatAED } from "@/lib/currency";
-import { formatUaeDate, formatUaeDateTime } from "@/lib/date-time";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantDate, formatRestaurantDateTime } from "@/lib/date-time";
 import {
   getCustomerInsights,
   getFulfilmentLabel,
@@ -19,6 +19,7 @@ import {
 import { getCustomerSegments, getOrdersForCustomerPhones } from "@/lib/data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { getCountryProfile } from "@/lib/localization";
 
 function positivePage(value?: string) {
   const page = Number(value);
@@ -51,6 +52,11 @@ export default async function AdminCustomersPage({
   searchParams: Promise<{ page?: string; segment?: string; q?: string }>;
 }) {
   const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const money = (value: number) => formatCurrency(value, restaurant);
+  const countryProfile = getCountryProfile(restaurant.country_code);
+  const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
+  const formatDateTime = (value: string | Date) =>
+    formatRestaurantDateTime(value, restaurant);
   const appUrl = publicAppUrl();
   const query = await searchParams;
   const activeSegment: CustomerSegmentFilter = isSegmentFilter(query.segment)
@@ -179,7 +185,7 @@ export default async function AdminCustomersPage({
       <div className="mt-6 grid gap-4">
         {segmentPage.items.map((customer) => {
           const history = orders.filter((order) => order.customer_phone === customer.phone);
-          const insights = getCustomerInsights(history);
+          const insights = getCustomerInsights(history, new Date(), countryProfile);
           const hasMarketingConsent =
             customer.marketing_opt_in && customer.consent_marketing;
           const loyaltyEnabled = restaurant.loyalty_enabled !== false;
@@ -217,11 +223,11 @@ export default async function AdminCustomersPage({
                     </div>
                     <div className="rounded-lg bg-stone-50 p-3">
                       <p className="text-stone-500">Completed spend</p>
-                      <p className="text-xl font-black">{formatAED(insights.completedSpend)}</p>
+                      <p className="text-xl font-black">{money(insights.completedSpend)}</p>
                     </div>
                     <div className="rounded-lg bg-stone-50 p-3">
                       <p className="text-stone-500">Average order</p>
-                      <p className="text-xl font-black">{formatAED(insights.averageOrderValue)}</p>
+                      <p className="text-xl font-black">{money(insights.averageOrderValue)}</p>
                     </div>
                     <div className="rounded-lg bg-stone-50 p-3">
                       <p className="text-stone-500">Loyalty stamps</p>
@@ -236,7 +242,7 @@ export default async function AdminCustomersPage({
                       <p className="text-stone-500">Last completed</p>
                       <p className="font-bold">
                         {insights.lastCompletedOrderAt
-                          ? formatUaeDate(insights.lastCompletedOrderAt)
+                          ? formatDate(insights.lastCompletedOrderAt)
                           : "Not recorded"}
                       </p>
                     </div>
@@ -328,7 +334,11 @@ export default async function AdminCustomersPage({
                       <>
                         <a
                           className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-black text-white"
-                          href={buildWhatsAppUrl(customer.phone, marketingMessage)}
+                          href={buildWhatsAppUrl(
+                            customer.phone,
+                            marketingMessage,
+                            restaurant.phone_country_code
+                          )}
                           rel="noreferrer"
                           target="_blank"
                         >
@@ -385,10 +395,10 @@ export default async function AdminCustomersPage({
                         <div className="rounded-lg border border-stone-200 p-3 text-sm" key={order.id}>
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <StatusBadge status={order.status} />
-                            <span className="font-black">{formatAED(order.total)}</span>
+                            <span className="font-black">{money(order.total)}</span>
                           </div>
                           <p className="mt-2 text-stone-500">
-                            {formatUaeDateTime(order.created_at)}
+                            {formatDateTime(order.created_at)}
                           </p>
                           <p className="mt-2 text-stone-700">
                             {order.items.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
@@ -429,8 +439,7 @@ export default async function AdminCustomersPage({
       />
 
       <p className="mt-5 text-sm leading-6 text-stone-500">
-        Segments use completed orders only. Current defaults: VIP after five completed orders or AED
-        250 completed spend; inactive after 30 days. WhatsApp remains manual and is available only
+        Segments use completed orders only. Current defaults: VIP after five completed orders or {money(countryProfile.vipSpendThreshold)} completed spend; inactive after 30 days. WhatsApp remains manual and is available only
         when marketing consent is recorded.
       </p>
     </main>

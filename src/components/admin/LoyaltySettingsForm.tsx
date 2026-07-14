@@ -57,7 +57,9 @@ export function LoyaltySettingsForm({
         </label>
 
         <label className="block">
-          <span className="text-sm font-bold">Minimum order to earn a stamp (AED)</span>
+          <span className="text-sm font-bold">
+            Minimum order to earn a stamp ({restaurant.currency_code ?? "AED"})
+          </span>
           <input
             className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
             defaultValue={restaurant.loyalty_qualifying_min_amount ?? ""}

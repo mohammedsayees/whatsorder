@@ -29,7 +29,7 @@ vi.mock("./send", () => ({
   sendOwnerMessage: () => Promise.resolve({ delivered: false, reason: "no_outbound_channel" })
 }));
 
-import { dubaiDateString, runDailySummary } from "./run";
+import { dubaiDateString, restaurantDateString, runDailySummary } from "./run";
 
 type Store = {
   restaurants: Array<{
@@ -137,6 +137,19 @@ describe("dubaiDateString", () => {
     // 20:30 UTC is already 00:30 the next day in Dubai.
     const now = new Date("2026-06-26T20:30:00.000Z");
     expect(dubaiDateString(now, -1)).toBe("2026-06-26");
+  });
+
+  it("uses the India tenant's local calendar day", () => {
+    const now = new Date("2026-06-26T19:00:00.000Z");
+    expect(
+      restaurantDateString(now, -1, {
+        country_code: "IN",
+        currency_code: "INR",
+        locale: "en-IN",
+        phone_country_code: "91",
+        time_zone: "Asia/Kolkata"
+      })
+    ).toBe("2026-06-26");
   });
 });
 

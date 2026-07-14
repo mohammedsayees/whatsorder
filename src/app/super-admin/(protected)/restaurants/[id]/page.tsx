@@ -25,8 +25,8 @@ import { RevokeTeamAccessButton } from "@/components/super-admin/RevokeTeamAcces
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatAED } from "@/lib/currency";
-import { formatUaeShortDateTime } from "@/lib/date-time";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { getPublicAppUrl, getSuperAdminRestaurant } from "@/lib/super-admin-data";
 
 const tabs = [
@@ -41,14 +41,6 @@ const tabs = [
 ] as const;
 
 type DetailTab = (typeof tabs)[number];
-
-function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return formatUaeShortDateTime(value);
-}
 
 export default async function SuperAdminRestaurantDetailPage({
   params,
@@ -84,6 +76,8 @@ export default async function SuperAdminRestaurantDetailPage({
     ownerMembership,
     teamMemberships
   } = detail;
+  const formatDate = (value: string | null | undefined) =>
+    value ? formatRestaurantShortDateTime(value, restaurant) : "Not available";
   const menuUrl = `${getPublicAppUrl()}/r/${restaurant.slug}`;
   const onboardingPercent =
     restaurant.onboarding_total > 0
@@ -429,12 +423,14 @@ export default async function SuperAdminRestaurantDetailPage({
               canWrite
               items={items}
               offers={offers}
+              restaurant={restaurant}
               restaurantId={restaurant.id}
             />
             <MenuManager
               canWrite
               categories={categories}
               items={items}
+              restaurant={restaurant}
               restaurantId={restaurant.id}
               restaurantSlug={restaurant.slug}
             />
@@ -464,7 +460,7 @@ export default async function SuperAdminRestaurantDetailPage({
                     </p>
                   </div>
                   <StatusBadge status={order.status} />
-                  <p className="font-black">{formatAED(order.total)}</p>
+                  <p className="font-black">{formatCurrency(order.total, restaurant)}</p>
                 </div>
               ))}
               {orders.length === 0 ? <p className="px-5 py-12 text-center text-sm font-bold text-stone-500">No orders yet.</p> : null}
@@ -485,7 +481,7 @@ export default async function SuperAdminRestaurantDetailPage({
                     <p className="text-sm text-stone-500">{customer.phone} · {customer.delivery_area}</p>
                   </div>
                   <p className="text-sm font-bold">{customer.total_orders} orders</p>
-                  <p className="font-black">{formatAED(customer.total_spend)}</p>
+                  <p className="font-black">{formatCurrency(customer.total_spend, restaurant)}</p>
                 </div>
               ))}
               {customers.length === 0 ? <p className="px-5 py-12 text-center text-sm font-bold text-stone-500">No customers yet.</p> : null}

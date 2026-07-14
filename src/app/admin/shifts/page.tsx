@@ -1,12 +1,12 @@
-import { AlertTriangle, Banknote, CreditCard, ReceiptText, WalletCards } from "lucide-react";
+import { AlertTriangle, Banknote, CreditCard, QrCode, ReceiptText, WalletCards } from "lucide-react";
 import {
   AssignUnassignedOrdersButton,
   CloseShiftForm,
   OpenShiftForm,
   PaidOutForm
 } from "@/components/admin/ShiftForms";
-import { formatAED } from "@/lib/currency";
-import { formatUaeShortDateTime } from "@/lib/date-time";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCurrentShiftView,
   getPreviousShifts,
@@ -37,6 +37,9 @@ const fulfilmentLabels: Record<string, string> = {
 
 export default async function AdminShiftsPage() {
   const session = await requireRestaurantAdmin();
+  const money = (value: number) => formatCurrency(value, session.restaurant);
+  const formatDateTime = (value: string | Date) =>
+    formatRestaurantShortDateTime(value, session.restaurant);
   const [currentShift, previousShifts, unassignedCompletedOrders] =
     await Promise.all([
       getCurrentShiftView(session),
@@ -95,7 +98,7 @@ export default async function AdminShiftsPage() {
               </p>
             </div>
           </div>
-          <OpenShiftForm />
+          <OpenShiftForm restaurant={session.restaurant} />
         </section>
       ) : (
         <>
@@ -109,7 +112,7 @@ export default async function AdminShiftsPage() {
                   {currentShift.shift.shift_name}
                 </h2>
                 <p className="mt-1 text-sm text-stone-500">
-                  Opened {formatUaeShortDateTime(currentShift.shift.opened_at)}
+                  Opened {formatDateTime(currentShift.shift.opened_at)}
                   {currentShift.shift.opened_by_user_id === session.userId
                     ? " by you"
                     : " by another team member"}
@@ -133,23 +136,30 @@ export default async function AdminShiftsPage() {
                 {
                   icon: WalletCards,
                   label: "Opening cash",
-                  value: formatAED(Number(currentShift.shift.opening_cash_amount))
+                  value: money(Number(currentShift.shift.opening_cash_amount))
                 },
                 {
                   icon: Banknote,
                   label: "Completed cash orders",
-                  value: formatAED(currentShift.summary.completed_cash_order_total)
+                  value: money(currentShift.summary.completed_cash_order_total)
                 },
                 {
                   icon: ReceiptText,
                   label: "Cash paid-outs",
-                  value: formatAED(currentShift.summary.cash_paid_out_total)
+                  value: money(currentShift.summary.cash_paid_out_total)
                 },
                 {
                   icon: CreditCard,
                   label: "Card on delivery",
-                  value: formatAED(currentShift.summary.card_on_delivery_total)
-                }
+                  value: money(currentShift.summary.card_on_delivery_total)
+                },
+                ...(session.restaurant.country_code === "IN"
+                  ? [{
+                      icon: QrCode,
+                      label: "UPI",
+                      value: money(currentShift.summary.upi_total)
+                    }]
+                  : [])
               ].map(({ icon: Icon, label, value }) => (
                 <div className="rounded-lg bg-stone-50 p-4" key={label}>
                   <Icon className="text-leaf" size={18} />
@@ -167,7 +177,7 @@ export default async function AdminShiftsPage() {
                   Expected cash
                 </p>
                 <p className="mt-1 text-3xl font-black text-emerald-950">
-                  {formatAED(currentShift.summary.expected_cash_amount)}
+                  {money(currentShift.summary.expected_cash_amount)}
                 </p>
                 <p className="mt-2 text-xs font-semibold text-emerald-800">
                   Opening cash + completed cash orders − cash paid-outs
@@ -185,7 +195,7 @@ export default async function AdminShiftsPage() {
                   <div>
                     <dt className="text-stone-500">Completed sales</dt>
                     <dd className="font-black">
-                      {formatAED(currentShift.summary.completed_sales)}
+                      {money(currentShift.summary.completed_sales)}
                     </dd>
                   </div>
                   <div>
@@ -208,7 +218,7 @@ export default async function AdminShiftsPage() {
                       </span>
                       <span className="font-bold">
                         {values?.orders ?? 0} ·{" "}
-                        {formatAED(Number(values?.sales ?? 0))}
+                        {money(Number(values?.sales ?? 0))}
                       </span>
                     </p>
                   ))}
@@ -225,7 +235,7 @@ export default async function AdminShiftsPage() {
               </p>
               {currentShift.canManage ? (
                 <div className="mt-4">
-                  <PaidOutForm shiftId={currentShift.shift.id} />
+                  <PaidOutForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
                 </div>
               ) : null}
               <div className="mt-5 space-y-2">
@@ -238,11 +248,11 @@ export default async function AdminShiftsPage() {
                       <div>
                         <p className="font-bold">{paidOut.reason}</p>
                         <p className="text-xs text-stone-500">
-                          {formatUaeShortDateTime(paidOut.recorded_at)}
+                          {formatDateTime(paidOut.recorded_at)}
                         </p>
                       </div>
                       <p className="shrink-0 font-black text-rose-700">
-                        −{formatAED(Number(paidOut.amount))}
+                        −{money(Number(paidOut.amount))}
                       </p>
                     </div>
                   ))
@@ -264,6 +274,7 @@ export default async function AdminShiftsPage() {
                   <CloseShiftForm
                     activeOrderCount={currentShift.activeOrderCount}
                     expectedCash={currentShift.summary.expected_cash_amount}
+                    restaurant={session.restaurant}
                     shiftId={currentShift.shift.id}
                   />
                 </div>
@@ -304,9 +315,9 @@ export default async function AdminShiftsPage() {
                       <td className="px-4 py-3">
                         <p className="font-black">{shift.shift_name}</p>
                         <p className="whitespace-nowrap text-xs text-stone-500">
-                          {formatUaeShortDateTime(shift.opened_at)}
+                          {formatDateTime(shift.opened_at)}
                           {shift.closed_at
-                            ? ` → ${formatUaeShortDateTime(shift.closed_at)}`
+                            ? ` → ${formatDateTime(shift.closed_at)}`
                             : ""}
                         </p>
                         {shift.closed_at ? (
@@ -316,13 +327,13 @@ export default async function AdminShiftsPage() {
                         ) : null}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-bold">
-                        {formatAED(Number(shift.completed_sales))}
+                        {money(Number(shift.completed_sales))}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        {formatAED(Number(shift.expected_cash_amount ?? 0))}
+                        {money(Number(shift.expected_cash_amount ?? 0))}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        {formatAED(Number(shift.cash_counted_amount ?? 0))}
+                        {money(Number(shift.cash_counted_amount ?? 0))}
                       </td>
                       <td
                         className={`whitespace-nowrap px-4 py-3 font-black ${
@@ -331,7 +342,7 @@ export default async function AdminShiftsPage() {
                             : "text-amber-700"
                         }`}
                       >
-                        {formatAED(Number(shift.difference_amount ?? 0))}
+                        {money(Number(shift.difference_amount ?? 0))}
                       </td>
                     </tr>
                   ))}

@@ -2,10 +2,11 @@ import type {
   Customer,
   FulfilmentType,
   Order,
-  PaymentMethod
+  PaymentMethod,
+  RestaurantLocalization
 } from "@/lib/types";
+import { getRestaurantLocalization } from "@/lib/localization";
 
-const uaeOffset = "+04:00";
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_REPORT_RANGE_DAYS = 366;
 
@@ -96,63 +97,90 @@ export type RestaurantReport = {
   uniqueCustomers: number;
 };
 
-function dateInUae(value: Date) {
+function dateInRestaurant(
+  value: Date,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
   return new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
     month: "2-digit",
-    timeZone: "Asia/Dubai",
+    timeZone: localization.time_zone,
     year: "numeric"
   }).format(value);
 }
 
-function parseDate(value: string) {
-  return new Date(`${value}T00:00:00${uaeOffset}`);
+function parseDate(
+  value: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  return new Date(`${value}T00:00:00${localization.utcOffset}`);
 }
 
-function shiftDate(value: string, days: number) {
-  const date = parseDate(value);
+function shiftDate(
+  value: string,
+  days: number,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const date = parseDate(value, restaurant);
   date.setUTCDate(date.getUTCDate() + days);
-  return dateInUae(date);
+  return dateInRestaurant(date, restaurant);
 }
 
 function monthStart(value: string) {
   return `${value.slice(0, 7)}-01`;
 }
 
-function previousMonthStart(value: string) {
-  const date = parseDate(monthStart(value));
+function previousMonthStart(
+  value: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const date = parseDate(monthStart(value), restaurant);
   date.setUTCMonth(date.getUTCMonth() - 1);
-  return dateInUae(date);
+  return dateInRestaurant(date, restaurant);
 }
 
-function validDate(value?: string) {
+function validDate(
+  value?: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
   if (!value || !datePattern.test(value)) {
     return null;
   }
 
-  const parsed = parseDate(value);
-  return Number.isNaN(parsed.getTime()) || dateInUae(parsed) !== value ? null : value;
+  const parsed = parseDate(value, restaurant);
+  return Number.isNaN(parsed.getTime()) || dateInRestaurant(parsed, restaurant) !== value
+    ? null
+    : value;
 }
 
-function formatRangeLabel(startDate: string, endDate: string) {
-  const formatter = new Intl.DateTimeFormat("en-AE", {
+function formatRangeLabel(
+  startDate: string,
+  endDate: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  const formatter = new Intl.DateTimeFormat(localization.locale, {
     dateStyle: "medium",
-    timeZone: "Asia/Dubai"
+    timeZone: localization.time_zone
   });
 
   if (startDate === endDate) {
-    return formatter.format(parseDate(startDate));
+    return formatter.format(parseDate(startDate, restaurant));
   }
 
-  return `${formatter.format(parseDate(startDate))} – ${formatter.format(parseDate(endDate))}`;
+  return `${formatter.format(parseDate(startDate, restaurant))} – ${formatter.format(parseDate(endDate, restaurant))}`;
 }
 
 export function resolveReportRange(
   presetValue?: string,
   customStart?: string,
   customEnd?: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  restaurant?: Partial<RestaurantLocalization> | null
 ): ReportRange {
+  const localization = getRestaurantLocalization(restaurant);
   const allowedPresets: ReportPreset[] = [
     "today",
     "yesterday",
@@ -164,28 +192,29 @@ export function resolveReportRange(
   const preset = allowedPresets.includes(presetValue as ReportPreset)
     ? (presetValue as ReportPreset)
     : "today";
-  const today = dateInUae(now);
+  const today = dateInRestaurant(now, restaurant);
   let startDate = today;
   let endDate = today;
 
   if (preset === "yesterday") {
-    startDate = shiftDate(today, -1);
+    startDate = shiftDate(today, -1, restaurant);
     endDate = startDate;
   } else if (preset === "last_7_days") {
-    startDate = shiftDate(today, -6);
+    startDate = shiftDate(today, -6, restaurant);
   } else if (preset === "this_month") {
     startDate = monthStart(today);
   } else if (preset === "previous_month") {
-    startDate = previousMonthStart(today);
-    endDate = shiftDate(monthStart(today), -1);
+    startDate = previousMonthStart(today, restaurant);
+    endDate = shiftDate(monthStart(today), -1, restaurant);
   } else if (preset === "custom") {
-    const requestedStart = validDate(customStart);
-    const requestedEnd = validDate(customEnd);
+    const requestedStart = validDate(customStart, restaurant);
+    const requestedEnd = validDate(customEnd, restaurant);
 
     if (requestedStart && requestedEnd && requestedStart <= requestedEnd) {
       const earliestAllowedStart = shiftDate(
         requestedEnd,
-        -(MAX_REPORT_RANGE_DAYS - 1)
+        -(MAX_REPORT_RANGE_DAYS - 1),
+        restaurant
       );
       startDate = requestedStart < earliestAllowedStart
         ? earliestAllowedStart
@@ -198,11 +227,11 @@ export function resolveReportRange(
 
   return {
     endDate,
-    endExclusiveIso: `${shiftDate(endDate, 1)}T00:00:00${uaeOffset}`,
-    label: formatRangeLabel(startDate, endDate),
+    endExclusiveIso: `${shiftDate(endDate, 1, restaurant)}T00:00:00${localization.utcOffset}`,
+    label: formatRangeLabel(startDate, endDate, restaurant),
     preset,
     startDate,
-    startIso: `${startDate}T00:00:00${uaeOffset}`
+    startIso: `${startDate}T00:00:00${localization.utcOffset}`
   };
 }
 
@@ -223,7 +252,8 @@ export function getFulfilmentReportLabel(value: FulfilmentType) {
 
 export function buildRestaurantReport(
   orders: Order[],
-  customers: Customer[] = []
+  customers: Customer[] = [],
+  restaurant?: Partial<RestaurantLocalization> | null
 ): RestaurantReport {
   const completed = orders.filter((order) => order.status === "Completed");
   const cancelledOrders = orders.filter((order) => order.status === "Cancelled").length;
@@ -252,7 +282,7 @@ export function buildRestaurantReport(
   >();
 
   for (const order of completed) {
-    const date = dateInUae(new Date(order.created_at));
+    const date = dateInRestaurant(new Date(order.created_at), restaurant);
     const daily = salesByDate.get(date) ?? {
       averageOrderValue: 0,
       date,

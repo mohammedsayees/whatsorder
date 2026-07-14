@@ -13,8 +13,8 @@ import {
   toggleMenuOptionAvailabilityAction,
   updateOptionGroupAction
 } from "@/app/actions";
-import { formatAED } from "@/lib/currency";
-import type { MenuOptionCatalog, MenuOptionGroup } from "@/lib/types";
+import { formatCurrency } from "@/lib/currency";
+import type { MenuOptionCatalog, MenuOptionGroup, Restaurant } from "@/lib/types";
 
 // "Variant" = exactly one required choice (Size). "Add-ons" = optional
 // multi-select. The kind selector just maps to min/max so the schema stays
@@ -33,11 +33,11 @@ function kindLabel(group: MenuOptionGroup): string {
   return max ? `Add-ons — up to ${max}` : "Add-ons — any number";
 }
 
-function formatDelta(delta: number): string {
+function formatDelta(delta: number, restaurant: Restaurant): string {
   if (delta === 0) {
     return "+0";
   }
-  return `${delta > 0 ? "+" : "−"}${formatAED(Math.abs(delta))}`;
+  return `${delta > 0 ? "+" : "−"}${formatCurrency(Math.abs(delta), restaurant)}`;
 }
 
 function KindFields({
@@ -90,10 +90,12 @@ function KindFields({
 export function OptionGroupsManager({
   canWrite,
   catalog,
+  restaurant,
   restaurantId
 }: {
   canWrite: boolean;
   catalog: MenuOptionCatalog;
+  restaurant: Restaurant;
   restaurantId?: string;
 }) {
   const router = useRouter();
@@ -403,7 +405,7 @@ export function OptionGroupsManager({
                           <span className="ml-2 text-xs text-stone-500">{option.name_ar}</span>
                         ) : null}
                         <span className="ml-2 text-xs font-black text-leaf">
-                          {formatDelta(option.price_delta)}
+                          {formatDelta(option.price_delta, restaurant)}
                         </span>
                       </p>
                       <form action={submitAndRefresh(toggleMenuOptionAvailabilityAction)}>
@@ -473,7 +475,7 @@ export function OptionGroupsManager({
                       className="focus-ring w-28 rounded-lg border border-stone-200 px-3 py-2 text-sm"
                       disabled={!canWrite}
                       name="price_delta"
-                      placeholder="+ AED"
+                      placeholder={`+ ${restaurant.currency_code ?? "AED"}`}
                       step="0.25"
                       type="number"
                     />

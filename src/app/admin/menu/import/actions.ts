@@ -129,7 +129,7 @@ export async function extractMenuPageAction(input: {
   imageBase64: string;
   mimeType: string;
 }): Promise<ExtractPageResult> {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
 
   if (!process.env.GEMINI_API_KEY) {
     return { ok: false, error: "Menu import is not configured yet. Contact WhatsOrder support." };
@@ -155,7 +155,11 @@ export async function extractMenuPageAction(input: {
   }
 
   try {
-    const items = await extractMenuPageItems(input.imageBase64, input.mimeType);
+    const items = await extractMenuPageItems(
+      input.imageBase64,
+      input.mimeType,
+      restaurant.currency_code ?? "AED"
+    );
     return { ok: true, items };
   } catch (error) {
     const code = error instanceof Error ? error.message : "";

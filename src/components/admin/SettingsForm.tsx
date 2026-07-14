@@ -2,6 +2,7 @@ import { updateRestaurantSettingsAction } from "@/app/actions";
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
 import type { Restaurant } from "@/lib/types";
+import { getCountryProfile } from "@/lib/localization";
 
 export function SettingsForm({
   restaurant,
@@ -10,6 +11,8 @@ export function SettingsForm({
   restaurant: Restaurant;
   canWrite: boolean;
 }) {
+  const countryProfile = getCountryProfile(restaurant.country_code);
+
   return (
     <form action={updateRestaurantSettingsAction} className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -38,10 +41,21 @@ export function SettingsForm({
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-right" defaultValue={restaurant.name_ar ?? ""} dir="rtl" disabled={!canWrite} name="name_ar" />
         </label>
         <label className="block">
+          <span className="text-sm font-bold">Country profile</span>
+          <input
+            className="mt-1 w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-stone-600"
+            readOnly
+            value={`${countryProfile.countryName} · ${countryProfile.currencyCode} · ${countryProfile.timeZone}`}
+          />
+          <span className="mt-1 block text-xs font-medium text-stone-500">
+            Contact WhatsOrder support before changing country because it affects existing order reporting.
+          </span>
+        </label>
+        <label className="block">
           <span className="text-sm font-bold">WhatsApp number</span>
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.whatsapp_number} disabled={!canWrite} name="whatsapp_number" required />
           <span className="mt-1 block text-xs font-medium text-stone-500">
-            Use country code format, for example 971554822424. Local UAE numbers starting with 05 will be converted automatically.
+            Use country code format, for example {countryProfile.phoneExample}. Local {countryProfile.countryName} numbers are converted automatically.
           </span>
         </label>
         <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
@@ -115,6 +129,7 @@ export function SettingsForm({
             canWrite={canWrite}
             enabled={restaurant.opening_hours_enabled === true}
             openingHours={restaurant.opening_hours}
+            timeZone={restaurant.time_zone}
           />
         </div>
         <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">

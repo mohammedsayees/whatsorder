@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Minus, Plus, X } from "lucide-react";
 import { configuredUnitPrice } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import {
   customerTranslations,
   type CustomerLanguage
@@ -14,7 +14,8 @@ import type {
   MenuOffer,
   MenuOption,
   MenuOptionCatalog,
-  MenuOptionGroup
+  MenuOptionGroup,
+  PublicRestaurant
 } from "@/lib/types";
 
 // Bottom-sheet option picker for items with attached option groups. Purely
@@ -82,11 +83,11 @@ function groupName(group: MenuOptionGroup, language: CustomerLanguage) {
   return language === "ar" && group.name_ar ? group.name_ar : group.name;
 }
 
-function deltaLabel(delta: number) {
+function deltaLabel(delta: number, restaurant: PublicRestaurant) {
   if (delta === 0) {
     return null;
   }
-  return `${delta > 0 ? "+" : "−"}${formatAED(Math.abs(delta))}`;
+  return `${delta > 0 ? "+" : "−"}${formatCurrency(Math.abs(delta), restaurant)}`;
 }
 
 function toCartOption(option: MenuOption): CartLineOption {
@@ -107,7 +108,8 @@ export function ItemOptionsSheet({
   maxQuantity,
   offer,
   onAdd,
-  onClose
+  onClose,
+  restaurant
 }: {
   /** Item base price, or the offer's promotional price when seeded by an offer. */
   basePrice: number;
@@ -119,6 +121,7 @@ export function ItemOptionsSheet({
   offer?: MenuOffer | null;
   onAdd: (options: CartLineOption[], quantity: number) => void;
   onClose: () => void;
+  restaurant: PublicRestaurant;
 }) {
   const t = customerTranslations[language];
   const [selected, setSelected] = useState<Record<string, string[]>>({});
@@ -193,7 +196,7 @@ export function ItemOptionsSheet({
             <h2 className="text-xl font-black">{itemName}</h2>
             {offer ? (
               <p className="mt-1 text-xs font-black text-rose-600">
-                {t.offer} · {formatAED(basePrice)}
+                {t.offer} · {formatCurrency(basePrice, restaurant)}
               </p>
             ) : null}
           </div>
@@ -234,7 +237,7 @@ export function ItemOptionsSheet({
                 <div className="mt-2 space-y-2">
                   {options.map((option) => {
                     const isChosen = chosen.includes(option.id);
-                    const delta = deltaLabel(option.price_delta);
+                    const delta = deltaLabel(option.price_delta, restaurant);
                     const disableUnchosen =
                       !variant && !isChosen && chosen.length >= max;
 
@@ -298,7 +301,7 @@ export function ItemOptionsSheet({
             onClick={() => onAdd(selectedOptions, quantity)}
             type="button"
           >
-            {t.addToCart} · {formatAED(unitPrice * quantity)}
+            {t.addToCart} · {formatCurrency(unitPrice * quantity, restaurant)}
           </button>
         </div>
       </div>

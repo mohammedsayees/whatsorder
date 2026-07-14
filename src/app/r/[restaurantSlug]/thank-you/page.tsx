@@ -36,7 +36,11 @@ export default async function ThankYouPage({
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
         <Link
           className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-bold text-white"
-          href={buildWhatsAppUrl(restaurant.whatsapp_number, "Hi, I need help with my WhatsOrder order.")}
+          href={buildWhatsAppUrl(
+            restaurant.whatsapp_number,
+            "Hi, I need help with my WhatsOrder order.",
+            restaurant.phone_country_code
+          )}
         >
           <MessageCircle size={18} />
           Open WhatsApp

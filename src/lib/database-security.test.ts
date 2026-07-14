@@ -56,6 +56,18 @@ describe("public order database boundary", () => {
   const orderOfferCapsMigration = readProjectFile(
     "supabase/migrations/20260714131000_enforce_order_offer_caps.sql"
   );
+  const localizationMigration = readProjectFile(
+    "supabase/migrations/20260714150000_multi_country_localization.sql"
+  );
+  const localizationOperationsMigration = readProjectFile(
+    "supabase/migrations/20260714151000_multi_country_operational_time.sql"
+  );
+  const indiaOperationsMigration = readProjectFile(
+    "supabase/migrations/20260714152000_india_payments_and_customer_segments.sql"
+  );
+  const localizationIntegrationTest = readProjectFile(
+    "supabase/tests/multi_country_localization.sql"
+  );
   const inviteActions = readProjectFile("src/app/auth/invite/actions.ts");
   const readme = readProjectFile("README.md");
   const setupGuide = readProjectFile("SUPABASE_SETUP.md");
@@ -190,7 +202,7 @@ describe("public order database boundary", () => {
 
   it("keeps private restaurant fields out of the public DTO", () => {
     const publicType = typeModule.match(
-      /export type PublicRestaurant = \{([\s\S]*?)\n\};/
+      /export type PublicRestaurant = (?:Partial<RestaurantLocalization> & )?\{([\s\S]*?)\n\};/
     )?.[1];
 
     expect(publicType).toBeTruthy();
@@ -394,5 +406,34 @@ describe("public order database boundary", () => {
     expect(orderAdditionsIntegrationTest).toContain(
       "Combined offer cap unexpectedly succeeded"
     );
+  });
+
+  it("constrains localization per tenant without expanding public access", () => {
+    expect(localizationMigration).toContain(
+      "restaurants_supported_country_profile_check"
+    );
+    expect(localizationMigration).toContain("country_code = 'IN'");
+    expect(localizationMigration).toContain("currency_code = 'INR'");
+    expect(localizationMigration).toContain("time_zone = 'Asia/Kolkata'");
+    expect(localizationMigration).toMatch(
+      /revoke all on function public\.get_public_restaurant\(text\)[\s\S]*?from public, anon, authenticated;/
+    );
+    expect(localizationOperationsMigration).toContain(
+      "public.is_restaurant_open_at("
+    );
+    expect(localizationOperationsMigration).toContain(
+      "now() at time zone tenant.time_zone"
+    );
+    expect(indiaOperationsMigration).toContain("payment_method = 'UPI'");
+    expect(indiaOperationsMigration).toMatch(
+      /revoke all on function public\.get_customer_segment_page[\s\S]*?from public, anon, authenticated;/
+    );
+    expect(indiaOperationsMigration).toContain(
+      "where o.restaurant_id = p_restaurant_id"
+    );
+    expect(localizationIntegrationTest).toContain(
+      "Invalid India/AED profile unexpectedly succeeded"
+    );
+    expect(localizationIntegrationTest).toContain("rollback;");
   });
 });
