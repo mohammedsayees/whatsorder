@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDateTime } from "@/lib/date-time";
@@ -10,7 +11,7 @@ import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
 import { PaymentMethodControl } from "@/components/admin/PaymentMethodControl";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
 import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
-import { CarFront, Gift, MapPin, ShoppingBag, Truck, Utensils } from "lucide-react";
+import { CarFront, Gift, MapPin, PlusCircle, ShoppingBag, Truck, Utensils } from "lucide-react";
 import type { OrderPaymentChange } from "@/lib/data";
 
 export function OrderList({
@@ -60,6 +61,11 @@ export function OrderList({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-black">{order.customer_name}</h3>
                   <StatusBadge status={order.status} />
+                  {order.parent_order_id ? (
+                    <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-black text-violet-800">
+                      Add-on #{order.parent_order_id.slice(-8).toUpperCase()}
+                    </span>
+                  ) : null}
                   {order.payment_method === null && order.status !== "Cancelled" ? (
                     <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
                       Unpaid
@@ -155,6 +161,16 @@ export function OrderList({
                     <Gift size={15} />
                     {order.points_earned} points earned
                   </p>
+                ) : null}
+                {order.status !== "Cancelled" &&
+                !(order.status === "Completed" && order.payment_method === null) ? (
+                  <Link
+                    className="focus-ring mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-leaf px-4 py-2.5 text-sm font-black text-leaf hover:bg-mint"
+                    href={`/admin/orders/${order.id}/add-items`}
+                  >
+                    <PlusCircle size={16} />
+                    Add items
+                  </Link>
                 ) : null}
                 <OrderStatusActions
                   fulfilmentType={fulfilmentType}

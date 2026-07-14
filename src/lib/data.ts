@@ -63,6 +63,7 @@ const maxSynchronousReportOrders = 10_000;
 const orderListColumns = [
   "id",
   "restaurant_id",
+  "parent_order_id",
   "shift_id",
   "customer_name",
   "customer_phone",
@@ -570,6 +571,34 @@ export async function getRecentOrders(
     .filter((order) => order.restaurant_id === restaurantId)
     .toSorted((first, second) => second.created_at.localeCompare(first.created_at))
     .slice(0, limit);
+}
+
+export async function getOrderForAdmin(
+  restaurantId: string,
+  orderId: string
+): Promise<Order | null> {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return (
+      demoOrders.find(
+        (order) => order.id === orderId && order.restaurant_id === restaurantId
+      ) ?? null
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select(orderListColumns)
+    .eq("id", orderId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+
+  if (error) {
+    productionDataFailure("Order", error);
+  }
+
+  return (data as unknown as Order | null) ?? null;
 }
 
 export type DailySummaryCardData = {

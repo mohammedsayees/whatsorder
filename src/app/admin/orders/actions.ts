@@ -5,7 +5,10 @@ import { formatOrderItemName } from "@/lib/cart-line";
 import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
 import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
-import { verifyCartAgainstMenu } from "@/lib/order-pricing";
+import {
+  verifyCartAgainstMenu,
+  verifyCombinedOfferLimits
+} from "@/lib/order-pricing";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import {
   clampPunchedAt,
@@ -17,14 +20,27 @@ import {
 } from "@/lib/staff-order-payload";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
-import type { FulfilmentType, Order, OrderStatus, PaymentMethod } from "@/lib/types";
+import type {
+  CartLine,
+  FulfilmentType,
+  Order,
+  OrderStatus,
+  PaymentMethod
+} from "@/lib/types";
 
 export type StaffOrderState = {
   error?: string;
+  mode?: "amended" | "add_on";
   success?: string;
   // The saved order, returned so the punch screen can print its KOT/receipt
   // without navigating away. Absent on errors and on idempotent replays.
   order?: Order;
+};
+
+export type AddOrderItemsPayload = {
+  clientOrderId: string;
+  items: unknown[];
+  note?: string;
 };
 
 // How the punch screen's buttons map to the new order. "kitchen" sends an
@@ -89,6 +105,7 @@ export async function submitStaffOrderAction(
     getMenuOffers(session.restaurantId, { admin: true }),
     getMenuOptionCatalog(session.restaurantId, { admin: true })
   ]);
+
   const verified = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
 
   if (!verified.ok) {
@@ -215,6 +232,134 @@ export async function submitStaffOrderAction(
         ? "Order saved and marked paid."
         : "Order sent to the kitchen.",
     order: (insertedOrder as Order | null) ?? undefined
+  };
+}
+
+export async function addItemsToOrderAction(
+  orderId: string,
+  payload: AddOrderItemsPayload
+): Promise<StaffOrderState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return { error: "Order service is unavailable." };
+  }
+
+  if (!orderId || !isClientOrderId(payload?.clientOrderId)) {
+    return { error: "The order addition could not be read. Please try again." };
+  }
+
+  let items;
+  try {
+    items = parseAndValidateCart(JSON.stringify(payload?.items ?? []));
+  } catch {
+    return { error: "The added items could not be read. Please rebuild the ticket." };
+  }
+
+  if (items.length === 0) {
+    return { error: "Add at least one item." };
+  }
+
+  const [originalOrderResult, menu, offers, optionCatalog] = await Promise.all([
+    supabase
+      .from("orders")
+      .select("items,payment_method,status")
+      .eq("restaurant_id", session.restaurantId)
+      .eq("id", orderId)
+      .maybeSingle(),
+    getMenu(session.restaurantId, { admin: true }),
+    getMenuOffers(session.restaurantId, { admin: true }),
+    getMenuOptionCatalog(session.restaurantId, { admin: true })
+  ]);
+
+  if (originalOrderResult.error || !originalOrderResult.data) {
+    return { error: "Order not found. Refresh the order board and try again." };
+  }
+
+  const verified = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
+
+  if (!verified.ok) {
+    return { error: verified.error };
+  }
+
+  // The RPC appends to an active unpaid order. Enforce offer caps across the
+  // whole amended ticket, not just this batch. Paid tickets become separate
+  // add-on orders and therefore have their own offer allowance.
+  if (
+    originalOrderResult.data.payment_method === null &&
+    originalOrderResult.data.status !== "Completed"
+  ) {
+    const combinedOfferLimits = verifyCombinedOfferLimits(
+      (originalOrderResult.data.items ?? []) as CartLine[],
+      verified.items,
+      offers
+    );
+
+    if (!combinedOfferLimits.ok) {
+      return { error: combinedOfferLimits.error };
+    }
+  }
+
+  const { data, error } = await supabase.rpc("add_items_to_restaurant_order", {
+    addition_client_order_id: payload.clientOrderId,
+    addition_items: verified.items,
+    addition_note: payloadField(payload.note, 900) || null,
+    addition_subtotal: verified.subtotal,
+    event_actor_role: session.role,
+    event_actor_user_id: session.userId,
+    target_order_id: orderId,
+    target_restaurant_id: session.restaurantId
+  });
+
+  if (error) {
+    const knownMessages = [
+      "Order not found",
+      "Items cannot be added to a cancelled order",
+      "Items cannot be added to a completed unpaid order"
+    ];
+    return {
+      error:
+        knownMessages.find((message) => error.message.includes(message)) ??
+        "The items could not be added. Refresh and try again."
+    };
+  }
+
+  const result = data as { mode?: "amended" | "add_on"; order?: Order } | null;
+  const savedOrder = result?.order;
+  const mode = result?.mode;
+
+  if (!savedOrder || (mode !== "amended" && mode !== "add_on")) {
+    return { error: "The items were saved, but the updated ticket could not be loaded." };
+  }
+
+  const originalReference = orderId.slice(-8).toUpperCase();
+  const note = payloadField(payload.note, 900);
+  const printOrder: Order = {
+    ...savedOrder,
+    delivery_fee: 0,
+    items: verified.items,
+    loyalty_discount: 0,
+    notes: `ADD-ON ITEMS · Original #${originalReference}${note ? ` · ${note}` : ""}`,
+    payment_method: null,
+    points_earned: 0,
+    points_redeemed: 0,
+    status: "Preparing",
+    subtotal: verified.subtotal,
+    total: verified.subtotal
+  };
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/shifts");
+
+  return {
+    mode,
+    order: printOrder,
+    success:
+      mode === "amended"
+        ? "Items added to the unpaid order. Print the add-on KOT."
+        : "Payment was already recorded, so a separate unpaid add-on order was created."
   };
 }
 

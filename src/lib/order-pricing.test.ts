@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isOfferOrderable, verifyCartAgainstMenu } from "./order-pricing";
+import {
+  isOfferOrderable,
+  verifyCartAgainstMenu,
+  verifyCombinedOfferLimits
+} from "./order-pricing";
 import type {
   CartLine,
   CartLineOption,
@@ -151,6 +155,33 @@ describe("verifyCartAgainstMenu offer windows", () => {
     if (result.ok) {
       expect(result.items[0].price).toBe(5);
     }
+  });
+});
+
+describe("verifyCombinedOfferLimits", () => {
+  it("rejects an addition that takes an amended order over its offer cap", () => {
+    const existing = offerCartLine();
+    const added = offerCartLine().map((line) => ({ ...line, quantity: 4 }));
+
+    const result = verifyCombinedOfferLimits(existing, added, [
+      buildOffer({ max_quantity_per_order: 5 })
+    ]);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("limited to 5");
+    }
+  });
+
+  it("allows an addition whose combined offer quantity remains within the cap", () => {
+    const existing = offerCartLine();
+    const added = offerCartLine().map((line) => ({ ...line, quantity: 3 }));
+
+    expect(
+      verifyCombinedOfferLimits(existing, added, [
+        buildOffer({ max_quantity_per_order: 5 })
+      ])
+    ).toEqual({ ok: true });
   });
 });
 

@@ -47,6 +47,15 @@ describe("public order database boundary", () => {
   const reviewFixMigration = readProjectFile(
     "supabase/migrations/20260713000000_security_and_reliability_fixes.sql"
   );
+  const orderAdditionsMigration = readProjectFile(
+    "supabase/migrations/20260714130000_order_additions.sql"
+  );
+  const orderAdditionsIntegrationTest = readProjectFile(
+    "supabase/tests/order_item_additions.sql"
+  );
+  const orderOfferCapsMigration = readProjectFile(
+    "supabase/migrations/20260714131000_enforce_order_offer_caps.sql"
+  );
   const inviteActions = readProjectFile("src/app/auth/invite/actions.ts");
   const readme = readProjectFile("README.md");
   const setupGuide = readProjectFile("SUPABASE_SETUP.md");
@@ -352,5 +361,38 @@ describe("public order database boundary", () => {
       "Cross-tenant shift assignment unexpectedly succeeded"
     );
     expect(shiftCashIntegrationTest).toContain("rollback;");
+  });
+
+  it("keeps order additions tenant-consistent, idempotent, and service-role only", () => {
+    expect(orderAdditionsMigration).toContain("orders_parent_tenant_fkey");
+    expect(orderAdditionsMigration).toContain(
+      "order_item_addition_parent_tenant_fkey"
+    );
+    expect(orderAdditionsMigration).toContain(
+      "unique (restaurant_id, client_order_id)"
+    );
+    expect(orderAdditionsMigration).toMatch(
+      /revoke all on function public\.add_items_to_restaurant_order\([\s\S]*?\) from public, anon, authenticated;/
+    );
+    expect(orderAdditionsMigration).toMatch(
+      /grant execute on function public\.add_items_to_restaurant_order\([\s\S]*?\) to service_role;/
+    );
+    expect(orderAdditionsMigration).toContain(
+      "public.is_restaurant_member(restaurant_id)"
+    );
+    expect(orderAdditionsIntegrationTest).toContain(
+      "Idempotent amendment replay duplicated items"
+    );
+    expect(orderAdditionsIntegrationTest).toContain(
+      "Cross-tenant order addition unexpectedly succeeded"
+    );
+    expect(orderAdditionsIntegrationTest).toContain("rollback;");
+    expect(orderOfferCapsMigration).toContain(
+      "before insert or update of items on public.orders"
+    );
+    expect(orderOfferCapsMigration).toContain("Offer quantity limit exceeded");
+    expect(orderAdditionsIntegrationTest).toContain(
+      "Combined offer cap unexpectedly succeeded"
+    );
   });
 });

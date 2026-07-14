@@ -194,6 +194,7 @@ export type OrderItem = CartLine;
 export type Order = {
   id: string;
   restaurant_id: string;
+  parent_order_id?: string | null;
   shift_id: string | null;
   customer_name: string;
   customer_phone: string;

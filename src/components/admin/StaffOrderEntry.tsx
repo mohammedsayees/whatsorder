@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import { recordOrderPrintEventsAction } from "@/app/actions";
-import { submitStaffOrderAction } from "@/app/admin/orders/actions";
+import {
+  addItemsToOrderAction,
+  submitStaffOrderAction
+} from "@/app/admin/orders/actions";
 import {
   QueuedOrdersPanel,
   useStaffOrderQueue,
@@ -65,12 +68,14 @@ type SubmitFeedback =
 const LIVE_SUBMIT_TIMEOUT_MS = 8_000;
 
 export function StaffOrderEntry({
+  addToOrder,
   deliveryFee,
   menu,
   optionCatalog,
   orderTypes,
   restaurant
 }: {
+  addToOrder?: Order;
   deliveryFee: number;
   menu: MenuWithCategories;
   optionCatalog?: MenuOptionCatalog;
@@ -78,13 +83,17 @@ export function StaffOrderEntry({
   restaurant: Restaurant;
 }) {
   const restaurantId = restaurant.id;
+  const isAddingToOrder = Boolean(addToOrder);
   const [lines, setLines] = useState<Record<string, TicketLine>>({});
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
-  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(orderTypes[0]);
+  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(
+    addToOrder?.fulfilment_type ?? orderTypes[0]
+  );
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
+  const additionAttemptIdRef = useRef<string | null>(null);
 
   const { queue, syncingId, enqueue, retry, discard } = useStaffOrderQueue(restaurantId);
 
@@ -94,6 +103,7 @@ export function StaffOrderEntry({
   );
 
   function clearTicket() {
+    additionAttemptIdRef.current = null;
     setLines({});
     setSearch("");
     setSelectedCategoryId("all");
@@ -136,6 +146,14 @@ export function StaffOrderEntry({
 
   // Tap-to-add: option-ful items open the picker, plain items add instantly.
   function handleAdd(itemId: string) {
+    if (additionAttemptIdRef.current) {
+      setFeedback({
+        kind: "error",
+        message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
+      });
+      return;
+    }
+
     const item = availableItems.find((entry) => entry.id === itemId);
 
     if (!item) {
@@ -151,6 +169,15 @@ export function StaffOrderEntry({
   }
 
   function addTicketLine(item: MenuItem, options: CartLineOption[], quantity: number) {
+    if (additionAttemptIdRef.current) {
+      setPickerItem(null);
+      setFeedback({
+        kind: "error",
+        message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
+      });
+      return;
+    }
+
     const key = cartLineKey({ item_id: item.id, options });
 
     setLines((current) => {
@@ -170,6 +197,14 @@ export function StaffOrderEntry({
   }
 
   function changeQuantity(lineKey: string, delta: number) {
+    if (additionAttemptIdRef.current) {
+      setFeedback({
+        kind: "error",
+        message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
+      });
+      return;
+    }
+
     setLines((current) => {
       const existing = current[lineKey];
       if (!existing) {
@@ -185,6 +220,14 @@ export function StaffOrderEntry({
   }
 
   function removeItem(lineKey: string) {
+    if (additionAttemptIdRef.current) {
+      setFeedback({
+        kind: "error",
+        message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
+      });
+      return;
+    }
+
     setLines((current) => {
       const { [lineKey]: _removed, ...rest } = current;
       return rest;
@@ -223,6 +266,60 @@ export function StaffOrderEntry({
 
     const formData = new FormData(form);
     const readField = (key: string) => String(formData.get(key) ?? "").trim();
+
+    if (addToOrder) {
+      setPending(true);
+      setFeedback(null);
+
+      try {
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          setFeedback({
+            kind: "error",
+            message: "Reconnect before adding items. Nothing has been changed."
+          });
+          return;
+        }
+
+        const clientOrderId = additionAttemptIdRef.current ?? crypto.randomUUID();
+        additionAttemptIdRef.current = clientOrderId;
+
+        const result = await withTimeout(
+          addItemsToOrderAction(addToOrder.id, {
+            clientOrderId,
+            items: cartPayload,
+            note: readField("notes")
+          }),
+          LIVE_SUBMIT_TIMEOUT_MS
+        );
+
+        if (result.error) {
+          // A definite server rejection did not mutate the order; allow staff
+          // to correct the ticket and submit it as a new attempt.
+          additionAttemptIdRef.current = null;
+          setFeedback({ kind: "error", message: result.error });
+          return;
+        }
+
+        clearTicket();
+        setFeedback({
+          kind: "success",
+          message: result.success ?? "Items added.",
+          order: result.order
+        });
+
+        if (result.order) {
+          printSavedOrder(result.order, ["kot"]);
+        }
+      } catch {
+        setFeedback({
+          kind: "error",
+          message: "The connection timed out. Retry this unchanged ticket when online; it cannot be added twice."
+        });
+      } finally {
+        setPending(false);
+      }
+      return;
+    }
 
     const payload: StaffOrderPayload = {
       clientOrderId: crypto.randomUUID(),
@@ -323,13 +420,15 @@ export function StaffOrderEntry({
   return (
     <div className="space-y-6">
       {/* Offline queue — orders punched while disconnected, waiting to sync. */}
-      <QueuedOrdersPanel
-        onDiscard={discard}
-        onRetry={retry}
-        queue={queue}
-        restaurant={restaurant}
-        syncingId={syncingId}
-      />
+      {!isAddingToOrder ? (
+        <QueuedOrdersPanel
+          onDiscard={discard}
+          onRetry={retry}
+          queue={queue}
+          restaurant={restaurant}
+          syncingId={syncingId}
+        />
+      ) : null}
 
       <div className="grid gap-6 pb-24 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:pb-0">
       {/* Menu picker */}
@@ -512,6 +611,7 @@ export function StaffOrderEntry({
                       : "border-stone-200 text-stone-600 hover:bg-stone-50"
                   }`}
                   key={type}
+                  disabled={isAddingToOrder}
                   onClick={() => setFulfilmentType(type)}
                   type="button"
                 >
@@ -529,6 +629,8 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={120}
                   name="delivery_area"
+                  defaultValue={addToOrder?.delivery_area ?? ""}
+                  readOnly={isAddingToOrder}
                   required
                   type="text"
                 />
@@ -539,6 +641,8 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={500}
                   name="delivery_address"
+                  defaultValue={addToOrder?.delivery_address ?? ""}
+                  readOnly={isAddingToOrder}
                   required
                   type="text"
                 />
@@ -549,6 +653,8 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={250}
                   name="delivery_landmark"
+                  defaultValue={addToOrder?.delivery_landmark ?? ""}
+                  readOnly={isAddingToOrder}
                   type="text"
                 />
               </label>
@@ -563,6 +669,8 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={40}
                   name="car_plate_number"
+                  defaultValue={addToOrder?.car_plate_number ?? ""}
+                  readOnly={isAddingToOrder}
                   required
                   type="text"
                 />
@@ -574,6 +682,8 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={120}
                   name="car_description"
+                  defaultValue={addToOrder?.car_description ?? ""}
+                  readOnly={isAddingToOrder}
                   type="text"
                 />
               </label>
@@ -587,6 +697,8 @@ export function StaffOrderEntry({
                 className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                 maxLength={40}
                 name="table_number"
+                defaultValue={addToOrder?.table_number ?? ""}
+                readOnly={isAddingToOrder}
                 required
                 type="text"
               />
@@ -602,6 +714,8 @@ export function StaffOrderEntry({
                 maxLength={120}
                 name="customer_name"
                 placeholder="Walk-in customer"
+                defaultValue={addToOrder?.customer_name ?? ""}
+                readOnly={isAddingToOrder}
                 type="text"
               />
             </label>
@@ -612,6 +726,8 @@ export function StaffOrderEntry({
                 inputMode="tel"
                 maxLength={24}
                 name="customer_phone"
+                defaultValue={addToOrder?.customer_phone ?? ""}
+                readOnly={isAddingToOrder}
                 type="tel"
               />
             </label>
@@ -621,6 +737,7 @@ export function StaffOrderEntry({
                 className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                 maxLength={1000}
                 name="notes"
+                placeholder={isAddingToOrder ? "Optional note for the added items" : undefined}
                 type="text"
               />
             </label>
@@ -671,7 +788,18 @@ export function StaffOrderEntry({
                 <p className="mb-2 text-center text-xs font-black uppercase tracking-wide text-emerald-700">
                   Print for order #{feedback.order.id.slice(-8).toUpperCase()}
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                {isAddingToOrder ? (
+                  <button
+                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
+                    onClick={() => printSavedOrder(feedback.order!, ["kot"])}
+                    type="button"
+                  >
+                    <Printer size={15} />
+                    Reprint add-on KOT
+                  </button>
+                ) : (
+                  <>
+                  <div className="grid grid-cols-2 gap-2">
                   <button
                     className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
                     onClick={() => printSavedOrder(feedback.order!, ["kot"])}
@@ -697,6 +825,8 @@ export function StaffOrderEntry({
                   <Files size={15} />
                   Print Both
                 </button>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -708,11 +838,15 @@ export function StaffOrderEntry({
               type="submit"
               value="kitchen"
             >
-              {pending ? "Saving…" : "Send to kitchen"}
+              {pending
+                ? "Saving…"
+                : isAddingToOrder
+                  ? "Add items & print KOT"
+                  : "Send to kitchen"}
             </button>
 
             {/* Optional shortcut: customer pays up front. */}
-            <div className="grid grid-cols-2 gap-2">
+            {!isAddingToOrder ? <div className="grid grid-cols-2 gap-2">
               <button
                 className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
                 disabled={pending || ticketLines.length === 0}
@@ -731,7 +865,7 @@ export function StaffOrderEntry({
               >
                 Paid · Card
               </button>
-            </div>
+            </div> : null}
           </div>
 
           {/* Mobile: keep billing one tap away without scrolling to the ticket */}
@@ -750,7 +884,11 @@ export function StaffOrderEntry({
                 type="submit"
                 value="kitchen"
               >
-                {pending ? "Saving…" : "Send to kitchen"}
+                {pending
+                  ? "Saving…"
+                  : isAddingToOrder
+                    ? "Add items"
+                    : "Send to kitchen"}
               </button>
             </div>
           ) : null}
