@@ -68,7 +68,7 @@ export default async function AdminDashboardPage({
 
       {dailySummary ? (
         <div className="mt-6">
-          <DailySummaryCard summary={dailySummary} />
+          <DailySummaryCard restaurant={restaurant} summary={dailySummary} />
         </div>
       ) : null}
 

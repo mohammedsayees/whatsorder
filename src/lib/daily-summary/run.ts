@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import type { RestaurantLocalization } from "@/lib/types";
 
 import { computeDailyNumbers } from "./metrics";
+import { withDailyCoach } from "./coach";
 import { narrate } from "./narrate";
 import { sendOwnerMessage } from "./send";
 
@@ -69,7 +70,7 @@ export async function runDailySummary(options?: {
 
   const { data: restaurants, error } = await admin
     .from("restaurants")
-    .select("id, name, owner_phone, daily_summary_phone, country_code, currency_code, locale, phone_country_code, time_zone")
+    .select("id, name, owner_phone, daily_summary_phone, country_code, currency_code, locale, phone_country_code, time_zone, opening_hours_enabled, opening_hours")
     .eq("is_active", true)
     .eq("daily_summary_enabled", true);
 
@@ -106,7 +107,8 @@ export async function runDailySummary(options?: {
         continue;
       }
 
-      const numbers = await computeDailyNumbers(admin, restaurant.id, summaryDate);
+      const rawNumbers = await computeDailyNumbers(admin, restaurant.id, summaryDate);
+      const numbers = withDailyCoach(rawNumbers, restaurant);
       const status = numbers.order_count === 0 ? "skipped_empty" : "sent";
       const message = await narrate(numbers, restaurant.name, restaurant);
       const phone = restaurant.daily_summary_phone ?? restaurant.owner_phone ?? null;

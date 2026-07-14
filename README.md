@@ -138,6 +138,16 @@ Public saved-address lookup is disabled because a phone number alone is not suff
 verification. It should only return after customer OTP or account authentication is added. See
 [CUSTOMER_PROFILE_AND_LOYALTY.md](CUSTOMER_PROFILE_AND_LOYALTY.md).
 
+## Daily Coach
+
+The daily recap uses completed orders to compare each open trading period with
+the same weekday over the previous four weeks. It ranks up to three actions from
+period demand, basket size, cancellations, repeat customers, consent-aware
+contact capture, fulfilment and privacy-thresholded delivery areas. The concise
+recap is suitable for WhatsApp; the admin dashboard can expand every period.
+Recommendations are deterministic and tenant-scoped. AI is not allowed to
+alter counts, money, consent rules or location claims.
+
 ## Menu Images
 
 Restaurant staff can upload optional menu item images from their phone or laptop through Supabase Storage. See [MENU_IMAGE_UPLOAD.md](MENU_IMAGE_UPLOAD.md).
