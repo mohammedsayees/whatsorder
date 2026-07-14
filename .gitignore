@@ -9,3 +9,6 @@ dist
 *.tsbuildinfo
 coverage
 .DS_Store
+supabase/.temp/
+.claude/
+.vercel

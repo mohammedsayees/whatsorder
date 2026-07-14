@@ -12,13 +12,26 @@ Push the project to GitHub.
 
 ## 2. Create Supabase Project
 
-Run `supabase/schema.sql` in Supabase SQL Editor.
+Run the SQL files listed in `SUPABASE_SETUP.md` in order. For an existing
+Supabase project, run only migrations that have not previously been applied.
 
 Confirm these rows exist:
 
 - `restaurants.slug = chaixpress`
 - Chai Xpress menu categories
 - Chai Xpress menu items
+
+For an existing project, also apply all pending security, operations, and
+feature migrations in the order listed in `SUPABASE_SETUP.md`, including:
+
+```text
+supabase/20260620_lock_down_public_order_creation.sql
+supabase/20260620_p1_pilot_operations.sql
+supabase/migrations/*.sql (all pending files, in filename order)
+```
+
+The timestamped migration directory is one ordered sequence. Do not skip
+intervening feature migrations when applying a newer security migration.
 
 ## 3. Deploy to Vercel
 
@@ -39,6 +52,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_DEFAULT_RESTAURANT_SLUG=chaixpress
 NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER=971551150068
+NEXT_PUBLIC_APP_URL=https://your-domain.com
+ENABLE_DEMO_DATA=false
 ```
 
 Redeploy after adding or changing environment variables.
@@ -62,15 +77,33 @@ https://your-domain/admin
 Before sharing the restaurant link:
 
 - Confirm `/r/chaixpress` loads from Supabase.
+- Confirm equivalent UAE phone formats create/update one customer profile.
+- Confirm a cart below the minimum order cannot enter checkout.
 - Confirm WhatsApp number in `restaurants.whatsapp_number`.
 - Place one test order.
 - Confirm the order appears in `/admin/orders`.
 - Change order status and confirm it saves.
+- Confirm an `order_status_events` row is created for each status change.
 - Confirm customer record was created or updated.
+- Confirm owner invitation email opens the production `/auth/invite` URL.
+- Confirm the invited owner can set a password and sign in.
+- Confirm a manager/staff account can be revoked and immediately loses dashboard access.
+- Enable sound alerts on the restaurant device and place an order from another device.
+- Confirm the Realtime indicator says `Live`, the sound plays, and the order is highlighted.
+- Leave a dashboard open for more than one hour and place another test order.
+- Complete an order, send a feedback request, submit it, approve it, and verify it publicly.
+- Test every enabled fulfilment option, including table number and car plate requirements.
+- Create an offer, confirm it appears in the swipe carousel, and verify the discounted price in checkout and WhatsApp.
+- Pause the restaurant and confirm its public menu and dashboard access become unavailable.
+- Print a KOT and receipt and confirm `order_print_events` rows are created.
+- Record a customer STOP/opt-out and confirm promotional WhatsApp actions disappear.
 
 ## 7. Security Notes
 
 - Do not commit `.env.local`.
 - Do not expose `SUPABASE_SERVICE_ROLE_KEY`.
-- Keep admin URLs private until authentication is added.
-- Add Supabase Auth before onboarding multiple restaurant operators.
+- Restaurant and Super Admin routes are protected by Supabase Auth and HTTP-only cookies.
+- Configure Supabase Authentication Site URL and allowed redirect URLs for the production domain.
+- Configure dependable Supabase Auth email delivery/SMTP before sending owner invitations.
+- Keep `ENABLE_DEMO_DATA=false` in production so database failures cannot show pilot data.
+- Keep a rollback plan and verify Supabase backups before onboarding live restaurants.

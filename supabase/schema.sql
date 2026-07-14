@@ -27,10 +27,13 @@ end $$;
 create table if not exists restaurants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  name_ar text,
   slug text not null unique,
   logo_url text,
   whatsapp_number text not null,
   address text,
+  address_ar text,
+  subtitle_ar text,
   delivery_fee numeric(10, 2) not null default 0,
   minimum_order_amount numeric(10, 2) not null default 0,
   is_active boolean not null default true,
@@ -42,6 +45,7 @@ create table if not exists menu_categories (
   id uuid primary key default gen_random_uuid(),
   restaurant_id uuid not null references restaurants(id) on delete cascade,
   name text not null,
+  name_ar text,
   display_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -53,7 +57,9 @@ create table if not exists menu_items (
   restaurant_id uuid not null references restaurants(id) on delete cascade,
   category_id uuid not null references menu_categories(id) on delete cascade,
   name text not null,
+  name_ar text,
   description text,
+  description_ar text,
   price numeric(10, 2) not null check (price >= 0),
   image_url text,
   is_available boolean not null default true,
@@ -81,6 +87,9 @@ create table if not exists orders (
   subtotal numeric(10, 2) not null check (subtotal >= 0),
   delivery_fee numeric(10, 2) not null check (delivery_fee >= 0),
   total numeric(10, 2) not null check (total >= 0),
+  points_earned integer not null default 0,
+  points_redeemed integer not null default 0,
+  loyalty_discount numeric(10, 2) not null default 0,
   status order_status not null default 'New',
   whatsapp_message text not null,
   consent_order_processing boolean not null,
@@ -104,7 +113,13 @@ create table if not exists customers (
   default_landmark text,
   total_orders integer not null default 0,
   total_spend numeric(10, 2) not null default 0,
+  last_order_at timestamptz,
   marketing_opt_in boolean not null default false,
+  consent_order_processing boolean not null default false,
+  consent_marketing boolean not null default false,
+  consent_timestamp timestamptz,
+  loyalty_points_balance integer not null default 0,
+  lifetime_points_earned integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (restaurant_id, phone)
@@ -120,6 +135,17 @@ create table if not exists restaurant_users (
   unique (restaurant_id, email)
 );
 
+create table if not exists loyalty_transactions (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references restaurants(id) on delete cascade,
+  customer_id uuid not null references customers(id) on delete cascade,
+  order_id uuid references orders(id) on delete set null,
+  type text not null check (type in ('earned', 'redeemed', 'adjusted', 'expired')),
+  points integer not null,
+  description text,
+  created_at timestamptz not null default now()
+);
+
 alter table restaurants add column if not exists updated_at timestamptz not null default now();
 alter table menu_categories add column if not exists updated_at timestamptz not null default now();
 alter table menu_items add column if not exists updated_at timestamptz not null default now();
@@ -129,18 +155,29 @@ alter table orders add column if not exists delivery_google_maps_url text;
 alter table orders add column if not exists delivery_place_id text;
 alter table orders add column if not exists delivery_address_text text;
 alter table orders add column if not exists delivery_landmark text;
+alter table orders add column if not exists points_earned integer not null default 0;
+alter table orders add column if not exists points_redeemed integer not null default 0;
+alter table orders add column if not exists loyalty_discount numeric(10, 2) not null default 0;
 alter table customers add column if not exists default_latitude numeric(10, 7);
 alter table customers add column if not exists default_longitude numeric(10, 7);
 alter table customers add column if not exists default_google_maps_url text;
 alter table customers add column if not exists default_address_text text;
 alter table customers add column if not exists default_landmark text;
+alter table customers add column if not exists last_order_at timestamptz;
+alter table customers add column if not exists consent_order_processing boolean not null default false;
+alter table customers add column if not exists consent_marketing boolean not null default false;
+alter table customers add column if not exists consent_timestamp timestamptz;
+alter table customers add column if not exists loyalty_points_balance integer not null default 0;
+alter table customers add column if not exists lifetime_points_earned integer not null default 0;
 alter table restaurant_users add column if not exists user_id uuid;
 
 create index if not exists idx_menu_categories_restaurant on menu_categories(restaurant_id);
 create index if not exists idx_menu_items_restaurant on menu_items(restaurant_id);
 create index if not exists idx_orders_restaurant_created on orders(restaurant_id, created_at desc);
+create index if not exists idx_orders_restaurant_customer_phone on orders(restaurant_id, customer_phone);
 create index if not exists idx_orders_status on orders(status);
 create index if not exists idx_customers_restaurant_phone on customers(restaurant_id, phone);
+create index if not exists idx_loyalty_transactions_restaurant_customer on loyalty_transactions(restaurant_id, customer_id);
 create index if not exists idx_restaurant_users_user on restaurant_users(user_id);
 
 create or replace function set_updated_at()
@@ -204,6 +241,7 @@ alter table menu_items enable row level security;
 alter table orders enable row level security;
 alter table customers enable row level security;
 alter table restaurant_users enable row level security;
+alter table loyalty_transactions enable row level security;
 
 drop policy if exists "Public can read active restaurants" on restaurants;
 create policy "Public can read active restaurants"
@@ -283,6 +321,12 @@ on customers for all
 using (is_restaurant_member(customers.restaurant_id, array['owner', 'manager', 'staff']))
 with check (is_restaurant_member(customers.restaurant_id, array['owner', 'manager', 'staff']));
 
+drop policy if exists "Restaurant users can manage own loyalty transactions" on loyalty_transactions;
+create policy "Restaurant users can manage own loyalty transactions"
+on loyalty_transactions for all
+using (is_restaurant_member(loyalty_transactions.restaurant_id, array['owner', 'manager', 'staff']))
+with check (is_restaurant_member(loyalty_transactions.restaurant_id, array['owner', 'manager', 'staff']));
+
 drop policy if exists "Restaurant users can read own memberships" on restaurant_users;
 create policy "Restaurant users can read own memberships"
 on restaurant_users for select
@@ -300,10 +344,13 @@ with check (is_restaurant_member(restaurant_users.restaurant_id, array['owner'])
 insert into restaurants (
   id,
   name,
+  name_ar,
   slug,
   logo_url,
   whatsapp_number,
   address,
+  address_ar,
+  subtitle_ar,
   delivery_fee,
   minimum_order_amount,
   is_active
@@ -311,18 +358,24 @@ insert into restaurants (
 values (
   '00000000-0000-4000-8000-000000000001',
   'Chai Xpress',
+  'تشاي إكسبرس',
   'chaixpress',
   null,
   '971551150068',
   'Al Rawda 3, Ajman, UAE',
+  'الروضة 3، عجمان، الإمارات',
+  'كرك، برجر، شاورما',
   5,
   15,
   true
 )
 on conflict (slug) do update set
   name = excluded.name,
+  name_ar = excluded.name_ar,
   whatsapp_number = excluded.whatsapp_number,
   address = excluded.address,
+  address_ar = excluded.address_ar,
+  subtitle_ar = excluded.subtitle_ar,
   delivery_fee = excluded.delivery_fee,
   minimum_order_amount = excluded.minimum_order_amount,
   is_active = excluded.is_active;
@@ -333,17 +386,18 @@ where restaurant_id = '00000000-0000-4000-8000-000000000001';
 delete from menu_categories
 where restaurant_id = '00000000-0000-4000-8000-000000000001';
 
-insert into menu_categories (id, restaurant_id, name, display_order, is_active)
+insert into menu_categories (id, restaurant_id, name, name_ar, display_order, is_active)
 values
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000001', 'Tea & Hot Drinks', 1, true),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Shawarma', 2, true),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Burgers', 3, true),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Sandwiches & Rolls', 4, true),
-  ('00000000-0000-4000-8000-000000000105', '00000000-0000-4000-8000-000000000001', 'Snacks', 5, true),
-  ('00000000-0000-4000-8000-000000000106', '00000000-0000-4000-8000-000000000001', 'Juices', 6, true),
-  ('00000000-0000-4000-8000-000000000107', '00000000-0000-4000-8000-000000000001', 'Combos', 7, true)
+  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000001', 'Tea & Hot Drinks', 'الشاي والمشروبات الساخنة', 1, true),
+  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Shawarma', 'الشاورما', 2, true),
+  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Burgers', 'البرجر', 3, true),
+  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Sandwiches & Rolls', 'السندويتشات والرولات', 4, true),
+  ('00000000-0000-4000-8000-000000000105', '00000000-0000-4000-8000-000000000001', 'Snacks', 'الوجبات الخفيفة', 5, true),
+  ('00000000-0000-4000-8000-000000000106', '00000000-0000-4000-8000-000000000001', 'Juices', 'العصائر', 6, true),
+  ('00000000-0000-4000-8000-000000000107', '00000000-0000-4000-8000-000000000001', 'Combos', 'الوجبات الكومبو', 7, true)
 on conflict (id) do update set
   name = excluded.name,
+  name_ar = excluded.name_ar,
   display_order = excluded.display_order,
   is_active = excluded.is_active;
 
@@ -352,40 +406,44 @@ insert into menu_items (
   restaurant_id,
   category_id,
   name,
+  name_ar,
   description,
+  description_ar,
   price,
   image_url,
   is_available,
   is_featured
 )
 values
-  ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Karak Tea', 'Signature hot karak tea.', 2, null, true, true),
-  ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Sulaimani Tea', 'Light black tea served hot.', 1, null, true, false),
-  ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Ginger Tea', 'Hot tea with ginger.', 2, null, true, false),
-  ('00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Zafran Tea', 'Saffron-flavoured hot tea.', 3, null, true, false),
-  ('00000000-0000-4000-8000-000000000205', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Chicken Shawarma', 'Classic chicken shawarma wrap.', 6, null, true, true),
-  ('00000000-0000-4000-8000-000000000206', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Spicy Chicken Shawarma', 'Chicken shawarma with spicy sauce.', 7, null, true, false),
-  ('00000000-0000-4000-8000-000000000207', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Shawarma Plate', 'Chicken shawarma served as a plate.', 15, null, true, false),
-  ('00000000-0000-4000-8000-000000000208', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Zinger Burger', 'Crispy zinger chicken burger with house sauce.', 12, null, true, true),
-  ('00000000-0000-4000-8000-000000000209', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Chicken Burger', 'Classic chicken burger.', 8, null, true, false),
-  ('00000000-0000-4000-8000-000000000210', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Beef Burger', 'Classic beef burger.', 10, null, true, false),
-  ('00000000-0000-4000-8000-000000000211', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Double Zinger Burger', 'Double crispy zinger chicken burger.', 16, null, true, true),
-  ('00000000-0000-4000-8000-000000000212', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Porotta Roll', 'Classic porotta roll with house filling.', 7, null, true, false),
-  ('00000000-0000-4000-8000-000000000213', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Oman Chips Porotta', 'Porotta filled with Oman Chips.', 5, null, true, false),
-  ('00000000-0000-4000-8000-000000000214', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Chicken Club Sandwich', 'Layered chicken club sandwich.', 12, null, true, false),
-  ('00000000-0000-4000-8000-000000000215', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'Loaded Fries', 'Fries topped with chicken, cheese, and sauce.', 12, null, true, false),
-  ('00000000-0000-4000-8000-000000000216', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'French Fries', 'Crispy fried potato fries.', 6, null, true, false),
-  ('00000000-0000-4000-8000-000000000217', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'Chicken Nuggets', 'Crispy chicken nuggets.', 10, null, true, false),
-  ('00000000-0000-4000-8000-000000000218', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Fresh Lime Juice', 'Chilled fresh lime juice.', 8, null, true, false),
-  ('00000000-0000-4000-8000-000000000219', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Orange Juice', 'Fresh orange juice.', 10, null, true, false),
-  ('00000000-0000-4000-8000-000000000220', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Avocado Juice', 'Creamy avocado juice.', 12, null, true, false),
-  ('00000000-0000-4000-8000-000000000221', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', 'Shawarma + Karak Combo', 'Chicken shawarma with karak tea.', 7, null, true, true),
-  ('00000000-0000-4000-8000-000000000222', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', 'Zinger Burger + Fries + Karak', 'Zinger burger combo with fries and karak.', 18, null, true, true),
-  ('00000000-0000-4000-8000-000000000223', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', '3 Shawarma Offer', 'Three chicken shawarmas.', 12, null, true, true)
+  ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Karak Tea', 'شاي كرك', 'Signature hot karak tea.', 'شاي كرك ساخن ومميز.', 2, null, true, true),
+  ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Sulaimani Tea', 'شاي سليماني', 'Light black tea served hot.', 'شاي أسود خفيف يقدم ساخنا.', 1, null, true, false),
+  ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Ginger Tea', 'شاي زنجبيل', 'Hot tea with ginger.', 'شاي ساخن بنكهة الزنجبيل.', 2, null, true, false),
+  ('00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Zafran Tea', 'شاي زعفران', 'Saffron-flavoured hot tea.', 'شاي ساخن بنكهة الزعفران.', 3, null, true, false),
+  ('00000000-0000-4000-8000-000000000205', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Chicken Shawarma', 'شاورما دجاج', 'Classic chicken shawarma wrap.', 'راب شاورما دجاج كلاسيكي.', 6, null, true, true),
+  ('00000000-0000-4000-8000-000000000206', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Spicy Chicken Shawarma', 'شاورما دجاج حار', 'Chicken shawarma with spicy sauce.', 'شاورما دجاج مع صلصة حارة.', 7, null, true, false),
+  ('00000000-0000-4000-8000-000000000207', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Shawarma Plate', 'صحن شاورما', 'Chicken shawarma served as a plate.', 'شاورما دجاج تقدم في صحن.', 15, null, true, false),
+  ('00000000-0000-4000-8000-000000000208', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Zinger Burger', 'برجر زنجر', 'Crispy zinger chicken burger with house sauce.', 'برجر دجاج زنجر مقرمش مع صلصة خاصة.', 12, null, true, true),
+  ('00000000-0000-4000-8000-000000000209', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Chicken Burger', 'برجر دجاج', 'Classic chicken burger.', 'برجر دجاج كلاسيكي.', 8, null, true, false),
+  ('00000000-0000-4000-8000-000000000210', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Beef Burger', 'برجر لحم', 'Classic beef burger.', 'برجر لحم كلاسيكي.', 10, null, true, false),
+  ('00000000-0000-4000-8000-000000000211', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Double Zinger Burger', 'دبل زنجر برجر', 'Double crispy zinger chicken burger.', 'برجر دجاج زنجر مقرمش دبل.', 16, null, true, true),
+  ('00000000-0000-4000-8000-000000000212', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Porotta Roll', null, 'Classic porotta roll with house filling.', null, 7, null, true, false),
+  ('00000000-0000-4000-8000-000000000213', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Oman Chips Porotta', null, 'Porotta filled with Oman Chips.', null, 5, null, true, false),
+  ('00000000-0000-4000-8000-000000000214', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000104', 'Chicken Club Sandwich', null, 'Layered chicken club sandwich.', null, 12, null, true, false),
+  ('00000000-0000-4000-8000-000000000215', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'Loaded Fries', null, 'Fries topped with chicken, cheese, and sauce.', null, 12, null, true, false),
+  ('00000000-0000-4000-8000-000000000216', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'French Fries', null, 'Crispy fried potato fries.', null, 6, null, true, false),
+  ('00000000-0000-4000-8000-000000000217', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000105', 'Chicken Nuggets', null, 'Crispy chicken nuggets.', null, 10, null, true, false),
+  ('00000000-0000-4000-8000-000000000218', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Fresh Lime Juice', null, 'Chilled fresh lime juice.', null, 8, null, true, false),
+  ('00000000-0000-4000-8000-000000000219', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Orange Juice', null, 'Fresh orange juice.', null, 10, null, true, false),
+  ('00000000-0000-4000-8000-000000000220', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000106', 'Avocado Juice', null, 'Creamy avocado juice.', null, 12, null, true, false),
+  ('00000000-0000-4000-8000-000000000221', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', 'Shawarma + Karak Combo', null, 'Chicken shawarma with karak tea.', null, 7, null, true, true),
+  ('00000000-0000-4000-8000-000000000222', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', 'Zinger Burger + Fries + Karak', null, 'Zinger burger combo with fries and karak.', null, 18, null, true, true),
+  ('00000000-0000-4000-8000-000000000223', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000107', '3 Shawarma Offer', null, 'Three chicken shawarmas.', null, 12, null, true, true)
 on conflict (id) do update set
   category_id = excluded.category_id,
   name = excluded.name,
+  name_ar = excluded.name_ar,
   description = excluded.description,
+  description_ar = excluded.description_ar,
   price = excluded.price,
   image_url = excluded.image_url,
   is_available = excluded.is_available,

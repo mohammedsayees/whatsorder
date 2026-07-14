@@ -1,13 +1,34 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, MapPin, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  CarFront,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  MessageCircle,
+  Minus,
+  Plus,
+  Send,
+  ShoppingBag,
+  Truck,
+  Utensils
+} from "lucide-react";
 import { createOrderAction } from "@/app/actions";
+import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import { formatAED } from "@/lib/currency";
+import { isRestaurantOpen } from "@/lib/opening-hours";
+import { minimumOrderRemaining } from "@/lib/security";
+import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
+import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
-import type { Restaurant } from "@/lib/types";
+import { LanguageToggle } from "@/components/customer/LanguageToggle";
+import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
+import type { CustomerProfile } from "@/lib/customer-auth/context";
+import type { FulfilmentType, PublicRestaurant } from "@/lib/types";
 
 type CapturedLocation = {
   latitude: number;
@@ -15,23 +36,86 @@ type CapturedLocation = {
   mapsUrl: string;
 };
 
-export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
+type PendingWhatsAppOrder = {
+  orderId: string;
+  whatsappUrl: string;
+};
+
+function isMobileWhatsAppHandoff() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+export function CheckoutForm({
+  initialTableNumber = "",
+  prefill = null,
+  restaurant
+}: {
+  initialTableNumber?: string;
+  prefill?: CustomerProfile | null;
+  restaurant: PublicRestaurant;
+}) {
   const router = useRouter();
   const cart = useCart();
+  const { language, setLanguage } = useCustomerLanguage();
+  const t = customerTranslations[language];
+  const direction = getTextDirection(language);
+  const availableFulfilmentTypes: FulfilmentType[] = [
+    ...(restaurant.delivery_enabled !== false ? (["delivery"] as const) : []),
+    ...(restaurant.pickup_enabled === true ? (["takeaway"] as const) : []),
+    ...(restaurant.car_pickup_enabled === true ? (["car_pickup"] as const) : []),
+    ...(restaurant.dine_in_enabled === true ? (["dine_in"] as const) : [])
+  ];
+  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(
+    initialTableNumber && restaurant.dine_in_enabled === true
+      ? "dine_in"
+      : availableFulfilmentTypes[0] ?? "delivery"
+  );
   const [isPending, startTransition] = useTransition();
+  const [submissionToken] = useState(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   const [error, setError] = useState<string | null>(null);
+  const [fallbackWhatsappUrl, setFallbackWhatsappUrl] = useState<string | null>(null);
   const [location, setLocation] = useState<CapturedLocation | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
-  const total = useMemo(() => cart.subtotal + restaurant.delivery_fee, [cart.subtotal, restaurant.delivery_fee]);
+  const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
+  const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
+  const total = cart.subtotal + appliedDeliveryFee;
+  const amountRemaining = minimumOrderRemaining(
+    cart.subtotal,
+    restaurant.minimum_order_amount
+  );
+  const restaurantName = language === "ar" && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
+  const scheduleOpen = isRestaurantOpen(
+    restaurant.opening_hours_enabled,
+    restaurant.opening_hours
+  );
+  // Optional delivery-radius gate (client-side UX; the server re-checks). When
+  // the restaurant has no radius set, `enforced` is false and nothing changes.
+  const deliveryRange = evaluateDeliveryRange(
+    restaurant,
+    location ? { latitude: location.latitude, longitude: location.longitude } : null
+  );
+  const deliveryBlocked =
+    fulfilmentType === "delivery" &&
+    deliveryRange.enforced &&
+    !deliveryRange.withinRange;
+  const deliveryRadiusKm = restaurant.delivery_radius_km ?? 0;
 
   function captureLocation() {
     setLocationError(null);
     setLocationMessage(null);
 
     if (!navigator.geolocation) {
-      setLocationError("Location is not supported on this browser. Please enter your full address manually.");
+      setLocationError(t.locationNotSupported);
       return;
     }
 
@@ -43,7 +127,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
         setLocation({ latitude, longitude, mapsUrl });
-        setLocationMessage("Location captured successfully");
+        setLocationMessage(t.locationCaptured);
         setIsLocating(false);
       },
       (geoError) => {
@@ -51,11 +135,11 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
         setLocation(null);
 
         if (geoError.code === geoError.PERMISSION_DENIED) {
-          setLocationError("Location permission denied. Please enter your full address manually.");
+          setLocationError(t.locationDenied);
           return;
         }
 
-        setLocationError("Could not capture your location. Please enter your full address manually.");
+        setLocationError(t.locationFailed);
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
     );
@@ -64,6 +148,12 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setFallbackWhatsappUrl(null);
+
+    if (deliveryBlocked) {
+      // Guard against a programmatic submit; the server re-checks regardless.
+      return;
+    }
 
     const formData = new FormData(event.currentTarget);
     formData.set("items", JSON.stringify(cart.lines));
@@ -73,86 +163,252 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
 
       if (!result.ok) {
         setError(result.error);
+        setFallbackWhatsappUrl(result.fallbackWhatsappUrl ?? null);
+        return;
+      }
+
+      if (isMobileWhatsAppHandoff()) {
+        // iOS Safari and WhatsApp in-app browsers handle a direct customer tap more reliably
+        // than an automatic redirect after the async Supabase save.
+        setPendingWhatsAppOrder({
+          orderId: result.orderId,
+          whatsappUrl: result.whatsappUrl
+        });
         return;
       }
 
       cart.clearCart();
-      window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
+      const whatsappWindow = window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
+
+      if (!whatsappWindow) {
+        window.location.assign(result.whatsappUrl);
+        return;
+      }
+
       router.push(`/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(result.orderId)}`);
     });
   }
 
   if (!cart.isReady) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center">
-        <h1 className="text-2xl font-black">Loading your cart</h1>
-        <p className="mt-3 text-stone-600">Preparing checkout details...</p>
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">{t.loadingCart}</h1>
+        <p className="mt-3 text-stone-600">{t.preparingCheckout}</p>
+      </main>
+    );
+  }
+
+  if (pendingWhatsAppOrder) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-mint text-leaf">
+          <CheckCircle2 size={34} />
+        </div>
+        <h1 className="mt-6 text-3xl font-black">
+          {language === "ar" ? "تم حفظ الطلب" : "Order saved"}
+        </h1>
+        <p className="mt-3 leading-7 text-stone-600">
+          {language === "ar"
+            ? "اضغط الزر أدناه لإرسال الطلب إلى المطعم عبر واتساب."
+            : "One final step: tap below to send this order to the restaurant on WhatsApp."}
+        </p>
+        <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
+          Reference: {pendingWhatsAppOrder.orderId}
+        </p>
+        <a
+          className="focus-ring mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
+          href={pendingWhatsAppOrder.whatsappUrl}
+          onClick={() => cart.clearCart()}
+        >
+          <MessageCircle size={20} />
+          {language === "ar" ? "إرسال عبر واتساب" : "Open WhatsApp to send"}
+        </a>
+        <Link
+          className="focus-ring mt-3 inline-flex justify-center rounded-full border border-stone-200 bg-white px-5 py-3 font-bold text-ink"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
+        </Link>
       </main>
     );
   }
 
   if (cart.lines.length === 0) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center">
-        <h1 className="text-2xl font-black">Your cart is empty</h1>
-        <p className="mt-3 text-stone-600">Add a few items from the menu before checkout.</p>
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">{t.cartEmpty}</h1>
+        <p className="mt-3 text-stone-600">{t.cartEmptyHint}</p>
         <Link
           className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
           href={`/r/${restaurant.slug}`}
         >
-          Back to menu
+          {t.backToMenu}
+        </Link>
+      </main>
+    );
+  }
+
+  if (amountRemaining > 0) {
+    return (
+      <main
+        className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center"
+        dir={direction}
+      >
+        <ShoppingBag className="mx-auto text-leaf" size={38} />
+        <h1 className="mt-5 text-2xl font-black">
+          {language === "ar" ? "لم تصل إلى الحد الأدنى للطلب" : "Minimum order not reached"}
+        </h1>
+        <p className="mt-3 text-stone-600">
+          {language === "ar"
+            ? `أضف ${formatAED(amountRemaining)} أخرى للمتابعة. الحد الأدنى هو ${formatAED(
+                restaurant.minimum_order_amount
+              )}.`
+            : `Add ${formatAED(amountRemaining)} more to continue. The minimum order is ${formatAED(
+                restaurant.minimum_order_amount
+              )}.`}
+        </p>
+        <Link
+          className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
+        </Link>
+      </main>
+    );
+  }
+
+  if (restaurant.accepting_orders === false || !scheduleOpen) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
+        <h1 className="text-2xl font-black">
+          {language === "ar" ? "الطلبات متوقفة مؤقتاً" : "Ordering is temporarily paused"}
+        </h1>
+        <p className="mt-3 text-stone-600">
+          {language === "ar"
+            ? "يمكنك مشاهدة القائمة، لكن المطعم لا يستقبل طلبات جديدة حالياً."
+            : restaurant.accepting_orders === false
+              ? "You can still view the menu, but the restaurant is not accepting new orders right now."
+              : "The restaurant is currently closed. Please return during opening hours."}
+        </p>
+        <Link
+          className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
+          href={`/r/${restaurant.slug}`}
+        >
+          {t.backToMenu}
         </Link>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8">
+    <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8" dir={direction}>
       <section>
-        <Link
-          href={`/r/${restaurant.slug}`}
-          className="focus-ring mb-5 inline-flex items-center gap-2 rounded-full px-2 py-2 text-sm font-bold text-stone-700"
-        >
-          <ArrowLeft size={17} />
-          Menu
-        </Link>
-        <h1 className="text-3xl font-black">Checkout</h1>
-        <p className="mt-2 text-stone-600">Send a clear order to {restaurant.name} on WhatsApp.</p>
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <Link
+            href={`/r/${restaurant.slug}`}
+            className="focus-ring inline-flex items-center gap-2 rounded-full px-2 py-2 text-sm font-bold text-stone-700"
+          >
+            <ArrowLeft className={language === "ar" ? "rotate-180" : ""} size={17} />
+            {t.menu}
+          </Link>
+          <LanguageToggle language={language} setLanguage={setLanguage} />
+        </div>
+        <h1 className="text-3xl font-black">{t.checkout}</h1>
+        <p className="mt-2 text-stone-600">
+          {language === "ar" ? `أرسل طلبا واضحا إلى ${restaurantName} عبر واتساب.` : `Send a clear order to ${restaurantName} on WhatsApp.`}
+        </p>
+        {prefill ? (
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-mint/20 px-3 py-1.5 text-sm font-bold text-leaf">
+            <CheckCircle2 size={15} />
+            {language === "ar"
+              ? `مرحباً بعودتك${prefill.name ? `، ${prefill.name}` : ""}! تم ملء بياناتك مسبقاً.`
+              : `Welcome back${prefill.name ? `, ${prefill.name}` : ""}! We've filled in your details.`}
+          </p>
+        ) : null}
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          <input name="order_language" readOnly type="hidden" value={language} />
+          <input name="submission_token" readOnly type="hidden" value={submissionToken} />
+          <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />
           <input name="items" type="hidden" />
           <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />
           <input name="delivery_longitude" readOnly type="hidden" value={location?.longitude ?? ""} />
           <input name="delivery_google_maps_url" readOnly type="hidden" value={location?.mapsUrl ?? ""} />
           <input name="delivery_place_id" readOnly type="hidden" value="" />
+          <fieldset className="rounded-lg border border-stone-200 bg-white p-4">
+            <legend className="px-1 text-sm font-bold">
+              {language === "ar" ? "كيف تريد استلام طلبك؟" : "How would you like your order?"}
+            </legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {availableFulfilmentTypes.map((type) => {
+                const option =
+                  type === "delivery"
+                    ? { icon: Truck, label: t.delivery }
+                    : type === "takeaway"
+                      ? { icon: ShoppingBag, label: t.takeaway }
+                      : type === "car_pickup"
+                        ? { icon: CarFront, label: t.carPickup }
+                        : { icon: Utensils, label: t.dineIn };
+                const Icon = option.icon;
+                const selected = fulfilmentType === type;
+
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={`focus-ring flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-black transition ${
+                      selected
+                        ? "border-leaf bg-mint/20 text-leaf"
+                        : "border-stone-200 text-stone-600"
+                    }`}
+                    key={type}
+                    onClick={() => {
+                      setFulfilmentType(type);
+                      setLocation(null);
+                      setLocationError(null);
+                      setLocationMessage(null);
+                    }}
+                    type="button"
+                  >
+                    <Icon size={22} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm font-bold">Name</span>
+              <span className="text-sm font-bold">{t.name}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                defaultValue={prefill?.name ?? ""}
+                maxLength={120}
                 name="customer_name"
                 required
               />
             </label>
             <label className="block">
-              <span className="text-sm font-bold">Phone number</span>
+              <span className="text-sm font-bold">{t.phoneNumber}</span>
               <input
                 className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                defaultValue={prefill?.phone ?? ""}
                 inputMode="tel"
+                maxLength={24}
                 name="customer_phone"
                 required
               />
             </label>
           </div>
+          {fulfilmentType === "delivery" ? (
           <section className="rounded-lg border border-stone-200 bg-white p-4">
             <div className="flex items-start gap-3">
               <span className="mt-1 rounded-full bg-mint/20 p-2 text-leaf">
                 <MapPin size={18} />
               </span>
               <div>
-                <h2 className="font-black">Delivery location</h2>
+                <h2 className="font-black">{t.deliveryLocation}</h2>
                 <p className="mt-1 text-sm text-stone-600">
-                  Current location is optional but helps the restaurant deliver more accurately.
+                  {t.currentLocationHelp}
                 </p>
               </div>
             </div>
@@ -164,7 +420,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               type="button"
             >
               {isLocating ? <Loader2 className="animate-spin" size={17} /> : <MapPin size={17} />}
-              {isLocating ? "Capturing location..." : "Use my current location"}
+              {isLocating ? "..." : t.useCurrentLocation}
             </button>
 
             {locationMessage ? (
@@ -179,7 +435,7 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
                 rel="noreferrer"
                 target="_blank"
               >
-                View selected location
+                {t.viewSelectedLocation}
               </a>
             ) : null}
             {locationError ? (
@@ -188,107 +444,262 @@ export function CheckoutForm({ restaurant }: { restaurant: Restaurant }) {
               </p>
             ) : null}
 
+            {deliveryRange.enforced && deliveryRange.distanceKm === null ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                {language === "ar"
+                  ? `يرجى مشاركة موقعك الحالي للتأكد من أنك ضمن منطقة توصيل ${restaurantName} (${deliveryRadiusKm} كم).`
+                  : `Please share your current location to confirm you're within ${restaurantName}'s delivery area (${deliveryRadiusKm} km).`}
+              </p>
+            ) : null}
+            {deliveryRange.enforced && deliveryBlocked && deliveryRange.distanceKm !== null ? (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {language === "ar"
+                  ? `عذراً — أنت خارج منطقة توصيل ${restaurantName} (${deliveryRadiusKm} كم). تبعد حوالي ${deliveryRange.distanceKm.toFixed(
+                      1
+                    )} كم. لا يزال بإمكانك الطلب للاستلام أو لتناول الطعام في المطعم.`
+                  : `Sorry — you're outside ${restaurantName}'s delivery area (${deliveryRadiusKm} km). You're about ${deliveryRange.distanceKm.toFixed(
+                      1
+                    )} km away. You can still order for pickup or dine-in.`}
+              </p>
+            ) : null}
+
             <div className="mt-4 space-y-4">
               <label className="block">
-                <span className="text-sm font-bold">Delivery area</span>
+                <span className="text-sm font-bold">{t.deliveryArea}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.delivery_area ?? ""}
                   name="delivery_area"
-                  placeholder="Al Nahda, Deira, Business Bay..."
+                  placeholder={t.deliveryAreaPlaceholder}
                   required
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-bold">Full address / building / flat / villa number</span>
+                <span className="text-sm font-bold">{t.address}</span>
                 <textarea
                   className="focus-ring mt-1 min-h-24 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.delivery_address ?? prefill?.default_address_text ?? ""}
+                  maxLength={500}
                   name="delivery_address"
+                  placeholder={t.addressPlaceholder}
                   required
                 />
               </label>
-              <input name="delivery_address_text" readOnly type="hidden" value="" />
               <label className="block">
-                <span className="text-sm font-bold">Landmark</span>
+                <span className="text-sm font-bold">{t.landmark}</span>
                 <input
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={prefill?.default_landmark ?? ""}
                   name="delivery_landmark"
-                  placeholder="Near mosque, opposite supermarket..."
+                  placeholder={t.landmarkPlaceholder}
                 />
               </label>
             </div>
           </section>
+          ) : fulfilmentType === "takeaway" ? (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <ShoppingBag className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.takeaway}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.takeawayHelp}</p>
+                  <p className="mt-2 text-sm font-bold text-stone-800">
+                    {restaurant.address || restaurant.name}
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : fulfilmentType === "car_pickup" ? (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <CarFront className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.carPickup}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.carPickupHelp}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold">{t.carPlateNumber}</span>
+                  <input
+                    autoCapitalize="characters"
+                    className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3 uppercase"
+                    maxLength={40}
+                    name="car_plate_number"
+                    placeholder={t.carPlatePlaceholder}
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-bold">{t.carDescription}</span>
+                  <input
+                    className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                    maxLength={120}
+                    name="car_description"
+                    placeholder={t.carDescriptionPlaceholder}
+                  />
+                </label>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <Utensils className="mt-0.5 text-leaf" size={21} />
+                <div>
+                  <h2 className="font-black">{t.dineIn}</h2>
+                  <p className="mt-1 text-sm text-stone-600">{t.dineInHelp}</p>
+                </div>
+              </div>
+              <label className="mt-4 block">
+                <span className="text-sm font-bold">{t.tableNumber}</span>
+                <input
+                  className="focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
+                  defaultValue={initialTableNumber}
+                  maxLength={40}
+                  name="table_number"
+                  placeholder={t.tableNumberPlaceholder}
+                  required
+                />
+              </label>
+            </section>
+          )}
           <label className="block">
-            <span className="text-sm font-bold">Notes</span>
+            <span className="text-sm font-bold">{t.notes}</span>
             <textarea
               className="focus-ring mt-1 min-h-20 w-full rounded-lg border border-stone-200 bg-white px-4 py-3"
               name="notes"
-              placeholder="No onions, extra spicy, call on arrival..."
+              placeholder={t.notesPlaceholder}
             />
           </label>
           <fieldset className="rounded-lg border border-stone-200 bg-white p-4">
-            <legend className="px-1 text-sm font-bold">Payment method</legend>
+            <legend className="px-1 text-sm font-bold">{t.paymentMethod}</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {["Cash on Delivery", "Card on Delivery"].map((method) => (
+              {[
+                {
+                  value: "Cash on Delivery",
+                  label:
+                    fulfilmentType === "delivery"
+                      ? t.cashOnDelivery
+                      : language === "ar"
+                        ? "نقدا عند الاستلام"
+                        : "Cash on collection"
+                },
+                {
+                  value: "Card on Delivery",
+                  label:
+                    fulfilmentType === "delivery"
+                      ? t.cardOnDelivery
+                      : language === "ar"
+                        ? "بطاقة عند الاستلام"
+                        : "Card on collection"
+                }
+              ].map((method) => (
                 <label
                   className="flex items-center gap-3 rounded-lg border border-stone-200 px-3 py-3 text-sm font-semibold"
-                  key={method}
+                  key={method.value}
                 >
-                  <input defaultChecked={method === "Cash on Delivery"} name="payment_method" type="radio" value={method} />
-                  {method}
+                  <input defaultChecked={method.value === "Cash on Delivery"} name="payment_method" type="radio" value={method.value} />
+                  {method.label}
                 </label>
               ))}
             </div>
           </fieldset>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_order_processing" required type="checkbox" />
-            <span>I agree that my details will be shared with the restaurant to process this order.</span>
+            <span>
+              {t.consentOrder}
+            </span>
           </label>
           <label className="flex gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm leading-6">
             <input className="mt-1" name="consent_marketing" type="checkbox" />
-            <span>I would like to receive offers from this restaurant.</span>
+            <span>
+              {t.consentMarketing}{" "}
+              <Link className="font-black text-leaf underline" href="/privacy" target="_blank">
+                {language === "ar" ? "سياسة الخصوصية" : "Privacy notice"}
+              </Link>
+            </span>
           </label>
 
           {error ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </p>
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <p>{error}</p>
+              {fallbackWhatsappUrl ? (
+                <a
+                  className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 font-black text-white"
+                  href={fallbackWhatsappUrl}
+                >
+                  <MessageCircle size={17} />
+                  Send directly on WhatsApp
+                </a>
+              ) : null}
+            </div>
           ) : null}
 
           <button
             className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isPending}
+            disabled={isPending || amountRemaining > 0 || deliveryBlocked}
             type="submit"
           >
             <Send size={18} />
-            {isPending ? "Saving order..." : "Send Order on WhatsApp"}
+            {isPending ? t.sendingOrder : t.sendOrder}
           </button>
         </form>
       </section>
 
       <aside className="h-fit rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-5">
-        <h2 className="text-lg font-black">Order summary</h2>
+        <h2 className="text-lg font-black">{t.orderSummary}</h2>
         <div className="mt-4 space-y-3">
-          {cart.lines.map((line) => (
-            <div className="flex items-start justify-between gap-3 text-sm" key={line.item_id}>
-              <div>
-                <p className="font-bold">{line.name}</p>
-                <p className="text-stone-500">Qty {line.quantity}</p>
+          {cart.lines.map((line) => {
+            const lineKey = cartLineKey(line);
+            const optionsText = formatLineOptions(line.options, language);
+
+            return (
+              <div className="flex items-start justify-between gap-3 text-sm" key={lineKey}>
+                <div className="min-w-0">
+                  <p className="font-bold">{language === "ar" && line.name_ar ? line.name_ar : line.name}</p>
+                  {optionsText ? (
+                    <p className="text-xs text-stone-500">{optionsText}</p>
+                  ) : null}
+                  <div className="mt-1 flex items-center gap-2">
+                    <button
+                      aria-label={`${t.remove} ${line.name}`}
+                      className="focus-ring grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-stone-600"
+                      onClick={() => cart.decrement(lineKey)}
+                      type="button"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="min-w-5 text-center text-xs font-black">
+                      {line.quantity}
+                    </span>
+                    <button
+                      aria-label={`${t.addMore} ${line.name}`}
+                      className="focus-ring grid h-6 w-6 place-items-center rounded-full border border-stone-200 text-stone-600"
+                      onClick={() => cart.increment(lineKey)}
+                      type="button"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+                <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
               </div>
-              <p className="font-bold">{formatAED(line.price * line.quantity)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="mt-5 space-y-2 border-t border-stone-200 pt-4 text-sm">
           <div className="flex justify-between">
-            <span>Subtotal</span>
+            <span>{t.subtotal}</span>
             <strong>{formatAED(cart.subtotal)}</strong>
           </div>
-          <div className="flex justify-between">
-            <span>Delivery</span>
-            <strong>{formatAED(restaurant.delivery_fee)}</strong>
-          </div>
+          {fulfilmentType === "delivery" ? (
+            <div className="flex justify-between">
+              <span>{t.delivery}</span>
+              <strong>{formatAED(appliedDeliveryFee)}</strong>
+            </div>
+          ) : null}
           <div className="flex justify-between text-lg">
-            <span className="font-black">Total</span>
+            <span className="font-black">{t.total}</span>
             <strong>{formatAED(total)}</strong>
           </div>
         </div>

@@ -1,18 +1,36 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
+import { CommissionKeptCard } from "@/components/admin/CommissionKeptCard";
+import { DailySummaryCard } from "@/components/admin/DailySummaryCard";
 import { OrderList } from "@/components/admin/OrderList";
-import { getAnalytics, getCustomers, getDefaultRestaurant, getOrders } from "@/lib/data";
+import {
+  getCommissionKept,
+  getCustomersByPhones,
+  getDashboardAnalytics,
+  getLatestDailySummary,
+  getRecentOrders
+} from "@/lib/data";
+import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
-export default async function AdminDashboardPage() {
-  const restaurant = await getDefaultRestaurant();
+export default async function AdminDashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<{ welcome?: string; error?: string }>;
+}) {
+  const query = await searchParams;
+  const { restaurant } = await requireRestaurantAdmin();
 
-  if (!restaurant) {
-    return null;
-  }
-
-  const [orders, customers] = await Promise.all([getOrders(restaurant.id), getCustomers(restaurant.id)]);
-  const analytics = getAnalytics(orders, customers);
+  const [orders, analytics, dailySummary, commission] = await Promise.all([
+    getRecentOrders(restaurant.id, 5),
+    getDashboardAnalytics(restaurant.id),
+    getLatestDailySummary(restaurant.id),
+    getCommissionKept(restaurant)
+  ]);
+  const customers = await getCustomersByPhones(
+    restaurant.id,
+    orders.map((order) => order.customer_phone)
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -29,10 +47,30 @@ export default async function AdminDashboardPage() {
           <ArrowRight size={16} />
         </Link>
       </div>
+      {query.welcome ? (
+        <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          Your restaurant account is active. Welcome to WhatsOrder.
+        </p>
+      ) : null}
+      {query.error ? (
+        <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          {query.error}
+        </p>
+      ) : null}
+
+      <div className="mt-6">
+        <CommissionKeptCard commission={commission} />
+      </div>
 
       <div className="mt-6">
         <AnalyticsCards analytics={analytics} />
       </div>
+
+      {dailySummary ? (
+        <div className="mt-6">
+          <DailySummaryCard summary={dailySummary} />
+        </div>
+      ) : null}
 
       <section className="mt-8">
         <div className="mb-3 flex items-center justify-between">
@@ -41,7 +79,11 @@ export default async function AdminDashboardPage() {
             View all
           </Link>
         </div>
-        <OrderList orders={orders.slice(0, 5)} />
+        <OrderList
+          customers={customers}
+          orders={orders}
+          restaurant={restaurant}
+        />
       </section>
     </main>
   );
