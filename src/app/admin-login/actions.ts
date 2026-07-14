@@ -10,6 +10,7 @@ import {
   superAdminCookieName
 } from "@/lib/super-admin-auth";
 import { activeRestaurantCookieName } from "@/lib/auth-cookies";
+import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
 
 function setAuthCookies(accessToken: string, refreshToken: string, expiresIn: number) {
   return cookies().then((cookieStore) => {
@@ -87,6 +88,7 @@ export async function loginRestaurantAdminAction(formData: FormData) {
 }
 
 export async function logoutRestaurantAdminAction() {
+  await revokeCurrentAuthSession();
   await clearAuthCookies();
   redirect("/admin-login");
 }

@@ -14,6 +14,7 @@ import {
 } from "@/lib/super-admin-auth";
 import { getPublicAppUrl } from "@/lib/super-admin-data";
 import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
+import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
 
 const onboardingTaskTemplates = [
   ["restaurant_details", "Restaurant details added"],
@@ -222,6 +223,7 @@ export async function loginSuperAdminAction(formData: FormData) {
 }
 
 export async function logoutSuperAdminAction() {
+  await revokeCurrentAuthSession();
   const cookieStore = await cookies();
   cookieStore.delete(superAdminCookieName);
   cookieStore.delete(refreshTokenCookieName);

@@ -212,30 +212,12 @@ export async function generateMenuItemImageAction(input: {
   const itemSlug = slugify(item.name) || "menu-item";
   const filePath = `restaurants/${restaurant.slug}/menu-items/ai-generated/${itemSlug}-${Date.now()}.${extension}`;
 
-  const uploadFile = () =>
-    supabase.storage
-      .from(bucketName)
-      .upload(filePath, generated.imageBuffer, {
-        contentType: generated.mimeType,
-        upsert: false
-      });
-
-  let { error: uploadError } = await uploadFile();
-
-  // Same lazy-create fallback the device-upload action uses, for fresh projects
-  // that haven't run the storage-provisioning migration.
-  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
-    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-      public: true,
-      fileSizeLimit: 2 * 1024 * 1024,
-      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"]
+  const { error: uploadError } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, generated.imageBuffer, {
+      contentType: generated.mimeType,
+      upsert: false
     });
-    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
-      return { ok: false, error: "Couldn't save the generated image. Please try again." };
-    }
-    const retry = await uploadFile();
-    uploadError = retry.error;
-  }
 
   if (uploadError) {
     return { ok: false, error: "Couldn't save the generated image. Please try again." };

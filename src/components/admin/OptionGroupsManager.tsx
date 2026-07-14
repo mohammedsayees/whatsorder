@@ -424,7 +424,14 @@ export function OptionGroupsManager({
                           {option.is_available ? "Available" : "Unavailable"}
                         </button>
                       </form>
-                      <form action={submitAndRefresh(deleteMenuOptionAction)}>
+                      <form
+                        action={submitAndRefresh(deleteMenuOptionAction)}
+                        onSubmit={(event) => {
+                          if (!window.confirm(`Delete "${option.name}"? This cannot be undone.`)) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
                         {restaurantId ? (
                           <input name="restaurant_id" type="hidden" value={restaurantId} />
                         ) : null}

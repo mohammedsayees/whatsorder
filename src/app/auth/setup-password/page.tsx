@@ -31,7 +31,7 @@ export default async function SetRestaurantPasswordPage({
             <input
               autoComplete="new-password"
               className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-4 py-3"
-              minLength={8}
+              minLength={12}
               name="password"
               required
               type="password"
@@ -42,7 +42,7 @@ export default async function SetRestaurantPasswordPage({
             <input
               autoComplete="new-password"
               className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-4 py-3"
-              minLength={8}
+              minLength={12}
               name="confirm_password"
               required
               type="password"

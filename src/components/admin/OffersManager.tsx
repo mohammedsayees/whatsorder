@@ -1,3 +1,5 @@
+"use client";
+
 import {
   addMenuOfferAction,
   deleteMenuOfferAction,
@@ -211,7 +213,14 @@ export function OffersManager({
                   {offer.is_active ? "Published" : "Hidden"}
                 </button>
               </form>
-              <form action={deleteMenuOfferAction}>
+              <form
+                action={deleteMenuOfferAction}
+                onSubmit={(event) => {
+                  if (!window.confirm(`Delete the offer "${offer.title}"? This cannot be undone.`)) {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                 <input name="offer_id" type="hidden" value={offer.id} />
                 <button

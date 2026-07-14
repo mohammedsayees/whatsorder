@@ -32,6 +32,7 @@ import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
+import { normalizeImageUpload } from "@/lib/server-image-upload";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -245,20 +246,24 @@ function slugify(value: string) {
     .slice(0, 60);
 }
 
-async function checkOrderRateLimit(restaurantId: string) {
+type OrderRateLimitResult = "allowed" | "blocked" | "unavailable";
+
+async function checkOrderRateLimit(restaurantId: string): Promise<OrderRateLimitResult> {
   const requestHeaders = await headers();
   const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = requestHeaders.get("x-real-ip")?.trim();
-  const clientIp = forwardedFor || realIp;
+  // Vercel supplies x-real-ip; use forwarded-for only as a compatibility
+  // fallback for non-Vercel deployments.
+  const clientIp = realIp || forwardedFor;
 
   if (!clientIp) {
-    return true;
+    return process.env.NODE_ENV === "production" ? "unavailable" : "allowed";
   }
 
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return true;
+    return process.env.NODE_ENV === "production" ? "unavailable" : "allowed";
   }
 
   const fingerprint = createHash("sha256")
@@ -271,22 +276,16 @@ async function checkOrderRateLimit(restaurantId: string) {
     window_size_seconds: 600
   });
 
-  // The limiter is a throttle, not a correctness gate: customer order-taking
-  // must never be disabled by a missing migration or a transient database
-  // error, so ANY error fails open. Only an explicit "over the limit" answer
-  // from the RPC blocks the submission.
   if (error) {
-    if (error.code !== "PGRST202" && !error.message?.includes("Could not find the function")) {
-      console.error("WhatsOrder order rate-limit check failed open", {
-        code: error.code,
-        message: error.message,
-        restaurantId
-      });
-    }
-    return true;
+    console.error("WhatsOrder order rate-limit check unavailable", {
+      code: error.code,
+      message: error.message,
+      restaurantId
+    });
+    return process.env.NODE_ENV === "production" ? "unavailable" : "allowed";
   }
 
-  return data === true;
+  return data === true ? "allowed" : "blocked";
 }
 
 export async function createOrderAction(
@@ -330,10 +329,17 @@ export async function createOrderAction(
     return { ok: false, error: "Your cart is empty or exceeds the allowed order size." };
   }
 
-  if (!(await checkOrderRateLimit(restaurant.id))) {
+  const rateLimit = await checkOrderRateLimit(restaurant.id);
+  if (rateLimit === "blocked") {
     return {
       ok: false,
       error: "Too many order attempts were received. Please wait a few minutes and try again."
+    };
+  }
+  if (rateLimit === "unavailable") {
+    return {
+      ok: false,
+      error: "Ordering is temporarily unavailable. Please try again in a moment."
     };
   }
 
@@ -821,53 +827,31 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
     return { ok: false, error: "Please choose an image to upload." };
   }
 
-  const allowedTypes = new Map([
-    ["image/jpeg", "jpg"],
-    ["image/png", "png"],
-    ["image/webp", "webp"]
-  ]);
-  const extension = allowedTypes.get(file.type);
-
-  if (!extension) {
-    return { ok: false, error: "Only JPG, PNG, and WebP images are allowed." };
-  }
-
-  if (file.size > 2 * 1024 * 1024) {
-    return { ok: false, error: "Image must be 2MB or smaller." };
+  let normalizedImage;
+  try {
+    normalizedImage = await normalizeImageUpload(file, {
+      maximumBytes: 2 * 1024 * 1024,
+      maximumEdge: 1_200
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Invalid image." };
   }
 
   const bucketName = "menu-images";
   const itemSlug = slugify(itemName) || "menu-item";
-  const filePath = `restaurants/${restaurant.slug}/${itemSlug}-${Date.now()}.${extension}`;
-  const bytes = await file.arrayBuffer();
-
-  const uploadFile = () =>
-    supabase.storage
-      .from(bucketName)
-      .upload(filePath, bytes, {
-        contentType: file.type,
-        upsert: false
-      });
-
-  let { error: uploadError } = await uploadFile();
-
-  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
-    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-      public: true,
-      fileSizeLimit: 2 * 1024 * 1024,
-      allowedMimeTypes: [...allowedTypes.keys()]
+  const filePath = `restaurants/${restaurant.slug}/${itemSlug}-${Date.now()}.${normalizedImage.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, normalizedImage.bytes, {
+      contentType: normalizedImage.contentType,
+      upsert: false
     });
 
-    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
-      return { ok: false, error: bucketError.message };
-    }
-
-    const retry = await uploadFile();
-    uploadError = retry.error;
-  }
-
   if (uploadError) {
-    return { ok: false, error: uploadError.message };
+    const message = uploadError.message.toLowerCase().includes("bucket")
+      ? "Image storage is not provisioned. Contact WhatsOrder support."
+      : uploadError.message;
+    return { ok: false, error: message };
   }
 
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
@@ -912,53 +896,33 @@ export async function uploadRestaurantBrandImageAction(
     return { ok: false, error: "Please choose an image to upload." };
   }
 
-  const allowedTypes = new Map([
-    ["image/jpeg", "jpg"],
-    ["image/png", "png"],
-    ["image/webp", "webp"]
-  ]);
-  const extension = allowedTypes.get(file.type);
-  if (!extension) {
-    return { ok: false, error: "Only JPG, PNG, and WebP images are allowed." };
-  }
-
   const maximumBytes = kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
-  if (file.size > maximumBytes) {
-    return {
-      ok: false,
-      error: `${kind === "logo" ? "Logo" : "Cover image"} must be ${
-        maximumBytes / 1024 / 1024
-      }MB or smaller.`
-    };
+  let normalizedImage;
+  try {
+    normalizedImage = await normalizeImageUpload(file, {
+      maximumBytes,
+      maximumEdge: kind === "logo" ? 1_200 : 2_400
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Invalid image." };
   }
 
   const bucketName = "restaurant-assets";
-  const filePath = `restaurants/${restaurant.id}/${kind}-${Date.now()}.${extension}`;
-  const bytes = await file.arrayBuffer();
-  const uploadFile = () =>
-    supabase.storage.from(bucketName).upload(filePath, bytes, {
-      contentType: file.type,
+  const filePath = `restaurants/${restaurant.id}/${kind}-${Date.now()}.${normalizedImage.extension}`;
+  const { error: uploadError } = await supabase.storage.from(bucketName).upload(
+    filePath,
+    normalizedImage.bytes,
+    {
+      contentType: normalizedImage.contentType,
       upsert: false
-    });
-
-  let { error: uploadError } = await uploadFile();
-  if (uploadError && uploadError.message.toLowerCase().includes("bucket")) {
-    const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-      public: true,
-      fileSizeLimit: 5 * 1024 * 1024,
-      allowedMimeTypes: [...allowedTypes.keys()]
-    });
-
-    if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
-      return { ok: false, error: bucketError.message };
     }
-
-    const retry = await uploadFile();
-    uploadError = retry.error;
-  }
+  );
 
   if (uploadError) {
-    return { ok: false, error: uploadError.message };
+    const message = uploadError.message.toLowerCase().includes("bucket")
+      ? "Restaurant image storage is not provisioned. Contact WhatsOrder support."
+      : uploadError.message;
+    return { ok: false, error: message };
   }
 
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);

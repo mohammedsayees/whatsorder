@@ -598,7 +598,14 @@ export function MenuManager({
                     <button className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-sm font-black disabled:opacity-50" disabled={!canWrite} onClick={() => setEditingItem(item)} type="button">
                       Edit
                     </button>
-                    <form action={deleteMenuItemAction}>
+                    <form
+                      action={deleteMenuItemAction}
+                      onSubmit={(event) => {
+                        if (!window.confirm(`Delete "${item.name}"? This cannot be undone.`)) {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
                       {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                       <input name="item_id" type="hidden" value={item.id} />
                       <button className="focus-ring rounded-lg px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50" disabled={!canWrite} type="submit">

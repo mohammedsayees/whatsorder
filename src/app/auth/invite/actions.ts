@@ -177,8 +177,8 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
     redirect("/admin-login?error=Your%20invitation%20session%20has%20expired.");
   }
 
-  if (password.length < 8) {
-    redirect("/auth/setup-password?error=Password%20must%20be%20at%20least%208%20characters.");
+  if (password.length < 12) {
+    redirect("/auth/setup-password?error=Password%20must%20be%20at%20least%2012%20characters.");
   }
 
   if (password !== confirmPassword) {

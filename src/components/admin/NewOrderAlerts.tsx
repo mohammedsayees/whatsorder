@@ -319,7 +319,7 @@ export function NewOrderAlertsProvider({
 
     const interval = window.setInterval(() => {
       void refreshAlertState();
-    }, 30_000);
+    }, 15_000);
 
     const handleFocus = () => {
       void refreshAlertState();
