@@ -40,15 +40,32 @@ describe("restaurant operational reliability boundaries", () => {
     expect(types).toContain("reviews: PublicCustomerFeedback[]");
   });
 
-  it("polls for new orders within the 15-second fallback window", () => {
+  it("polls for new orders within the 15-second fallback window when realtime is down", () => {
     const alerts = source("src/components/admin/NewOrderAlerts.tsx");
+
+    expect(alerts).toContain("const reconcileIntervalFallbackMs = 15_000");
     const refreshEffect = alerts.slice(
       alerts.indexOf("const initialRefreshTimer"),
-      alerts.indexOf("const handleFocus")
+      alerts.indexOf("const handleWake")
     );
+    expect(refreshEffect).toContain(
+      'connectionState === "live" ? reconcileIntervalLiveMs : reconcileIntervalFallbackMs'
+    );
+  });
 
-    expect(refreshEffect).toContain("}, 15_000)");
-    expect(refreshEffect).not.toContain("}, 30_000)");
+  it("stops alert reconciliation from polling aggressively while realtime is live", () => {
+    const alerts = source("src/components/admin/NewOrderAlerts.tsx");
+
+    expect(alerts).toContain("const reconcileIntervalLiveMs = 5 * 60 * 1_000");
+    // Hidden tabs must not reconcile; the wake handler catches up on focus.
+    expect(alerts).toContain('if (document.visibilityState === "hidden")');
+    expect(alerts).toContain(
+      'document.addEventListener("visibilitychange", handleWake)'
+    );
+    // The repeat-alert nag loop may only call the server while orders are pending.
+    expect(alerts).toContain(
+      "if (!repeatEnabled || !soundEnabled || newOrderCount === 0)"
+    );
   });
 
   it("requires confirmation before destructive menu actions", () => {

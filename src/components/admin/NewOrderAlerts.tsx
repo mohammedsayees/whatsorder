@@ -19,6 +19,12 @@ const highlightDurationMs = 9_000;
 const repeatIntervalMs = 18_000;
 const crossTabDedupeWindowMs = 30_000;
 const realtimeTokenRefreshIntervalMs = 30 * 60 * 1_000;
+// Realtime delivers new orders instantly; polling only reconciles missed
+// events. Poll slowly while the realtime channel is live, and fall back to a
+// tighter interval only when it is not.
+const reconcileIntervalLiveMs = 5 * 60 * 1_000;
+// Matches the fast-pickup interval main adopted while realtime is unavailable.
+const reconcileIntervalFallbackMs = 15_000;
 
 type NewOrderAlertsContextValue = {
   highlightedOrderIds: ReadonlySet<string>;
@@ -317,22 +323,32 @@ export function NewOrderAlertsProvider({
       void refreshAlertState();
     }, 0);
 
+    // Hidden tabs skip reconciliation entirely; the wake handler below
+    // catches up as soon as the tab becomes visible again.
     const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
       void refreshAlertState();
-    }, 15_000);
+    }, connectionState === "live" ? reconcileIntervalLiveMs : reconcileIntervalFallbackMs);
 
-    const handleFocus = () => {
+    const handleWake = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
       void refreshAlertState();
       void refreshRealtimeAccess();
     };
-    window.addEventListener("focus", handleFocus);
+    window.addEventListener("focus", handleWake);
+    document.addEventListener("visibilitychange", handleWake);
 
     return () => {
       window.clearTimeout(initialRefreshTimer);
       window.clearInterval(interval);
-      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focus", handleWake);
+      document.removeEventListener("visibilitychange", handleWake);
     };
-  }, [refreshAlertState, refreshRealtimeAccess]);
+  }, [connectionState, refreshAlertState, refreshRealtimeAccess]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -429,7 +445,9 @@ export function NewOrderAlertsProvider({
   ]);
 
   useEffect(() => {
-    if (!repeatEnabled || !soundEnabled) {
+    // Nag-poll only while unacknowledged orders exist; an idle dashboard tab
+    // makes no server calls from this loop.
+    if (!repeatEnabled || !soundEnabled || newOrderCount === 0) {
       return;
     }
 
@@ -452,7 +470,7 @@ export function NewOrderAlertsProvider({
     return () => {
       window.clearInterval(interval);
     };
-  }, [playAlertSound, repeatEnabled, soundEnabled, surfaceNewOrders]);
+  }, [newOrderCount, playAlertSound, repeatEnabled, soundEnabled, surfaceNewOrders]);
 
   const enableSound = async () => {
     soundEnabledRef.current = true;
