@@ -1,7 +1,16 @@
 import type { OpeningHours } from "@/lib/opening-hours";
 
-export type PaymentMethod = "Cash on Delivery" | "Card on Delivery";
+export type PaymentMethod = "Cash on Delivery" | "Card on Delivery" | "UPI";
 export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
+export type CountryCode = "AE" | "IN";
+
+export type RestaurantLocalization = {
+  country_code: CountryCode;
+  currency_code: "AED" | "INR";
+  locale: "en-AE" | "en-IN";
+  phone_country_code: "971" | "91";
+  time_zone: "Asia/Dubai" | "Asia/Kolkata";
+};
 
 export type UserRole = "super_admin" | "restaurant_admin" | "staff";
 
@@ -27,7 +36,7 @@ export type OrderStatus =
   | "Completed"
   | "Cancelled";
 
-export type PublicRestaurant = {
+export type PublicRestaurant = Partial<RestaurantLocalization> & {
   id: string;
   name: string;
   name_ar?: string | null;
@@ -240,6 +249,7 @@ export type ShiftSummary = {
   completed_sales: number;
   completed_cash_order_total: number;
   card_on_delivery_total: number;
+  upi_total: number;
   cash_paid_out_total: number;
   cancelled_order_count: number;
   fulfilment_breakdown: ShiftFulfilmentSummary;
@@ -257,6 +267,7 @@ export type RestaurantShift = {
   completed_sales: number;
   completed_cash_order_total: number;
   card_on_delivery_total: number;
+  upi_total: number;
   cash_paid_out_total: number;
   cancelled_order_count: number;
   fulfilment_breakdown: ShiftFulfilmentSummary;

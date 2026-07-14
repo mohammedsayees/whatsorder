@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { getMenu, getMenuOptionCatalog, getOrderForAdmin } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -36,7 +36,7 @@ export default async function AddOrderItemsPage({
       </Link>
       <h1 className="mt-2 text-3xl font-black">Add items</h1>
       <p className="mt-2 text-stone-600">
-        Order #{order.id.slice(-8).toUpperCase()} · {order.customer_name} · Current total {formatAED(order.total)}
+        Order #{order.id.slice(-8).toUpperCase()} · {order.customer_name} · Current total {formatCurrency(order.total, session.restaurant)}
       </p>
       <div
         className={`mt-4 rounded-lg border px-4 py-3 text-sm font-bold ${

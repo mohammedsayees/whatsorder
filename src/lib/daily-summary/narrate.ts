@@ -1,6 +1,8 @@
 import "server-only";
 
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
+import { getRestaurantLocalization } from "@/lib/localization";
+import type { RestaurantLocalization } from "@/lib/types";
 
 import type { DailyNumbers } from "./types";
 
@@ -19,7 +21,9 @@ function sleep(ms: number) {
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-const SYSTEM_PROMPT = `You are the sharpest café general manager in the UAE, writing a short WhatsApp
+function systemPrompt(countryCode: string, currencyCode: string) {
+  const market = countryCode === "IN" ? "India" : "the UAE";
+  return `You are the sharpest café general manager in ${market}, writing a short WhatsApp
 update to the owner about YESTERDAY's trading. You are given the numbers as JSON.
 You don't just report — you find the ONE change or opportunity that matters most
 and tell the owner exactly what to do to grow orders or basket size.
@@ -51,7 +55,7 @@ Style:
 
 Hard rules (never break these):
 - Use ONLY the numbers provided. Never invent, change, or round any figure.
-- Put "AED" only in front of money figures (gross_revenue, avg_order_value,
+- Put "${currencyCode}" only in front of money figures (gross_revenue, avg_order_value,
   aov_this_week, aov_prev_week), nowhere else.
 - If order_count is 0, write ONE encouraging line with one concrete idea to pull
   people in today, and nothing else.
@@ -59,6 +63,7 @@ Hard rules (never break these):
 - Mention cancellations ONLY if cancelled_count is greater than 0.
 - Never suggest messaging customers unless marketable_count is greater than 0.
 - No greeting fluff, no markdown, no emojis (one is fine only if it truly fits).`;
+}
 
 /**
  * Low-level text generation via Gemini, mirroring the retry-on-503/429 shape of
@@ -128,13 +133,24 @@ async function geminiGenerate(prompt: string): Promise<string> {
  * the narration is rejected and the caller uses the deterministic template.
  */
 export function aedAmountsGrounded(text: string, numbers: DailyNumbers): boolean {
+  return currencyAmountsGrounded(text, numbers, "AED");
+}
+
+export function currencyAmountsGrounded(
+  text: string,
+  numbers: DailyNumbers,
+  currencyCode: string
+): boolean {
   const allowed = [
     numbers.gross_revenue,
     numbers.avg_order_value,
     numbers.aov_this_week,
     numbers.aov_prev_week
   ];
-  const matches = text.matchAll(/AED\s*([\d,]+(?:\.\d+)?)/gi);
+  const escapedCurrency = currencyCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = text.matchAll(
+    new RegExp(`${escapedCurrency}\\s*([\\d,]+(?:\\.\\d+)?)`, "gi")
+  );
   for (const match of matches) {
     const value = Number(match[1].replace(/,/g, ""));
     if (!Number.isFinite(value)) {
@@ -152,7 +168,11 @@ export function aedAmountsGrounded(text: string, numbers: DailyNumbers): boolean
  * the model errors or returns an ungrounded figure. Numbers are the product;
  * narration is a nicety.
  */
-export function buildTemplateMessage(numbers: DailyNumbers, name: string): string {
+export function buildTemplateMessage(
+  numbers: DailyNumbers,
+  name: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+): string {
   if (numbers.order_count === 0) {
     return `${name}: quiet one yesterday — no orders came through. Don't let today go the same way: send a WhatsApp broadcast this morning with one clear offer to pull people in.`;
   }
@@ -174,8 +194,9 @@ export function buildTemplateMessage(numbers: DailyNumbers, name: string): strin
         }`;
 
   lines.push(
-    `${name}: ${verdict} yesterday — ${numbers.order_count} orders (${compare}), ${formatAED(
-      numbers.gross_revenue
+    `${name}: ${verdict} yesterday — ${numbers.order_count} orders (${compare}), ${formatCurrency(
+      numbers.gross_revenue,
+      restaurant
     )} in.`
   );
 
@@ -247,14 +268,19 @@ function managerAction(n: DailyNumbers): string {
  * money figures check out, otherwise the deterministic template. Always returns
  * a usable string — narration never blocks the owner from getting their numbers.
  */
-export async function narrate(numbers: DailyNumbers, name: string): Promise<string> {
-  const template = buildTemplateMessage(numbers, name);
+export async function narrate(
+  numbers: DailyNumbers,
+  name: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+): Promise<string> {
+  const localization = getRestaurantLocalization(restaurant);
+  const template = buildTemplateMessage(numbers, name, restaurant);
   try {
-    const prompt = `${SYSTEM_PROMPT}\n\nCafé name: ${name}\nNumbers JSON:\n${JSON.stringify(
+    const prompt = `${systemPrompt(localization.country_code, localization.currency_code)}\n\nCafé name: ${name}\nNumbers JSON:\n${JSON.stringify(
       numbers
     )}`;
     const text = await geminiGenerate(prompt);
-    if (text && aedAmountsGrounded(text, numbers)) {
+    if (text && currencyAmountsGrounded(text, numbers, localization.currency_code)) {
       return text;
     }
     if (text) {

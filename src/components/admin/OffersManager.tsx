@@ -6,19 +6,21 @@ import {
   toggleMenuOfferAction,
   updateMenuOfferLimitAction
 } from "@/app/actions";
-import { formatAED } from "@/lib/currency";
-import { formatUaeDate } from "@/lib/date-time";
-import type { MenuItem, MenuOffer } from "@/lib/types";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantDate } from "@/lib/date-time";
+import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 export function OffersManager({
   canWrite,
   items,
   offers,
+  restaurant,
   restaurantId
 }: {
   canWrite: boolean;
   items: MenuItem[];
   offers: MenuOffer[];
+  restaurant: Restaurant;
   restaurantId?: string;
 }) {
   const availableItems = items.filter((item) => item.is_available);
@@ -45,7 +47,7 @@ export function OffersManager({
           >
             {availableItems.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} · {formatAED(item.price)}
+                {item.name} · {formatCurrency(item.price, restaurant)}
               </option>
             ))}
           </select>
@@ -162,13 +164,13 @@ export function OffersManager({
                 <p className="font-black">{offer.title}</p>
                 <p className="mt-1 text-sm text-stone-500">
                   {item?.name ?? "Deleted item"} ·{" "}
-                  <span className="line-through">{formatAED(item?.price ?? 0)}</span>{" "}
-                  <span className="font-black text-leaf">{formatAED(offer.promotional_price)}</span>
+                  <span className="line-through">{formatCurrency(item?.price ?? 0, restaurant)}</span>{" "}
+                  <span className="font-black text-leaf">{formatCurrency(offer.promotional_price, restaurant)}</span>
                 </p>
                 {offer.starts_at || offer.ends_at ? (
                   <p className="mt-1 text-xs font-semibold text-stone-400">
-                    {offer.starts_at ? formatUaeDate(offer.starts_at) : "Now"} –{" "}
-                    {offer.ends_at ? formatUaeDate(offer.ends_at) : "No expiry"}
+                    {offer.starts_at ? formatRestaurantDate(offer.starts_at, restaurant) : "Now"} –{" "}
+                    {offer.ends_at ? formatRestaurantDate(offer.ends_at, restaurant) : "No expiry"}
                   </p>
                 ) : null}
                 <form

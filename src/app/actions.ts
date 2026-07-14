@@ -32,6 +32,7 @@ import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
+import { formatCurrency } from "@/lib/currency";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
 import {
   requireRestaurantAdmin,
@@ -308,7 +309,9 @@ export async function createOrderAction(
   if (
     !isRestaurantOpen(
       restaurant.opening_hours_enabled,
-      restaurant.opening_hours
+      restaurant.opening_hours,
+      new Date(),
+      restaurant.time_zone
     )
   ) {
     return {
@@ -362,7 +365,10 @@ export async function createOrderAction(
     "customer_phone",
     24
   );
-  const customerPhone = normalizeCustomerPhone(submittedCustomerPhone);
+  const customerPhone = normalizeCustomerPhone(
+    submittedCustomerPhone,
+    restaurant.phone_country_code
+  );
   const fulfilmentType = limitedStringValue(
     formData,
     "fulfilment_type",
@@ -441,7 +447,12 @@ export async function createOrderAction(
     return { ok: false, error: "Please enter your table number." };
   }
 
-  if (!["Cash on Delivery", "Card on Delivery"].includes(paymentMethod)) {
+  const allowedPaymentMethods: PaymentMethod[] =
+    restaurant.country_code === "IN"
+      ? ["Cash on Delivery", "Card on Delivery", "UPI"]
+      : ["Cash on Delivery", "Card on Delivery"];
+
+  if (!allowedPaymentMethods.includes(paymentMethod)) {
     return { ok: false, error: "Please choose a payment method." };
   }
 
@@ -458,7 +469,10 @@ export async function createOrderAction(
   if (subtotal < restaurant.minimum_order_amount) {
     return {
       ok: false,
-      error: `Minimum order amount is AED ${restaurant.minimum_order_amount}.`
+      error: `Minimum order amount is ${formatCurrency(
+        restaurant.minimum_order_amount,
+        restaurant
+      )}.`
     };
   }
 
@@ -492,7 +506,11 @@ export async function createOrderAction(
     return {
       ok: false,
       error: "This order was not saved to the dashboard. You can send it directly on WhatsApp.",
-      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, message)
+      fallbackWhatsappUrl: buildWhatsAppUrl(
+        restaurant.whatsapp_number,
+        message,
+        restaurant.phone_country_code
+      )
     };
   }
 
@@ -544,14 +562,22 @@ export async function createOrderAction(
         ok: false,
         error:
           "This order was not saved because a database update is pending. You can send it directly on WhatsApp.",
-        fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, whatsappMessage)
+        fallbackWhatsappUrl: buildWhatsAppUrl(
+          restaurant.whatsapp_number,
+          whatsappMessage,
+          restaurant.phone_country_code
+        )
       };
     }
 
     return {
       ok: false,
       error: "This order was not saved to the dashboard. You can retry or send it directly on WhatsApp.",
-      fallbackWhatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, whatsappMessage)
+      fallbackWhatsappUrl: buildWhatsAppUrl(
+        restaurant.whatsapp_number,
+        whatsappMessage,
+        restaurant.phone_country_code
+      )
     };
   }
 
@@ -572,8 +598,16 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
-    whatsappUrl: buildWhatsAppUrl(restaurant.whatsapp_number, persistedMessage),
-    whatsappAppUrl: buildWhatsAppAppUrl(restaurant.whatsapp_number, persistedMessage)
+    whatsappUrl: buildWhatsAppUrl(
+      restaurant.whatsapp_number,
+      persistedMessage,
+      restaurant.phone_country_code
+    ),
+    whatsappAppUrl: buildWhatsAppAppUrl(
+      restaurant.whatsapp_number,
+      persistedMessage,
+      restaurant.phone_country_code
+    )
   };
 }
 
@@ -1276,7 +1310,10 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       name_ar: stringValue(formData, "name_ar") || null,
       logo_url: stringValue(formData, "logo_url") || null,
       cover_image_url: stringValue(formData, "cover_image_url") || null,
-      whatsapp_number: normalizeWhatsAppNumber(stringValue(formData, "whatsapp_number")),
+      whatsapp_number: normalizeWhatsAppNumber(
+        stringValue(formData, "whatsapp_number"),
+        restaurant.phone_country_code
+      ),
       address: stringValue(formData, "address") || null,
       address_ar: stringValue(formData, "address_ar") || null,
       subtitle_ar: stringValue(formData, "subtitle_ar") || null,

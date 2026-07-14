@@ -1,15 +1,18 @@
 import { PiggyBank } from "lucide-react";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import type { CommissionKept } from "@/lib/commission";
+import type { Restaurant } from "@/lib/types";
 
 function orderLabel(count: number) {
   return count === 1 ? "delivery order" : "delivery orders";
 }
 
 export function CommissionKeptCard({
-  commission
+  commission,
+  restaurant
 }: {
   commission: CommissionKept;
+  restaurant: Restaurant;
 }) {
   const basis = commission.isDefaultRate
     ? `based on ${commission.rate}% commission`
@@ -45,14 +48,14 @@ export function CommissionKeptCard({
         <div className="min-w-0">
           <h2 className="text-lg font-black text-emerald-900">Commission kept</h2>
           <p className="mt-1 text-3xl font-black text-emerald-900">
-            {formatAED(commission.allTime.kept)}
+            {formatCurrency(commission.allTime.kept, restaurant)}
             <span className="ml-2 align-middle text-sm font-bold text-emerald-700">
               kept since you joined
             </span>
           </p>
           <p className="mt-2 text-sm font-semibold text-emerald-800">
             {commission.month.orders} {orderLabel(commission.month.orders)} ·{" "}
-            {formatAED(commission.month.kept)} in commission kept this month
+            {formatCurrency(commission.month.kept, restaurant)} in commission kept this month
           </p>
           <p className="mt-1 text-xs font-medium text-emerald-700">
             Delivery orders only, {basis}. This is what an aggregator like Talabat

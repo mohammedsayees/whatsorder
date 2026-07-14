@@ -9,8 +9,9 @@ import {
   openShiftAction,
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { calculateCashDifference } from "@/lib/shift-calculations";
+import type { Restaurant } from "@/lib/types";
 
 const initialState: ShiftActionState = {};
 
@@ -55,7 +56,7 @@ export function AssignUnassignedOrdersButton() {
   );
 }
 
-export function OpenShiftForm() {
+export function OpenShiftForm({ restaurant }: { restaurant: Restaurant }) {
   const [state, action, pending] = useActionState(
     openShiftAction,
     initialState
@@ -77,7 +78,7 @@ export function OpenShiftForm() {
         Opening cash
         <div className="mt-1 flex overflow-hidden rounded-lg border border-stone-200 bg-white">
           <span className="grid place-items-center bg-stone-100 px-3 text-sm font-black text-stone-600">
-            AED
+            {restaurant.currency_code ?? "AED"}
           </span>
           <input
             className="focus-ring min-w-0 flex-1 px-3 py-3"
@@ -111,7 +112,7 @@ export function OpenShiftForm() {
   );
 }
 
-export function PaidOutForm({ shiftId }: { shiftId: string }) {
+export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; shiftId: string }) {
   const [state, action, pending] = useActionState(
     addShiftPaidOutAction,
     initialState
@@ -126,7 +127,7 @@ export function PaidOutForm({ shiftId }: { shiftId: string }) {
           className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5"
           min="0.01"
           name="amount"
-          placeholder="AED"
+          placeholder={restaurant.currency_code ?? "AED"}
           required
           step="0.01"
           type="number"
@@ -159,10 +160,12 @@ export function PaidOutForm({ shiftId }: { shiftId: string }) {
 export function CloseShiftForm({
   activeOrderCount,
   expectedCash,
+  restaurant,
   shiftId
 }: {
   activeOrderCount: number;
   expectedCash: number;
+  restaurant: Restaurant;
   shiftId: string;
 }) {
   const [state, action, pending] = useActionState(
@@ -200,7 +203,7 @@ export function CloseShiftForm({
         <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
           Expected cash
         </p>
-        <p className="mt-1 text-2xl font-black">{formatAED(expectedCash)}</p>
+        <p className="mt-1 text-2xl font-black">{formatCurrency(expectedCash, restaurant)}</p>
       </div>
       <label className="block text-sm font-bold text-stone-700">
         Cash counted
@@ -224,7 +227,7 @@ export function CloseShiftForm({
           }`}
         >
           <p className="text-xs font-bold uppercase tracking-wide">Difference</p>
-          <p className="mt-1 text-xl font-black">{formatAED(difference)}</p>
+          <p className="mt-1 text-xl font-black">{formatCurrency(difference, restaurant)}</p>
           {difference !== 0 ? (
             <p className="mt-1 text-xs font-bold">
               A closing note is required to explain the shortage or excess.

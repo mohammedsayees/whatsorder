@@ -95,7 +95,7 @@ export default async function AdminOrdersPage({
           New order
         </Link>
       </div>
-      <CurrentShiftBanner currentShift={currentShift} />
+      <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
         <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Order status">

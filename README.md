@@ -1,6 +1,6 @@
 # WhatsOrder
 
-WhatsOrder is a lightweight WhatsApp ordering and order management system for small restaurants in the UAE.
+WhatsOrder is a lightweight, multi-country WhatsApp ordering and order management system for small restaurants in the UAE and India.
 
 It does not replace WhatsApp. It gives restaurants a public menu link, structured checkout, click-to-WhatsApp order messages, order tracking, customer history, and simple analytics.
 
@@ -13,6 +13,18 @@ It does not replace WhatsApp. It gives restaurants a public menu link, structure
 - Currency: AED
 
 The app remains multi-restaurant ready because every restaurant-owned table includes `restaurant_id`.
+
+## Country Profiles
+
+Each restaurant is onboarded with one immutable country profile. The profile is
+used by customer, staff, reporting, printing, and database flows:
+
+- UAE: AED, `en-AE`, `Asia/Dubai`, calling code `971`, Cash/Card.
+- India: INR, `en-IN`, `Asia/Kolkata`, calling code `91`, Cash/Card/UPI.
+
+Country is fixed after onboarding so historical prices, reports, and normalized
+customer phone numbers cannot be silently reinterpreted. Tenant data isolation,
+server-side repricing, and service-role-only writes are unchanged.
 
 ## Tech Stack
 

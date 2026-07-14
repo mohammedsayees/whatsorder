@@ -1,3 +1,6 @@
+import { getRestaurantLocalization } from "@/lib/localization";
+import type { RestaurantLocalization } from "@/lib/types";
+
 export const restaurantTimeZone = "Asia/Dubai";
 
 type DateInput = string | number | Date;
@@ -6,11 +9,15 @@ function asDate(value: DateInput) {
   return value instanceof Date ? value : new Date(value);
 }
 
-function uaeDateParts(value: DateInput) {
+function restaurantDateParts(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
   const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
     month: "2-digit",
-    timeZone: restaurantTimeZone,
+    timeZone: localization.time_zone,
     year: "numeric"
   }).formatToParts(asDate(value));
   const values = new Map(parts.map((part) => [part.type, part.value]));
@@ -23,31 +30,63 @@ function uaeDateParts(value: DateInput) {
 }
 
 export function formatUaeDateTime(value: DateInput) {
-  return new Intl.DateTimeFormat("en-AE", {
+  return formatRestaurantDateTime(value);
+}
+
+export function formatRestaurantDateTime(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  return new Intl.DateTimeFormat(localization.locale, {
     dateStyle: "medium",
     timeStyle: "medium",
-    timeZone: restaurantTimeZone
+    timeZone: localization.time_zone
   }).format(asDate(value));
 }
 
 export function formatUaeShortDateTime(value: DateInput) {
-  return new Intl.DateTimeFormat("en-AE", {
+  return formatRestaurantShortDateTime(value);
+}
+
+export function formatRestaurantShortDateTime(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  return new Intl.DateTimeFormat(localization.locale, {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: restaurantTimeZone
+    timeZone: localization.time_zone
   }).format(asDate(value));
 }
 
 export function formatUaeDate(value: DateInput) {
-  return new Intl.DateTimeFormat("en-AE", {
+  return formatRestaurantDate(value);
+}
+
+export function formatRestaurantDate(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  return new Intl.DateTimeFormat(localization.locale, {
     dateStyle: "medium",
-    timeZone: restaurantTimeZone
+    timeZone: localization.time_zone
   }).format(asDate(value));
 }
 
 export function isSameUaeCalendarDay(first: DateInput, second: DateInput) {
-  const firstParts = uaeDateParts(first);
-  const secondParts = uaeDateParts(second);
+  return isSameRestaurantCalendarDay(first, second);
+}
+
+export function isSameRestaurantCalendarDay(
+  first: DateInput,
+  second: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const firstParts = restaurantDateParts(first, restaurant);
+  const secondParts = restaurantDateParts(second, restaurant);
 
   return (
     firstParts.year === secondParts.year &&
@@ -57,6 +96,14 @@ export function isSameUaeCalendarDay(first: DateInput, second: DateInput) {
 }
 
 export function getUaeMonthStartIso(value: DateInput = new Date()) {
-  const { month, year } = uaeDateParts(value);
-  return new Date(`${year}-${month}-01T00:00:00+04:00`).toISOString();
+  return getRestaurantMonthStartIso(value);
+}
+
+export function getRestaurantMonthStartIso(
+  value: DateInput = new Date(),
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  const { month, year } = restaurantDateParts(value, restaurant);
+  return new Date(`${year}-${month}-01T00:00:00${localization.utcOffset}`).toISOString();
 }

@@ -1,3 +1,4 @@
+import type { CountryProfile } from "@/lib/localization";
 import type { Customer, FulfilmentType, Order } from "@/lib/types";
 import { restaurantTimeZone } from "@/lib/date-time";
 
@@ -21,6 +22,17 @@ export const SEGMENT_RULES = {
   // completed orders overall (avoids labelling one-off visitors).
   timeWindowMinOrders: 2
 } as const;
+
+type SegmentMarketRules = Pick<
+  CountryProfile,
+  "highAverageOrderThreshold" | "timeZone" | "vipSpendThreshold"
+>;
+
+const defaultMarketRules: SegmentMarketRules = {
+  highAverageOrderThreshold: SEGMENT_RULES.highAovMinAverage,
+  timeZone: restaurantTimeZone,
+  vipSpendThreshold: SEGMENT_RULES.vipMinSpend
+};
 
 // Order-derived time windows, in Asia/Dubai local hours [start, end).
 const MORNING_WINDOW = { start: 4, end: 10 } as const;
@@ -111,7 +123,8 @@ function daysSince(lastOrderAt: string | null, now: Date): number | null {
 // and the per-card badge agree.
 export function classifyCustomerSegment(
   customer: SegmentCustomerFields,
-  now: Date = new Date()
+  now: Date = new Date(),
+  marketRules: SegmentMarketRules = defaultMarketRules
 ): CustomerSegment {
   const totalOrders = Number(customer.total_orders) || 0;
   const totalSpend = Number(customer.total_spend) || 0;
@@ -121,7 +134,7 @@ export function classifyCustomerSegment(
     return "Inactive";
   }
 
-  if (totalOrders >= SEGMENT_RULES.vipMinOrders || totalSpend >= SEGMENT_RULES.vipMinSpend) {
+  if (totalOrders >= SEGMENT_RULES.vipMinOrders || totalSpend >= marketRules.vipSpendThreshold) {
     return "VIP";
   }
 
@@ -143,21 +156,27 @@ export function isCustomerContactable(customer: ContactableFields): boolean {
   );
 }
 
-export function isHighAovCustomer(customer: SegmentCustomerFields): boolean {
+export function isHighAovCustomer(
+  customer: SegmentCustomerFields,
+  marketRules: SegmentMarketRules = defaultMarketRules
+): boolean {
   const totalOrders = Number(customer.total_orders) || 0;
 
   if (totalOrders <= 0) {
     return false;
   }
 
-  return (Number(customer.total_spend) || 0) / totalOrders >= SEGMENT_RULES.highAovMinAverage;
+  return (
+    (Number(customer.total_spend) || 0) / totalOrders >=
+    marketRules.highAverageOrderThreshold
+  );
 }
 
-function uaeHour(value: string): number {
+function restaurantHour(value: string, timeZone: string): number {
   const hour = new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     hour12: false,
-    timeZone: restaurantTimeZone
+    timeZone
   }).format(new Date(value));
 
   // Intl renders midnight as "24" in some engines — normalize to 0.
@@ -166,7 +185,8 @@ function uaeHour(value: string): number {
 
 function ordersInWindow(
   orders: Order[],
-  window: { start: number; end: number }
+  window: { start: number; end: number },
+  timeZone: string
 ): { inWindow: number; completed: number } {
   let inWindow = 0;
   let completed = 0;
@@ -177,7 +197,7 @@ function ordersInWindow(
     }
 
     completed += 1;
-    const hour = uaeHour(order.created_at);
+    const hour = restaurantHour(order.created_at, timeZone);
 
     if (hour >= window.start && hour < window.end) {
       inWindow += 1;
@@ -189,13 +209,27 @@ function ordersInWindow(
 
 // A "morning"/"midnight" regular: enough completed orders, and a plurality of
 // them fall inside the window (inWindow * 2 >= completed).
-export function isMorningCustomer(orders: Order[]): boolean {
-  const { inWindow, completed } = ordersInWindow(orders, MORNING_WINDOW);
+export function isMorningCustomer(
+  orders: Order[],
+  marketRules: SegmentMarketRules = defaultMarketRules
+): boolean {
+  const { inWindow, completed } = ordersInWindow(
+    orders,
+    MORNING_WINDOW,
+    marketRules.timeZone
+  );
   return completed >= SEGMENT_RULES.timeWindowMinOrders && inWindow * 2 >= completed;
 }
 
-export function isMidnightCustomer(orders: Order[]): boolean {
-  const { inWindow, completed } = ordersInWindow(orders, MIDNIGHT_WINDOW);
+export function isMidnightCustomer(
+  orders: Order[],
+  marketRules: SegmentMarketRules = defaultMarketRules
+): boolean {
+  const { inWindow, completed } = ordersInWindow(
+    orders,
+    MIDNIGHT_WINDOW,
+    marketRules.timeZone
+  );
   return completed >= SEGMENT_RULES.timeWindowMinOrders && inWindow * 2 >= completed;
 }
 
@@ -236,7 +270,8 @@ export type CustomerInsights = {
 
 export function getCustomerInsights(
   orders: Order[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  marketRules: SegmentMarketRules = defaultMarketRules
 ): CustomerInsights {
   const completedOrders = orders
     .filter((order) => order.status === "Completed")
@@ -331,7 +366,7 @@ export function getCustomerInsights(
   const segment: CustomerSegment =
     daysSinceLastOrder !== null && daysSinceLastOrder >= 30
       ? "Inactive"
-      : completedOrderCount >= 5 || completedSpend >= 250
+      : completedOrderCount >= 5 || completedSpend >= marketRules.vipSpendThreshold
         ? "VIP"
         : completedOrderCount >= 2
           ? "Repeat"
@@ -357,7 +392,8 @@ export function matchesSegmentFilter(
   segment: CustomerSegmentFilter,
   customer: Customer,
   orders: Order[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  marketRules: SegmentMarketRules = defaultMarketRules
 ): boolean {
   switch (segment) {
     case "all":
@@ -366,7 +402,7 @@ export function matchesSegmentFilter(
     case "repeat":
     case "vip":
     case "inactive": {
-      const lifecycle = classifyCustomerSegment(customer, now);
+      const lifecycle = classifyCustomerSegment(customer, now, marketRules);
       return (
         (segment === "new" && lifecycle === "New") ||
         (segment === "repeat" && lifecycle === "Repeat") ||
@@ -379,16 +415,16 @@ export function matchesSegmentFilter(
     case "no_consent":
       return !isCustomerContactable(customer);
     case "high_aov":
-      return isHighAovCustomer(customer);
+      return isHighAovCustomer(customer, marketRules);
     case "delivery":
     case "takeaway":
     case "car_pickup":
     case "dine_in":
-      return getCustomerInsights(orders, now).preferredFulfilment === segment;
+      return getCustomerInsights(orders, now, marketRules).preferredFulfilment === segment;
     case "morning":
-      return isMorningCustomer(orders);
+      return isMorningCustomer(orders, marketRules);
     case "midnight":
-      return isMidnightCustomer(orders);
+      return isMidnightCustomer(orders, marketRules);
     case "karak_buyers":
       return customerBuysKeyword(orders, "karak");
     case "burger_buyers":

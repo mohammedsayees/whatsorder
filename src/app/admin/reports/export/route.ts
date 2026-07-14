@@ -30,7 +30,9 @@ export async function GET(request: Request) {
   const range = resolveReportRange(
     url.searchParams.get("preset") ?? undefined,
     url.searchParams.get("start") ?? undefined,
-    url.searchParams.get("end") ?? undefined
+    url.searchParams.get("end") ?? undefined,
+    new Date(),
+    restaurant
   );
   const orders = await getOrdersForReport(
     restaurant.id,
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
     )
   ];
   const customers = await getCustomersForReport(restaurant.id, phones);
-  const csv = reportToCsv(tab, buildRestaurantReport(orders, customers));
+  const csv = reportToCsv(tab, buildRestaurantReport(orders, customers, restaurant));
   const filename = `whatsorder-${restaurant.slug}-${tab}-${range.startDate}-to-${range.endDate}.csv`;
 
   return new Response(`\uFEFF${csv}`, {

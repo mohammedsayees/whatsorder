@@ -1,6 +1,8 @@
 import "server-only";
 
+import { getRestaurantLocalization } from "@/lib/localization";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import type { RestaurantLocalization } from "@/lib/types";
 
 import { computeDailyNumbers } from "./metrics";
 import { narrate } from "./narrate";
@@ -16,19 +18,37 @@ export type DailySummaryRunResult = {
 };
 
 /**
- * The Asia/Dubai (UTC+4, no DST) local date, optionally shifted by whole days.
+ * A restaurant's local calendar date, optionally shifted by whole days.
  * Used to pin "yesterday" so the skip-check, the SQL aggregation, and the run-log
  * row all reference exactly the same day.
  */
+export function restaurantDateString(
+  now: Date,
+  offsetDays = 0,
+  restaurant?: Partial<RestaurantLocalization> | null
+): string {
+  const { time_zone } = getRestaurantLocalization(restaurant);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: time_zone,
+    year: "numeric"
+  }).formatToParts(now);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const localMidnight = new Date(
+    `${values.get("year")}-${values.get("month")}-${values.get("day")}T00:00:00Z`
+  );
+  localMidnight.setUTCDate(localMidnight.getUTCDate() + offsetDays);
+  return localMidnight.toISOString().slice(0, 10);
+}
+
 export function dubaiDateString(now: Date, offsetDays = 0): string {
-  const shifted = new Date(now.getTime() + 4 * 3600 * 1000);
-  shifted.setUTCDate(shifted.getUTCDate() + offsetDays);
-  return shifted.toISOString().slice(0, 10);
+  return restaurantDateString(now, offsetDays);
 }
 
 /**
  * Batch job: one deterministic-numbers + narration + record per active, opted-in
- * restaurant for yesterday (Asia/Dubai). Each restaurant is isolated in its own
+ * restaurant for yesterday in that tenant's timezone. Each restaurant is isolated in its own
  * try/catch so a single café failing never kills the batch, and the unique
  * (restaurant_id, summary_date) constraint makes reruns idempotent.
  *
@@ -44,11 +64,12 @@ export async function runDailySummary(options?: {
     throw new Error("Supabase admin client is not configured.");
   }
 
-  const summaryDate = options?.targetDay ?? dubaiDateString(options?.now ?? new Date(), -1);
+  const now = options?.now ?? new Date();
+  const defaultSummaryDate = options?.targetDay ?? dubaiDateString(now, -1);
 
   const { data: restaurants, error } = await admin
     .from("restaurants")
-    .select("id, name, owner_phone, daily_summary_phone")
+    .select("id, name, owner_phone, daily_summary_phone, country_code, currency_code, locale, phone_country_code, time_zone")
     .eq("is_active", true)
     .eq("daily_summary_enabled", true);
 
@@ -57,7 +78,7 @@ export async function runDailySummary(options?: {
   }
 
   const result: DailySummaryRunResult = {
-    summary_date: summaryDate,
+    summary_date: defaultSummaryDate,
     processed: 0,
     sent: 0,
     skipped_empty: 0,
@@ -67,6 +88,8 @@ export async function runDailySummary(options?: {
 
   for (const restaurant of restaurants ?? []) {
     result.processed += 1;
+    const summaryDate =
+      options?.targetDay ?? restaurantDateString(now, -1, restaurant);
 
     try {
       const { data: existing } = await admin
@@ -85,7 +108,7 @@ export async function runDailySummary(options?: {
 
       const numbers = await computeDailyNumbers(admin, restaurant.id, summaryDate);
       const status = numbers.order_count === 0 ? "skipped_empty" : "sent";
-      const message = await narrate(numbers, restaurant.name);
+      const message = await narrate(numbers, restaurant.name, restaurant);
       const phone = restaurant.daily_summary_phone ?? restaurant.owner_phone ?? null;
 
       await sendOwnerMessage(phone, message);

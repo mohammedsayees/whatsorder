@@ -19,7 +19,7 @@ import {
   Utensils,
   X
 } from "lucide-react";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import { minimumOrderRemaining } from "@/lib/security";
 import {
   formatOpeningTime,
@@ -104,7 +104,9 @@ export function RestaurantMenu({
   const direction = getTextDirection(language);
   const scheduleOpen = isRestaurantOpen(
     restaurant.opening_hours_enabled,
-    restaurant.opening_hours
+    restaurant.opening_hours,
+    new Date(),
+    restaurant.time_zone
   );
   const orderingAvailable =
     restaurant.accepting_orders !== false && scheduleOpen;
@@ -420,7 +422,7 @@ export function RestaurantMenu({
                     {restaurant.delivery_enabled !== false ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                         <Bike size={13} />
-                        {t.delivery} {formatAED(restaurant.delivery_fee)}
+                        {t.delivery} {formatCurrency(restaurant.delivery_fee, restaurant)}
                       </span>
                     ) : null}
                     {restaurant.pickup_enabled === true ? (
@@ -487,6 +489,7 @@ export function RestaurantMenu({
           language={language}
           loyalty={loyalty}
           recentOrders={recentOrders}
+          restaurant={restaurant}
         />
 
         {isSearchOpen ? (
@@ -576,10 +579,10 @@ export function RestaurantMenu({
                       <div className="mt-3 flex items-end justify-between gap-3">
                         <div>
                           <p className="text-xs font-semibold text-stone-400 line-through">
-                            {formatAED(item.price)}
+                            {formatCurrency(item.price, restaurant)}
                           </p>
                           <p className="text-xl font-black text-leaf">
-                            {formatAED(offer.promotional_price)}
+                            {formatCurrency(offer.promotional_price, restaurant)}
                           </p>
                         </div>
                         {hasOptions ? (
@@ -751,14 +754,14 @@ export function RestaurantMenu({
                               {activeOffer ? (
                                 <>
                                   <p className="text-xs font-semibold text-stone-400 line-through">
-                                    {formatAED(item.price)}
+                                    {formatCurrency(item.price, restaurant)}
                                   </p>
                                   <p className="text-base font-black text-leaf">
-                                    {formatAED(activeOffer.promotional_price)}
+                                    {formatCurrency(activeOffer.promotional_price, restaurant)}
                                   </p>
                                 </>
                               ) : (
-                                <p className="text-base font-black text-ink">{formatAED(item.price)}</p>
+                                <p className="text-base font-black text-ink">{formatCurrency(item.price, restaurant)}</p>
                               )}
                               {!item.is_available ? (
                                 <p className="mt-1 text-xs font-semibold text-rose-500">{t.unavailable}</p>
@@ -909,8 +912,8 @@ export function RestaurantMenu({
               {!minimumReached ? (
                 <p className="text-xs font-semibold text-white/70">
                   {language === "ar"
-                    ? `أضف ${formatAED(amountRemaining)} لإتمام الحد الأدنى`
-                    : `Add ${formatAED(amountRemaining)} to reach the minimum`}
+                    ? `أضف ${formatCurrency(amountRemaining, restaurant)} لإتمام الحد الأدنى`
+                    : `Add ${formatCurrency(amountRemaining, restaurant)} to reach the minimum`}
                 </p>
               ) : null}
             </div>
@@ -922,14 +925,14 @@ export function RestaurantMenu({
                 className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
               >
                 {t.viewCart}
-                <span>{formatAED(cart.subtotal)}</span>
+                <span>{formatCurrency(cart.subtotal, restaurant)}</span>
               </Link>
             ) : (
               <span
                 aria-disabled="true"
                 className="inline-flex shrink-0 items-center rounded-full bg-white/15 px-4 py-2.5 text-sm font-black text-white/70"
               >
-                {formatAED(cart.subtotal)}
+                {formatCurrency(cart.subtotal, restaurant)}
               </span>
             )}
           </div>
@@ -1013,6 +1016,7 @@ export function RestaurantMenu({
               : undefined
           }
           offer={optionsSheet.offer}
+          restaurant={restaurant}
           onAdd={(options, quantity) => {
             cart.addConfiguredLine({
               item: optionsSheet.item,

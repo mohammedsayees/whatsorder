@@ -4,7 +4,7 @@
 // recomputes or rounds them — the LLM narration must not alter them either.
 
 export type DailyNumbers = {
-  summary_date: string; // ISO date (Asia/Dubai day reported), e.g. "2026-06-25"
+  summary_date: string; // ISO date in the restaurant's timezone, e.g. "2026-06-25"
   order_count: number;
   gross_revenue: number;
   avg_order_value: number;

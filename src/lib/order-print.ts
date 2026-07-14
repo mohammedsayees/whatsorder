@@ -1,4 +1,5 @@
 import type { Order, Restaurant } from "@/lib/types";
+import { formatCurrency } from "@/lib/currency";
 
 // Shared 80mm thermal-ticket renderer for KOT (kitchen copy) and customer
 // receipts. Kept DOM-free so it can be reused by the orders list, the staff
@@ -16,15 +17,11 @@ function escapeHtml(value: unknown) {
     .replaceAll("'", "&#039;");
 }
 
-function formatMoney(value: number) {
-  return `AED ${Number(value).toFixed(2)}`;
-}
-
-function formatOrderDate(value: string) {
-  return new Intl.DateTimeFormat("en-AE", {
+function formatOrderDate(value: string, restaurant: Restaurant) {
+  return new Intl.DateTimeFormat(restaurant.locale, {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "Asia/Dubai"
+    timeZone: restaurant.time_zone
   }).format(new Date(value));
 }
 
@@ -83,13 +80,13 @@ function ticketHeader(
       <div class="ticket-title">${escapeHtml(title)}</div>
       ${reprint ? '<div class="reprint">*** REPRINT ***</div>' : ""}
       <div>Order #${escapeHtml(orderReference(order.id))}</div>
-      <div>${escapeHtml(formatOrderDate(order.created_at))}</div>
+      <div>${escapeHtml(formatOrderDate(order.created_at, restaurant))}</div>
       <div class="status">${escapeHtml(order.status)} · ${escapeHtml(fulfilmentLabel(order))}</div>
     </header>
   `;
 }
 
-function itemsTable(order: Order, includePrices: boolean) {
+function itemsTable(restaurant: Restaurant, order: Order, includePrices: boolean) {
   const rows = order.items
     .map(
       (item) => `
@@ -106,7 +103,7 @@ function itemsTable(order: Order, includePrices: boolean) {
           </td>
           ${
             includePrices
-              ? `<td class="money">${escapeHtml(formatMoney(item.price * item.quantity))}</td>`
+              ? `<td class="money">${escapeHtml(formatCurrency(item.price * item.quantity, restaurant))}</td>`
               : ""
           }
         </tr>
@@ -136,7 +133,7 @@ function kotTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
         ${fulfilmentDetails(order, false)}
         ${order.customer_name ? `<div>Customer: ${escapeHtml(order.customer_name)}</div>` : ""}
       </div>
-      ${itemsTable(order, false)}
+      ${itemsTable(restaurant, order, false)}
       ${
         order.notes
           ? `<div class="notes"><strong>ORDER NOTES</strong><br>${escapeHtml(order.notes)}</div>`
@@ -160,20 +157,20 @@ function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
         <div>Phone: ${escapeHtml(order.customer_phone)}</div>
         ${fulfilmentDetails(order, true)}
       </div>
-      ${itemsTable(order, true)}
+      ${itemsTable(restaurant, order, true)}
       <div class="totals">
-        <div><span>Subtotal</span><span>${escapeHtml(formatMoney(order.subtotal))}</span></div>
+        <div><span>Subtotal</span><span>${escapeHtml(formatCurrency(order.subtotal, restaurant))}</span></div>
         ${
           Number(order.delivery_fee) > 0
-            ? `<div><span>Delivery fee</span><span>${escapeHtml(formatMoney(order.delivery_fee))}</span></div>`
+            ? `<div><span>Delivery fee</span><span>${escapeHtml(formatCurrency(order.delivery_fee, restaurant))}</span></div>`
             : ""
         }
         ${
           Number(order.loyalty_discount) > 0
-            ? `<div><span>Loyalty discount</span><span>-${escapeHtml(formatMoney(order.loyalty_discount))}</span></div>`
+            ? `<div><span>Loyalty discount</span><span>-${escapeHtml(formatCurrency(order.loyalty_discount, restaurant))}</span></div>`
             : ""
         }
-        <div class="grand-total"><span>Total</span><span>${escapeHtml(formatMoney(order.total))}</span></div>
+        <div class="grand-total"><span>Total</span><span>${escapeHtml(formatCurrency(order.total, restaurant))}</span></div>
       </div>
       <div class="section">
         <div>Payment: ${escapeHtml(order.payment_method ?? "Unpaid")}</div>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CloudOff, Printer, RefreshCw, Trash2 } from "lucide-react";
 import { submitStaffOrderAction } from "@/app/admin/orders/actions";
 import { formatOrderItemName } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import {
   enqueueOrder,
   isOutboxSupported,
@@ -159,7 +159,8 @@ export function useStaffOrderQueue(restaurantId: string) {
 const actionLabels: Record<StaffOrderActionKind, string> = {
   kitchen: "To kitchen",
   paid_cash: "Paid · Cash",
-  paid_card: "Paid · Card"
+  paid_card: "Paid · Card",
+  paid_upi: "Paid · UPI"
 };
 
 function punchTimeLabel(isoTime: string) {
@@ -235,7 +236,7 @@ export function QueuedOrdersPanel({
                   {punchTimeLabel(entry.payload.punchedAt)} ·{" "}
                   {actionLabels[entry.payload.action]}
                 </span>
-                <span>{formatAED(entry.displayTotal)}</span>
+                <span>{formatCurrency(entry.displayTotal, restaurant)}</span>
               </div>
               <p className="mt-1 text-sm font-bold">{itemsSummary}</p>
 

@@ -7,11 +7,13 @@ import {
 export function WeeklyHoursFields({
   canWrite = true,
   enabled,
-  openingHours
+  openingHours,
+  timeZone = "Asia/Dubai"
 }: {
   canWrite?: boolean;
   enabled: boolean;
   openingHours: unknown;
+  timeZone?: string;
 }) {
   const hours = normalizeOpeningHours(openingHours);
 
@@ -74,7 +76,7 @@ export function WeeklyHoursFields({
           </div>
         ))}
       </div>
-      <p className="mt-3 text-xs font-semibold text-stone-500">Timezone: UAE (Asia/Dubai)</p>
+      <p className="mt-3 text-xs font-semibold text-stone-500">Timezone: {timeZone}</p>
     </fieldset>
   );
 }

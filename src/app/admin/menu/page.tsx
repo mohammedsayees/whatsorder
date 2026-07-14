@@ -62,13 +62,14 @@ export default async function AdminMenuPage() {
           canWrite={canManageOffers}
           items={menu.items}
           offers={offers}
+          restaurant={restaurant}
         />
       </div>
       <div className="mt-6">
-        <OptionGroupsManager canWrite={canWrite} catalog={optionCatalog} />
+        <OptionGroupsManager canWrite={canWrite} catalog={optionCatalog} restaurant={restaurant} />
       </div>
       <div className="mt-6">
-        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} optionCatalog={optionCatalog} restaurantSlug={restaurant.slug} />
+        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} optionCatalog={optionCatalog} restaurant={restaurant} restaurantSlug={restaurant.slug} />
       </div>
     </main>
   );

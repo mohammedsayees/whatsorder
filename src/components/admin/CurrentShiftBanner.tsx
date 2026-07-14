@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { AlertTriangle, WalletCards } from "lucide-react";
-import { formatAED } from "@/lib/currency";
+import { formatCurrency } from "@/lib/currency";
 import type { CurrentShiftView } from "@/lib/shift-data";
+import type { Restaurant } from "@/lib/types";
 
 export function CurrentShiftBanner({
-  currentShift
+  currentShift,
+  restaurant
 }: {
   currentShift: CurrentShiftView | null;
+  restaurant: Restaurant;
 }) {
   if (!currentShift) {
     return (
@@ -39,7 +42,7 @@ export function CurrentShiftBanner({
           <p className="text-sm">
             {currentShift.summary.completed_order_count} completed · Expected cash{" "}
             <span className="font-black">
-              {formatAED(currentShift.summary.expected_cash_amount)}
+              {formatCurrency(currentShift.summary.expected_cash_amount, restaurant)}
             </span>
           </p>
         </div>

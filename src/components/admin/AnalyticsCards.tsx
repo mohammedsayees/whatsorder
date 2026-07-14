@@ -1,15 +1,15 @@
 import { Banknote, CheckCircle2, Clock, Repeat2, ShoppingBag, Star, TrendingUp } from "lucide-react";
-import { formatAED } from "@/lib/currency";
-import type { Analytics } from "@/lib/types";
+import { formatCurrency } from "@/lib/currency";
+import type { Analytics, Restaurant } from "@/lib/types";
 
-export function AnalyticsCards({ analytics }: { analytics: Analytics }) {
+export function AnalyticsCards({ analytics, restaurant }: { analytics: Analytics; restaurant: Restaurant }) {
   const cards = [
     { label: "Today's orders", value: analytics.todaysOrders, icon: ShoppingBag },
-    { label: "Today's revenue", value: formatAED(analytics.todaysRevenue), icon: Banknote },
+    { label: "Today's revenue", value: formatCurrency(analytics.todaysRevenue, restaurant), icon: Banknote },
     { label: "New orders", value: analytics.newOrders, icon: Clock },
     { label: "Completed orders", value: analytics.completedOrders, icon: CheckCircle2 },
     { label: "Repeat customers", value: analytics.repeatCustomers, icon: Repeat2 },
-    { label: "Average order value", value: formatAED(analytics.averageOrderValue), icon: TrendingUp },
+    { label: "Average order value", value: formatCurrency(analytics.averageOrderValue, restaurant), icon: TrendingUp },
     { label: "Top-selling item", value: analytics.topSellingItem, icon: Star }
   ];
 

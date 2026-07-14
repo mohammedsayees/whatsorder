@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
-import { formatAED } from "@/lib/currency";
-import { formatUaeDateTime } from "@/lib/date-time";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantDateTime } from "@/lib/date-time";
 import type { Customer, Order, Restaurant } from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
@@ -90,7 +90,7 @@ export function OrderList({
                 <p className="mt-1 text-sm text-stone-500">
                   {order.customer_phone}
                   {order.delivery_area ? ` · ${order.delivery_area}` : ""} ·{" "}
-                  {formatUaeDateTime(order.created_at)}
+                  {formatRestaurantDateTime(order.created_at, restaurant)}
                 </p>
                 <div className="mt-3 space-y-1 text-sm">
                   {order.items.map((item, index) => (
@@ -155,7 +155,7 @@ export function OrderList({
                 ) : null}
               </div>
               <div className="min-w-56">
-                <p className="text-right text-xl font-black">{formatAED(order.total)}</p>
+                <p className="text-right text-xl font-black">{formatCurrency(order.total, restaurant)}</p>
                 {order.status === "Completed" && Number(order.points_earned ?? 0) > 0 ? (
                   <p className="mt-1 flex items-center justify-end gap-1 text-sm font-bold text-leaf">
                     <Gift size={15} />
@@ -173,6 +173,7 @@ export function OrderList({
                   </Link>
                 ) : null}
                 <OrderStatusActions
+                  countryCode={restaurant.country_code}
                   fulfilmentType={fulfilmentType}
                   key={`${order.id}-${order.status}`}
                   orderId={order.id}
@@ -182,6 +183,7 @@ export function OrderList({
                 {order.payment_method ? (
                   <PaymentMethodControl
                     change={paymentChanges[order.id] ?? null}
+                    countryCode={restaurant.country_code}
                     orderId={order.id}
                     paymentMethod={order.payment_method}
                   />

@@ -19,6 +19,7 @@ import {
   type StaffOrderPayload
 } from "@/lib/staff-order-payload";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeCustomerPhone } from "@/lib/whatsapp";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import type {
   CartLine,
@@ -54,7 +55,8 @@ const staffOrderActions: Record<
 > = {
   kitchen: { status: "Preparing", paymentMethod: null },
   paid_cash: { status: "Completed", paymentMethod: "Cash on Delivery" },
-  paid_card: { status: "Completed", paymentMethod: "Card on Delivery" }
+  paid_card: { status: "Completed", paymentMethod: "Card on Delivery" },
+  paid_upi: { status: "Completed", paymentMethod: "UPI" }
 };
 
 function field(formData: FormData, key: string, maxLength: number) {
@@ -142,11 +144,19 @@ export async function submitStaffOrderAction(
     return { error: "Choose how to save the order." };
   }
 
+  if (payload.action === "paid_upi" && session.restaurant.country_code !== "IN") {
+    return { error: "UPI is available only for restaurants in India." };
+  }
+
   const orderAction = staffOrderActions[payload.action];
   const customerName = payloadField(payload.customerName, 120) || "Walk-in customer";
-  const customerPhone = payloadField(payload.customerPhone, 24);
+  const submittedCustomerPhone = payloadField(payload.customerPhone, 24);
+  const customerPhone = normalizeCustomerPhone(
+    submittedCustomerPhone,
+    session.restaurant.phone_country_code
+  );
 
-  if (customerPhone && !isValidCustomerPhone(customerPhone)) {
+  if (submittedCustomerPhone && !isValidCustomerPhone(customerPhone)) {
     return { error: "Enter a valid phone number, or leave it blank." };
   }
 
@@ -365,8 +375,19 @@ export async function addItemsToOrderAction(
 
 const collectablePaymentMethods: PaymentMethod[] = [
   "Cash on Delivery",
-  "Card on Delivery"
+  "Card on Delivery",
+  "UPI"
 ];
+
+function isPaymentMethodAvailable(
+  paymentMethod: PaymentMethod,
+  countryCode: string | null | undefined
+) {
+  return (
+    collectablePaymentMethods.includes(paymentMethod) &&
+    (paymentMethod !== "UPI" || countryCode === "IN")
+  );
+}
 
 // Completes an unpaid ticket by recording how the customer paid. The payment
 // method is set first, then the order transitions to Completed through the same
@@ -381,8 +402,8 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     return;
   }
 
-  if (!collectablePaymentMethods.includes(paymentMethod)) {
-    throw new Error("Choose Cash or Card to complete this order.");
+  if (!isPaymentMethodAvailable(paymentMethod, session.restaurant.country_code)) {
+    throw new Error("Choose a payment method available for this restaurant.");
   }
 
   const { error: paymentError } = await supabase
@@ -454,8 +475,8 @@ export async function changeOrderPaymentMethodAction(
     return { error: "Payment update is unavailable." };
   }
 
-  if (!collectablePaymentMethods.includes(newMethod)) {
-    return { error: "Choose Cash or Card." };
+  if (!isPaymentMethodAvailable(newMethod, session.restaurant.country_code)) {
+    return { error: "Choose a payment method available for this restaurant." };
   }
 
   const { data: order } = await supabase
@@ -527,6 +548,6 @@ export async function changeOrderPaymentMethodAction(
   revalidatePath("/admin/shifts");
 
   return {
-    success: `Payment changed to ${newMethod === "Cash on Delivery" ? "Cash" : "Card"}.`
+    success: `Payment changed to ${newMethod === "Cash on Delivery" ? "Cash" : newMethod === "UPI" ? "UPI" : "Card"}.`
   };
 }

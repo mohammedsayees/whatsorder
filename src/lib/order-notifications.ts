@@ -105,6 +105,7 @@ type NotifyInput = {
   restaurant: {
     id: string;
     name: string;
+    phone_country_code?: string | null;
     status_notifications_enabled?: boolean | null;
   };
   orderId: string;
@@ -147,7 +148,10 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
       return; // walk-in / no phone
     }
 
-    const phone = normalizeCustomerPhone(rawPhone);
+    const phone = normalizeCustomerPhone(
+      rawPhone,
+      restaurant.phone_country_code ?? undefined
+    );
     const { data: window } = await supabase
       .from("whatsapp_service_windows")
       .select("last_inbound_at")

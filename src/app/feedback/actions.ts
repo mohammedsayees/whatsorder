@@ -81,7 +81,11 @@ export async function createFeedbackRequestAction(
 
   return {
     ok: true,
-    whatsappUrl: buildWhatsAppUrl(String(order.customer_phone), message)
+    whatsappUrl: buildWhatsAppUrl(
+      String(order.customer_phone),
+      message,
+      session.restaurant.phone_country_code
+    )
   };
 }
 

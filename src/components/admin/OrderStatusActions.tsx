@@ -9,20 +9,22 @@ import {
   getNextOrderActionLabel,
   getNextOrderStatus
 } from "@/lib/order-status";
-import type { FulfilmentType, OrderStatus, PaymentMethod } from "@/lib/types";
+import type { CountryCode, FulfilmentType, OrderStatus, PaymentMethod } from "@/lib/types";
 
-const paymentOptions: { label: string; value: PaymentMethod }[] = [
+const basePaymentOptions: { label: string; value: PaymentMethod }[] = [
   { label: "Complete · Cash", value: "Cash on Delivery" },
   { label: "Complete · Card", value: "Card on Delivery" }
 ];
 
 export function OrderStatusActions({
   fulfilmentType,
+  countryCode,
   orderId,
   paymentMethod,
   status
 }: {
   fulfilmentType: FulfilmentType;
+  countryCode?: CountryCode;
   orderId: string;
   paymentMethod: PaymentMethod | null;
   status: OrderStatus;
@@ -35,6 +37,10 @@ export function OrderStatusActions({
   // completed, so the final step asks how the customer paid.
   const completingNeedsPayment = nextStatus === "Completed" && paymentMethod === null;
   const busy = submittingStatus !== null || collecting !== null;
+  const paymentOptions =
+    countryCode === "IN"
+      ? [...basePaymentOptions, { label: "Complete · UPI", value: "UPI" as const }]
+      : basePaymentOptions;
 
   if (!nextStatus && !cancellable) {
     return (
@@ -51,7 +57,7 @@ export function OrderStatusActions({
           <p className="text-center text-xs font-bold text-stone-500">
             Collect payment to complete
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {paymentOptions.map((option) => (
               <form
                 action={collectPaymentAndCompleteAction}
