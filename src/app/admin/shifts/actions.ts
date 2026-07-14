@@ -26,6 +26,7 @@ function friendlyShiftError(message?: string) {
     "Open shift not found",
     "Only the shift opener or restaurant management can add a paid-out",
     "Only the shift opener or restaurant management can close this shift",
+    "Cannot close shift while active orders remain",
     "Paid-out amount must be greater than zero",
     "A paid-out reason is required",
     "Counted cash cannot be negative",

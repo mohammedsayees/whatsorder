@@ -105,4 +105,19 @@ describe("restaurant operational reliability boundaries", () => {
     expect(source("src/app/auth/invite/actions.ts")).toContain("password.length < 12");
     expect(source("src/app/auth/setup-password/page.tsx").match(/minLength=\{12\}/g)).toHaveLength(2);
   });
+
+  it("blocks shift closure at both the UI and transactional RPC boundaries", () => {
+    const migration = source(
+      "supabase/migrations/20260714120000_prevent_shift_close_with_active_orders.sql"
+    );
+    const shiftData = source("src/lib/shift-data.ts");
+    const shiftForm = source("src/components/admin/ShiftForms.tsx");
+
+    expect(migration).toContain("Cannot close shift while active orders remain");
+    expect(migration).toContain("restaurant_id = target_restaurant_id");
+    expect(migration).toContain("'Ready to Serve'");
+    expect(migration).toContain("'Out for Delivery'");
+    expect(shiftData).toContain('.in("status", [...activeOrderStatuses])');
+    expect(shiftForm).toContain("activeOrderCount > 0");
+  });
 });
