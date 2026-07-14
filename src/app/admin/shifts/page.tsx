@@ -1,4 +1,5 @@
 import { AlertTriangle, Banknote, CreditCard, QrCode, ReceiptText, WalletCards } from "lucide-react";
+import Link from "next/link";
 import {
   AssignUnassignedOrdersButton,
   CloseShiftForm,
@@ -13,6 +14,7 @@ import {
   getUnassignedCompletedOrderCount
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -51,12 +53,12 @@ export default async function AdminShiftsPage() {
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div>
         <p className="text-sm font-bold uppercase tracking-wide text-leaf">
-          Cash operations
+          Shift operations
         </p>
-        <h1 className="text-3xl font-black">Shift Cash Summary</h1>
+        <h1 className="text-3xl font-black">Shift Reconciliation</h1>
         <p className="mt-2 max-w-3xl text-stone-600">
-          Track opening cash, completed cash orders, paid-outs and the counted
-          difference. This is an operational summary, not an accounting ledger.
+          Check cash, card, UPI and enabled delivery-platform totals, then create
+          a printable close report. This is an operational summary, not an accounting ledger.
         </p>
       </div>
 
@@ -273,7 +275,12 @@ export default async function AdminShiftsPage() {
                 <div className="mt-4">
                   <CloseShiftForm
                     activeOrderCount={currentShift.activeOrderCount}
+                    expectedCard={currentShift.summary.card_on_delivery_total}
                     expectedCash={currentShift.summary.expected_cash_amount}
+                    expectedUpi={currentShift.summary.upi_total}
+                    marketplaceChannels={configuredMarketplaceChannels(
+                      session.restaurant.shift_marketplace_channels
+                    )}
                     restaurant={session.restaurant}
                     shiftId={currentShift.shift.id}
                   />
@@ -307,6 +314,7 @@ export default async function AdminShiftsPage() {
                     <th className="px-4 py-3">Expected</th>
                     <th className="px-4 py-3">Counted</th>
                     <th className="px-4 py-3">Difference</th>
+                    <th className="px-4 py-3">Report</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -343,6 +351,20 @@ export default async function AdminShiftsPage() {
                         }`}
                       >
                         {money(Number(shift.difference_amount ?? 0))}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {shift.close_report_version > 0 ? (
+                          <Link
+                            className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-leaf"
+                            href={`/admin/shifts/${shift.id}/report`}
+                          >
+                            View v{shift.close_report_version}
+                          </Link>
+                        ) : (
+                          <span className="text-xs font-semibold text-stone-400">
+                            Legacy shift
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

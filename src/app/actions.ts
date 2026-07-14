@@ -34,6 +34,7 @@ import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
+import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -1327,6 +1328,9 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       accepting_orders: formData.get("accepting_orders") === "on",
       status_notifications_enabled:
         formData.get("status_notifications_enabled") === "on",
+      shift_marketplace_channels: configuredMarketplaceChannels(
+        formData.getAll("shift_marketplace_channels")
+      ),
       opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
       opening_hours: openingHoursFromFormData(formData),
       latitude: decimalValue(formData, "latitude"),

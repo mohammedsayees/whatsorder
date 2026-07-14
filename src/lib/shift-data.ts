@@ -7,8 +7,10 @@ import type {
 import type {
   RestaurantShift,
   ShiftCashPaidOut,
+  ShiftCloseReport,
   ShiftSummary
 } from "@/lib/types";
+import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
 
 export type CurrentShiftView = {
   activeOrderCount: number;
@@ -168,4 +170,61 @@ export async function getUnassignedCompletedOrderCount(restaurantId: string) {
   }
 
   return count ?? 0;
+}
+
+export async function getShiftCloseReportView(
+  session: RestaurantAdminSession,
+  shiftId: string
+) {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    throw new Error("Shift report service is unavailable.");
+  }
+
+  const { data: shift, error: shiftError } = await supabase
+    .from("restaurant_shifts")
+    .select("id,restaurant_id,status,opened_by_user_id,close_report_version")
+    .eq("id", shiftId)
+    .eq("restaurant_id", session.restaurantId)
+    .eq("status", "closed")
+    .maybeSingle();
+
+  if (shiftError) {
+    throw new Error("Shift report could not be loaded.");
+  }
+
+  if (!shift ||
+      (session.role === "staff" && shift.opened_by_user_id !== session.userId)) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("shift_close_reports")
+    .select("*")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("shift_id", shiftId)
+    .order("version", { ascending: false });
+
+  if (error) {
+    throw new Error("Shift report versions could not be loaded.");
+  }
+
+  const reports = (data ?? []).map((row) => {
+    const snapshot = parseShiftCloseReportSnapshot(row.snapshot);
+    if (!snapshot) {
+      throw new Error("A shift report contains invalid data.");
+    }
+
+    return {
+      ...row,
+      snapshot
+    } as ShiftCloseReport;
+  });
+
+  return {
+    canCorrect: session.role !== "staff",
+    currentVersion: Number(shift.close_report_version ?? 0),
+    reports
+  };
 }
