@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: "WhatsOrder — Turn WhatsApp chats into orders you own",
+  title: "WhatsOrder — The AI-enabled lightweight POS that runs on WhatsApp",
   description:
-    "The commission-free operating system for small UAE restaurants: structured WhatsApp orders, post-order feedback, customer insights, shift and cash reconciliation, vendor cash tracking and AI-built menus.",
+    "Commission-free, AI-enabled lightweight POS for small UAE restaurants: structured WhatsApp orders, AI daily growth insights, customer segments, loyalty and offers, shift and cash reconciliation, and AI-built menus.",
   applicationName: "WhatsOrder",
 };
 
@@ -14,7 +14,7 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap");
+const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Malayalam:wght@400;500;600;700&display=swap");
 
 :root{
     --pine:#0B3D2E;
@@ -88,17 +88,31 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
 
   /* ---------- header ---------- */
   header{position:sticky;top:0;z-index:50;background:rgba(251,247,239,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-  .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
-  .brand{display:flex;align-items:center;gap:.6rem;font-family:"Bricolage Grotesque";font-weight:700;font-size:1.18rem;letter-spacing:-.02em;color:var(--pine)}
+  .nav{display:flex;align-items:center;justify-content:space-between;gap:20px;height:68px}
+  .brand{display:flex;align-items:center;gap:.6rem;font-family:"Bricolage Grotesque";font-weight:700;font-size:1.18rem;letter-spacing:-.02em;color:var(--pine);white-space:nowrap;flex:0 0 auto}
   .brand-mark{width:30px;height:30px;flex:0 0 auto}
-  .nav-links{display:flex;align-items:center;gap:1.7rem;font-size:.97rem;color:var(--ink-soft);font-weight:500}
+  .nav-links{display:flex;align-items:center;flex-wrap:nowrap;gap:1.3rem;font-size:.95rem;color:var(--ink-soft);font-weight:500}
+  .nav-links a{white-space:nowrap}
   .nav-links a:hover{color:var(--pine)}
-  .nav-cta{display:flex;align-items:center;gap:.8rem}
-  @media(max-width:860px){.nav-links{display:none}.nav-cta .btn-ghost{display:none}}
+  .nav-cta{display:flex;align-items:center;gap:.7rem;flex:0 0 auto}
+  @media(max-width:1230px){.nav-links{gap:1rem}.nav-cta .btn-ghost{display:none}}
+  @media(max-width:980px){.nav-links{display:none}}
+  body.lang-ml .nav-links{font-size:.85rem;gap:.9rem}
+  body.lang-ar .nav-links{font-size:.9rem;gap:1.05rem}
+  @media(max-width:1440px){
+    body.lang-ar .nav-cta .btn-ghost,body.lang-ml .nav-cta .btn-ghost{display:none}
+  }
+  @media(max-width:1080px){
+    body.lang-ar .nav-links,body.lang-ml .nav-links{display:none}
+  }
 
   /* ---------- hero ---------- */
-  .hero{position:relative;padding:72px 0 30px}
-  .hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:54px;align-items:center}
+  .hero{position:relative;padding:72px 0 30px;isolation:isolate}
+  .hero::before{content:"";position:absolute;inset:-10% 0 0;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(46% 42% at 80% 26%,rgba(18,128,90,.10),transparent 70%),
+      radial-gradient(34% 34% at 10% 8%,rgba(217,138,58,.09),transparent 70%);}
+  .hero-grid{position:relative;display:grid;grid-template-columns:1.02fr .98fr;gap:54px;align-items:center}
   .hero h1{font-size:clamp(2.5rem,5.4vw,4.25rem);margin:.7rem 0 0;color:var(--pine)}
   .hero h1 .hl{color:var(--karak-deep);position:relative;white-space:nowrap}
   .hero h1 .hl::after{content:"";position:absolute;left:0;right:0;bottom:.06em;height:.16em;background:var(--karak);opacity:.32;border-radius:2px}
@@ -148,17 +162,17 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
 
   /* reveal animation */
   @keyframes pop{to{opacity:1;transform:translateY(0)}}
-  .anim .bubble{animation:pop .5s ease forwards}
-  .anim .bubble:nth-child(1){animation-delay:.2s}
-  .anim .bubble:nth-child(2){animation-delay:.7s}
-  .anim .bubble:nth-child(3){animation-delay:1.2s}
-  .anim .bubble:nth-child(4){animation-delay:1.7s}
-  .anim .trow{animation:pop .45s ease forwards}
-  .anim .trow:nth-child(1){animation-delay:1.9s}
-  .anim .trow:nth-child(2){animation-delay:2.05s}
-  .anim .trow:nth-child(3){animation-delay:2.2s}
-  .anim .tmeta{animation:pop .45s ease forwards;animation-delay:2.4s}
-  .anim .ttotal{animation:pop .45s ease forwards;animation-delay:2.6s}
+  .anim .bubble{animation:pop .42s ease forwards}
+  .anim .bubble:nth-child(1){animation-delay:.12s}
+  .anim .bubble:nth-child(2){animation-delay:.42s}
+  .anim .bubble:nth-child(3){animation-delay:.72s}
+  .anim .bubble:nth-child(4){animation-delay:1.0s}
+  .anim .trow{animation:pop .4s ease forwards}
+  .anim .trow:nth-child(1){animation-delay:1.15s}
+  .anim .trow:nth-child(2){animation-delay:1.28s}
+  .anim .trow:nth-child(3){animation-delay:1.41s}
+  .anim .tmeta{animation:pop .4s ease forwards;animation-delay:1.56s}
+  .anim .ttotal{animation:pop .4s ease forwards;animation-delay:1.7s}
 
   /* ---------- section scaffolding ---------- */
   section{padding:84px 0}
@@ -392,7 +406,91 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
     .bento{grid-template-columns:1fr}
     .span2,.span3{grid-column:span 1}
     .pwa-strip{flex-direction:column;align-items:flex-start}
-  }`;
+  }
+
+  /* ===== proof band (live pilot) ===== */
+  .proof-band{position:relative;overflow:hidden;background:var(--pine);color:#eaf3ee;border-radius:var(--r-lg);padding:38px;display:grid;grid-template-columns:1.25fr 1fr;gap:34px;align-items:center;box-shadow:var(--shadow)}
+  .proof-band::before{content:"";position:absolute;right:-80px;bottom:-90px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(217,138,58,.30),transparent 70%);pointer-events:none}
+  .proof-band .eyebrow{color:#ffd9a8}
+  .proof-band .eyebrow::before{background:var(--karak)}
+  .proof-band h3{position:relative;font-family:"Bricolage Grotesque";font-weight:700;font-size:clamp(1.55rem,3vw,2.1rem);line-height:1.08;letter-spacing:-.02em;color:#fff;margin:.7rem 0 .55rem}
+  .proof-band p{position:relative;color:#bcd3c8;margin:0 0 1.4rem;font-size:1.02rem;max-width:44ch}
+  .proof-band .btn-wa{position:relative}
+  .proof-tiles{position:relative;display:flex;flex-direction:column;gap:12px}
+  .ptile{display:flex;align-items:center;gap:.75rem;background:#0a3527;border:1px solid #1c5a45;border-radius:var(--r-md);padding:14px 16px;font-size:.97rem;color:#eaf3ee}
+  .ptile svg{width:20px;height:20px;color:var(--emerald-bright);flex:0 0 auto}
+  @media(max-width:860px){.proof-band{grid-template-columns:1fr;gap:26px;padding:30px}}
+
+  /* ===== comparison table ===== */
+  .compare{margin-top:42px;background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-soft)}
+  .crow{display:grid;grid-template-columns:1.5fr 1fr 1fr}
+  .crow:not(:last-child){border-bottom:1px solid var(--line)}
+  .crow .cc{padding:16px 20px;display:flex;align-items:center;gap:.5rem;font-size:.98rem;line-height:1.3}
+  .crow .cc.feat-lbl{color:var(--ink);font-weight:500}
+  .crow .cc.mkt{color:var(--ink-soft);border-left:1px solid var(--line)}
+  .crow .cc.wo{background:rgba(18,128,90,.055);border-left:1px solid var(--line);color:var(--pine);font-weight:600}
+  .crow.chead .cc{font-family:"Geist Mono",monospace;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;font-weight:500;background:var(--paper-2);color:var(--ink-soft)}
+  .crow.chead .cc.wo{background:var(--pine);color:#fff}
+  .crow .cc svg{width:17px;height:17px;flex:0 0 auto}
+  .cc.wo svg{color:var(--emerald)}
+  .cc.mkt svg{color:var(--karak-deep)}
+  @media(max-width:600px){
+    .crow{grid-template-columns:1fr}
+    .crow.chead{display:none}
+    .crow .cc.feat-lbl{font-weight:700;background:var(--paper-2);padding-bottom:8px}
+    .crow .cc.mkt,.crow .cc.wo{border-left:none;padding-top:8px}
+    .cc.mkt::before{content:"Marketplace";font-family:"Geist Mono",monospace;font-size:.66rem;text-transform:uppercase;letter-spacing:.07em;color:var(--karak-deep);width:88px;flex:0 0 auto}
+    .cc.wo::before{content:"WhatsOrder";font-family:"Geist Mono",monospace;font-size:.66rem;text-transform:uppercase;letter-spacing:.07em;color:var(--emerald);width:88px;flex:0 0 auto}
+  }
+
+  /* ===== growth / AI section ===== */
+  .growth{background:var(--paper-2)}
+  .growth .bento{margin-top:42px}
+  .segchips{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:1rem}
+  .segchips span{font-family:"Geist Mono",monospace;font-size:.7rem;letter-spacing:.05em;padding:.3rem .65rem;border-radius:999px;font-weight:500}
+  .seg-new{background:rgba(18,128,90,.12);color:var(--emerald)}
+  .seg-rep{background:rgba(11,61,46,.1);color:var(--pine)}
+  .seg-vip{background:rgba(217,138,58,.16);color:var(--karak-deep)}
+  .seg-ina{background:#eee7d8;color:var(--ink-soft)}
+  .soon{display:inline-block;font-family:"Geist Mono",monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--karak);color:#3a2406;padding:.2rem .55rem;border-radius:5px;margin-left:.5rem;vertical-align:middle}
+  .recap-msg{background:#fff;border-radius:12px;border-top-left-radius:3px;padding:.7rem .8rem;font-size:.84rem;line-height:1.5;max-width:95%;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+  .recap-msg b{color:var(--pine)}
+  .recap-msg .rec-head{display:flex;align-items:center;gap:.4rem;font-family:"Geist Mono",monospace;font-size:.64rem;letter-spacing:.06em;text-transform:uppercase;color:var(--emerald);margin-bottom:.35rem}
+  .recap-msg .rec-head::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--emerald)}
+
+  /* ===== sticky mobile CTA ===== */
+  .mobile-cta{display:none}
+  @media(max-width:860px){
+    .mobile-cta{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;gap:.55rem;
+      padding:.7rem .9rem calc(.7rem + env(safe-area-inset-bottom));
+      background:rgba(251,247,239,.94);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+    .mobile-cta .btn{flex:1;justify-content:center;padding:.8rem 1rem}
+    body{padding-bottom:78px}
+  }
+  @media(prefers-reduced-motion:reduce){.proof-band::before{display:none}}
+
+  /* ===== language switcher + i18n ===== */
+  .lang-switch{display:flex;align-items:center;gap:2px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px}
+  .lang-switch button{border:0;background:transparent;cursor:pointer;font-family:"Geist Mono",ui-monospace,monospace;font-size:.7rem;font-weight:600;color:var(--ink-soft);padding:.32rem .5rem;border-radius:999px;transition:background .15s ease,color .15s ease;white-space:nowrap}
+  .lang-switch button:hover{color:var(--pine)}
+  .lang-switch button.on{background:var(--pine);color:#fff}
+  @media(max-width:560px){.nav-cta .btn-primary{display:none}}
+
+  body.lang-ar{font-family:"IBM Plex Sans Arabic","Instrument Sans",system-ui,sans-serif}
+  body.lang-ml{font-family:"Noto Sans Malayalam","Instrument Sans",system-ui,sans-serif}
+  body.lang-ar *{letter-spacing:0 !important}
+  body.lang-ml *{letter-spacing:normal !important}
+  body.lang-ar :is(h1,h2,h3,h4,summary,.display,.bignum,.keep .v,.price-amt,.eyebrow,.band-desc b){font-family:"IBM Plex Sans Arabic",system-ui,sans-serif}
+  body.lang-ml :is(h1,h2,h3,h4,summary,.display,.bignum,.keep .v,.price-amt,.eyebrow,.band-desc b){font-family:"Noto Sans Malayalam",system-ui,sans-serif}
+  body.lang-ar .hero h1{line-height:1.2}
+  body.lang-ar h2,body.lang-ar h3{line-height:1.25}
+  body.lang-ml .hero h1{font-size:clamp(2rem,4.4vw,3.3rem);line-height:1.3}
+  body.lang-ml h2{line-height:1.3}
+  body.lang-ml h3,body.lang-ml summary{line-height:1.4}
+  [dir=rtl] .step:not(:last-child)::after{display:none}
+  [dir=rtl] [data-no-i18n]{direction:ltr;text-align:left}
+  [dir=rtl] .crow .cc.mkt,[dir=rtl] .crow .cc.wo{border-left:none;border-right:1px solid var(--line)}
+  [dir=rtl] .crow.chead .cc.wo{border-right:none}`;
 
 const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <header>
@@ -408,11 +506,17 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <nav class="nav-links" aria-label="Primary">
       <a href="#problem">Why</a>
       <a href="#how">How it works</a>
+      <a href="#growth">AI growth</a>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
     </nav>
     <div class="nav-cta">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="en" class="on">EN</button>
+        <button type="button" data-lang="ar" lang="ar">عربي</button>
+        <button type="button" data-lang="ml" lang="ml">മലയാളം</button>
+      </div>
       <a class="btn btn-ghost" href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">View live demo</a>
       <a class="btn btn-primary" href="#contact">Request a demo</a>
     </div>
@@ -427,7 +531,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="hero-copy">
       <span class="eyebrow">For small UAE restaurants</span>
       <h1>WhatsApp takes the order. WhatsOrder runs <span class="hl">everything after it</span>.</h1>
-      <p class="lede">Structured orders, post-order feedback, customer insights, shift &amp; cash reconciliation, AI-built menus — a commission-free operating system for your restaurant, running on the WhatsApp your customers already use.</p>
+      <p class="lede">Structured orders, AI daily growth insights, customer segments, loyalty, shift &amp; cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#contact">Request a demo</a>
         <a class="btn btn-ghost" href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">See it live at Chai Xpress →</a>
@@ -435,14 +539,14 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <div class="trust">
         <span>Commission-free</span>
         <span>Works with WhatsApp</span>
-        <span>Front to back office</span>
+        <span>AI inside</span>
         <span>Built in Ajman</span>
       </div>
     </div>
 
     <!-- signature device -->
     <div class="device">
-      <div class="stage" id="stage">
+      <div class="stage" id="stage" data-no-i18n>
         <!-- messy chat -->
         <div class="chatcard">
           <div class="card-top">
@@ -481,7 +585,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         </div>
       </div>
 
-      <div class="miniboard" aria-hidden="true">
+      <div class="miniboard" aria-hidden="true" data-no-i18n>
         <div class="stat"><b>18</b><span>Orders today</span></div>
         <div class="stat"><b>★ 4.7</b><span>Feedback</span></div>
         <div class="stat karak"><b>AED 0</b><span>Cash variance</span></div>
@@ -501,7 +605,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 
     <div class="calc">
       <div class="calc-control">
-        <label for="vol">Your monthly orders</label>
+        <label for="vol">Your monthly sales on WhatsApp</label>
         <div class="bignum" id="volOut">AED 50,000 <small>/ month</small></div>
         <input type="range" id="vol" min="10000" max="150000" step="5000" value="50000" aria-describedby="volOut">
         <div class="rng-scale"><span>AED 10k</span><span>AED 80k</span><span>AED 150k</span></div>
@@ -600,6 +704,77 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
   </div>
 </section>
 
+<!-- ===== PROOF (LIVE PILOT) ===== -->
+<section id="proof" style="padding-top:0">
+  <div class="wrap">
+    <div class="proof-band">
+      <div>
+        <span class="eyebrow">Live in production</span>
+        <h3>Not a mockup — it's running today at Chai Xpress, Ajman.</h3>
+        <p>WhatsOrder is built alongside a working UAE restaurant, taking real orders on the same WhatsApp their customers already use. Don't take our word for it — open the live menu and place a test order yourself.</p>
+        <a class="btn btn-wa" href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">
+          Try the live ordering flow
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M4 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+      <div class="proof-tiles" aria-hidden="true">
+        <div class="ptile"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> A real menu, real prices, real photos</div>
+        <div class="ptile"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Orders land as structured WhatsApp messages</div>
+        <div class="ptile"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Run day to day from the owner's dashboard</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== AI GROWTH ENGINE ===== -->
+<section class="growth" id="growth">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">The AI growth engine</span>
+      <h2>It doesn't just record your day. It tells you how to grow the next one.</h2>
+      <p>Every order feeds a customer base you own. WhatsOrder's AI reads it and turns it into one clear move each morning — and WhatsApp is how you act on it.</p>
+    </div>
+
+    <div class="bento">
+      <!-- signature: AI daily recap -->
+      <div class="os-card fb span3">
+        <div class="fb-left">
+          <div class="tagrow"><span class="pill">AI inside</span> A daily recap written like a manager</div>
+          <h3>Every morning, AI reads yesterday's numbers and prescribes one growth move.</h3>
+          <p>Not a receipt of totals. It judges the day against its own weekday average, spots rising and fading items and quiet hours, and tells you exactly what to run today — with the upside quantified from your own data.</p>
+        </div>
+        <div class="fb-right" aria-hidden="true" data-no-i18n>
+          <div class="recap-msg">
+            <div class="rec-head">Daily recap · Tuesday</div>
+            Solid Tuesday — <b>41 orders, AED 1,490</b>, your best in 4 weeks. <b>Karak Tea is rising</b> (+30% on last week). Make it today's hero: pair it with samosa from 4–6 PM to lift your quiet hour.
+          </div>
+        </div>
+      </div>
+
+      <div class="os-card">
+        <div class="oi"><svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c0-2.8 2.7-5 6-5s6 2.2 6 5" stroke="currentColor" stroke-width="1.8"/><path d="M16 4.5a3 3 0 0 1 0 7M18.5 19c0-2-1.2-3.7-3-4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <h3>Customer segments, ready to act on</h3>
+        <p>Your customers are sorted automatically — message any of them on WhatsApp in one tap, consent-first.</p>
+        <div class="segchips" aria-hidden="true" data-no-i18n>
+          <span class="seg-new">NEW</span><span class="seg-rep">REPEAT</span><span class="seg-vip">VIP</span><span class="seg-ina">INACTIVE</span>
+        </div>
+      </div>
+
+      <div class="os-card">
+        <div class="oi"><svg viewBox="0 0 24 24" fill="none"><path d="m3 11 15-6v14L3 13v-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 13.5V17a2 2 0 0 0 4 0v-2" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <h3>WhatsApp campaigns <span class="soon">Coming soon</span></h3>
+        <p>Write one message and send it to a whole segment — win back the inactive, reward the VIPs. Opt-in only, unsubscribe built in.</p>
+      </div>
+
+      <div class="os-card">
+        <div class="oi"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l2.1 4.9L19 9l-3.8 3.4.9 5.1L12 15l-4.1 2.5.9-5.1L5 9l4.9-1.1L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+        <h3>Offers &amp; loyalty that upsell</h3>
+        <p>Promote items at happy-hour prices to drive a slow hour, and reward regulars with points — bigger baskets, more returns.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===== OPERATING SYSTEM: FRONT / BACK OF HOUSE ===== -->
 <section class="os" id="features">
   <div class="wrap">
@@ -639,7 +814,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
             <h3>Every completed order asks one question.</h3>
             <p>When an order is marked delivered, the customer gets a feedback request linked to that exact order — so the rating you get is real, attributable data you can act on, not a guess. Spot a bad night by item, not by vibe.</p>
           </div>
-          <div class="fb-right" aria-hidden="true">
+          <div class="fb-right" aria-hidden="true" data-no-i18n>
             <div class="fb-msg">How was order <b>#1043</b>? <div class="stars">★★★★★</div></div>
             <div class="fb-reply">5/5 — karak was perfect 🔥</div>
             <span class="fb-chip">This week: <b>★ 4.7</b> · 12 reviews</span>
@@ -656,7 +831,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       </div>
       <div class="bento">
         <!-- signature: shift + cash reconciliation -->
-        <div class="os-card slip span2">
+        <div class="os-card slip span2" data-no-i18n>
           <div class="slip-head">
             <span class="st">Evening shift · cash up</span>
             <span class="stt">closed 11:02 PM</span>
@@ -676,8 +851,8 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 
         <div class="os-card ai">
           <div class="oi"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5-2 2m-7 7-2 2m11 0-2-2m-7-7-2-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg></div>
-          <h3>AI menu builder</h3>
-          <p>Photograph a paper menu and AI structures it into categories, items and prices.</p>
+          <h3>AI menu builder &amp; food photos</h3>
+          <p>Photograph a paper menu and AI structures it into categories, items and prices — and generates appetising photos for items missing one.</p>
           <div class="aiflow" aria-hidden="true">
             <span class="photo"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M8 6 9.5 4h5L16 6" stroke="currentColor" stroke-width="1.8"/></svg></span>
             <span class="aiarrow"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M4 12h14m0 0-5-5m5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -693,7 +868,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         <div class="os-card">
           <div class="oi"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6" stroke="currentColor" stroke-width="1.8"/><path d="m17 4 1.2 2.4L20.5 7l-1.7 1.6.4 2.4-2.2-1.1-2.2 1.1.4-2.4L13.5 7l2.3-.6L17 4Z" fill="currentColor" opacity=".5"/></svg></div>
           <h3>Customer insights &amp; loyalty</h3>
-          <p>See who's a regular, what they reorder, and reward them with built-in loyalty points.</p>
+          <p>See who's new, repeat, VIP or gone quiet, what they reorder — and reward them with built-in loyalty points.</p>
         </div>
         <div class="os-card">
           <div class="oi"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7c0-1.1 3.6-2 8-2s8 .9 8 2-3.6 2-8 2-8-.9-8-2Z" stroke="currentColor" stroke-width="1.8"/><path d="M4 7v10c0 1.1 3.6 2 8 2s8-.9 8-2V7" stroke="currentColor" stroke-width="1.8"/><path d="M12 12v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
@@ -706,7 +881,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <div class="oi"><svg viewBox="0 0 24 24" fill="none"><path d="M4 19V5m0 14h16M8 16v-5m4 5V8m4 8v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
           <h3>Sales insights at a glance</h3>
           <p style="margin-bottom:1rem">Revenue, average order value, order counts and your top sellers — without exporting a thing.</p>
-          <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div style="display:flex;gap:14px;flex-wrap:wrap" data-no-i18n>
             <div style="flex:1;min-width:130px;background:var(--paper-2);border-radius:12px;padding:14px 16px"><div class="mono" style="font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)">Revenue today</div><div class="display" style="font-size:1.5rem;color:var(--pine)">AED 642</div></div>
             <div style="flex:1;min-width:130px;background:var(--paper-2);border-radius:12px;padding:14px 16px"><div class="mono" style="font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)">Avg order value</div><div class="display" style="font-size:1.5rem;color:var(--pine)">AED 36</div></div>
             <div style="flex:1;min-width:130px;background:var(--paper-2);border-radius:12px;padding:14px 16px"><div class="mono" style="font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)">Top seller</div><div class="display" style="font-size:1.5rem;color:var(--pine)">Karak ×46</div></div>
@@ -744,6 +919,59 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <div class="ov"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Clearer orders</b><span>Fewer mistakes, fewer "what did you mean?" messages.</span></div></div>
       <div class="ov"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>Easier menu management</b><span>Edit prices, photos and availability in seconds.</span></div></div>
       <div class="ov"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><b>A more professional feel</b><span>Look organised and modern without leaving WhatsApp.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== COMPARISON ===== -->
+<section id="compare">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Marketplace vs WhatsOrder</span>
+      <h2>Same orders. You keep the margin — and the customer.</h2>
+      <p>Aggregators rent you demand and keep the relationship. WhatsOrder turns the WhatsApp you already have into an ordering system you own.</p>
+    </div>
+    <div class="compare">
+      <div class="crow chead">
+        <div class="cc feat-lbl"></div>
+        <div class="cc mkt">Marketplace app</div>
+        <div class="cc wo">WhatsOrder</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">Commission on every order</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> 15–30%, forever</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Zero, ever</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">Who owns the customer</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> The platform</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> You do</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">Customer history &amp; insights</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Hidden from you</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Built in</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">Feedback tied to each order</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> No</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Yes</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">AI insight on your own sales</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Nothing</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> A growth move daily</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">Shifts, cash &amp; vendor payouts</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Not included</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Built in</div>
+      </div>
+      <div class="crow">
+        <div class="cc feat-lbl">What it costs you</div>
+        <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> A cut of all sales</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> ≈ AED 60 flat / month</div>
+      </div>
     </div>
   </div>
 </section>
@@ -791,7 +1019,11 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="faq-list">
       <details open>
         <summary>Is WhatsOrder just for taking orders? <span class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
-        <p>No — ordering is the front door. Behind it you also get post-order feedback, customer insights and loyalty, a live order board, shift and cash reconciliation, vendor cash tracking, sales insights and an AI menu builder. It's the operating system for the whole restaurant, not a single link.</p>
+        <p>No — ordering is the front door. Behind it sits an AI-enabled lightweight POS: an AI daily recap that prescribes a growth move each morning, customer segments and loyalty, post-order feedback, a live order board, shift and cash reconciliation, vendor cash tracking, sales insights, and an AI menu builder with generated food photos. WhatsApp campaigns to whole segments are coming next.</p>
+      </details>
+      <details>
+        <summary>Is WhatsOrder a POS? Do I need new hardware? <span class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
+        <p>It's a lightweight POS that runs on the phone or tablet you already have — orders, staff entry, kitchen printing, shifts and cash, all in an installable web app. No terminals, no contracts, no new hardware.</p>
       </details>
       <details>
         <summary>Does WhatsOrder replace WhatsApp? <span class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
@@ -828,7 +1060,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-1.6-.1-.4-.1-.9-.3-1.5-.6-2.6-1.1-4.3-3.8-4.4-4-.1-.2-1-1.3-1-2.6 0-1.2.6-1.8.9-2 .2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.3 0 .5l-.4.5-.3.3c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2 1.1.9 2 1.2 2.3 1.4.2.1.4.1.6-.1l.7-.9c.2-.3.4-.2.6-.1l1.8.9c.3.1.4.2.5.3 0 .2 0 .8-.3 1.4Z"/></svg>
         Message us on WhatsApp
       </a>
-      <a class="btn btn-ghost" style="background:transparent;color:#fff;border-color:#2c6a54" href="mailto:hello@whatsorder.ae?subject=WhatsOrder%20demo%20request">Email hello@whatsorder.ae</a>
+      <a class="btn btn-ghost" style="background:transparent;color:#fff;border-color:#2c6a54" href="mailto:whatsorder.ae@gmail.com?subject=WhatsOrder%20demo%20request">Email whatsorder.ae@gmail.com</a>
     </div>
   </div>
 </section>
@@ -855,10 +1087,19 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     </div>
     <div class="foot-bottom">
       <span>© <span id="yr"></span> WhatsOrder · @whatsorder.ae</span>
-      <span>hello@whatsorder.ae</span>
+      <span>whatsorder.ae@gmail.com</span>
     </div>
   </div>
-</footer>`;
+</footer>
+
+<!-- ===== STICKY MOBILE CTA ===== -->
+<div class="mobile-cta">
+  <a class="btn btn-wa" href="https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20request%20a%20demo%20for%20my%20restaurant." target="_blank" rel="noopener" aria-label="Message WhatsOrder on WhatsApp">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-1.6-.1-.4-.1-.9-.3-1.5-.6-2.6-1.1-4.3-3.8-4.4-4-.1-.2-1-1.3-1-2.6 0-1.2.6-1.8.9-2 .2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.3 0 .5l-.4.5-.3.3c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2 1.1.9 2 1.2 2.3 1.4.2.1.4.1.6-.1l.7-.9c.2-.3.4-.2.6-.1l1.8.9c.3.1.4.2.5.3 0 .2 0 .8-.3 1.4Z"/></svg>
+    WhatsApp
+  </a>
+  <a class="btn btn-primary" href="#contact">Request a demo</a>
+</div>`;
 
 const landingScript = String.raw`// year
   document.getElementById('yr').textContent = new Date().getFullYear();
@@ -885,14 +1126,413 @@ const landingScript = String.raw`// year
       var m = +vol.value;
       var comm = Math.round(m * RATE);
       var keep = comm - FLAT;
-      document.getElementById('volOut').innerHTML = 'AED ' + fmt.format(m) + ' <small>/ month</small>';
+      var t = window.__woCalcI18n || { month: '/ month', yr: '≈ AED {v} a year back in your pocket' };
+      document.getElementById('volOut').innerHTML = 'AED ' + fmt.format(m) + ' <small>' + t.month + '</small>';
       document.getElementById('commOut').textContent = '−AED ' + fmt.format(comm);
       document.getElementById('flatOut').textContent = 'AED ' + FLAT;
       document.getElementById('keepOut').textContent = 'AED ' + fmt.format(keep);
-      document.getElementById('yrOut').textContent = '≈ AED ' + fmt.format(keep * 12) + ' a year back in your pocket';
+      document.getElementById('yrOut').textContent = t.yr.replace('{v}', fmt.format(keep * 12));
     }
     vol.addEventListener('input', render);
+    window.__woCalcRender = render;
     render();
+  })();
+
+  // ===== i18n (EN / AR / ML) =====
+  (function(){
+    var AR = {
+      "Why": "لماذا",
+      "How it works": "كيف يعمل",
+      "AI growth": "نمو بالذكاء الاصطناعي",
+      "Features": "المزايا",
+      "Pricing": "الأسعار",
+      "FAQ": "الأسئلة الشائعة",
+      "View live demo": "شاهد العرض المباشر",
+      "Request a demo": "اطلب عرضاً تجريبياً",
+      "For small UAE restaurants": "لمطاعم الإمارات الصغيرة",
+      "WhatsApp takes the order. WhatsOrder runs": "واتساب يستقبل الطلب. وواتس أوردر يدير",
+      "everything after it": "كل ما بعده",
+      "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "طلبات منظمة، وتحليلات نمو يومية بالذكاء الاصطناعي، وشرائح عملاء، وولاء، وتسوية الورديات والنقدية، وقوائم مبنية بالذكاء الاصطناعي — نظام نقاط بيع خفيف مدعوم بالذكاء الاصطناعي وبدون عمولة، يعمل على واتساب الذي يستخدمه عملاؤك أصلاً.",
+      "See it live at Chai Xpress →": "شاهده مباشرةً في تشاي إكسبرس",
+      "Commission-free": "بدون عمولة",
+      "Works with WhatsApp": "يعمل مع واتساب",
+      "AI inside": "مدعوم بالذكاء الاصطناعي",
+      "Built in Ajman": "صُنع في عجمان",
+      "The math": "الحسبة",
+      "Marketplaces don't sell food. They sell your customers back to you.": "منصات التوصيل لا تبيع الطعام — إنها تبيعك عملاءك من جديد.",
+      "Aggregators take a cut of every single order — and the customer stays theirs, not yours. Here's roughly what that costs a small restaurant each month.": "التطبيقات الوسيطة تقتطع نسبة من كل طلب — ويبقى العميل ملكها لا ملكك. هذا تقريباً ما يكلفه ذلك مطعماً صغيراً كل شهر.",
+      "Your monthly sales on WhatsApp": "مبيعاتك الشهرية عبر واتساب",
+      "Assumes a ~27% marketplace commission. Real rates vary by platform and plan — drag to match your own numbers.": "بافتراض عمولة منصة ~27%. النسب الفعلية تختلف حسب المنصة والخطة — حرّك المؤشر ليطابق أرقامك.",
+      "A marketplace would take (27%)": "ما كانت ستأخذه المنصة (27%)",
+      "WhatsOrder Starter (AED 2/day)": "باقة واتس أوردر ستارتر (درهمان يومياً)",
+      "You'd keep, every month": "ما ستحتفظ به كل شهر",
+      "The problem": "المشكلة",
+      "WhatsApp orders are easy to receive. The whole operation is hard to run.": "استقبال الطلبات على واتساب سهل. إدارة العملية كاملة هي الصعبة.",
+      "Your customers are already messaging you. The trouble starts the moment a chat has to become a tracked order — and keeps going through the shift, the feedback, and the cash drawer.": "عملاؤك يراسلونك بالفعل. المتاعب تبدأ لحظة تحويل المحادثة إلى طلب مُتتبع — وتستمر عبر الوردية والتقييمات ودرج النقدية.",
+      "Orders arrive as loose chat": "الطلبات تصل كدردشة مبعثرة",
+      "Items, quantities, notes and payment preferences get scattered across a dozen messages.": "الأصناف والكميات والملاحظات وطريقة الدفع تتشتت عبر عشرات الرسائل.",
+      "Addresses get hunted down": "العناوين تحتاج إلى مطاردة",
+      "Your delivery team burns time asking for pins, landmarks and exact building details every time.": "فريق التوصيل يهدر وقته في طلب المواقع والمعالم وتفاصيل المبنى في كل مرة.",
+      "Repeat customers vanish": "العملاء المتكررون يختفون",
+      "Every order starts from scratch, so the history that makes regulars valuable is never captured.": "كل طلب يبدأ من الصفر، فلا يُحفظ التاريخ الذي يجعل الزبائن الدائمين أثمن ما لديك.",
+      "The back office runs on paper": "المكتب الخلفي يعمل على الورق",
+      "Shifts, cash counts, supplier payouts and customer feedback live in notebooks and memory — never in one place you can act on.": "الورديات وجرد النقدية ودفعات الموردين وملاحظات العملاء تعيش في الدفاتر والذاكرة — لا في مكان واحد يمكنك التصرف بناءً عليه.",
+      "Structure, without asking your customers to change a thing.": "تنظيم كامل، دون أن يغيّر عملاؤك شيئاً.",
+      "They still order on WhatsApp. You get a clean workflow from menu link to dashboard.": "ما زالوا يطلبون عبر واتساب، وأنت تحصل على سير عمل نظيف من رابط القائمة إلى لوحة التحكم.",
+      "Share your menu link": "شارك رابط قائمتك",
+      "One restaurant link or QR code — on your bio, table, or flyer.": "رابط واحد أو رمز QR — في حسابك أو على الطاولة أو المنشور.",
+      "Customer picks items": "العميل يختار الأصناف",
+      "They browse your menu with photos and tap to add to cart.": "يتصفح قائمتك بالصور ويضيف إلى السلة بلمسة.",
+      "Checkout, their way": "الدفع على طريقته",
+      "Delivery with address, pickup, or a scheduled time.": "توصيل مع العنوان، أو استلام، أو وقت مجدول.",
+      "Clean WhatsApp order": "طلب واتساب نظيف",
+      "A tidy, structured message lands in your chat — no guesswork.": "رسالة مرتبة ومنظمة تصل إلى محادثتك — بلا تخمين.",
+      "Saved to dashboard": "يُحفظ في لوحة التحكم",
+      "The order, the customer and the totals are logged automatically.": "الطلب والعميل والمجاميع تُسجّل تلقائياً.",
+      "Live in production": "يعمل فعلياً",
+      "Not a mockup — it's running today at Chai Xpress, Ajman.": "ليس نموذجاً — إنه يعمل اليوم في تشاي إكسبرس، عجمان.",
+      "WhatsOrder is built alongside a working UAE restaurant, taking real orders on the same WhatsApp their customers already use. Don't take our word for it — open the live menu and place a test order yourself.": "بُني واتس أوردر جنباً إلى جنب مع مطعم إماراتي حقيقي يستقبل طلبات حقيقية على واتساب نفسه الذي يستخدمه عملاؤه. لا تأخذ بكلامنا فقط — افتح القائمة المباشرة وجرّب طلباً بنفسك.",
+      "Try the live ordering flow": "جرّب تجربة الطلب المباشرة",
+      "A real menu, real prices, real photos": "قائمة حقيقية وأسعار حقيقية وصور حقيقية",
+      "Orders land as structured WhatsApp messages": "الطلبات تصل كرسائل واتساب منظمة",
+      "Run day to day from the owner's dashboard": "يُدار يومياً من لوحة تحكم المالك",
+      "The AI growth engine": "محرك النمو بالذكاء الاصطناعي",
+      "It doesn't just record your day. It tells you how to grow the next one.": "لا يكتفي بتسجيل يومك، بل يخبرك كيف تُنمّي اليوم التالي.",
+      "Every order feeds a customer base you own. WhatsOrder's AI reads it and turns it into one clear move each morning — and WhatsApp is how you act on it.": "كل طلب يبني قاعدة عملاء تملكها أنت. الذكاء الاصطناعي في واتس أوردر يقرأها ويحوّلها إلى خطوة واضحة كل صباح — وواتساب هو وسيلتك لتنفيذها.",
+      "A daily recap written like a manager": "ملخص يومي مكتوب بعقلية مدير",
+      "Every morning, AI reads yesterday's numbers and prescribes one growth move.": "كل صباح، يقرأ الذكاء الاصطناعي أرقام الأمس ويصف لك خطوة نمو واحدة.",
+      "Not a receipt of totals. It judges the day against its own weekday average, spots rising and fading items and quiet hours, and tells you exactly what to run today — with the upside quantified from your own data.": "ليس إيصال مجاميع. إنه يقيس اليوم مقابل متوسط يومه الأسبوعي، ويرصد الأصناف الصاعدة والمتراجعة والساعات الهادئة، ويخبرك بالضبط بما تديره اليوم — مع تقدير العائد من بياناتك نفسها.",
+      "Customer segments, ready to act on": "شرائح عملاء جاهزة للتحرك",
+      "Your customers are sorted automatically — message any of them on WhatsApp in one tap, consent-first.": "يُصنَّف عملاؤك تلقائياً — راسل أياً منهم على واتساب بلمسة واحدة، وبموافقتهم أولاً.",
+      "WhatsApp campaigns": "حملات واتساب",
+      "Coming soon": "قريباً",
+      "Write one message and send it to a whole segment — win back the inactive, reward the VIPs. Opt-in only, unsubscribe built in.": "اكتب رسالة واحدة وأرسلها لشريحة كاملة — استعد الغائبين وكافئ كبار العملاء. بالاشتراك الطوعي فقط، مع إلغاء اشتراك مدمج.",
+      "Offers & loyalty that upsell": "عروض وولاء يرفعان قيمة الطلب",
+      "Promote items at happy-hour prices to drive a slow hour, and reward regulars with points — bigger baskets, more returns.": "روّج أصنافاً بأسعار مخفضة لتحريك الساعات البطيئة، وكافئ الدائمين بالنقاط — سلال أكبر وعودة أكثر.",
+      "More than ordering": "أكثر من مجرد طلبات",
+      "One system, front of house to back of house.": "نظام واحد، من الصالة إلى ما خلف الكاونتر.",
+      "The order is just the front door. WhatsOrder runs the customer relationship, the feedback loop, the shift, and the cash drawer behind it — all without commission.": "الطلب مجرد الباب الأمامي. واتس أوردر يدير علاقة العميل وحلقة التقييم والوردية ودرج النقدية خلفه — كل ذلك بدون عمولة.",
+      "Front of house": "واجهة المطعم",
+      "What your customers touch.": "ما يلمسه عملاؤك.",
+      "No app, no marketplace listing.": "بلا تطبيق ولا إدراج في منصات.",
+      "Menu link & QR": "رابط القائمة ورمز QR",
+      "One restaurant link or QR code, with photo menus, to share anywhere.": "رابط واحد أو رمز QR لقائمتك المصوّرة، شاركه في أي مكان.",
+      "Structured orders": "طلبات منظمة",
+      "Item, address, note and payment land as one clean WhatsApp message.": "الصنف والعنوان والملاحظة والدفع تصل كرسالة واتساب واحدة نظيفة.",
+      "Delivery, pickup & scheduled": "توصيل واستلام وجدولة",
+      "With offers and promos when you want to drive a slow hour.": "مع عروض وتخفيضات عندما تريد تحريك ساعة بطيئة.",
+      "Signature": "مميز",
+      "Feedback that's tied to the order": "تقييم مرتبط بالطلب نفسه",
+      "Every completed order asks one question.": "كل طلب مكتمل يطرح سؤالاً واحداً.",
+      "When an order is marked delivered, the customer gets a feedback request linked to that exact order — so the rating you get is real, attributable data you can act on, not a guess. Spot a bad night by item, not by vibe.": "عند تعليم الطلب كمُسلَّم، يصل العميل طلب تقييم مرتبط بذلك الطلب تحديداً — فيكون التقييم بيانات حقيقية قابلة للإسناد يمكنك التصرف بناءً عليها، لا تخميناً. اكتشف الليلة السيئة بالصنف، لا بالإحساس.",
+      "Back of house": "خلف الكاونتر",
+      "What you run behind the counter.": "ما تديره خلف الكاونتر.",
+      "In one installable app.": "في تطبيق واحد قابل للتثبيت.",
+      "AI menu builder & food photos": "منشئ القوائم وصور الأطعمة بالذكاء الاصطناعي",
+      "Photograph a paper menu and AI structures it into categories, items and prices — and generates appetising photos for items missing one.": "صوّر قائمة ورقية وسيحوّلها الذكاء الاصطناعي إلى فئات وأصناف وأسعار — ويولّد صوراً شهية للأصناف التي تنقصها صورة.",
+      "Live order board": "لوحة طلبات مباشرة",
+      "Move orders through New, Preparing and Completed — with timings and kitchen printing.": "حرّك الطلبات بين جديد وقيد التحضير ومكتمل — مع التوقيت وطباعة المطبخ.",
+      "Customer insights & loyalty": "رؤى العملاء والولاء",
+      "See who's new, repeat, VIP or gone quiet, what they reorder — and reward them with built-in loyalty points.": "اعرف من هو جديد أو متكرر أو VIP أو غائب، وما يعيدون طلبه — وكافئهم بنقاط ولاء مدمجة.",
+      "Vendor cash tracker": "متتبع نقدية الموردين",
+      "Log every cash payout to suppliers against a shift, so the drawer always ties out.": "سجّل كل دفعة نقدية للموردين على الوردية، ليتطابق الدرج دائماً.",
+      "Sales insights at a glance": "رؤى المبيعات بنظرة واحدة",
+      "Revenue, average order value, order counts and your top sellers — without exporting a thing.": "الإيراد ومتوسط قيمة الطلب وعدد الطلبات وأفضل أصنافك — دون تصدير أي شيء.",
+      "Install it like an app — no app store": "ثبّته كتطبيق — بلا متجر تطبيقات",
+      "Add WhatsOrder to the home screen of the counter phone or tablet. Fast, full-screen, made for service.": "أضف واتس أوردر إلى الشاشة الرئيسية لهاتف أو جهاز الكاونتر. سريع، بملء الشاشة، ومصمم للخدمة.",
+      "Progressive web app": "تطبيق ويب تقدمي",
+      "Owner value": "قيمة للمالك",
+      "Built for restaurants that live on regulars.": "صُمم للمطاعم التي تعيش على زبائنها الدائمين.",
+      "A more professional way to take direct orders — with the customer relationship staying firmly in your hands.": "طريقة أكثر احترافية لاستقبال الطلبات المباشرة — مع بقاء علاقة العميل في يدك تماماً.",
+      "Zero commission": "عمولة صفر",
+      "A flat monthly fee — never a cut of your sales.": "رسم شهري ثابت — لا نسبة من مبيعاتك أبداً.",
+      "Own your customer data": "بيانات عملائك ملكك",
+      "Your regulars belong to you, not to a platform.": "زبائنك الدائمون ملكك أنت، لا ملك منصة.",
+      "Faster repeat orders": "طلبات متكررة أسرع",
+      "Saved details turn returning customers into one-tap orders.": "التفاصيل المحفوظة تجعل طلب العائدين بلمسة واحدة.",
+      "Clearer orders": "طلبات أوضح",
+      'Fewer mistakes, fewer "what did you mean?" messages.': "أخطاء أقل، ورسائل «ماذا قصدت؟» أقل.",
+      "Easier menu management": "إدارة قائمة أسهل",
+      "Edit prices, photos and availability in seconds.": "عدّل الأسعار والصور والتوفر في ثوانٍ.",
+      "A more professional feel": "مظهر أكثر احترافية",
+      "Look organised and modern without leaving WhatsApp.": "ابدُ منظماً وعصرياً دون مغادرة واتساب.",
+      "Marketplace vs WhatsOrder": "المنصات مقابل واتس أوردر",
+      "Same orders. You keep the margin — and the customer.": "نفس الطلبات. أنت تحتفظ بالهامش — وبالعميل.",
+      "Aggregators rent you demand and keep the relationship. WhatsOrder turns the WhatsApp you already have into an ordering system you own.": "المنصات تؤجّرك الطلب وتحتفظ بالعلاقة. واتس أوردر يحوّل واتساب الذي تملكه أصلاً إلى نظام طلبات تملكه أنت.",
+      "Marketplace app": "تطبيق المنصة",
+      "Commission on every order": "عمولة على كل طلب",
+      "15–30%, forever": "‏15–30%، للأبد",
+      "Zero, ever": "صفر، دائماً",
+      "Who owns the customer": "من يملك العميل",
+      "The platform": "المنصة",
+      "You do": "أنت",
+      "Customer history & insights": "تاريخ العملاء والرؤى",
+      "Hidden from you": "محجوب عنك",
+      "Built in": "مدمج",
+      "Feedback tied to each order": "تقييم مرتبط بكل طلب",
+      "No": "لا",
+      "Yes": "نعم",
+      "AI insight on your own sales": "رؤية ذكاء اصطناعي لمبيعاتك",
+      "Nothing": "لا شيء",
+      "A growth move daily": "خطوة نمو يومياً",
+      "Shifts, cash & vendor payouts": "الورديات والنقدية ودفعات الموردين",
+      "Not included": "غير متوفرة",
+      "What it costs you": "ماذا يكلفك",
+      "A cut of all sales": "نسبة من كل مبيعاتك",
+      "≈ AED 60 flat / month": "≈ 60 درهماً ثابتة شهرياً",
+      "Launch pricing": "أسعار الإطلاق",
+      "Starts at AED 2 a day. No commission, ever.": "يبدأ من درهمين في اليوم. بلا عمولة أبداً.",
+      "Early pricing for pilot restaurants who want structured WhatsApp ordering without a marketplace taking a cut.": "أسعار مبكرة للمطاعم الرائدة التي تريد طلبات واتساب منظمة دون أن تقتطع منصة نصيباً.",
+      "Starter · founding offer": "ستارتر · عرض التأسيس",
+      "/ day": "/ يوم",
+      "≈ AED 60 / month — about the price of one karak a day. Free setup included.": "≈ 60 درهماً شهرياً — تقريباً ثمن كوب كرك واحد يومياً. الإعداد مجاني.",
+      "Request a demo on WhatsApp": "اطلب عرضاً عبر واتساب",
+      "Every plan includes": "كل باقة تشمل",
+      "Digital menu & QR code": "قائمة رقمية ورمز QR",
+      "Structured WhatsApp ordering": "طلبات واتساب منظمة",
+      "Order dashboard": "لوحة تحكم بالطلبات",
+      "Customer database": "قاعدة بيانات العملاء",
+      "Menu setup support": "دعم إعداد القائمة",
+      "The questions owners ask first.": "الأسئلة التي يطرحها المُلّاك أولاً.",
+      "Straight answers for restaurants already taking orders through WhatsApp.": "إجابات مباشرة للمطاعم التي تستقبل طلباتها عبر واتساب بالفعل.",
+      "Is WhatsOrder just for taking orders?": "هل واتس أوردر لاستقبال الطلبات فقط؟",
+      "No — ordering is the front door. Behind it sits an AI-enabled lightweight POS: an AI daily recap that prescribes a growth move each morning, customer segments and loyalty, post-order feedback, a live order board, shift and cash reconciliation, vendor cash tracking, sales insights, and an AI menu builder with generated food photos. WhatsApp campaigns to whole segments are coming next.": "لا — الطلبات هي الباب الأمامي فقط. خلفه نظام نقاط بيع خفيف مدعوم بالذكاء الاصطناعي: ملخص يومي يصف خطوة نمو كل صباح، وشرائح عملاء وولاء، وتقييمات بعد الطلب، ولوحة طلبات مباشرة، وتسوية الورديات والنقدية، وتتبع نقدية الموردين، ورؤى المبيعات، ومنشئ قوائم بالذكاء الاصطناعي مع صور مولّدة. وحملات واتساب للشرائح كاملة قادمة قريباً.",
+      "Is WhatsOrder a POS? Do I need new hardware?": "هل واتس أوردر نظام نقاط بيع؟ هل أحتاج أجهزة جديدة؟",
+      "It's a lightweight POS that runs on the phone or tablet you already have — orders, staff entry, kitchen printing, shifts and cash, all in an installable web app. No terminals, no contracts, no new hardware.": "إنه نظام نقاط بيع خفيف يعمل على الهاتف أو الجهاز اللوحي الذي تملكه أصلاً — الطلبات وإدخال الموظفين وطباعة المطبخ والورديات والنقدية، كلها في تطبيق ويب قابل للتثبيت. بلا أجهزة طرفية ولا عقود ولا معدات جديدة.",
+      "Does WhatsOrder replace WhatsApp?": "هل يستبدل واتس أوردر واتساب؟",
+      "No. It works alongside WhatsApp and simply makes the orders that arrive there clean and structured. Your customers keep messaging you exactly where they already do.": "لا. إنه يعمل إلى جانب واتساب ويجعل الطلبات التي تصل إليه نظيفة ومنظمة فحسب. يبقى عملاؤك يراسلونك حيث اعتادوا تماماً.",
+      "Do customers need to install an app?": "هل يحتاج العملاء إلى تثبيت تطبيق؟",
+      "No. They open a menu link or scan a QR code in their browser — no download, no account, no friction.": "لا. يفتحون رابط القائمة أو يمسحون رمز QR في المتصفح — بلا تنزيل ولا حساب ولا عناء.",
+      "Can I manage my own menu?": "هل يمكنني إدارة قائمتي بنفسي؟",
+      "Yes. Add items, edit prices, mark things unavailable and upload photos yourself, any time.": "نعم. أضف أصنافاً وعدّل الأسعار وعلّم الأصناف غير المتوفرة وارفع الصور بنفسك في أي وقت.",
+      "Can returning customers reorder faster?": "هل يعيد العملاء العائدون الطلب أسرع؟",
+      "Yes. Customer details can be saved so regulars don't have to re-enter everything each time.": "نعم. يمكن حفظ تفاصيل العميل حتى لا يعيد الدائمون إدخال كل شيء في كل مرة.",
+      "Is there any commission?": "هل هناك أي عمولة؟",
+      "None. WhatsOrder is a flat monthly fee. We never take a percentage of your sales.": "لا شيء. واتس أوردر رسم شهري ثابت، ولا نأخذ أبداً نسبة من مبيعاتك.",
+      "Try it with your workflow": "جرّبه على طريقة عملك",
+      "Want to see WhatsOrder run your restaurant?": "أتريد أن ترى واتس أوردر يدير مطعمك؟",
+      "If you already take orders on WhatsApp, we'd love to understand your workflow and walk you through a live demo.": "إن كنت تستقبل الطلبات على واتساب بالفعل، يسعدنا فهم طريقة عملك وأخذك في جولة تجريبية مباشرة.",
+      "Message us on WhatsApp": "راسلنا على واتساب",
+      "Email whatsorder.ae@gmail.com": "راسلنا: whatsorder.ae@gmail.com",
+      "Structured WhatsApp ordering for small UAE restaurants. Built in Ajman.": "طلبات واتساب منظمة لمطاعم الإمارات الصغيرة. صُنع في عجمان.",
+      "Live demo": "عرض مباشر",
+      "Contact": "تواصل"
+    };
+    var ML = {
+      "Why": "എന്തിന്",
+      "How it works": "എങ്ങനെ പ്രവർത്തിക്കുന്നു",
+      "AI growth": "AI വളർച്ച",
+      "Features": "ഫീച്ചറുകൾ",
+      "Pricing": "വില",
+      "FAQ": "ചോദ്യങ്ങൾ",
+      "View live demo": "ലൈവ് ഡെമോ കാണൂ",
+      "Request a demo": "ഡെമോ ബുക്ക് ചെയ്യൂ",
+      "For small UAE restaurants": "യുഎഇയിലെ ചെറുകിട റെസ്റ്ററന്റുകൾക്കായി",
+      "WhatsApp takes the order. WhatsOrder runs": "വാട്ട്സ്ആപ്പ് ഓർഡർ എടുക്കുന്നു. WhatsOrder നടത്തുന്നത്",
+      "everything after it": "അതിനു ശേഷമുള്ള എല്ലാം",
+      "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "ചിട്ടയായ ഓർഡറുകൾ, AI ദിവസേനയുള്ള വളർച്ചാ ഉൾക്കാഴ്ചകൾ, കസ്റ്റമർ സെഗ്മെന്റുകൾ, ലോയൽറ്റി, ഷിഫ്റ്റ് & ക്യാഷ് കണക്ക്, AI ഉണ്ടാക്കുന്ന മെനുകൾ — നിങ്ങളുടെ കസ്റ്റമർമാർ ഇപ്പോൾ തന്നെ ഉപയോഗിക്കുന്ന വാട്ട്സ്ആപ്പിൽ പ്രവർത്തിക്കുന്ന, കമ്മീഷൻ ഇല്ലാത്ത, AI ശക്തിയുള്ള ലൈറ്റ്‌വെയ്റ്റ് POS.",
+      "See it live at Chai Xpress →": "ചായ് എക്സ്പ്രസിൽ ലൈവ് കാണൂ →",
+      "Commission-free": "കമ്മീഷൻ ഇല്ല",
+      "Works with WhatsApp": "വാട്ട്സ്ആപ്പിനൊപ്പം",
+      "AI inside": "AI ഉള്ളിൽ",
+      "Built in Ajman": "അജ്മാനിൽ നിർമിതം",
+      "The math": "കണക്ക്",
+      "Marketplaces don't sell food. They sell your customers back to you.": "മാർക്കറ്റ്പ്ലേസുകൾ ഭക്ഷണം വിൽക്കുന്നില്ല. നിങ്ങളുടെ കസ്റ്റമർമാരെ നിങ്ങൾക്കു തന്നെ തിരികെ വിൽക്കുകയാണ്.",
+      "Aggregators take a cut of every single order — and the customer stays theirs, not yours. Here's roughly what that costs a small restaurant each month.": "അഗ്രിഗേറ്ററുകൾ ഓരോ ഓർഡറിൽ നിന്നും വിഹിതം എടുക്കുന്നു — കസ്റ്റമർ അവരുടേതായി തുടരുന്നു, നിങ്ങളുടേതല്ല. ഒരു ചെറിയ റെസ്റ്ററന്റിന് ഇതു മാസം ഏകദേശം എത്ര ചെലവാകുമെന്നു നോക്കൂ.",
+      "Your monthly sales on WhatsApp": "വാട്ട്സ്ആപ്പിലെ നിങ്ങളുടെ മാസ വിൽപ്പന",
+      "Assumes a ~27% marketplace commission. Real rates vary by platform and plan — drag to match your own numbers.": "~27% മാർക്കറ്റ്പ്ലേസ് കമ്മീഷൻ കണക്കാക്കിയത്. യഥാർത്ഥ നിരക്കുകൾ പ്ലാറ്റ്ഫോം അനുസരിച്ചു മാറും — നിങ്ങളുടെ കണക്കിലേക്കു വലിച്ചു നീക്കൂ.",
+      "A marketplace would take (27%)": "മാർക്കറ്റ്പ്ലേസ് എടുക്കുമായിരുന്നത് (27%)",
+      "WhatsOrder Starter (AED 2/day)": "WhatsOrder സ്റ്റാർട്ടർ (ദിവസം AED 2)",
+      "You'd keep, every month": "എല്ലാ മാസവും നിങ്ങൾക്കു മിച്ചം",
+      "The problem": "പ്രശ്നം",
+      "WhatsApp orders are easy to receive. The whole operation is hard to run.": "വാട്ട്സ്ആപ്പിൽ ഓർഡർ കിട്ടാൻ എളുപ്പം. മുഴുവൻ ഓപ്പറേഷനും നടത്താനാണു പ്രയാസം.",
+      "Your customers are already messaging you. The trouble starts the moment a chat has to become a tracked order — and keeps going through the shift, the feedback, and the cash drawer.": "നിങ്ങളുടെ കസ്റ്റമർമാർ ഇപ്പോൾ തന്നെ മെസേജ് ചെയ്യുന്നുണ്ട്. ചാറ്റ് ട്രാക്ക് ചെയ്യാവുന്ന ഓർഡറാകേണ്ട നിമിഷം മുതലാണു ബുദ്ധിമുട്ടു തുടങ്ങുന്നത് — ഷിഫ്റ്റിലും ഫീഡ്ബാക്കിലും ക്യാഷ് ഡ്രോയറിലും അതു തുടരുന്നു.",
+      "Orders arrive as loose chat": "ഓർഡറുകൾ ചിതറിയ ചാറ്റായി വരുന്നു",
+      "Items, quantities, notes and payment preferences get scattered across a dozen messages.": "ഐറ്റങ്ങളും എണ്ണവും കുറിപ്പുകളും പേയ്മെന്റ് രീതിയും ഒരു ഡസൻ മെസേജുകളിലായി ചിതറുന്നു.",
+      "Addresses get hunted down": "അഡ്രസിനായി വേട്ടയാടൽ",
+      "Your delivery team burns time asking for pins, landmarks and exact building details every time.": "പിന്നും ലാൻഡ്മാർക്കും ബിൽഡിംഗ് വിവരവും ഓരോ തവണയും ചോദിച്ചു ഡെലിവറി ടീമിന്റെ സമയം പോകുന്നു.",
+      "Repeat customers vanish": "സ്ഥിരം കസ്റ്റമർമാർ അപ്രത്യക്ഷമാകുന്നു",
+      "Every order starts from scratch, so the history that makes regulars valuable is never captured.": "ഓരോ ഓർഡറും പൂജ്യത്തിൽ നിന്നു തുടങ്ങുന്നു; സ്ഥിരക്കാരെ വിലപ്പെട്ടവരാക്കുന്ന ചരിത്രം ഒരിക്കലും രേഖപ്പെടുന്നില്ല.",
+      "The back office runs on paper": "ബാക്ക് ഓഫീസ് കടലാസിലാണ്",
+      "Shifts, cash counts, supplier payouts and customer feedback live in notebooks and memory — never in one place you can act on.": "ഷിഫ്റ്റുകളും ക്യാഷ് കണക്കും സപ്ലയർ പേയ്മെന്റുകളും ഫീഡ്ബാക്കും നോട്ട്ബുക്കിലും ഓർമയിലും — പ്രവർത്തിക്കാവുന്ന ഒരിടത്തുമില്ല.",
+      "Structure, without asking your customers to change a thing.": "കസ്റ്റമർമാരോട് ഒന്നും മാറ്റാൻ പറയാതെ, എല്ലാം ചിട്ടയിൽ.",
+      "They still order on WhatsApp. You get a clean workflow from menu link to dashboard.": "അവർ പഴയപോലെ വാട്ട്സ്ആപ്പിൽ ഓർഡർ ചെയ്യുന്നു. നിങ്ങൾക്കു മെനു ലിങ്ക് മുതൽ ഡാഷ്ബോർഡ് വരെ വൃത്തിയുള്ള വർക്ക്ഫ്ലോ.",
+      "Share your menu link": "മെനു ലിങ്ക് പങ്കിടൂ",
+      "One restaurant link or QR code — on your bio, table, or flyer.": "ഒരൊറ്റ ലിങ്ക് അല്ലെങ്കിൽ QR കോഡ് — ബയോയിലോ മേശയിലോ ഫ്ലയറിലോ.",
+      "Customer picks items": "കസ്റ്റമർ ഐറ്റങ്ങൾ തിരഞ്ഞെടുക്കുന്നു",
+      "They browse your menu with photos and tap to add to cart.": "ഫോട്ടോ സഹിതം മെനു കണ്ടു ടാപ്പ് ചെയ്തു കാർട്ടിലേക്ക്.",
+      "Checkout, their way": "അവരുടെ രീതിയിൽ ചെക്ക്ഔട്ട്",
+      "Delivery with address, pickup, or a scheduled time.": "അഡ്രസോടെ ഡെലിവറി, പിക്കപ്പ്, അല്ലെങ്കിൽ ഷെഡ്യൂൾ ചെയ്ത സമയം.",
+      "Clean WhatsApp order": "വൃത്തിയുള്ള വാട്ട്സ്ആപ്പ് ഓർഡർ",
+      "A tidy, structured message lands in your chat — no guesswork.": "ചിട്ടയായ ഒരു മെസേജ് നിങ്ങളുടെ ചാറ്റിൽ എത്തുന്നു — ഊഹം വേണ്ട.",
+      "Saved to dashboard": "ഡാഷ്ബോർഡിൽ സേവ്",
+      "The order, the customer and the totals are logged automatically.": "ഓർഡറും കസ്റ്റമറും തുകകളും ഓട്ടോമാറ്റിക്കായി രേഖപ്പെടുന്നു.",
+      "Live in production": "ലൈവായി പ്രവർത്തിക്കുന്നു",
+      "Not a mockup — it's running today at Chai Xpress, Ajman.": "മോക്കപ്പ് അല്ല — അജ്മാനിലെ ചായ് എക്സ്പ്രസിൽ ഇന്നു തന്നെ ഓടുന്നു.",
+      "WhatsOrder is built alongside a working UAE restaurant, taking real orders on the same WhatsApp their customers already use. Don't take our word for it — open the live menu and place a test order yourself.": "യഥാർത്ഥ യുഎഇ റെസ്റ്ററന്റിനൊപ്പമാണ് WhatsOrder നിർമിച്ചത് — അവരുടെ കസ്റ്റമർമാർ ഉപയോഗിക്കുന്ന അതേ വാട്ട്സ്ആപ്പിൽ യഥാർത്ഥ ഓർഡറുകൾ. ഞങ്ങളുടെ വാക്കു വിശ്വസിക്കേണ്ട — ലൈവ് മെനു തുറന്നു സ്വയം ഒരു ടെസ്റ്റ് ഓർഡർ ചെയ്യൂ.",
+      "Try the live ordering flow": "ലൈവ് ഓർഡറിംഗ് പരീക്ഷിക്കൂ",
+      "A real menu, real prices, real photos": "യഥാർത്ഥ മെനു, യഥാർത്ഥ വില, യഥാർത്ഥ ഫോട്ടോകൾ",
+      "Orders land as structured WhatsApp messages": "ഓർഡറുകൾ ചിട്ടയായ വാട്ട്സ്ആപ്പ് മെസേജുകളായി എത്തുന്നു",
+      "Run day to day from the owner's dashboard": "ഉടമയുടെ ഡാഷ്ബോർഡിൽ നിന്നു ദിവസവും നടത്താം",
+      "The AI growth engine": "AI വളർച്ചാ എൻജിൻ",
+      "It doesn't just record your day. It tells you how to grow the next one.": "നിങ്ങളുടെ ദിവസം രേഖപ്പെടുത്തുക മാത്രമല്ല. അടുത്തതു എങ്ങനെ വളർത്താമെന്നും പറയുന്നു.",
+      "Every order feeds a customer base you own. WhatsOrder's AI reads it and turns it into one clear move each morning — and WhatsApp is how you act on it.": "ഓരോ ഓർഡറും നിങ്ങളുടേതായ കസ്റ്റമർ ബേസ് വളർത്തുന്നു. WhatsOrder-ന്റെ AI അതു വായിച്ച് എല്ലാ രാവിലെയും വ്യക്തമായ ഒരു നീക്കമാക്കുന്നു — അതു നടപ്പാക്കാനുള്ള വഴിയാണു വാട്ട്സ്ആപ്പ്.",
+      "A daily recap written like a manager": "മാനേജരെപ്പോലെ എഴുതിയ ഡെയ്‌ലി റീക്യാപ്",
+      "Every morning, AI reads yesterday's numbers and prescribes one growth move.": "എല്ലാ രാവിലെയും AI ഇന്നലത്തെ കണക്കുകൾ വായിച്ച് ഒരു വളർച്ചാ നീക്കം നിർദ്ദേശിക്കുന്നു.",
+      "Not a receipt of totals. It judges the day against its own weekday average, spots rising and fading items and quiet hours, and tells you exactly what to run today — with the upside quantified from your own data.": "വെറും തുകകളുടെ രസീതല്ല. അതേ ആഴ്ചദിവസത്തിന്റെ ശരാശരിയുമായി താരതമ്യം ചെയ്ത്, കയറുന്നതും താഴുന്നതുമായ ഐറ്റങ്ങളും ഒഴിഞ്ഞ മണിക്കൂറുകളും കണ്ടെത്തി, ഇന്ന് എന്തു ചെയ്യണമെന്നു കൃത്യമായി പറയുന്നു — നേട്ടം നിങ്ങളുടെ സ്വന്തം ഡാറ്റയിൽ നിന്നു കണക്കാക്കി.",
+      "Customer segments, ready to act on": "പ്രവർത്തിക്കാൻ തയ്യാറായ കസ്റ്റമർ സെഗ്മെന്റുകൾ",
+      "Your customers are sorted automatically — message any of them on WhatsApp in one tap, consent-first.": "കസ്റ്റമർമാർ ഓട്ടോമാറ്റിക്കായി തരംതിരിയുന്നു — ആർക്കും ഒറ്റ ടാപ്പിൽ വാട്ട്സ്ആപ്പിൽ മെസേജ് അയയ്ക്കൂ, സമ്മതത്തോടെ മാത്രം.",
+      "WhatsApp campaigns": "വാട്ട്സ്ആപ്പ് ക്യാമ്പെയ്‌നുകൾ",
+      "Coming soon": "ഉടൻ വരുന്നു",
+      "Write one message and send it to a whole segment — win back the inactive, reward the VIPs. Opt-in only, unsubscribe built in.": "ഒരു മെസേജ് എഴുതി ഒരു സെഗ്മെന്റിനു മുഴുവൻ അയയ്ക്കൂ — മാറിനിന്നവരെ തിരികെ കൊണ്ടുവരൂ, VIP-കളെ ആദരിക്കൂ. ഓപ്റ്റ്-ഇൻ മാത്രം, അൺസബ്സ്ക്രൈബ് ബിൽറ്റ്-ഇൻ.",
+      "Offers & loyalty that upsell": "അപ്സെൽ ചെയ്യുന്ന ഓഫറുകളും ലോയൽറ്റിയും",
+      "Promote items at happy-hour prices to drive a slow hour, and reward regulars with points — bigger baskets, more returns.": "മന്ദഗതിയിലുള്ള മണിക്കൂർ ഉണർത്താൻ കുറഞ്ഞ വിലയിൽ ഐറ്റങ്ങൾ പ്രമോട്ട് ചെയ്യൂ, സ്ഥിരക്കാർക്കു പോയിന്റുകൾ നൽകൂ — വലിയ ബാസ്കറ്റുകൾ, കൂടുതൽ മടങ്ങിവരവ്.",
+      "More than ordering": "ഓർഡറിംഗിനും അപ്പുറം",
+      "One system, front of house to back of house.": "ഒരൊറ്റ സിസ്റ്റം — ഫ്രണ്ട് ഓഫ് ഹൗസ് മുതൽ ബാക്ക് ഓഫ് ഹൗസ് വരെ.",
+      "The order is just the front door. WhatsOrder runs the customer relationship, the feedback loop, the shift, and the cash drawer behind it — all without commission.": "ഓർഡർ വെറും മുൻവാതിലാണ്. അതിനു പിന്നിൽ കസ്റ്റമർ ബന്ധവും ഫീഡ്ബാക്ക് ലൂപ്പും ഷിഫ്റ്റും ക്യാഷ് ഡ്രോയറും WhatsOrder നടത്തുന്നു — എല്ലാം കമ്മീഷൻ ഇല്ലാതെ.",
+      "Front of house": "ഫ്രണ്ട് ഓഫ് ഹൗസ്",
+      "What your customers touch.": "നിങ്ങളുടെ കസ്റ്റമർമാർ തൊടുന്നത്.",
+      "No app, no marketplace listing.": "ആപ്പ് വേണ്ട, മാർക്കറ്റ്പ്ലേസ് ലിസ്റ്റിംഗ് വേണ്ട.",
+      "Menu link & QR": "മെനു ലിങ്കും QR-ഉം",
+      "One restaurant link or QR code, with photo menus, to share anywhere.": "ഫോട്ടോ മെനുവോടെ ഒരൊറ്റ ലിങ്ക് അല്ലെങ്കിൽ QR കോഡ്, എവിടെയും പങ്കിടാം.",
+      "Structured orders": "ചിട്ടയായ ഓർഡറുകൾ",
+      "Item, address, note and payment land as one clean WhatsApp message.": "ഐറ്റം, അഡ്രസ്, കുറിപ്പ്, പേയ്മെന്റ് — എല്ലാം ഒരൊറ്റ വൃത്തിയുള്ള വാട്ട്സ്ആപ്പ് മെസേജിൽ.",
+      "Delivery, pickup & scheduled": "ഡെലിവറി, പിക്കപ്പ്, ഷെഡ്യൂൾ",
+      "With offers and promos when you want to drive a slow hour.": "മന്ദഗതിയിലുള്ള സമയം ഉണർത്താൻ ഓഫറുകളും പ്രമോകളും സഹിതം.",
+      "Signature": "സിഗ്നേച്ചർ",
+      "Feedback that's tied to the order": "ഓർഡറുമായി ബന്ധിപ്പിച്ച ഫീഡ്ബാക്ക്",
+      "Every completed order asks one question.": "പൂർത്തിയായ ഓരോ ഓർഡറും ഒരു ചോദ്യം ചോദിക്കുന്നു.",
+      "When an order is marked delivered, the customer gets a feedback request linked to that exact order — so the rating you get is real, attributable data you can act on, not a guess. Spot a bad night by item, not by vibe.": "ഓർഡർ ഡെലിവർ ആയെന്ന് അടയാളപ്പെടുത്തുമ്പോൾ, ആ ഓർഡറുമായി ബന്ധിപ്പിച്ച ഫീഡ്ബാക്ക് അഭ്യർത്ഥന കസ്റ്റമർക്കു ലഭിക്കുന്നു — കിട്ടുന്ന റേറ്റിംഗ് ഊഹമല്ല, പ്രവർത്തിക്കാവുന്ന യഥാർത്ഥ ഡാറ്റയാണ്. മോശം രാത്രിയെ ഐറ്റം അനുസരിച്ചു കണ്ടെത്തൂ, തോന്നലനുസരിച്ചല്ല.",
+      "Back of house": "ബാക്ക് ഓഫ് ഹൗസ്",
+      "What you run behind the counter.": "കൗണ്ടറിനു പിന്നിൽ നിങ്ങൾ നടത്തുന്നത്.",
+      "In one installable app.": "ഇൻസ്റ്റാൾ ചെയ്യാവുന്ന ഒരൊറ്റ ആപ്പിൽ.",
+      "AI menu builder & food photos": "AI മെനു ബിൽഡറും ഫുഡ് ഫോട്ടോകളും",
+      "Photograph a paper menu and AI structures it into categories, items and prices — and generates appetising photos for items missing one.": "പേപ്പർ മെനുവിന്റെ ഫോട്ടോ എടുക്കൂ; AI അതിനെ വിഭാഗങ്ങളും ഐറ്റങ്ങളും വിലകളുമാക്കുന്നു — ഫോട്ടോ ഇല്ലാത്ത ഐറ്റങ്ങൾക്കു രുചികരമായ ചിത്രങ്ങളും ഉണ്ടാക്കുന്നു.",
+      "Live order board": "ലൈവ് ഓർഡർ ബോർഡ്",
+      "Move orders through New, Preparing and Completed — with timings and kitchen printing.": "ഓർഡറുകൾ ന്യൂ, പ്രിപ്പയറിംഗ്, കംപ്ലീറ്റഡ് എന്നിങ്ങനെ നീക്കൂ — സമയവും കിച്ചൻ പ്രിന്റിംഗും സഹിതം.",
+      "Customer insights & loyalty": "കസ്റ്റമർ ഉൾക്കാഴ്ചകളും ലോയൽറ്റിയും",
+      "See who's new, repeat, VIP or gone quiet, what they reorder — and reward them with built-in loyalty points.": "ആരാണു പുതിയത്, സ്ഥിരം, VIP, നിശ്ശബ്ദമായത് — അവർ വീണ്ടും ഓർഡർ ചെയ്യുന്നത് എന്തെന്നും അറിയൂ; ബിൽറ്റ്-ഇൻ ലോയൽറ്റി പോയിന്റുകളാൽ ആദരിക്കൂ.",
+      "Vendor cash tracker": "വെണ്ടർ ക്യാഷ് ട്രാക്കർ",
+      "Log every cash payout to suppliers against a shift, so the drawer always ties out.": "സപ്ലയർമാർക്കുള്ള ഓരോ ക്യാഷ് പേയ്മെന്റും ഷിഫ്റ്റിൽ രേഖപ്പെടുത്തൂ; ഡ്രോയർ എപ്പോഴും കൃത്യമായി ഒത്തുപോകും.",
+      "Sales insights at a glance": "ഒറ്റനോട്ടത്തിൽ സെയിൽസ് ഉൾക്കാഴ്ചകൾ",
+      "Revenue, average order value, order counts and your top sellers — without exporting a thing.": "വരുമാനം, ശരാശരി ഓർഡർ മൂല്യം, ഓർഡർ എണ്ണം, ടോപ്പ് സെല്ലറുകൾ — ഒന്നും എക്സ്പോർട്ട് ചെയ്യാതെ.",
+      "Install it like an app — no app store": "ആപ്പ് പോലെ ഇൻസ്റ്റാൾ ചെയ്യൂ — ആപ്പ് സ്റ്റോർ വേണ്ട",
+      "Add WhatsOrder to the home screen of the counter phone or tablet. Fast, full-screen, made for service.": "കൗണ്ടർ ഫോണിന്റെയോ ടാബ്‌ലെറ്റിന്റെയോ ഹോം സ്ക്രീനിൽ WhatsOrder ചേർക്കൂ. വേഗം, ഫുൾ-സ്ക്രീൻ, സർവീസിനായി നിർമിച്ചത്.",
+      "Progressive web app": "പ്രോഗ്രസീവ് വെബ് ആപ്പ്",
+      "Owner value": "ഉടമയ്ക്കുള്ള മൂല്യം",
+      "Built for restaurants that live on regulars.": "സ്ഥിരം കസ്റ്റമർമാരിൽ ജീവിക്കുന്ന റെസ്റ്ററന്റുകൾക്കായി നിർമിച്ചത്.",
+      "A more professional way to take direct orders — with the customer relationship staying firmly in your hands.": "നേരിട്ടുള്ള ഓർഡറുകൾ കൂടുതൽ പ്രൊഫഷണലായി എടുക്കാനുള്ള വഴി — കസ്റ്റമർ ബന്ധം പൂർണമായും നിങ്ങളുടെ കയ്യിൽ.",
+      "Zero commission": "കമ്മീഷൻ പൂജ്യം",
+      "A flat monthly fee — never a cut of your sales.": "ഫ്ലാറ്റ് മാസവരി — വിൽപ്പനയുടെ വിഹിതം ഒരിക്കലുമില്ല.",
+      "Own your customer data": "കസ്റ്റമർ ഡാറ്റ നിങ്ങളുടേത്",
+      "Your regulars belong to you, not to a platform.": "നിങ്ങളുടെ സ്ഥിരക്കാർ നിങ്ങളുടേതാണ്, ഒരു പ്ലാറ്റ്ഫോമിന്റേതല്ല.",
+      "Faster repeat orders": "വേഗത്തിലുള്ള ആവർത്തിത ഓർഡറുകൾ",
+      "Saved details turn returning customers into one-tap orders.": "സേവ് ചെയ്ത വിവരങ്ങൾ മടങ്ങിവരുന്നവരെ ഒറ്റ-ടാപ്പ് ഓർഡറാക്കുന്നു.",
+      "Clearer orders": "വ്യക്തമായ ഓർഡറുകൾ",
+      'Fewer mistakes, fewer "what did you mean?" messages.': 'കുറവു തെറ്റുകൾ, കുറവ് "എന്താണ് ഉദ്ദേശിച്ചത്?" മെസേജുകൾ.',
+      "Easier menu management": "എളുപ്പമുള്ള മെനു മാനേജ്മെന്റ്",
+      "Edit prices, photos and availability in seconds.": "വിലയും ഫോട്ടോയും ലഭ്യതയും നിമിഷങ്ങളിൽ മാറ്റൂ.",
+      "A more professional feel": "കൂടുതൽ പ്രൊഫഷണൽ അനുഭവം",
+      "Look organised and modern without leaving WhatsApp.": "വാട്ട്സ്ആപ്പ് വിടാതെ ചിട്ടയും പുതുമയും കാണിക്കൂ.",
+      "Marketplace vs WhatsOrder": "മാർക്കറ്റ്പ്ലേസ് vs WhatsOrder",
+      "Same orders. You keep the margin — and the customer.": "അതേ ഓർഡറുകൾ. മാർജിനും കസ്റ്റമറും നിങ്ങൾക്കു സ്വന്തം.",
+      "Aggregators rent you demand and keep the relationship. WhatsOrder turns the WhatsApp you already have into an ordering system you own.": "അഗ്രിഗേറ്ററുകൾ ഡിമാൻഡ് വാടകയ്ക്കു തരുന്നു, ബന്ധം സ്വന്തമാക്കുന്നു. നിങ്ങളുടെ കയ്യിലുള്ള വാട്ട്സ്ആപ്പിനെ നിങ്ങൾ സ്വന്തമാക്കുന്ന ഓർഡറിംഗ് സിസ്റ്റമാക്കുന്നു WhatsOrder.",
+      "Marketplace app": "മാർക്കറ്റ്പ്ലേസ് ആപ്പ്",
+      "Commission on every order": "ഓരോ ഓർഡറിലും കമ്മീഷൻ",
+      "15–30%, forever": "15–30%, എന്നും",
+      "Zero, ever": "പൂജ്യം, എപ്പോഴും",
+      "Who owns the customer": "കസ്റ്റമർ ആരുടേത്",
+      "The platform": "പ്ലാറ്റ്ഫോമിന്റേത്",
+      "You do": "നിങ്ങളുടേത്",
+      "Customer history & insights": "കസ്റ്റമർ ചരിത്രവും ഉൾക്കാഴ്ചകളും",
+      "Hidden from you": "നിങ്ങളിൽ നിന്നു മറച്ചത്",
+      "Built in": "ബിൽറ്റ്-ഇൻ",
+      "Feedback tied to each order": "ഓരോ ഓർഡറുമായും ബന്ധിച്ച ഫീഡ്ബാക്ക്",
+      "No": "ഇല്ല",
+      "Yes": "ഉണ്ട്",
+      "AI insight on your own sales": "സ്വന്തം വിൽപ്പനയിൽ AI ഉൾക്കാഴ്ച",
+      "Nothing": "ഒന്നുമില്ല",
+      "A growth move daily": "ദിവസവും ഒരു വളർച്ചാ നീക്കം",
+      "Shifts, cash & vendor payouts": "ഷിഫ്റ്റ്, ക്യാഷ്, വെണ്ടർ പേയ്മെന്റുകൾ",
+      "Not included": "ഉൾപ്പെടുന്നില്ല",
+      "What it costs you": "നിങ്ങൾക്കുള്ള ചെലവ്",
+      "A cut of all sales": "എല്ലാ വിൽപ്പനയുടെയും വിഹിതം",
+      "≈ AED 60 flat / month": "മാസം ≈ AED 60 ഫ്ലാറ്റ്",
+      "Launch pricing": "ലോഞ്ച് പ്രൈസിംഗ്",
+      "Starts at AED 2 a day. No commission, ever.": "ദിവസം AED 2 മുതൽ. കമ്മീഷൻ ഒരിക്കലുമില്ല.",
+      "Early pricing for pilot restaurants who want structured WhatsApp ordering without a marketplace taking a cut.": "മാർക്കറ്റ്പ്ലേസ് വിഹിതം എടുക്കാതെ ചിട്ടയായ വാട്ട്സ്ആപ്പ് ഓർഡറിംഗ് വേണ്ട പൈലറ്റ് റെസ്റ്ററന്റുകൾക്ക് ആദ്യകാല വില.",
+      "Starter · founding offer": "സ്റ്റാർട്ടർ · ഫൗണ്ടിംഗ് ഓഫർ",
+      "/ day": "/ ദിവസം",
+      "≈ AED 60 / month — about the price of one karak a day. Free setup included.": "മാസം ≈ AED 60 — ദിവസം ഒരു കരക് ചായയുടെ വില മാത്രം. സെറ്റപ്പ് സൗജന്യം.",
+      "Request a demo on WhatsApp": "വാട്ട്സ്ആപ്പിൽ ഡെമോ ചോദിക്കൂ",
+      "Every plan includes": "എല്ലാ പ്ലാനിലും ഉള്ളത്",
+      "Digital menu & QR code": "ഡിജിറ്റൽ മെനുവും QR കോഡും",
+      "Structured WhatsApp ordering": "ചിട്ടയായ വാട്ട്സ്ആപ്പ് ഓർഡറിംഗ്",
+      "Order dashboard": "ഓർഡർ ഡാഷ്ബോർഡ്",
+      "Customer database": "കസ്റ്റമർ ഡാറ്റാബേസ്",
+      "Menu setup support": "മെനു സെറ്റപ്പ് സഹായം",
+      "The questions owners ask first.": "ഉടമകൾ ആദ്യം ചോദിക്കുന്ന ചോദ്യങ്ങൾ.",
+      "Straight answers for restaurants already taking orders through WhatsApp.": "വാട്ട്സ്ആപ്പിൽ ഇപ്പോൾ തന്നെ ഓർഡർ എടുക്കുന്ന റെസ്റ്ററന്റുകൾക്കു നേരായ ഉത്തരങ്ങൾ.",
+      "Is WhatsOrder just for taking orders?": "WhatsOrder ഓർഡർ എടുക്കാൻ മാത്രമുള്ളതാണോ?",
+      "No — ordering is the front door. Behind it sits an AI-enabled lightweight POS: an AI daily recap that prescribes a growth move each morning, customer segments and loyalty, post-order feedback, a live order board, shift and cash reconciliation, vendor cash tracking, sales insights, and an AI menu builder with generated food photos. WhatsApp campaigns to whole segments are coming next.": "അല്ല — ഓർഡറിംഗ് മുൻവാതിൽ മാത്രം. പിന്നിൽ AI ശക്തിയുള്ള ലൈറ്റ്‌വെയ്റ്റ് POS ഉണ്ട്: എല്ലാ രാവിലെയും വളർച്ചാ നീക്കം നിർദ്ദേശിക്കുന്ന AI ഡെയ്‌ലി റീക്യാപ്, കസ്റ്റമർ സെഗ്മെന്റുകളും ലോയൽറ്റിയും, ഓർഡറിനു ശേഷമുള്ള ഫീഡ്ബാക്ക്, ലൈവ് ഓർഡർ ബോർഡ്, ഷിഫ്റ്റ്-ക്യാഷ് കണക്കുതീർപ്പ്, വെണ്ടർ ക്യാഷ് ട്രാക്കിംഗ്, സെയിൽസ് ഉൾക്കാഴ്ചകൾ, ജനറേറ്റഡ് ഫുഡ് ഫോട്ടോകളോടെ AI മെനു ബിൽഡർ. സെഗ്മെന്റുകൾക്കു മുഴുവനുള്ള വാട്ട്സ്ആപ്പ് ക്യാമ്പെയ്‌നുകൾ ഉടൻ വരുന്നു.",
+      "Is WhatsOrder a POS? Do I need new hardware?": "WhatsOrder ഒരു POS ആണോ? പുതിയ ഹാർഡ്‌വെയർ വേണോ?",
+      "It's a lightweight POS that runs on the phone or tablet you already have — orders, staff entry, kitchen printing, shifts and cash, all in an installable web app. No terminals, no contracts, no new hardware.": "നിങ്ങളുടെ കയ്യിലുള്ള ഫോണിലോ ടാബ്‌ലെറ്റിലോ ഓടുന്ന ലൈറ്റ്‌വെയ്റ്റ് POS ആണിത് — ഓർഡറുകൾ, സ്റ്റാഫ് എൻട്രി, കിച്ചൻ പ്രിന്റിംഗ്, ഷിഫ്റ്റും ക്യാഷും, എല്ലാം ഇൻസ്റ്റാൾ ചെയ്യാവുന്ന വെബ് ആപ്പിൽ. ടെർമിനലുകളില്ല, കരാറുകളില്ല, പുതിയ ഹാർഡ്‌വെയറില്ല.",
+      "Does WhatsOrder replace WhatsApp?": "WhatsOrder വാട്ട്സ്ആപ്പിനു പകരമാണോ?",
+      "No. It works alongside WhatsApp and simply makes the orders that arrive there clean and structured. Your customers keep messaging you exactly where they already do.": "അല്ല. വാട്ട്സ്ആപ്പിനൊപ്പം പ്രവർത്തിച്ച്, അവിടെ എത്തുന്ന ഓർഡറുകൾ വൃത്തിയും ചിട്ടയുമുള്ളതാക്കുന്നു. കസ്റ്റമർമാർ പതിവുപോലെ അവിടെത്തന്നെ മെസേജ് ചെയ്യുന്നു.",
+      "Do customers need to install an app?": "കസ്റ്റമർമാർ ആപ്പ് ഇൻസ്റ്റാൾ ചെയ്യണോ?",
+      "No. They open a menu link or scan a QR code in their browser — no download, no account, no friction.": "വേണ്ട. ബ്രൗസറിൽ മെനു ലിങ്ക് തുറക്കുകയോ QR സ്കാൻ ചെയ്യുകയോ ചെയ്യുന്നു — ഡൗൺലോഡില്ല, അക്കൗണ്ടില്ല, തടസ്സമില്ല.",
+      "Can I manage my own menu?": "എന്റെ മെനു ഞാൻ തന്നെ മാനേജ് ചെയ്യാമോ?",
+      "Yes. Add items, edit prices, mark things unavailable and upload photos yourself, any time.": "തീർച്ചയായും. ഐറ്റങ്ങൾ ചേർക്കൂ, വില മാറ്റൂ, ലഭ്യമല്ലെന്ന് അടയാളപ്പെടുത്തൂ, ഫോട്ടോ അപ്‌ലോഡ് ചെയ്യൂ — എപ്പോൾ വേണമെങ്കിലും.",
+      "Can returning customers reorder faster?": "മടങ്ങിവരുന്നവർക്കു വേഗം വീണ്ടും ഓർഡർ ചെയ്യാമോ?",
+      "Yes. Customer details can be saved so regulars don't have to re-enter everything each time.": "അതെ. വിവരങ്ങൾ സേവ് ചെയ്യാം; സ്ഥിരക്കാർ ഓരോ തവണയും എല്ലാം വീണ്ടും ടൈപ്പ് ചെയ്യേണ്ട.",
+      "Is there any commission?": "കമ്മീഷൻ ഉണ്ടോ?",
+      "None. WhatsOrder is a flat monthly fee. We never take a percentage of your sales.": "ഇല്ല. WhatsOrder ഫ്ലാറ്റ് മാസവരിയാണ്. വിൽപ്പനയുടെ ശതമാനം ഞങ്ങൾ ഒരിക്കലും എടുക്കില്ല.",
+      "Try it with your workflow": "നിങ്ങളുടെ വർക്ക്ഫ്ലോയിൽ പരീക്ഷിക്കൂ",
+      "Want to see WhatsOrder run your restaurant?": "WhatsOrder നിങ്ങളുടെ റെസ്റ്ററന്റ് നടത്തുന്നതു കാണണോ?",
+      "If you already take orders on WhatsApp, we'd love to understand your workflow and walk you through a live demo.": "വാട്ട്സ്ആപ്പിൽ ഇപ്പോൾ തന്നെ ഓർഡർ എടുക്കുന്നുണ്ടെങ്കിൽ, നിങ്ങളുടെ രീതി മനസ്സിലാക്കി ലൈവ് ഡെമോ കാണിക്കാൻ ഞങ്ങൾക്കു സന്തോഷമേയുള്ളൂ.",
+      "Message us on WhatsApp": "വാട്ട്സ്ആപ്പിൽ മെസേജ് ചെയ്യൂ",
+      "Email whatsorder.ae@gmail.com": "ഇമെയിൽ: whatsorder.ae@gmail.com",
+      "Structured WhatsApp ordering for small UAE restaurants. Built in Ajman.": "യുഎഇയിലെ ചെറുകിട റെസ്റ്ററന്റുകൾക്കുള്ള ചിട്ടയായ വാട്ട്സ്ആപ്പ് ഓർഡറിംഗ്. അജ്മാനിൽ നിർമിച്ചത്.",
+      "Live demo": "ലൈവ് ഡെമോ",
+      "Contact": "ബന്ധപ്പെടൂ"
+    };
+    var CALC = {
+      en: { month: '/ month', yr: '≈ AED {v} a year back in your pocket' },
+      ar: { month: '/ شهرياً', yr: '≈ AED {v} تعود إلى جيبك كل سنة' },
+      ml: { month: '/ മാസം', yr: 'വർഷം ≈ AED {v} നിങ്ങളുടെ പോക്കറ്റിൽ തിരികെ' }
+    };
+    var DICTS = { en: {}, ar: AR, ml: ML };
+    function applyLang(lang){
+      if(!DICTS[lang]) lang = 'en';
+      var dict = DICTS[lang];
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+      var n;
+      while((n = walker.nextNode())){
+        var p = n.parentElement;
+        if(!p || p.closest('script,style,[data-no-i18n],.lang-switch')) continue;
+        if(n.__o === undefined) n.__o = n.nodeValue;
+        var key = n.__o.trim();
+        if(!key) continue;
+        var tr = dict[key];
+        n.nodeValue = tr ? n.__o.replace(key, tr) : n.__o;
+      }
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.body.classList.toggle('lang-ar', lang === 'ar');
+      document.body.classList.toggle('lang-ml', lang === 'ml');
+      document.querySelectorAll('.lang-switch button').forEach(function(b){
+        b.classList.toggle('on', b.getAttribute('data-lang') === lang);
+      });
+      window.__woCalcI18n = CALC[lang];
+      if(window.__woCalcRender) window.__woCalcRender();
+      try{ localStorage.setItem('wo-lang', lang); }catch(e){}
+    }
+    document.querySelectorAll('.lang-switch button').forEach(function(b){
+      b.addEventListener('click', function(){ applyLang(b.getAttribute('data-lang')); });
+    });
+    var saved = 'en';
+    try{ saved = localStorage.getItem('wo-lang') || 'en'; }catch(e){}
+    if(saved !== 'en') applyLang(saved);
   })();`;
 
 export default function LandingPage() {
