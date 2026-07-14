@@ -21,13 +21,17 @@ Confirm these rows exist:
 - Chai Xpress menu categories
 - Chai Xpress menu items
 
-For an existing project, also apply the latest security and pilot migrations in
-the order listed in `SUPABASE_SETUP.md`, including:
+For an existing project, also apply all pending security, operations, and
+feature migrations in the order listed in `SUPABASE_SETUP.md`, including:
 
 ```text
 supabase/20260620_lock_down_public_order_creation.sql
 supabase/20260620_p1_pilot_operations.sql
+supabase/migrations/*.sql (all pending files, in filename order)
 ```
+
+The timestamped migration directory is one ordered sequence. Do not skip
+intervening feature migrations when applying a newer security migration.
 
 ## 3. Deploy to Vercel
 

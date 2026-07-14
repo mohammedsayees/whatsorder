@@ -1,6 +1,8 @@
-import { Clock3, MapPin, MessageCircle, Sparkles, TrendingUp } from "lucide-react";
+import { Clock3, MapPin, MessageCircle, Megaphone, Sparkles, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoyaltyRedeemButton } from "@/components/admin/LoyaltyRedeemButton";
+import { CustomerSearchForm } from "@/components/admin/CustomerSearchForm";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -9,9 +11,12 @@ import { formatUaeDate, formatUaeDateTime } from "@/lib/date-time";
 import {
   getCustomerInsights,
   getFulfilmentLabel,
-  type CustomerSegment
+  isSegmentFilter,
+  SEGMENT_TABS,
+  type CustomerSegment,
+  type CustomerSegmentFilter
 } from "@/lib/customer-insights";
-import { getCustomersPage, getOrdersForCustomerPhones } from "@/lib/data";
+import { getCustomerSegments, getOrdersForCustomerPhones } from "@/lib/data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 
@@ -43,27 +48,56 @@ function publicAppUrl() {
 export default async function AdminCustomersPage({
   searchParams
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; segment?: string; q?: string }>;
 }) {
   const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const appUrl = publicAppUrl();
   const query = await searchParams;
-  const customersPage = await getCustomersPage(restaurant.id, {
-    page: positivePage(query.page),
+  const activeSegment: CustomerSegmentFilter = isSegmentFilter(query.segment)
+    ? query.segment
+    : "all";
+  const searchTerm = query.q?.trim() ?? "";
+  const requestedPage = positivePage(query.page);
+
+  // Dine-in tab only when the restaurant actually supports dine-in.
+  const visibleTabs = SEGMENT_TABS.filter(
+    (tab) => !tab.requiresDineIn || restaurant.dine_in_enabled === true
+  );
+
+  const segmentPage = await getCustomerSegments(restaurant.id, {
+    segment: activeSegment,
+    search: searchTerm,
+    page: requestedPage,
     pageSize: 25
   });
 
-  if (
-    customersPage.totalPages > 0 &&
-    customersPage.page > customersPage.totalPages
-  ) {
-    redirect(`/admin/customers?page=${customersPage.totalPages}`);
+  const segmentQuery = new URLSearchParams({ segment: activeSegment });
+  if (searchTerm) {
+    segmentQuery.set("q", searchTerm);
+  }
+
+  if (segmentPage.totalPages > 0 && segmentPage.page > segmentPage.totalPages) {
+    redirect(
+      `/admin/customers?${segmentQuery.toString()}&page=${segmentPage.totalPages}`
+    );
   }
 
   const orders = await getOrdersForCustomerPhones(
     restaurant.id,
-    customersPage.items.map((customer) => customer.phone)
+    segmentPage.items.map((customer) => customer.phone)
   );
+
+  const activeTab = visibleTabs.find((tab) => tab.value === activeSegment);
+  const summaryCards = [
+    { label: "Total customers", value: segmentPage.summary.total },
+    { label: "Repeat customers", value: segmentPage.summary.repeat },
+    { label: "VIP customers", value: segmentPage.summary.vip },
+    { label: "Inactive customers", value: segmentPage.summary.inactive },
+    { label: "Can contact on WhatsApp", value: segmentPage.summary.marketing_opt_in },
+    { label: "Contactable in this filter", value: segmentPage.contactable }
+  ];
+  const campaignHref = `/admin/campaigns/new?${segmentQuery.toString()}`;
+  const canStartCampaign = segmentPage.contactable > 0;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -72,8 +106,78 @@ export default async function AdminCustomersPage({
         Customer history is captured from checkout, including marketing consent.
       </p>
 
+      <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {summaryCards.map((card) => (
+          <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm" key={card.label}>
+            <p className="text-xs font-semibold text-stone-500">{card.label}</p>
+            <p className="mt-1 text-2xl font-black">{card.value}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Customer segments">
+          {visibleTabs.map((tab) => (
+            <Link
+              aria-current={activeSegment === tab.value ? "page" : undefined}
+              className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-black ${
+                activeSegment === tab.value
+                  ? "bg-ink text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              }`}
+              href={`/admin/customers?segment=${tab.value}${searchTerm ? `&q=${encodeURIComponent(searchTerm)}` : ""}`}
+              key={tab.value}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
+
+        <CustomerSearchForm query={searchTerm} segment={activeSegment} />
+      </section>
+
+      <section className="mt-4 rounded-lg border border-leaf/30 bg-mint/10 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-black text-ink">
+              {segmentPage.matched} customer{segmentPage.matched === 1 ? "" : "s"} match this
+              segment
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-leaf">
+              {segmentPage.contactable} can be contacted on WhatsApp
+            </p>
+            {activeTab?.hint ? (
+              <p className="mt-1 text-xs text-stone-500">{activeTab.hint}</p>
+            ) : null}
+          </div>
+          {canStartCampaign ? (
+            <Link
+              className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white"
+              href={campaignHref}
+            >
+              <Megaphone size={17} />
+              Create campaign from this segment
+            </Link>
+          ) : (
+            <span
+              aria-disabled="true"
+              className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-stone-100 px-4 py-3 text-sm font-black text-stone-400"
+              title="No customers in this segment can be contacted on WhatsApp yet."
+            >
+              <Megaphone size={17} />
+              Create campaign from this segment
+            </span>
+          )}
+        </div>
+        {!canStartCampaign ? (
+          <p className="mt-2 text-xs text-stone-500">
+            No one in this segment has opted in to marketing yet, so there is no one to message.
+          </p>
+        ) : null}
+      </section>
+
       <div className="mt-6 grid gap-4">
-        {customersPage.items.map((customer) => {
+        {segmentPage.items.map((customer) => {
           const history = orders.filter((order) => order.customer_phone === customer.phone);
           const insights = getCustomerInsights(history);
           const hasMarketingConsent =
@@ -303,11 +407,13 @@ export default async function AdminCustomersPage({
             </article>
           );
         })}
-        {customersPage.items.length === 0 ? (
+        {segmentPage.items.length === 0 ? (
           <div className="rounded-lg border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
             <p className="font-black">No customers found</p>
             <p className="mt-1 text-sm text-stone-500">
-              Customer profiles will appear after orders are placed.
+              {searchTerm || activeSegment !== "all"
+                ? "No customers match this segment or search. Try a different filter."
+                : "Customer profiles will appear after orders are placed."}
             </p>
           </div>
         ) : null}
@@ -315,10 +421,11 @@ export default async function AdminCustomersPage({
 
       <PaginationNav
         basePath="/admin/customers"
-        page={customersPage.page}
-        pageSize={customersPage.pageSize}
-        total={customersPage.total}
-        totalPages={customersPage.totalPages}
+        page={segmentPage.page}
+        pageSize={segmentPage.pageSize}
+        query={{ segment: activeSegment, q: searchTerm || undefined }}
+        total={segmentPage.matched}
+        totalPages={segmentPage.totalPages}
       />
 
       <p className="mt-5 text-sm leading-6 text-stone-500">

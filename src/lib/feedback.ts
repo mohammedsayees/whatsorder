@@ -9,6 +9,7 @@ import {
 } from "@/lib/public-cache";
 import type {
   CustomerFeedback,
+  PublicCustomerFeedback,
   PublicFeedbackSummary,
   PublicRestaurant,
   Restaurant
@@ -35,7 +36,7 @@ const fetchPublicFeedback = (restaurantId: string) =>
 
       const { data, error } = await supabase
         .from("customer_feedback")
-        .select("*")
+        .select("id,rating,comment,customer_display_name")
         .eq("restaurant_id", restaurantId)
         .eq("moderation_status", "approved")
         .order("submitted_at", { ascending: false });
@@ -44,7 +45,7 @@ const fetchPublicFeedback = (restaurantId: string) =>
         throw new Error(error?.message ?? "Feedback could not be read");
       }
 
-      const feedback = data as CustomerFeedback[];
+      const feedback = data as PublicCustomerFeedback[];
       const reviewCount = feedback.length;
       const averageRating =
         reviewCount > 0

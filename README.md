@@ -85,13 +85,24 @@ supabase/menu_offers_migration.sql
 supabase/pilot_launch_hardening_migration.sql
 supabase/20260620_lock_down_public_order_creation.sql
 supabase/20260620_p1_pilot_operations.sql
+supabase/migrations/*.sql (all files, in filename order)
+```
+
+Security checkpoints within that ordered directory include:
+
+```text
+supabase/migrations/20260620162000_p0_2b_enforce_public_restaurant_projection.sql
+supabase/migrations/20260620163000_p0_3_least_privilege_rls.sql
+supabase/migrations/20260620163100_p0_3_allow_public_policy_helpers.sql
+supabase/migrations/20260713000000_security_and_reliability_fixes.sql
 ```
 
 More setup details are in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
 For an existing Supabase project, do not rerun `schema.sql` merely because the
 application code changed. Apply only migrations that have not already been run,
-in the order shown above.
+in the order shown above. The timestamped migration directory is a single
+ordered sequence; do not skip feature migrations between security migrations.
 
 ## Super Admin
 

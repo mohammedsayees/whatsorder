@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { findUnseenOrderIds, rememberOrderIds } from "@/lib/new-order-alerts";
+import {
+  createInitialSeenOrderIds,
+  findUnseenOrderIds,
+  rememberOrderIds
+} from "@/lib/new-order-alerts";
 
 describe("new-order alert reconciliation", () => {
+  it("treats pending orders loaded at startup as unacknowledged", () => {
+    const seen = createInitialSeenOrderIds();
+
+    expect(findUnseenOrderIds(["waiting-order"], seen)).toEqual(["waiting-order"]);
+  });
+
   it("finds orders missed by Realtime without treating seeded orders as new", () => {
     const seen = new Set(["order-1", "order-2"]);
 

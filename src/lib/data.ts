@@ -13,6 +13,12 @@ import {
   type CommissionKeptTotals
 } from "@/lib/commission";
 import {
+  classifyCustomerSegment,
+  isCustomerContactable,
+  matchesSegmentFilter,
+  type CustomerSegmentFilter
+} from "@/lib/customer-insights";
+import {
   demoCategories,
   demoCustomers,
   demoItems,
@@ -47,6 +53,7 @@ const activeOrderStatuses: OrderStatus[] = [
   "Ready to Serve",
   "Out for Delivery"
 ];
+const maxSynchronousReportOrders = 10_000;
 
 // Explicit column list for order *list/report* reads. Mirrors the Order type
 // minus `whatsapp_message` — a large text column that is only needed when
@@ -716,9 +723,15 @@ export async function getOrdersForReport(
       .eq("restaurant_id", restaurantId)
       .gte("created_at", startIso)
       .lt("created_at", endExclusiveIso)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(maxSynchronousReportOrders + 1);
 
     if (!error && data) {
+      if (data.length > maxSynchronousReportOrders) {
+        throw new Error(
+          "This report contains too many orders for a synchronous export. Choose a shorter range."
+        );
+      }
       return data as unknown as Order[];
     }
 
@@ -756,23 +769,29 @@ export async function getCustomersForReport(
       chunks.push(uniquePhones.slice(index, index + 100));
     }
 
-    const results = await Promise.all(
-      chunks.map((phoneChunk) =>
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("restaurant_id", restaurantId)
-          .in("phone", phoneChunk)
-      )
-    );
-    const failedResult = results.find((result) => result.error);
+    const customers: Customer[] = [];
+    let customerQueryFailed = false;
 
-    if (!failedResult) {
-      return results.flatMap((result) => (result.data ?? []) as Customer[]);
+    for (const phoneChunk of chunks) {
+      const result = await supabase
+        .from("customers")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("phone", phoneChunk);
+
+      if (result.error) {
+        customerQueryFailed = true;
+        if (!demoDataEnabled) {
+          productionDataFailure("Report customers", result.error);
+        }
+        break;
+      }
+
+      customers.push(...((result.data ?? []) as Customer[]));
     }
 
-    if (!demoDataEnabled) {
-      productionDataFailure("Report customers", failedResult.error);
+    if (!customerQueryFailed) {
+      return customers;
     }
   } else if (!demoDataEnabled) {
     productionDataFailure("Report customers");
@@ -1030,6 +1049,164 @@ export async function getCustomersPage(
     pageSize,
     total: customers.length,
     totalPages: Math.ceil(customers.length / pageSize)
+  };
+}
+
+export type CustomerSegmentSummary = {
+  total: number;
+  repeat: number;
+  vip: number;
+  inactive: number;
+  marketing_opt_in: number;
+};
+
+export type CustomerSegmentPage = {
+  items: Customer[];
+  page: number;
+  pageSize: number;
+  matched: number;
+  contactable: number;
+  totalPages: number;
+  summary: CustomerSegmentSummary;
+};
+
+type CustomerSegmentsOptions = {
+  segment?: CustomerSegmentFilter;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+// Campaign-ready customer segment page. Production reads go through the
+// tenant-scoped get_customer_segment_page RPC (one round-trip: summary counts +
+// matched/contactable counts + the paginated rows). The demo fallback mirrors
+// the same rules in memory using the shared customer-insights helpers.
+export async function getCustomerSegments(
+  restaurantId: string,
+  options: CustomerSegmentsOptions = {}
+): Promise<CustomerSegmentPage> {
+  const segment: CustomerSegmentFilter = options.segment ?? "all";
+  const search = options.search?.trim() || null;
+  const { page, pageSize } = normalizePagination(options.page, options.pageSize);
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc("get_customer_segment_page", {
+      p_restaurant_id: restaurantId,
+      p_segment: segment,
+      p_search: search,
+      p_page: page,
+      p_page_size: pageSize
+    });
+
+    if (!error && data) {
+      const payload = data as {
+        items: Customer[];
+        matched: number;
+        contactable_matched: number;
+        summary: CustomerSegmentSummary;
+        pagination: { page: number; page_size: number; total_pages: number };
+      };
+
+      return {
+        items: payload.items ?? [],
+        page: payload.pagination?.page ?? page,
+        pageSize: payload.pagination?.page_size ?? pageSize,
+        matched: payload.matched ?? 0,
+        contactable: payload.contactable_matched ?? 0,
+        totalPages: payload.pagination?.total_pages ?? 0,
+        summary: payload.summary ?? {
+          total: 0,
+          repeat: 0,
+          vip: 0,
+          inactive: 0,
+          marketing_opt_in: 0
+        }
+      };
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Customer segments", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Customer segments");
+  }
+
+  return segmentCustomersInMemory(restaurantId, segment, search, page, pageSize);
+}
+
+// Demo/dev fallback: reproduce the RPC over the in-memory demo dataset so the
+// segment page keeps working without Supabase.
+function segmentCustomersInMemory(
+  restaurantId: string,
+  segment: CustomerSegmentFilter,
+  search: string | null,
+  page: number,
+  pageSize: number
+): CustomerSegmentPage {
+  const now = new Date();
+  const customers = demoCustomers.filter(
+    (customer) => customer.restaurant_id === restaurantId
+  );
+  const ordersByPhone = new Map<string, Order[]>();
+
+  for (const order of demoOrders) {
+    if (order.restaurant_id !== restaurantId) {
+      continue;
+    }
+
+    const bucket = ordersByPhone.get(order.customer_phone) ?? [];
+    bucket.push(order);
+    ordersByPhone.set(order.customer_phone, bucket);
+  }
+
+  const summary: CustomerSegmentSummary = {
+    total: customers.length,
+    repeat: 0,
+    vip: 0,
+    inactive: 0,
+    marketing_opt_in: 0
+  };
+
+  for (const customer of customers) {
+    const lifecycle = classifyCustomerSegment(customer, now);
+    if (lifecycle === "Repeat") summary.repeat += 1;
+    if (lifecycle === "VIP") summary.vip += 1;
+    if (lifecycle === "Inactive") summary.inactive += 1;
+    if (isCustomerContactable(customer)) summary.marketing_opt_in += 1;
+  }
+
+  const needle = search?.toLowerCase() ?? null;
+  const matched = customers
+    .filter((customer) => {
+      if (
+        needle &&
+        !customer.name.toLowerCase().includes(needle) &&
+        !customer.phone.toLowerCase().includes(needle)
+      ) {
+        return false;
+      }
+
+      return matchesSegmentFilter(
+        segment,
+        customer,
+        ordersByPhone.get(customer.phone) ?? [],
+        now
+      );
+    })
+    .toSorted((a, b) => b.updated_at.localeCompare(a.updated_at));
+
+  const contactable = matched.filter((customer) => isCustomerContactable(customer)).length;
+  const from = (page - 1) * pageSize;
+
+  return {
+    items: matched.slice(from, from + pageSize),
+    page,
+    pageSize,
+    matched: matched.length,
+    contactable,
+    totalPages: Math.ceil(matched.length / pageSize),
+    summary
   };
 }
 

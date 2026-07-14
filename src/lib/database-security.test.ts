@@ -41,6 +41,15 @@ describe("public order database boundary", () => {
   const shiftCashIntegrationTest = readProjectFile(
     "supabase/tests/shift_cash_summary.sql"
   );
+  const reviewFixIntegrationTest = readProjectFile(
+    "supabase/tests/security_reliability_fixes.sql"
+  );
+  const reviewFixMigration = readProjectFile(
+    "supabase/migrations/20260713000000_security_and_reliability_fixes.sql"
+  );
+  const inviteActions = readProjectFile("src/app/auth/invite/actions.ts");
+  const readme = readProjectFile("README.md");
+  const setupGuide = readProjectFile("SUPABASE_SETUP.md");
   const dataModule = readProjectFile("src/lib/data.ts");
   const typeModule = readProjectFile("src/lib/types.ts");
 
@@ -99,6 +108,56 @@ describe("public order database boundary", () => {
     expect(pilotOperationsMigration).toMatch(
       /grant execute on function public\.create_order_with_customer_v4\([\s\S]*?\) to service_role;/
     );
+  });
+
+  it("derives replayed consent from the persisted idempotent order", () => {
+    expect(reviewFixMigration).toContain(
+      "marketing_opt_in = persisted_order.consent_marketing"
+    );
+    expect(reviewFixMigration).toContain(
+      "customer.phone = persisted_order.customer_phone"
+    );
+    expect(reviewFixMigration).not.toContain(
+      "marketing_opt_in = order_consent_marketing"
+    );
+    expect(reviewFixIntegrationTest).toContain(
+      "Idempotent replay changed another customer consent"
+    );
+  });
+
+  it("serializes rate-limit decisions per restaurant and fingerprint", () => {
+    expect(reviewFixMigration).toContain("pg_advisory_xact_lock");
+    expect(reviewFixMigration).toContain(
+      "target_restaurant_id::text || ':' || target_client_fingerprint"
+    );
+  });
+
+  it("requires a single-use membership-bound password setup proof", () => {
+    expect(reviewFixMigration).toContain("password_setup_token_hash");
+    expect(reviewFixMigration).toContain("password_setup_expires_at");
+    expect(inviteActions).toContain("invitePasswordSetupCookieName");
+    expect(inviteActions).toContain(
+      '.eq("password_setup_token_hash", tokenHash)'
+    );
+    expect(inviteActions).toContain('.select("id")');
+    expect(inviteActions).toContain("password_setup_token_hash: null");
+  });
+
+  it("documents the complete security migration sequence", () => {
+    for (const guide of [readme, setupGuide]) {
+      expect(guide).toContain(
+        "20260620162000_p0_2b_enforce_public_restaurant_projection.sql"
+      );
+      expect(guide).toContain(
+        "20260620163000_p0_3_least_privilege_rls.sql"
+      );
+      expect(guide).toContain(
+        "20260620163100_p0_3_allow_public_policy_helpers.sql"
+      );
+      expect(guide).toContain(
+        "20260713000000_security_and_reliability_fixes.sql"
+      );
+    }
   });
 
   it("exposes restaurants publicly only through a curated projection", () => {
@@ -215,6 +274,12 @@ describe("public order database boundary", () => {
     );
     expect(publicPolicyHelperMigration).toContain(
       "grant execute on function public.is_super_admin()"
+    );
+    expect(publicPolicyHelperMigration).toContain(
+      "grant execute on function public.is_public_restaurant(uuid)"
+    );
+    expect(publicPolicyHelperMigration).toContain(
+      "grant execute on function public.get_public_restaurant(text)"
     );
     expect(leastPrivilegeMigration).not.toContain(
       "grant select on table public.restaurants to anon;"

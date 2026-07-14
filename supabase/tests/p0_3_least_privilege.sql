@@ -28,8 +28,9 @@ values
   ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'manager@test.invalid', 'manager', now()),
   ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000003', 'owner@test.invalid', 'owner', now());
 
-insert into public.profiles (id, email, role)
-values ('10000000-0000-0000-0000-000000000004', 'super@test.invalid', 'super_admin');
+update public.profiles
+set role = 'super_admin'
+where id = '10000000-0000-0000-0000-000000000004';
 
 insert into public.orders (
   id,
@@ -140,7 +141,14 @@ set local role anon;
 
 do $anon_checks$
 begin
-  if (select count(*) from public.menu_items) <> 2 then
+  if (
+    select count(*)
+    from public.menu_items
+    where id in (
+      '70000000-0000-0000-0000-000000000001',
+      '70000000-0000-0000-0000-000000000002'
+    )
+  ) <> 2 then
     raise exception 'Anon public menu SELECT failed';
   end if;
 

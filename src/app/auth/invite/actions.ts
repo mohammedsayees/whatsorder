@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
@@ -9,6 +10,13 @@ import {
   superAdminCookieName
 } from "@/lib/super-admin-auth";
 import { hasValidInvitationMetadata } from "@/lib/security";
+
+const invitePasswordSetupCookieName = "whatsorder_invite_password_setup";
+const invitePasswordSetupLifetimeMs = 15 * 60 * 1000;
+
+function hashPasswordSetupToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 type InvitePayload = {
   accessToken?: string;
@@ -71,6 +79,10 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
   }
 
   const now = new Date().toISOString();
+  const passwordSetupToken = randomBytes(32).toString("base64url");
+  const passwordSetupExpiresAt = new Date(
+    Date.now() + invitePasswordSetupLifetimeMs
+  ).toISOString();
   const invitedRestaurantId = String(userData.user.user_metadata.restaurant_id ?? "");
   const invitedRole = String(userData.user.user_metadata.role ?? "");
 
@@ -80,7 +92,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
 
   const { data: membership, error: membershipLookupError } = await admin
     .from("restaurant_users")
-    .select("id,user_id,role")
+    .select("id,user_id,role,accepted_at,invited_at")
     .eq("restaurant_id", invitedRestaurantId)
     .eq("email", userData.user.email.toLowerCase())
     .eq("role", invitedRole)
@@ -89,22 +101,31 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
   if (
     membershipLookupError ||
     !membership ||
+    !membership.invited_at ||
+    membership.accepted_at ||
     (membership.user_id && membership.user_id !== userData.user.id)
   ) {
     inviteError("This invitation no longer matches an active restaurant assignment.");
   }
 
-  const { error: membershipError } = await admin
+  const { data: acceptedMembership, error: membershipError } = await admin
     .from("restaurant_users")
     .update({
       user_id: userData.user.id,
-      accepted_at: now
+      accepted_at: now,
+      password_setup_token_hash: hashPasswordSetupToken(passwordSetupToken),
+      password_setup_expires_at: passwordSetupExpiresAt
     })
     .eq("id", membership.id)
-    .eq("restaurant_id", invitedRestaurantId);
+    .eq("restaurant_id", invitedRestaurantId)
+    .is("accepted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (membershipError) {
-    inviteError(membershipError.message);
+  if (membershipError || !acceptedMembership) {
+    inviteError(
+      membershipError?.message ?? "This invitation has already been used."
+    );
   }
 
   const { error: profileError } = await admin.from("profiles").upsert({
@@ -135,6 +156,11 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
       maxAge: 60 * 60 * 24 * 30
     });
   }
+  cookieStore.set(invitePasswordSetupCookieName, passwordSetupToken, {
+    ...cookieOptions,
+    sameSite: "strict",
+    maxAge: Math.floor(invitePasswordSetupLifetimeMs / 1000)
+  });
 
   redirect("/auth/setup-password");
 }
@@ -144,8 +170,10 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
   const confirmPassword = String(formData.get("confirm_password") ?? "");
   const user = await getAuthenticatedUser();
   const admin = getSupabaseAdmin();
+  const cookieStore = await cookies();
+  const passwordSetupToken = cookieStore.get(invitePasswordSetupCookieName)?.value;
 
-  if (!user || !admin) {
+  if (!user || !admin || !passwordSetupToken) {
     redirect("/admin-login?error=Your%20invitation%20session%20has%20expired.");
   }
 
@@ -157,19 +185,32 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
     redirect("/auth/setup-password?error=Passwords%20do%20not%20match.");
   }
 
+  const now = new Date().toISOString();
+  const tokenHash = hashPasswordSetupToken(passwordSetupToken);
+  const { data: membership, error: membershipClaimError } = await admin
+    .from("restaurant_users")
+    .update({
+      password_setup_token_hash: null,
+      password_setup_expires_at: null
+    })
+    .eq("user_id", user.id)
+    .eq("password_setup_token_hash", tokenHash)
+    .gt("password_setup_expires_at", now)
+    .select("id")
+    .maybeSingle();
+
+  if (membershipClaimError || !membership) {
+    cookieStore.delete(invitePasswordSetupCookieName);
+    redirect("/admin-login?error=Your%20invitation%20session%20has%20expired.");
+  }
+
   const { error } = await admin.auth.admin.updateUserById(user.id, { password });
 
   if (error) {
     redirect(`/auth/setup-password?error=${encodeURIComponent(error.message)}`);
   }
 
-  const { error: membershipError } = await admin
-    .from("restaurant_users")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("user_id", user.id);
-  if (membershipError) {
-    redirect(`/auth/setup-password?error=${encodeURIComponent(membershipError.message)}`);
-  }
+  cookieStore.delete(invitePasswordSetupCookieName);
 
   redirect("/admin?welcome=1");
 }

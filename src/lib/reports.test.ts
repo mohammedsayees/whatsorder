@@ -44,6 +44,18 @@ describe("report ranges", () => {
     expect(range.startIso).toBe("2026-06-14T00:00:00+04:00");
     expect(range.endExclusiveIso).toBe("2026-06-21T00:00:00+04:00");
   });
+
+  it("caps custom reports to one year", () => {
+    const range = resolveReportRange(
+      "custom",
+      "2020-01-01",
+      "2026-06-20",
+      new Date("2026-06-20T08:00:00.000Z")
+    );
+
+    expect(range.startDate).toBe("2025-06-20");
+    expect(range.endDate).toBe("2026-06-20");
+  });
 });
 
 describe("restaurant reporting", () => {

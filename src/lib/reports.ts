@@ -7,6 +7,7 @@ import type {
 
 const uaeOffset = "+04:00";
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+export const MAX_REPORT_RANGE_DAYS = 366;
 
 export type ReportPreset =
   | "today"
@@ -182,7 +183,13 @@ export function resolveReportRange(
     const requestedEnd = validDate(customEnd);
 
     if (requestedStart && requestedEnd && requestedStart <= requestedEnd) {
-      startDate = requestedStart;
+      const earliestAllowedStart = shiftDate(
+        requestedEnd,
+        -(MAX_REPORT_RANGE_DAYS - 1)
+      );
+      startDate = requestedStart < earliestAllowedStart
+        ? earliestAllowedStart
+        : requestedStart;
       endDate = requestedEnd;
     } else {
       startDate = monthStart(today);
