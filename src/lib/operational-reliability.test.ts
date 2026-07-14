@@ -120,4 +120,20 @@ describe("restaurant operational reliability boundaries", () => {
     expect(shiftData).toContain('.in("status", [...activeOrderStatuses])');
     expect(shiftForm).toContain("activeOrderCount > 0");
   });
+
+  it("adds items through a tenant-scoped, idempotent online staff workflow", () => {
+    const action = source("src/app/admin/orders/actions.ts");
+    const entry = source("src/components/admin/StaffOrderEntry.tsx");
+    const list = source("src/components/admin/OrderList.tsx");
+    const route = source("src/app/admin/orders/[id]/add-items/page.tsx");
+
+    expect(action).toContain('eq("restaurant_id", session.restaurantId)');
+    expect(action).toContain('supabase.rpc("add_items_to_restaurant_order"');
+    expect(action).toContain("verifyCombinedOfferLimits");
+    expect(entry).toContain("additionAttemptIdRef.current ?? crypto.randomUUID()");
+    expect(entry).toContain("Retry this unchanged ticket when online");
+    expect(entry).not.toContain("enqueue(addItemsToOrderAction");
+    expect(list).toContain("Add items");
+    expect(route).toContain("getOrderForAdmin(session.restaurantId, id)");
+  });
 });

@@ -19,6 +19,10 @@ export type VerifiedCart =
   | { ok: true; items: CartLine[]; subtotal: number }
   | { ok: false; error: string };
 
+export type OfferLimitVerification =
+  | { ok: true }
+  | { ok: false; error: string };
+
 /**
  * An offer may be applied to an order only while it is active AND inside its
  * optional date window. This is the pricing-trust check: the admin UI shows
@@ -41,6 +45,42 @@ export function isOfferOrderable(offer: MenuOffer, now: Date = new Date()): bool
   }
 
   return true;
+}
+
+/**
+ * Adding items to an unpaid ticket must not reset an offer's per-order cap.
+ * The new lines have already been verified against the live offer catalog;
+ * this check combines them with the stored order snapshot before amendment.
+ */
+export function verifyCombinedOfferLimits(
+  existingItems: CartLine[],
+  addedItems: CartLine[],
+  offers: MenuOffer[]
+): OfferLimitVerification {
+  const offersById = new Map(offers.map((offer) => [offer.id, offer]));
+  const quantityByOfferId = new Map<string, number>();
+
+  for (const line of [...existingItems, ...addedItems]) {
+    if (line.offer_id) {
+      quantityByOfferId.set(
+        line.offer_id,
+        (quantityByOfferId.get(line.offer_id) ?? 0) + line.quantity
+      );
+    }
+  }
+
+  for (const [offerId, quantity] of quantityByOfferId) {
+    const offer = offersById.get(offerId);
+
+    if (offer && !isOfferQuantityAllowed(quantity, offer.max_quantity_per_order)) {
+      return {
+        ok: false,
+        error: `${offer.title} is limited to ${offer.max_quantity_per_order} per order.`
+      };
+    }
+  }
+
+  return { ok: true };
 }
 
 type OptionVerification =
