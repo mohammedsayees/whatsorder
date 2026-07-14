@@ -157,9 +157,11 @@ export function PaidOutForm({ shiftId }: { shiftId: string }) {
 }
 
 export function CloseShiftForm({
+  activeOrderCount,
   expectedCash,
   shiftId
 }: {
+  activeOrderCount: number;
   expectedCash: number;
   shiftId: string;
 }) {
@@ -175,11 +177,25 @@ export function CloseShiftForm({
     ? calculateCashDifference(countedAmount, expectedCash)
     : null;
   const noteRequired = difference !== null && difference !== 0;
-  const submitDisabled = pending || (noteRequired && closingNote.trim() === "");
+  const submitDisabled =
+    pending ||
+    activeOrderCount > 0 ||
+    (noteRequired && closingNote.trim() === "");
 
   return (
     <form action={action} className="space-y-4">
       <input name="shift_id" type="hidden" value={shiftId} />
+      {activeOrderCount > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+          <p className="font-black">
+            Resolve {activeOrderCount} active order
+            {activeOrderCount === 1 ? "" : "s"} before closing
+          </p>
+          <p className="mt-1 text-xs font-semibold">
+            Complete or cancel every pending order, then refresh this page.
+          </p>
+        </div>
+      ) : null}
       <div className="rounded-lg bg-stone-100 p-3">
         <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
           Expected cash

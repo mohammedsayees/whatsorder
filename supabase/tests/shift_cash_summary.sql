@@ -1,5 +1,3 @@
-\set ON_ERROR_STOP on
-
 -- Rollback-only integration checks for Shift Cash Summary.
 begin;
 
@@ -17,6 +15,18 @@ insert into public.restaurants (id, name, slug, whatsapp_number, status, is_acti
 values
   ('22000000-0000-0000-0000-000000000001', 'Shift Tenant A', 'shift-a', '971500000021', 'live', true),
   ('22000000-0000-0000-0000-000000000002', 'Shift Tenant B', 'shift-b', '971500000022', 'live', true);
+
+insert into public.restaurant_users (
+  id, restaurant_id, user_id, email, role, accepted_at
+)
+values (
+  '32000000-0000-0000-0000-000000000001',
+  '22000000-0000-0000-0000-000000000001',
+  '12000000-0000-0000-0000-000000000001',
+  'shift-staff@test.invalid',
+  'staff',
+  now()
+);
 
 insert into public.restaurant_shifts (
   id,
@@ -118,6 +128,47 @@ begin
   end;
 end;
 $cross_tenant_shift$;
+
+do $active_orders_block_close$
+begin
+  begin
+    perform public.close_restaurant_shift(
+      '22000000-0000-0000-0000-000000000001',
+      '82000000-0000-0000-0000-000000000001',
+      100,
+      null,
+      '12000000-0000-0000-0000-000000000001'
+    );
+    raise exception 'Shift unexpectedly closed with an active order';
+  exception
+    when others then
+      if sqlerrm not like '%Cannot close shift while active orders remain%' then
+        raise;
+      end if;
+  end;
+
+  update public.orders
+  set status = 'Completed'
+  where id = '42000000-0000-0000-0000-000000000001';
+
+  perform public.close_restaurant_shift(
+    '22000000-0000-0000-0000-000000000001',
+    '82000000-0000-0000-0000-000000000001',
+    100,
+    null,
+    '12000000-0000-0000-0000-000000000001'
+  );
+
+  if not exists (
+    select 1
+    from public.restaurant_shifts
+    where id = '82000000-0000-0000-0000-000000000001'
+      and status = 'closed'
+  ) then
+    raise exception 'Shift did not close after active orders were resolved';
+  end if;
+end;
+$active_orders_block_close$;
 
 do $constraint_checks$
 begin

@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 
 export type CurrentShiftView = {
+  activeOrderCount: number;
   canManage: boolean;
   paidOuts: ShiftCashPaidOut[];
   shift: RestaurantShift;
@@ -27,6 +28,14 @@ const emptySummary: ShiftSummary = {
   expected_cash_amount: 0,
   fulfilment_breakdown: {}
 };
+
+const activeOrderStatuses = [
+  "New",
+  "Accepted",
+  "Preparing",
+  "Ready to Serve",
+  "Out for Delivery"
+] as const;
 
 function numericSummary(value: unknown) {
   const summary = (value ?? {}) as Partial<ShiftSummary>;
@@ -69,7 +78,11 @@ export async function getCurrentShiftView(
     return null;
   }
 
-  const [{ data: summary, error: summaryError }, { data: paidOuts, error: paidOutError }] =
+  const [
+    { data: summary, error: summaryError },
+    { data: paidOuts, error: paidOutError },
+    { count: activeOrderCount, error: activeOrderError }
+  ] =
     await Promise.all([
       supabase.rpc("calculate_restaurant_shift_summary", {
         target_restaurant_id: session.restaurantId,
@@ -81,14 +94,20 @@ export async function getCurrentShiftView(
         .eq("restaurant_id", session.restaurantId)
         .eq("shift_id", shift.id)
         .order("recorded_at", { ascending: false })
-        .limit(100)
+        .limit(100),
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", session.restaurantId)
+        .in("status", [...activeOrderStatuses])
     ]);
 
-  if (summaryError || paidOutError) {
+  if (summaryError || paidOutError || activeOrderError) {
     throw new Error("Current shift totals could not be loaded.");
   }
 
   return {
+    activeOrderCount: activeOrderCount ?? 0,
     canManage:
       session.role !== "staff" || shift.opened_by_user_id === session.userId,
     paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[],

@@ -262,6 +262,7 @@ export default async function AdminShiftsPage() {
               {currentShift.canManage ? (
                 <div className="mt-4">
                   <CloseShiftForm
+                    activeOrderCount={currentShift.activeOrderCount}
                     expectedCash={currentShift.summary.expected_cash_amount}
                     shiftId={currentShift.shift.id}
                   />
