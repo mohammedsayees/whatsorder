@@ -68,6 +68,12 @@ describe("public order database boundary", () => {
   const localizationIntegrationTest = readProjectFile(
     "supabase/tests/multi_country_localization.sql"
   );
+  const dailyCoachMigration = readProjectFile(
+    "supabase/migrations/20260715100000_daily_coach_period_insights.sql"
+  );
+  const dailyCoachIntegrationTest = readProjectFile(
+    "supabase/tests/daily_coach_insights.sql"
+  );
   const inviteActions = readProjectFile("src/app/auth/invite/actions.ts");
   const readme = readProjectFile("README.md");
   const setupGuide = readProjectFile("SUPABASE_SETUP.md");
@@ -435,5 +441,21 @@ describe("public order database boundary", () => {
       "Invalid India/AED profile unexpectedly succeeded"
     );
     expect(localizationIntegrationTest).toContain("rollback;");
+  });
+
+  it("keeps Daily Coach insights tenant-scoped and service-role only", () => {
+    expect(dailyCoachMigration).toContain("where o.restaurant_id = rid");
+    expect(dailyCoachMigration).toContain("and o.status = 'Completed'");
+    expect(dailyCoachMigration).toMatch(
+      /revoke all on function public\.daily_coach_insights\(uuid, date\)[\s\S]*?from public, anon, authenticated;/
+    );
+    expect(dailyCoachMigration).toMatch(
+      /grant execute on function public\.daily_coach_insights\(uuid, date\)[\s\S]*?to service_role;/
+    );
+    expect(dailyCoachMigration).toContain("having count(*) >= 3");
+    expect(dailyCoachIntegrationTest).toContain(
+      "Cross-tenant order must never affect Tenant A"
+    );
+    expect(dailyCoachIntegrationTest).toContain("rollback;");
   });
 });

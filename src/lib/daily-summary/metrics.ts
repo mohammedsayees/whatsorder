@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { DailyNumbers } from "./types";
+import type { DailyCoachRpcResult, DailyNumbers } from "./types";
 
 /**
  * Returns yesterday's deterministic numbers for one restaurant by delegating to
@@ -24,14 +24,64 @@ export async function computeDailyNumbers(
     params.target_day = targetDay;
   }
 
-  const { data, error } = await admin.rpc("daily_summary_numbers", params);
+  const summaryPromise = admin.rpc("daily_summary_numbers", params);
+  const [summaryResult, coachResult] = targetDay
+    ? await Promise.all([
+        summaryPromise,
+        admin.rpc("daily_coach_insights", {
+          rid: restaurantId,
+          target_day: targetDay
+        })
+      ])
+    : await (async () => {
+        const summary = await summaryPromise;
+        const summaryDate = (summary.data as { summary_date?: string } | null)
+          ?.summary_date;
+        if (!summaryDate) {
+          return [summary, { data: null, error: new Error("Missing summary date") }] as const;
+        }
+        const coach = await admin.rpc("daily_coach_insights", {
+          rid: restaurantId,
+          target_day: summaryDate
+        });
+        return [summary, coach] as const;
+      })();
 
-  if (error) {
-    throw new Error(`daily_summary_numbers failed: ${error.message}`);
+  if (summaryResult.error) {
+    throw new Error(`daily_summary_numbers failed: ${summaryResult.error.message}`);
   }
-  if (!data) {
+  if (!summaryResult.data) {
     throw new Error("daily_summary_numbers returned no data");
   }
+  if (coachResult.error) {
+    throw new Error(`daily_coach_insights failed: ${coachResult.error.message}`);
+  }
+  if (!coachResult.data) {
+    throw new Error("daily_coach_insights returned no data");
+  }
 
-  return data as DailyNumbers;
+  const legacy = summaryResult.data as DailyNumbers;
+  const coach = coachResult.data as DailyCoachRpcResult;
+  const contactCaptureRate =
+    coach.completed_order_count > 0
+      ? coach.contact_count / coach.completed_order_count
+      : null;
+
+  return {
+    ...legacy,
+    summary_date: coach.summary_date,
+    order_count: coach.completed_order_count,
+    gross_revenue: coach.completed_sales,
+    avg_order_value: coach.avg_order_value,
+    prev_count: coach.previous_day_count,
+    last_week_count: coach.last_week_count,
+    delta_vs_prev: coach.completed_order_count - coach.previous_day_count,
+    delta_vs_last_week: coach.completed_order_count - coach.last_week_count,
+    dow_avg_count: coach.same_weekday_average,
+    cancelled_count: coach.cancelled_count,
+    contact_capture_rate: contactCaptureRate,
+    marketable_count: coach.marketable_count,
+    periods: coach.periods,
+    location_insights: coach.location_insights
+  };
 }

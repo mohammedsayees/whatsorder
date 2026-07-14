@@ -36,8 +36,8 @@ How you think (silently, then write):
 3. QUANTIFY the upside from the data where you can.
 
 Signals and the growth move each points to:
-- contact_capture_rate low: most customers are anonymous and can't be brought
-  back. Push to capture contacts (ask at checkout / loyalty stamp). Suggest
+- contact_capture_rate low: suggest an optional loyalty invitation at checkout.
+  A phone collected for order processing is not marketing permission. Suggest
   messaging past customers ONLY if marketable_count > 0 — never tell them to
   message people who did not consent.
 - item_riser: lean in — make it today's hero.
@@ -173,8 +173,12 @@ export function buildTemplateMessage(
   name: string,
   restaurant?: Partial<RestaurantLocalization> | null
 ): string {
+  if (numbers.coach) {
+    return buildDailyCoachMessage(numbers, name, restaurant);
+  }
+
   if (numbers.order_count === 0) {
-    return `${name}: quiet one yesterday — no orders came through. Don't let today go the same way: send a WhatsApp broadcast this morning with one clear offer to pull people in.`;
+    return `${name}: no completed orders were recorded yesterday. Confirm ordering was enabled and feature one available item during the first open period today.`;
   }
 
   const lines: string[] = [];
@@ -206,11 +210,7 @@ export function buildTemplateMessage(
     facts.push(`${numbers.top_item.name} led (${numbers.top_item.qty} sold)`);
   }
   if (numbers.busiest_hour !== null) {
-    const quiet =
-      numbers.deadest_hour !== null && numbers.deadest_hour !== numbers.busiest_hour
-        ? `, quiet at ${numbers.deadest_hour}:00`
-        : "";
-    facts.push(`busiest ${numbers.busiest_hour}:00${quiet}`);
+    facts.push(`busiest ${numbers.busiest_hour}:00`);
   }
   if (facts.length > 0) {
     lines.push(`${facts.join("; ")}.`);
@@ -236,7 +236,7 @@ function managerAction(n: DailyNumbers): string {
   // The biggest lever when most customers stay anonymous: capture contacts.
   if (n.contact_capture_rate !== null && n.contact_capture_rate < 0.5) {
     const pct = Math.round(n.contact_capture_rate * 100);
-    return `Only ${pct}% left a contact — the rest you can't win back. Ask for a number or offer a loyalty stamp at checkout to build a base you can re-market to.`;
+    return `${pct}% of orders recorded a phone number. Invite eligible customers to loyalty at checkout, while keeping promotional consent separate and optional.`;
   }
   // A fading favourite worth defending.
   if (n.item_faller && n.item_faller.this_week < n.item_faller.prev_week) {
@@ -251,16 +251,112 @@ function managerAction(n: DailyNumbers): string {
   }
   // A dead window to fill.
   if (n.deadest_hour !== null && n.deadest_hour !== n.busiest_hour) {
-    return `${n.deadest_hour}:00 is your quiet window — run a small offer aimed only at that hour.`;
+    return `${n.deadest_hour}:00 had the least recorded activity — check that ordering and suitable items were available before considering an offer.`;
   }
   // Lean into a rising or leading item.
   if (n.item_riser) {
     return `${n.item_riser.name} is climbing (${n.item_riser.prev_week} to ${n.item_riser.this_week}) — push it as today's hero.`;
   }
   if (n.top_item) {
-    return `${n.top_item.name} carried the day — make it the hero in today's broadcast.`;
+    return `${n.top_item.name} carried the day — keep it prominent on today's menu.`;
   }
-  return "Pick one item to feature today and push it in a quick broadcast.";
+  return "Pick one available item to feature clearly on today's menu.";
+}
+
+function summaryDay(
+  isoDate: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  const parsed = new Date(`${isoDate}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoDate;
+  }
+  return new Intl.DateTimeFormat(localization.locale, {
+    day: "numeric",
+    month: "long",
+    weekday: "long",
+    timeZone: "UTC"
+  }).format(parsed);
+}
+
+function comparisonLine(numbers: DailyNumbers) {
+  const baseline =
+    numbers.last_week_count > 0
+      ? numbers.last_week_count
+      : Number(numbers.dow_avg_count) || 0;
+  if (baseline <= 0) {
+    return null;
+  }
+
+  const difference = numbers.order_count - baseline;
+  const percentage = Math.round((difference / baseline) * 100);
+  const source = numbers.last_week_count > 0 ? "last week" : "the four-week weekday average";
+  if (difference === 0) {
+    return `Comparison: level with ${source}.`;
+  }
+  return `Comparison: ${Math.abs(Math.round(difference))} ${
+    difference > 0 ? "more" : "fewer"
+  } orders (${percentage > 0 ? "+" : ""}${percentage}%) than ${source}.`;
+}
+
+function buildDailyCoachMessage(
+  numbers: DailyNumbers,
+  name: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const coach = numbers.coach;
+  if (!coach) {
+    return "";
+  }
+  const lines = [
+    `Daily Coach — ${summaryDay(numbers.summary_date, restaurant)}`,
+    `${name}: ${numbers.order_count} completed order${
+      numbers.order_count === 1 ? "" : "s"
+    } • ${formatCurrency(numbers.gross_revenue, restaurant)} sales • ${formatCurrency(
+      numbers.avg_order_value,
+      restaurant
+    )} average order.`
+  ];
+  const comparison = comparisonLine(numbers);
+  if (comparison) {
+    lines.push(comparison);
+  }
+
+  if (numbers.order_count === 0) {
+    lines.push(
+      "No completed sales were recorded. Confirm ordering was enabled and feature one available item during the first open period today."
+    );
+    return lines.join("\n");
+  }
+
+  const strongestPeriod = coach.periods
+    .filter((period) => period.order_count > 0)
+    .toSorted((first, second) => second.order_count - first.order_count)[0];
+  const facts: string[] = strongestPeriod
+    ? [`${strongestPeriod.label} was strongest with ${strongestPeriod.order_count} orders`]
+    : [];
+  if (strongestPeriod?.top_item) {
+    facts.push(
+      `${strongestPeriod.top_item.name} led there with ${strongestPeriod.top_item.qty} sold`
+    );
+  }
+  if (facts.length > 0) {
+    lines.push(`What stood out: ${facts.join(" • ")}.`);
+  }
+
+  if (coach.top_actions.length) {
+    lines.push("Today's priorities:");
+    coach.top_actions.forEach((recommendation, index) => {
+      lines.push(
+        `${index + 1}. ${recommendation.period_label}: ${recommendation.evidence} ${recommendation.action}`
+      );
+    });
+  } else {
+    lines.push("Today: no material period-level problem was detected; keep the current operation consistent.");
+  }
+
+  return lines.join("\n");
 }
 
 /**
@@ -275,6 +371,12 @@ export async function narrate(
 ): Promise<string> {
   const localization = getRestaurantLocalization(restaurant);
   const template = buildTemplateMessage(numbers, name, restaurant);
+  // Daily Coach recommendations and their evidence are already deterministic.
+  // Do not send them through a model that could alter a period, count, consent
+  // rule, or location claim.
+  if (numbers.coach) {
+    return template;
+  }
   try {
     const prompt = `${systemPrompt(localization.country_code, localization.currency_code)}\n\nCafé name: ${name}\nNumbers JSON:\n${JSON.stringify(
       numbers

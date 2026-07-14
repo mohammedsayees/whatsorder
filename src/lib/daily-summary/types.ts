@@ -30,4 +30,91 @@ export type DailyNumbers = {
   aov_prev_week: number;
   busiest_hour: number | null;
   deadest_hour: number | null;
+  periods?: DailyPeriodInsight[];
+  location_insights?: DailyLocationInsight[];
+  coach?: DailyCoach;
+};
+
+export type DailyPeriodKey =
+  | "early_morning"
+  | "morning"
+  | "lunch"
+  | "evening"
+  | "night"
+  | "midnight";
+
+export type DailyPeriodInsight = {
+  key: DailyPeriodKey;
+  label: string;
+  start_hour: number;
+  end_hour: number;
+  order_count: number;
+  sales: number;
+  avg_order_value: number;
+  baseline_order_count: number;
+  baseline_avg_order_value: number;
+  cancelled_count: number;
+  contact_count: number;
+  marketable_count: number;
+  repeat_customer_orders: number;
+  new_customer_orders: number;
+  delivery_order_count: number;
+  fulfilment_breakdown: Record<
+    string,
+    { orders: number; sales: number }
+  >;
+  top_item: { name: string; qty: number } | null;
+  top_delivery_area: { area: string; orders: number; sales: number } | null;
+};
+
+export type DailyLocationInsight = {
+  area: string;
+  order_count: number;
+  sales: number;
+  avg_order_value: number;
+  repeat_customer_orders: number;
+};
+
+export type DailyCoachPeriodStatus =
+  | "growing"
+  | "normal"
+  | "needs_attention"
+  | "insufficient_data";
+
+export type DailyCoachAction = {
+  period_key: DailyPeriodKey;
+  period_label: string;
+  priority: number;
+  kind: "operations" | "demand" | "basket" | "retention" | "location" | "protect";
+  evidence: string;
+  action: string;
+};
+
+export type DailyCoachPeriod = DailyPeriodInsight & {
+  is_open: boolean;
+  status: DailyCoachPeriodStatus;
+  evidence: string;
+  action: string;
+};
+
+export type DailyCoach = {
+  periods: DailyCoachPeriod[];
+  top_actions: DailyCoachAction[];
+};
+
+export type DailyCoachRpcResult = {
+  summary_date: string;
+  completed_order_count: number;
+  completed_sales: number;
+  avg_order_value: number;
+  previous_day_count: number;
+  last_week_count: number;
+  same_weekday_average: number;
+  cancelled_count: number;
+  contact_count: number;
+  marketable_count: number;
+  repeat_customer_orders: number;
+  new_customer_orders: number;
+  periods: DailyPeriodInsight[];
+  location_insights: DailyLocationInsight[];
 };
