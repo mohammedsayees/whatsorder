@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { aedAmountsGrounded, buildTemplateMessage, narrate } from "./narrate";
+import { withDailyCoach } from "./coach";
 import type { DailyNumbers } from "./types";
 
 function numbers(overrides: Partial<DailyNumbers> = {}): DailyNumbers {
@@ -59,7 +60,7 @@ describe("aedAmountsGrounded", () => {
 describe("buildTemplateMessage", () => {
   it("renders an encouraging one-liner on a zero-order day", () => {
     const message = buildTemplateMessage(numbers({ order_count: 0 }), "Chai Xpress");
-    expect(message).toContain("no orders");
+    expect(message).toContain("no completed orders");
     expect(message.split("\n")).toHaveLength(1);
   });
 
@@ -101,6 +102,46 @@ describe("buildTemplateMessage", () => {
     );
     expect(message).toContain("Samosa");
     expect(message).toContain("sliding");
+  });
+
+  it("renders deterministic period priorities when Daily Coach data is present", () => {
+    const n = withDailyCoach({
+      ...numbers({
+        order_count: 4,
+        gross_revenue: 80,
+        avg_order_value: 20,
+        last_week_count: 8,
+        delta_vs_last_week: -4
+      }),
+      periods: [
+        {
+          key: "morning",
+          label: "Morning",
+          start_hour: 7,
+          end_hour: 11,
+          order_count: 4,
+          sales: 80,
+          avg_order_value: 20,
+          baseline_order_count: 8,
+          baseline_avg_order_value: 20,
+          cancelled_count: 0,
+          contact_count: 2,
+          marketable_count: 1,
+          repeat_customer_orders: 2,
+          new_customer_orders: 0,
+          delivery_order_count: 0,
+          fulfilment_breakdown: {},
+          top_item: { name: "Karak Tea", qty: 4 },
+          top_delivery_area: null
+        }
+      ]
+    });
+    const message = buildTemplateMessage(n, "Chai Xpress");
+    expect(message).toContain("Daily Coach");
+    expect(message).toContain("4 completed orders");
+    expect(message).toContain("Morning:");
+    expect(message).toContain("Today's priorities");
+    expect(message).not.toContain("can't win back");
   });
 });
 

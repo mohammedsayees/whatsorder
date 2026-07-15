@@ -11,7 +11,16 @@ import {
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
 import { calculateCashDifference } from "@/lib/shift-calculations";
-import type { Restaurant } from "@/lib/types";
+import {
+  reconciliationNeedsNote,
+  shiftMarketplaceLabels
+} from "@/lib/shift-reconciliation";
+import type {
+  Restaurant,
+  ShiftMarketplaceChannel,
+  ShiftMarketplaceSale,
+  ShiftMarketplaceStatus
+} from "@/lib/types";
 
 const initialState: ShiftActionState = {};
 
@@ -157,14 +166,158 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
   );
 }
 
+function inputDifference(value: string, expected: number) {
+  const amount = Number(value);
+  return value !== "" && Number.isFinite(amount)
+    ? calculateCashDifference(amount, expected)
+    : null;
+}
+
+function DifferencePreview({
+  difference,
+  restaurant
+}: {
+  difference: number | null;
+  restaurant: Restaurant;
+}) {
+  if (difference === null) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`rounded-lg p-3 ${
+        difference === 0
+          ? "bg-emerald-50 text-emerald-800"
+          : "bg-amber-50 text-amber-900"
+      }`}
+    >
+      <p className="text-xs font-bold uppercase tracking-wide">Difference</p>
+      <p className="mt-1 text-xl font-black">
+        {formatCurrency(difference, restaurant)}
+      </p>
+    </div>
+  );
+}
+
+function MarketplaceReconciliationField({
+  channel,
+  initialSale
+}: {
+  channel: ShiftMarketplaceChannel;
+  initialSale?: ShiftMarketplaceSale;
+}) {
+  const [status, setStatus] = useState<ShiftMarketplaceStatus | "">(
+    initialSale?.status ?? ""
+  );
+  const label = shiftMarketplaceLabels[channel];
+
+  return (
+    <fieldset className="rounded-lg border border-stone-200 p-3">
+      <legend className="px-1 text-sm font-black">{label}</legend>
+      <label className="block text-xs font-bold text-stone-600">
+        Report status
+        <select
+          className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm"
+          name={`marketplace_${channel}_status`}
+          onChange={(event) => setStatus(event.target.value as ShiftMarketplaceStatus | "")}
+          required
+          value={status}
+        >
+          <option value="">Choose…</option>
+          <option value="entered">Enter report total</option>
+          <option value="zero">Confirm zero sales</option>
+          <option value="unavailable">Report unavailable</option>
+        </select>
+      </label>
+      {status === "entered" ? (
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="text-xs font-bold text-stone-600">
+            Orders <span className="font-normal text-stone-400">(optional)</span>
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm"
+              defaultValue={initialSale?.order_count ?? ""}
+              inputMode="numeric"
+              min="0"
+              name={`marketplace_${channel}_order_count`}
+              step="1"
+              type="number"
+            />
+          </label>
+          <label className="text-xs font-bold text-stone-600">
+            Gross sales
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm"
+              defaultValue={initialSale?.gross_sales ?? ""}
+              min="0"
+              name={`marketplace_${channel}_gross_sales`}
+              required
+              step="0.01"
+              type="number"
+            />
+          </label>
+        </div>
+      ) : null}
+      {status === "zero" ? (
+        <p className="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-600">
+          You are confirming the {label} report shows no sales for this shift.
+        </p>
+      ) : null}
+      {status === "unavailable" ? (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+          The shift can still close. The report will flag this total as unverified.
+        </p>
+      ) : null}
+      {status ? (
+        <label className="mt-3 block text-xs font-bold text-stone-600">
+          Note <span className="font-normal text-stone-400">(optional)</span>
+          <input
+            className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5 text-sm"
+            defaultValue={initialSale?.note ?? ""}
+            maxLength={200}
+            name={`marketplace_${channel}_note`}
+            placeholder={status === "unavailable" ? "e.g. portal was offline" : ""}
+          />
+        </label>
+      ) : null}
+    </fieldset>
+  );
+}
+
+export function MarketplaceReconciliationFields({
+  channels,
+  initialSales = []
+}: {
+  channels: ShiftMarketplaceChannel[];
+  initialSales?: ShiftMarketplaceSale[];
+}) {
+  return (
+    <div className="space-y-3">
+      {channels.map((channel) => (
+        <MarketplaceReconciliationField
+          channel={channel}
+          initialSale={initialSales.find((sale) => sale.channel === channel)}
+          key={channel}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function CloseShiftForm({
   activeOrderCount,
+  expectedCard,
   expectedCash,
+  expectedUpi,
+  marketplaceChannels,
   restaurant,
   shiftId
 }: {
   activeOrderCount: number;
+  expectedCard: number;
   expectedCash: number;
+  expectedUpi: number;
+  marketplaceChannels: ShiftMarketplaceChannel[];
   restaurant: Restaurant;
   shiftId: string;
 }) {
@@ -173,13 +326,19 @@ export function CloseShiftForm({
     initialState
   );
   const [cashCounted, setCashCounted] = useState("");
+  const [cardTerminalTotal, setCardTerminalTotal] = useState("");
+  const [upiReportedTotal, setUpiReportedTotal] = useState("");
   const [closingNote, setClosingNote] = useState("");
-  const countedAmount = Number(cashCounted);
-  const hasCount = cashCounted !== "" && Number.isFinite(countedAmount);
-  const difference = hasCount
-    ? calculateCashDifference(countedAmount, expectedCash)
+  const cashDifference = inputDifference(cashCounted, expectedCash);
+  const cardDifference = inputDifference(cardTerminalTotal, expectedCard);
+  const upiDifference = restaurant.country_code === "IN"
+    ? inputDifference(upiReportedTotal, expectedUpi)
     : null;
-  const noteRequired = difference !== null && difference !== 0;
+  const noteRequired = reconciliationNeedsNote([
+    cashDifference,
+    cardDifference,
+    upiDifference
+  ]);
   const submitDisabled =
     pending ||
     activeOrderCount > 0 ||
@@ -199,40 +358,90 @@ export function CloseShiftForm({
           </p>
         </div>
       ) : null}
-      <div className="rounded-lg bg-stone-100 p-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-          Expected cash
-        </p>
-        <p className="mt-1 text-2xl font-black">{formatCurrency(expectedCash, restaurant)}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg bg-stone-100 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Expected cash
+          </p>
+          <p className="mt-1 text-2xl font-black">{formatCurrency(expectedCash, restaurant)}</p>
+        </div>
+        <div className="rounded-lg bg-stone-100 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            WhatsOrder card sales
+          </p>
+          <p className="mt-1 text-2xl font-black">{formatCurrency(expectedCard, restaurant)}</p>
+        </div>
       </div>
-      <label className="block text-sm font-bold text-stone-700">
-        Cash counted
-        <input
-          className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
-          min="0"
-          name="cash_counted_amount"
-          onChange={(event) => setCashCounted(event.target.value)}
-          required
-          step="0.01"
-          type="number"
-          value={cashCounted}
-        />
-      </label>
-      {difference !== null ? (
-        <div
-          className={`rounded-lg p-3 ${
-            difference === 0
-              ? "bg-emerald-50 text-emerald-800"
-              : "bg-amber-50 text-amber-900"
-          }`}
-        >
-          <p className="text-xs font-bold uppercase tracking-wide">Difference</p>
-          <p className="mt-1 text-xl font-black">{formatCurrency(difference, restaurant)}</p>
-          {difference !== 0 ? (
-            <p className="mt-1 text-xs font-bold">
-              A closing note is required to explain the shortage or excess.
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-stone-700">
+            Cash counted
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+              min="0"
+              name="cash_counted_amount"
+              onChange={(event) => setCashCounted(event.target.value)}
+              required
+              step="0.01"
+              type="number"
+              value={cashCounted}
+            />
+          </label>
+          <DifferencePreview difference={cashDifference} restaurant={restaurant} />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-stone-700">
+            Card terminal total
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+              min="0"
+              name="card_terminal_total"
+              onChange={(event) => setCardTerminalTotal(event.target.value)}
+              required
+              step="0.01"
+              type="number"
+              value={cardTerminalTotal}
+            />
+          </label>
+          <DifferencePreview difference={cardDifference} restaurant={restaurant} />
+        </div>
+      </div>
+      {restaurant.country_code === "IN" ? (
+        <div className="space-y-2">
+          <div className="rounded-lg bg-stone-100 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+              WhatsOrder UPI sales
             </p>
-          ) : null}
+            <p className="mt-1 text-2xl font-black">
+              {formatCurrency(expectedUpi, restaurant)}
+            </p>
+          </div>
+          <label className="block text-sm font-bold text-stone-700">
+            UPI app / QR report total
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+              min="0"
+              name="upi_reported_total"
+              onChange={(event) => setUpiReportedTotal(event.target.value)}
+              required
+              step="0.01"
+              type="number"
+              value={upiReportedTotal}
+            />
+          </label>
+          <DifferencePreview difference={upiDifference} restaurant={restaurant} />
+        </div>
+      ) : null}
+      {marketplaceChannels.length > 0 ? (
+        <div>
+          <h3 className="text-sm font-black">Delivery platform totals</h3>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            Use each platform&apos;s shift report. If it is offline, mark it unavailable;
+            this will be clearly flagged without blocking closure.
+          </p>
+          <div className="mt-3">
+            <MarketplaceReconciliationFields channels={marketplaceChannels} />
+          </div>
         </div>
       ) : null}
       <label className="block text-sm font-bold text-stone-700">
@@ -252,6 +461,11 @@ export function CloseShiftForm({
           value={closingNote}
         />
       </label>
+      {noteRequired ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+          Explain every cash, card or UPI shortage/excess before closing.
+        </p>
+      ) : null}
       <ActionMessage state={state} />
       <button
         className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"

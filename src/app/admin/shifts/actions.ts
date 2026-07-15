@@ -1,8 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import {
+  requireRestaurantAdmin,
+  requireRestaurantRole
+} from "@/lib/super-admin-auth";
+import {
+  configuredMarketplaceChannels,
+  marketplaceSalesFromFormData
+} from "@/lib/shift-reconciliation";
 
 export type ShiftActionState = {
   error?: string;
@@ -30,7 +38,15 @@ function friendlyShiftError(message?: string) {
     "Paid-out amount must be greater than zero",
     "A paid-out reason is required",
     "Counted cash cannot be negative",
-    "A closing note is required when cash has a difference"
+    "Card terminal total cannot be negative",
+    "UPI reported total cannot be negative",
+    "Confirm every enabled marketplace before closing",
+    "Enter valid marketplace totals or mark the report unavailable",
+    "A closing note is required when reconciliation has a difference",
+    "Only restaurant management can correct a closed shift report",
+    "A correction reason is required and must be 500 characters or fewer",
+    "Closed shift report not found",
+    "Reconciliation totals cannot be negative"
   ];
 
   return (
@@ -161,6 +177,12 @@ export async function closeShiftAction(
   const shiftId = formString(formData, "shift_id", 80);
   const closingNote = formString(formData, "closing_note", 500);
   const cashCounted = moneyValue(formData, "cash_counted_amount");
+  const cardTerminalTotal = moneyValue(formData, "card_terminal_total");
+  const upiReportedTotal = moneyValue(formData, "upi_reported_total");
+  const marketplaceResult = marketplaceSalesFromFormData(
+    formData,
+    configuredMarketplaceChannels(session.restaurant.shift_marketplace_channels)
+  );
 
   if (!supabase) {
     return { error: "Shift service is unavailable." };
@@ -170,10 +192,29 @@ export async function closeShiftAction(
     return { error: "Enter a valid counted cash amount." };
   }
 
-  const { error } = await supabase.rpc("close_restaurant_shift", {
+  if (cardTerminalTotal === null || cardTerminalTotal < 0) {
+    return { error: "Enter a valid card terminal total." };
+  }
+
+  if (
+    session.restaurant.country_code === "IN" &&
+    (upiReportedTotal === null || upiReportedTotal < 0)
+  ) {
+    return { error: "Enter a valid UPI reported total." };
+  }
+
+  if (marketplaceResult.error || !marketplaceResult.entries) {
+    return { error: marketplaceResult.error ?? "Confirm every marketplace total." };
+  }
+
+  const { error } = await supabase.rpc("close_restaurant_shift_v2", {
     event_actor_user_id: session.userId,
+    requested_card_terminal_total: cardTerminalTotal,
     requested_cash_counted_amount: cashCounted,
     requested_closing_note: closingNote || null,
+    requested_marketplace_sales: marketplaceResult.entries,
+    requested_upi_reported_total:
+      session.restaurant.country_code === "IN" ? upiReportedTotal : null,
     target_restaurant_id: session.restaurantId,
     target_shift_id: shiftId
   });
@@ -183,5 +224,68 @@ export async function closeShiftAction(
   }
 
   refreshShiftViews();
-  return { success: "Shift closed." };
+  redirect(`/admin/shifts/${shiftId}/report`);
+}
+
+export async function reviseShiftReportAction(
+  _previousState: ShiftActionState,
+  formData: FormData
+): Promise<ShiftActionState> {
+  const session = await requireRestaurantRole([
+    "restaurant_admin",
+    "owner",
+    "manager"
+  ]);
+  const supabase = getSupabaseAdmin();
+  const shiftId = formString(formData, "shift_id", 80);
+  const correctionReason = formString(formData, "correction_reason", 500);
+  const cashCounted = moneyValue(formData, "cash_counted_amount");
+  const cardTerminalTotal = moneyValue(formData, "card_terminal_total");
+  const upiReportedTotal = moneyValue(formData, "upi_reported_total");
+  const reportChannels = configuredMarketplaceChannels(
+    formData.getAll("report_marketplace_channel")
+  );
+  const marketplaceResult = marketplaceSalesFromFormData(formData, reportChannels);
+
+  if (!supabase) {
+    return { error: "Shift service is unavailable." };
+  }
+
+  if (!shiftId || !correctionReason) {
+    return { error: "Enter a correction reason." };
+  }
+
+  if (cashCounted === null || cashCounted < 0 ||
+      cardTerminalTotal === null || cardTerminalTotal < 0) {
+    return { error: "Enter valid reconciliation totals." };
+  }
+
+  if (session.restaurant.country_code === "IN" &&
+      (upiReportedTotal === null || upiReportedTotal < 0)) {
+    return { error: "Enter a valid UPI reported total." };
+  }
+
+  if (marketplaceResult.error || !marketplaceResult.entries) {
+    return { error: marketplaceResult.error ?? "Confirm every marketplace total." };
+  }
+
+  const { error } = await supabase.rpc("revise_restaurant_shift_close_report", {
+    event_actor_user_id: session.userId,
+    requested_card_terminal_total: cardTerminalTotal,
+    requested_cash_counted_amount: cashCounted,
+    requested_correction_reason: correctionReason,
+    requested_marketplace_sales: marketplaceResult.entries,
+    requested_upi_reported_total:
+      session.restaurant.country_code === "IN" ? upiReportedTotal : null,
+    target_restaurant_id: session.restaurantId,
+    target_shift_id: shiftId
+  });
+
+  if (error) {
+    return { error: friendlyShiftError(error.message) };
+  }
+
+  revalidatePath(`/admin/shifts/${shiftId}/report`);
+  revalidatePath("/admin/shifts");
+  return { success: "Correction saved as a new report version." };
 }

@@ -3,6 +3,11 @@ import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
 import type { Restaurant } from "@/lib/types";
 import { getCountryProfile } from "@/lib/localization";
+import {
+  configuredMarketplaceChannels,
+  shiftMarketplaceChannels,
+  shiftMarketplaceLabels
+} from "@/lib/shift-reconciliation";
 
 export function SettingsForm({
   restaurant,
@@ -12,6 +17,9 @@ export function SettingsForm({
   canWrite: boolean;
 }) {
   const countryProfile = getCountryProfile(restaurant.country_code);
+  const enabledMarketplaces = configuredMarketplaceChannels(
+    restaurant.shift_marketplace_channels
+  );
 
   return (
     <form action={updateRestaurantSettingsAction} className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
@@ -124,6 +132,27 @@ export function SettingsForm({
             </span>
           </span>
         </label>
+        <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <legend className="px-1 text-sm font-bold">Shift-close marketplaces</legend>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            Select the delivery platforms staff must reconcile before closing a shift.
+            These are manual operational totals, not settlement figures.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {shiftMarketplaceChannels.map((channel) => (
+              <label className="flex items-center gap-2 text-sm font-bold" key={channel}>
+                <input
+                  defaultChecked={enabledMarketplaces.includes(channel)}
+                  disabled={!canWrite}
+                  name="shift_marketplace_channels"
+                  type="checkbox"
+                  value={channel}
+                />
+                {shiftMarketplaceLabels[channel]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div className="sm:col-span-2">
           <WeeklyHoursFields
             canWrite={canWrite}

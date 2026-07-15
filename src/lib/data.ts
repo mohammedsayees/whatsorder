@@ -613,6 +613,7 @@ export type DailySummaryCardData = {
   summary_date: string;
   status: string;
   message_text: string | null;
+  numbers: import("@/lib/daily-summary/types").DailyNumbers | null;
 };
 
 /**
@@ -630,7 +631,7 @@ export async function getLatestDailySummary(
 
   const { data, error } = await supabase
     .from("daily_summary_runs")
-    .select("summary_date, status, message_text")
+    .select("summary_date, status, message_text, numbers")
     .eq("restaurant_id", restaurantId)
     .order("summary_date", { ascending: false })
     .limit(1)
