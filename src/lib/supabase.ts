@@ -1,4 +1,27 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+// Client construction is not free (auth/realtime/postgrest sub-clients), and
+// these getters run on every data read. Reuse one client per url+key for the
+// lifetime of the serverless instance; keying by url+key keeps behaviour
+// correct if env vars differ between calls (e.g. in tests).
+const clientCache = new Map<string, SupabaseClient>();
+
+function getCachedClient(url: string, key: string) {
+  const cacheKey = `${url}|${key}`;
+  let client = clientCache.get(cacheKey);
+
+  if (!client) {
+    client = createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+    clientCache.set(cacheKey, client);
+  }
+
+  return client;
+}
 
 export function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -12,12 +35,7 @@ export function getSupabase() {
     return null;
   }
 
-  return createClient(url, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    }
-  });
+  return getCachedClient(url, anonKey);
 }
 
 export function getSupabaseAdmin() {
@@ -28,10 +46,5 @@ export function getSupabaseAdmin() {
     return null;
   }
 
-  return createClient(url, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    }
-  });
+  return getCachedClient(url, serviceRoleKey);
 }
