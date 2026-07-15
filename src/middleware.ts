@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import {
   accessTokenCookieName,
@@ -13,6 +12,55 @@ function tokenExpiresSoon(token: string) {
     return !payload.exp || payload.exp <= Math.floor(Date.now() / 1000) + 60;
   } catch {
     return true;
+  }
+}
+
+type RefreshedSession = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+};
+
+// Direct GoTrue call instead of @supabase/supabase-js — the full client pulls
+// ~85 kB (postgrest/realtime/storage) into the middleware bundle and rebuilds
+// it per request, only to issue this single POST.
+async function refreshSupabaseSession(
+  url: string,
+  anonKey: string,
+  refreshToken: string
+): Promise<RefreshedSession | null> {
+  try {
+    const response = await fetch(
+      `${url.replace(/\/$/, "")}/auth/v1/token?grant_type=refresh_token`,
+      {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const session = (await response.json()) as Partial<RefreshedSession>;
+
+    if (!session.access_token || !session.refresh_token) {
+      return null;
+    }
+
+    return {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: Number(session.expires_in) || 3600
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -35,15 +83,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const supabase = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-  const { data, error } = await supabase.auth.refreshSession({
-    refresh_token: refreshToken
-  });
+  const session = await refreshSupabaseSession(url, anonKey, refreshToken);
   const response = NextResponse.next();
 
-  if (error || !data.session) {
+  if (!session) {
     response.cookies.delete(accessTokenCookieName);
     response.cookies.delete(refreshTokenCookieName);
     return response;
@@ -55,11 +98,11 @@ export async function middleware(request: NextRequest) {
     sameSite: "lax" as const,
     path: "/"
   };
-  response.cookies.set(accessTokenCookieName, data.session.access_token, {
+  response.cookies.set(accessTokenCookieName, session.access_token, {
     ...cookieOptions,
-    maxAge: Math.max(60, data.session.expires_in)
+    maxAge: Math.max(60, session.expires_in)
   });
-  response.cookies.set(refreshTokenCookieName, data.session.refresh_token, {
+  response.cookies.set(refreshTokenCookieName, session.refresh_token, {
     ...cookieOptions,
     maxAge: 60 * 60 * 24 * 30
   });

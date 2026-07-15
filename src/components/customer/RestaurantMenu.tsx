@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bike,
   CarFront,
@@ -28,7 +28,11 @@ import {
   weekDayLabels,
   weekDays
 } from "@/lib/opening-hours";
-import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
+import {
+  customerTranslations,
+  getTextDirection,
+  type CustomerLanguage
+} from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
 import {
   ItemOptionsSheet,
@@ -40,6 +44,7 @@ import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerP
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type {
+  CartLine,
   MenuCategory,
   MenuItem,
   MenuOffer,
@@ -134,20 +139,32 @@ export function RestaurantMenu({
 
   // With options, one item can span several cart lines — badges show the
   // per-item aggregate, and offer caps apply to the per-offer aggregate.
-  const itemQuantityInCart = (itemId: string) =>
-    cart.lines.reduce(
-      (sum, line) => (line.item_id === itemId ? sum + line.quantity : sum),
-      0
-    );
-  const offerQuantityInCart = (offerId: string) =>
-    cart.lines.reduce(
-      (sum, line) => (line.offer_id === offerId ? sum + line.quantity : sum),
-      0
-    );
+  // Aggregated once per cart change instead of scanning the cart per item.
+  const { linesByKey, quantityByItemId, quantityByOfferId } = useMemo(() => {
+    const byKey = new Map<string, CartLine>();
+    const byItem = new Map<string, number>();
+    const byOffer = new Map<string, number>();
 
+    for (const line of cart.lines) {
+      byKey.set(cartLineKey(line), line);
+      byItem.set(line.item_id, (byItem.get(line.item_id) ?? 0) + line.quantity);
+
+      if (line.offer_id) {
+        byOffer.set(line.offer_id, (byOffer.get(line.offer_id) ?? 0) + line.quantity);
+      }
+    }
+
+    return { linesByKey: byKey, quantityByItemId: byItem, quantityByOfferId: byOffer };
+  }, [cart.lines]);
+  const offerQuantityInCart = (offerId: string) =>
+    quantityByOfferId.get(offerId) ?? 0;
+
+  // Defer the filter so typing stays responsive: the input updates per
+  // keystroke, the (full-list re-render) filtering follows at lower priority.
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const categoriesWithItems = useMemo<CategoryWithItems[]>(
     () => {
-      const normalizedSearch = searchQuery.trim().toLowerCase();
+      const normalizedSearch = deferredSearchQuery.trim().toLowerCase();
       const matchesSearch = (item: MenuItem) =>
         !normalizedSearch ||
         [item.name, item.name_ar, item.description, item.description_ar].some((value) =>
@@ -189,7 +206,7 @@ export function RestaurantMenu({
           ]
         : regularCategories;
     },
-    [categories, items, searchQuery]
+    [categories, items, deferredSearchQuery]
   );
 
   const itemsById = useMemo(
@@ -224,47 +241,77 @@ export function RestaurantMenu({
       return;
     }
 
-    let frameId: number | null = null;
+    // Scrollspy without per-frame layout reads: observe a ~1px horizontal
+    // band just under the sticky tab bar and let the browser report which
+    // section crosses it. The active category is the intersecting section
+    // furthest down the document (matching the old "last section whose top
+    // passed the sticky offset" rule); an empty band (gap between sections)
+    // keeps the previous selection.
+    const bandTop = CATEGORY_SCROLL_OFFSET + 16;
+    const indexById = new Map(
+      categoriesWithItems.map((entry, index) => [entry.category.id, index])
+    );
+    const intersecting = new Set<string>();
+    let observer: IntersectionObserver | null = null;
 
-    const updateActiveCategory = () => {
-      frameId = null;
-      const stickyOffset = CATEGORY_SCROLL_OFFSET + 16;
-      let nextActiveId = categoriesWithItems[0]?.category.id ?? null;
+    const observe = () => {
+      observer?.disconnect();
+      intersecting.clear();
+
+      // The band's bottom edge is expressed as a negative bottom rootMargin,
+      // which depends on the viewport height — rebuilt on resize.
+      const bandBottomMargin = Math.max(0, window.innerHeight - bandTop - 1);
+
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const categoryId = (entry.target as HTMLElement).dataset.categoryId;
+
+            if (!categoryId) {
+              continue;
+            }
+
+            if (entry.isIntersecting) {
+              intersecting.add(categoryId);
+            } else {
+              intersecting.delete(categoryId);
+            }
+          }
+
+          let nextActiveId: string | null = null;
+          let bestIndex = -1;
+
+          for (const categoryId of intersecting) {
+            const index = indexById.get(categoryId) ?? -1;
+
+            if (index > bestIndex) {
+              bestIndex = index;
+              nextActiveId = categoryId;
+            }
+          }
+
+          if (nextActiveId) {
+            setActiveCategoryId(nextActiveId);
+          }
+        },
+        { rootMargin: `-${bandTop}px 0px -${bandBottomMargin}px 0px`, threshold: 0 }
+      );
 
       for (const entry of categoriesWithItems) {
         const element = document.getElementById(getCategorySectionId(entry.category.id));
 
-        if (!element) {
-          continue;
-        }
-
-        if (element.getBoundingClientRect().top <= stickyOffset) {
-          nextActiveId = entry.category.id;
+        if (element) {
+          observer.observe(element);
         }
       }
-
-      setActiveCategoryId(nextActiveId);
     };
 
-    const scheduleActiveCategoryUpdate = () => {
-      if (frameId !== null) {
-        return;
-      }
-
-      frameId = window.requestAnimationFrame(updateActiveCategory);
-    };
-
-    updateActiveCategory();
-    window.addEventListener("scroll", scheduleActiveCategoryUpdate, { passive: true });
-    window.addEventListener("resize", scheduleActiveCategoryUpdate);
+    observe();
+    window.addEventListener("resize", observe);
 
     return () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      window.removeEventListener("scroll", scheduleActiveCategoryUpdate);
-      window.removeEventListener("resize", scheduleActiveCategoryUpdate);
+      observer?.disconnect();
+      window.removeEventListener("resize", observe);
     };
   }, [categoriesWithItems]);
 
@@ -279,6 +326,12 @@ export function RestaurantMenu({
       inline: "center"
     });
   }, [visibleActiveCategoryId]);
+
+  // Stable reference so memoized item cards don't re-render on parent renders.
+  const openOptionsSheet = useCallback(
+    (item: MenuItem, offer: MenuOffer | null) => setOptionsSheet({ item, offer }),
+    []
+  );
 
   const scrollToCategory = (categoryId: string) => {
     const element = document.getElementById(getCategorySectionId(categoryId));
@@ -708,7 +761,7 @@ export function RestaurantMenu({
 
               <div className="space-y-3">
                 {categoryItems.map((item) => {
-                  const activeOffer = offersByItemId.get(item.id);
+                  const activeOffer = offersByItemId.get(item.id) ?? null;
                   const hasOptions =
                     (resolvedGroupsByItemId.get(item.id) ?? []).length > 0;
                   // Optionless items keep the single-line stepper; option-ful
@@ -717,145 +770,28 @@ export function RestaurantMenu({
                   const plainLineKey = activeOffer
                     ? cartLineKey({ item_id: item.id, offer_id: activeOffer.id })
                     : cartLineKey({ item_id: item.id });
-                  const cartLine = hasOptions
-                    ? undefined
-                    : cart.lines.find((line) => cartLineKey(line) === plainLineKey);
-                  const totalQuantity = itemQuantityInCart(item.id);
-                  const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
-                  const itemDescription =
-                    language === "ar" && item.description_ar ? item.description_ar : item.description;
 
                   return (
-                    <article
+                    <MenuItemCard
                       key={item.id}
-                      className={`rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
-                        item.is_available ? "" : "opacity-65"
-                      }`}
-                      data-testid={`menu-item-${item.id}`}
-                    >
-                      <div className="flex gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-base font-black text-ink">{itemName}</h3>
-                            {item.is_featured ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700">
-                                <Star className="fill-current" size={11} />
-                                {t.bestSeller}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <p className="mt-2 text-sm leading-6 text-stone-500">
-                            {itemDescription || t.itemDescriptionFallback}
-                          </p>
-
-                          <div className="mt-3 flex items-center justify-between gap-3">
-                            <div>
-                              {activeOffer ? (
-                                <>
-                                  <p className="text-xs font-semibold text-stone-400 line-through">
-                                    {formatCurrency(item.price, restaurant)}
-                                  </p>
-                                  <p className="text-base font-black text-leaf">
-                                    {formatCurrency(activeOffer.promotional_price, restaurant)}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="text-base font-black text-ink">{formatCurrency(item.price, restaurant)}</p>
-                              )}
-                              {!item.is_available ? (
-                                <p className="mt-1 text-xs font-semibold text-rose-500">{t.unavailable}</p>
-                              ) : null}
-                            </div>
-
-                            {hasOptions ? (
-                              <div className="flex items-center gap-2">
-                                {totalQuantity > 0 ? (
-                                  <span className="grid h-7 min-w-7 place-items-center rounded-full bg-mint/25 px-2 text-xs font-black text-leaf">
-                                    {totalQuantity}
-                                  </span>
-                                ) : null}
-                                <button
-                                  aria-label={`${t.customize} ${itemName}`}
-                                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
-                                  data-testid={`add-item-${item.id}`}
-                                  disabled={!item.is_available || !orderingAvailable}
-                                  onClick={() =>
-                                    setOptionsSheet({ item, offer: activeOffer ?? null })
-                                  }
-                                  type="button"
-                                >
-                                  <Plus size={18} />
-                                </button>
-                              </div>
-                            ) : cartLine ? (
-                              <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
-                                <button
-                                  aria-label={`${t.remove} ${itemName}`}
-                                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
-                                  onClick={() => cart.decrement(plainLineKey)}
-                                  type="button"
-                                >
-                                  <Minus size={16} />
-                                </button>
-                                <span className="w-8 text-center text-sm font-bold">{cartLine.quantity}</span>
-                                <button
-                                  aria-label={`${t.addMore} ${itemName}`}
-                                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
-                                  disabled={
-                                    !orderingAvailable ||
-                                    (Boolean(activeOffer) &&
-                                      offerQuantityInCart(activeOffer?.id ?? "") >=
-                                        (activeOffer?.max_quantity_per_order ?? 1))
-                                  }
-                                  onClick={() =>
-                                    activeOffer
-                                      ? cart.incrementOffer(plainLineKey, activeOffer)
-                                      : cart.increment(plainLineKey)
-                                  }
-                                  type="button"
-                                >
-                                  <Plus size={16} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                aria-label={`${t.add} ${itemName}`}
-                                className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
-                                data-testid={`add-item-${item.id}`}
-                                disabled={
-                                  !item.is_available || !orderingAvailable
-                                }
-                                onClick={() =>
-                                  activeOffer ? cart.addOffer(item, activeOffer) : cart.addItem(item)
-                                }
-                                type="button"
-                              >
-                                <Plus size={18} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
-                          {item.image_url ? (
-                            <Image
-                              alt={itemName}
-                              className="h-full w-full object-cover"
-                              height={112}
-                              loading="lazy"
-                              src={item.image_url}
-                              unoptimized={!isOptimizableImageUrl(item.image_url)}
-                              width={112}
-                            />
-                          ) : (
-                            <div className="grid h-full w-full place-items-center px-3 text-center text-xs font-bold text-ink/55">
-                              {item.is_featured ? t.popularPick : itemName}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </article>
+                      activeOffer={activeOffer}
+                      cartLine={hasOptions ? undefined : linesByKey.get(plainLineKey)}
+                      hasOptions={hasOptions}
+                      item={item}
+                      language={language}
+                      offerQuantity={
+                        activeOffer ? quantityByOfferId.get(activeOffer.id) ?? 0 : 0
+                      }
+                      onAddItem={cart.addItem}
+                      onAddOffer={cart.addOffer}
+                      onDecrement={cart.decrement}
+                      onIncrement={cart.increment}
+                      onIncrementOffer={cart.incrementOffer}
+                      onOpenOptions={openOptionsSheet}
+                      orderingAvailable={orderingAvailable}
+                      restaurant={restaurant}
+                      totalQuantity={quantityByItemId.get(item.id) ?? 0}
+                    />
                   );
                 })}
               </div>
@@ -1032,3 +968,181 @@ export function RestaurantMenu({
     </div>
   );
 }
+
+type MenuItemCardProps = {
+  item: MenuItem;
+  activeOffer: MenuOffer | null;
+  hasOptions: boolean;
+  /** The plain (option-less) cart line for this item, if any. */
+  cartLine: CartLine | undefined;
+  /** Aggregate quantity across every cart line of this item. */
+  totalQuantity: number;
+  /** Aggregate quantity across every cart line of the active offer. */
+  offerQuantity: number;
+  orderingAvailable: boolean;
+  language: CustomerLanguage;
+  restaurant: PublicRestaurant;
+  onAddItem: (item: MenuItem) => void;
+  onAddOffer: (item: MenuItem, offer: MenuOffer) => void;
+  onIncrement: (lineKey: string) => void;
+  onIncrementOffer: (lineKey: string, offer: MenuOffer) => void;
+  onDecrement: (lineKey: string) => void;
+  onOpenOptions: (item: MenuItem, offer: MenuOffer | null) => void;
+};
+
+// Memoized so a cart tap only re-renders the card whose quantity changed —
+// every prop of an unaffected card keeps its identity across cart updates.
+const MenuItemCard = memo(function MenuItemCard({
+  item,
+  activeOffer,
+  hasOptions,
+  cartLine,
+  totalQuantity,
+  offerQuantity,
+  orderingAvailable,
+  language,
+  restaurant,
+  onAddItem,
+  onAddOffer,
+  onIncrement,
+  onIncrementOffer,
+  onDecrement,
+  onOpenOptions
+}: MenuItemCardProps) {
+  const t = customerTranslations[language];
+  const plainLineKey = activeOffer
+    ? cartLineKey({ item_id: item.id, offer_id: activeOffer.id })
+    : cartLineKey({ item_id: item.id });
+  const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
+  const itemDescription =
+    language === "ar" && item.description_ar ? item.description_ar : item.description;
+
+  return (
+    <article
+      className={`rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
+        item.is_available ? "" : "opacity-65"
+      }`}
+      data-testid={`menu-item-${item.id}`}
+    >
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-black text-ink">{itemName}</h3>
+            {item.is_featured ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700">
+                <Star className="fill-current" size={11} />
+                {t.bestSeller}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-stone-500">
+            {itemDescription || t.itemDescriptionFallback}
+          </p>
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div>
+              {activeOffer ? (
+                <>
+                  <p className="text-xs font-semibold text-stone-400 line-through">
+                    {formatCurrency(item.price, restaurant)}
+                  </p>
+                  <p className="text-base font-black text-leaf">
+                    {formatCurrency(activeOffer.promotional_price, restaurant)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-base font-black text-ink">{formatCurrency(item.price, restaurant)}</p>
+              )}
+              {!item.is_available ? (
+                <p className="mt-1 text-xs font-semibold text-rose-500">{t.unavailable}</p>
+              ) : null}
+            </div>
+
+            {hasOptions ? (
+              <div className="flex items-center gap-2">
+                {totalQuantity > 0 ? (
+                  <span className="grid h-7 min-w-7 place-items-center rounded-full bg-mint/25 px-2 text-xs font-black text-leaf">
+                    {totalQuantity}
+                  </span>
+                ) : null}
+                <button
+                  aria-label={`${t.customize} ${itemName}`}
+                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
+                  data-testid={`add-item-${item.id}`}
+                  disabled={!item.is_available || !orderingAvailable}
+                  onClick={() => onOpenOptions(item, activeOffer)}
+                  type="button"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            ) : cartLine ? (
+              <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
+                <button
+                  aria-label={`${t.remove} ${itemName}`}
+                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
+                  onClick={() => onDecrement(plainLineKey)}
+                  type="button"
+                >
+                  <Minus size={16} />
+                </button>
+                <span className="w-8 text-center text-sm font-bold">{cartLine.quantity}</span>
+                <button
+                  aria-label={`${t.addMore} ${itemName}`}
+                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
+                  disabled={
+                    !orderingAvailable ||
+                    (Boolean(activeOffer) &&
+                      offerQuantity >= (activeOffer?.max_quantity_per_order ?? 1))
+                  }
+                  onClick={() =>
+                    activeOffer
+                      ? onIncrementOffer(plainLineKey, activeOffer)
+                      : onIncrement(plainLineKey)
+                  }
+                  type="button"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                aria-label={`${t.add} ${itemName}`}
+                className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
+                data-testid={`add-item-${item.id}`}
+                disabled={
+                  !item.is_available || !orderingAvailable
+                }
+                onClick={() =>
+                  activeOffer ? onAddOffer(item, activeOffer) : onAddItem(item)
+                }
+                type="button"
+              >
+                <Plus size={18} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
+          {item.image_url ? (
+            <Image
+              alt={itemName}
+              className="h-full w-full object-cover"
+              height={112}
+              loading="lazy"
+              src={item.image_url}
+              unoptimized={!isOptimizableImageUrl(item.image_url)}
+              width={112}
+            />
+          ) : (
+            <div className="grid h-full w-full place-items-center px-3 text-center text-xs font-bold text-ink/55">
+              {item.is_featured ? t.popularPick : itemName}
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+});
