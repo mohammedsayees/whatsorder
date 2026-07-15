@@ -26,6 +26,7 @@ import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
+import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import type { CustomerProfile } from "@/lib/customer-auth/context";
 import type { FulfilmentType, PublicRestaurant } from "@/lib/types";
@@ -38,6 +39,7 @@ type CapturedLocation = {
 
 type PendingWhatsAppOrder = {
   orderId: string;
+  webPushPublicKey: string | null;
   whatsappUrl: string;
 };
 
@@ -174,6 +176,7 @@ export function CheckoutForm({
         // than an automatic redirect after the async Supabase save.
         setPendingWhatsAppOrder({
           orderId: result.orderId,
+          webPushPublicKey: result.webPushPublicKey,
           whatsappUrl: result.whatsappUrl
         });
         return;
@@ -225,6 +228,13 @@ export function CheckoutForm({
           <MessageCircle size={20} />
           {language === "ar" ? "إرسال عبر واتساب" : "Open WhatsApp to send"}
         </a>
+        {pendingWhatsAppOrder.webPushPublicKey ? (
+          <OrderPushPrompt
+            orderId={pendingWhatsAppOrder.orderId}
+            publicKey={pendingWhatsAppOrder.webPushPublicKey}
+            restaurantSlug={restaurant.slug}
+          />
+        ) : null}
         <Link
           className="focus-ring mt-3 inline-flex justify-center rounded-full border border-stone-200 bg-white px-5 py-3 font-bold text-ink"
           href={`/r/${restaurant.slug}`}

@@ -30,6 +30,11 @@ import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { sendOrderStatusNotification } from "@/lib/order-notifications";
+import {
+  getConfiguredWebPushPublicKey,
+  setOrderPushAuthorization
+} from "@/lib/push-auth";
+import { sendOrderStatusPushNotification } from "@/lib/web-push";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
@@ -49,7 +54,13 @@ import type {
 } from "@/lib/types";
 
 type CreateOrderResult =
-  | { ok: true; orderId: string; whatsappUrl: string; whatsappAppUrl: string }
+  | {
+      ok: true;
+      orderId: string;
+      webPushPublicKey: string | null;
+      whatsappUrl: string;
+      whatsappAppUrl: string;
+    }
   | { ok: false; error: string; fallbackWhatsappUrl?: string };
 
 const statusValues: OrderStatus[] = [
@@ -583,6 +594,10 @@ export async function createOrderAction(
   }
 
   const orderId = String(data);
+  await setOrderPushAuthorization({
+    orderId,
+    restaurantId: restaurant.id
+  });
   const { data: persistedOrder } = await supabase
     .from("orders")
     .select("whatsapp_message")
@@ -599,6 +614,7 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
+    webPushPublicKey: getConfiguredWebPushPublicKey(),
     whatsappUrl: buildWhatsAppUrl(
       restaurant.whatsapp_number,
       persistedMessage,
@@ -644,12 +660,10 @@ export async function updateOrderStatusAction(formData: FormData) {
 
     // Free in-window WhatsApp update ("accepted", "ready", ...). Best-effort:
     // never throws, never blocks the status change.
-    await sendOrderStatusNotification({
-      supabase,
-      restaurant,
-      orderId,
-      status
-    });
+    await Promise.all([
+      sendOrderStatusNotification({ supabase, restaurant, orderId, status }),
+      sendOrderStatusPushNotification({ supabase, restaurant, orderId, status })
+    ]);
   }
 
   revalidatePath("/admin");

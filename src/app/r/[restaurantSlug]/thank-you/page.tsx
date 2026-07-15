@@ -3,6 +3,8 @@ import { CheckCircle2, MessageCircle } from "lucide-react";
 import { getRestaurantBySlug } from "@/lib/data";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { notFound } from "next/navigation";
+import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
+import { getConfiguredWebPushPublicKey } from "@/lib/push-auth";
 
 export default async function ThankYouPage({
   params,
@@ -13,6 +15,7 @@ export default async function ThankYouPage({
 }) {
   const [{ restaurantSlug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const restaurant = await getRestaurantBySlug(restaurantSlug);
+  const webPushPublicKey = getConfiguredWebPushPublicKey();
 
   if (!restaurant) {
     notFound();
@@ -29,9 +32,18 @@ export default async function ThankYouPage({
         checkout and tap the send button again.
       </p>
       {resolvedSearchParams.order ? (
-        <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
-          Reference: {resolvedSearchParams.order}
-        </p>
+        <>
+          <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
+            Reference: {resolvedSearchParams.order}
+          </p>
+          {webPushPublicKey ? (
+            <OrderPushPrompt
+              orderId={resolvedSearchParams.order}
+              publicKey={webPushPublicKey}
+              restaurantSlug={restaurant.slug}
+            />
+          ) : null}
+        </>
       ) : null}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
         <Link
