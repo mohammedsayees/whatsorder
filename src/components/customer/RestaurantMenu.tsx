@@ -374,7 +374,7 @@ export function RestaurantMenu({
             <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
               <button
                 aria-label={t.goBack}
-                className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
+                className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                 onClick={() => window.history.back()}
                 type="button"
               >
@@ -384,7 +384,7 @@ export function RestaurantMenu({
               <div className="flex items-center gap-2">
                 <button
                   aria-label={t.searchMenu}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
+                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                   onClick={() => setIsSearchOpen((current) => !current)}
                   type="button"
                 >
@@ -392,7 +392,7 @@ export function RestaurantMenu({
                 </button>
                 <button
                   aria-label={t.shareMenu}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm"
+                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                   onClick={async () => {
                     const shareUrl = window.location.href;
 
@@ -836,7 +836,7 @@ export function RestaurantMenu({
       </main>
 
       {cart.count > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/96 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-white">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10">
               <ShoppingBag size={18} />
