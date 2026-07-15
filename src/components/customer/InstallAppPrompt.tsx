@@ -13,16 +13,18 @@ type BeforeInstallPromptEvent = Event & {
 
 /**
  * "Install app" pill on the café header. Renders nothing when the PWA is
- * already installed (standalone display mode) or when the browser offers no
- * install path (no beforeinstallprompt and not iOS Safari).
+ * already installed (standalone display mode). Browsers with a native install
+ * prompt use it; every other browser keeps the pill visible and shows manual
+ * instructions instead.
  */
 export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
   const t = customerTranslations[language];
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isIos, setIsIos] = useState(false);
-  const [showIosHint, setShowIosHint] = useState(false);
+  const [showInstallHint, setShowInstallHint] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const standalone =
@@ -31,19 +33,22 @@ export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
 
     if (standalone) {
       setInstalled(true);
+      setReady(true);
       return;
     }
 
     const ua = window.navigator.userAgent;
     // iPadOS 13+ reports a Macintosh UA; the touch check catches it.
-    setIsIos(
+    const ios =
       /iphone|ipad|ipod/i.test(ua) ||
-        (ua.includes("Mac") && window.navigator.maxTouchPoints > 1)
-    );
+      (ua.includes("Mac") && window.navigator.maxTouchPoints > 1);
+    setIsIos(ios);
+    setReady(true);
 
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallEvent(event as BeforeInstallPromptEvent);
+      setShowInstallHint(false);
     };
     const onInstalled = () => {
       setInstalled(true);
@@ -59,23 +64,28 @@ export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
     };
   }, []);
 
-  if (installed || (!installEvent && !isIos)) {
+  if (!ready || installed) {
     return null;
   }
 
   const handleClick = async () => {
     if (installEvent) {
       await installEvent.prompt();
-      await installEvent.userChoice;
+      const choice = await installEvent.userChoice;
 
       // The stashed event is single-use; drop it so a dismissed prompt
-      // doesn't leave a button that throws on the second tap. Chrome
-      // re-fires beforeinstallprompt later if the user changes their mind.
+      // cannot be invoked twice. Keep the button useful after dismissal by
+      // falling back to browser-menu instructions.
       setInstallEvent(null);
+      if (choice.outcome === "accepted") {
+        setInstalled(true);
+      } else {
+        setShowInstallHint(true);
+      }
       return;
     }
 
-    setShowIosHint((current) => !current);
+    setShowInstallHint((current) => !current);
   };
 
   return (
@@ -88,9 +98,9 @@ export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
         <Download size={15} />
         {t.installApp}
       </button>
-      {showIosHint ? (
+      {showInstallHint ? (
         <p className="mt-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-600">
-          {t.installAppIosHint}
+          {isIos ? t.installAppIosHint : t.installAppBrowserHint}
         </p>
       ) : null}
     </div>

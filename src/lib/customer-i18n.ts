@@ -84,6 +84,8 @@ export const customerTranslations = {
     remove: "Remove",
     saveRestaurant: "Save restaurant",
     installApp: "Install app",
+    installAppBrowserHint:
+      'Open this page in Safari or Chrome, then use the browser menu to choose "Add to Home Screen" or "Install app".',
     installAppIosHint:
       'In Safari, tap the Share button, then "Add to Home Screen".',
     searchMenu: "Search menu",
@@ -183,6 +185,8 @@ export const customerTranslations = {
     remove: "إزالة",
     saveRestaurant: "حفظ المطعم",
     installApp: "تثبيت التطبيق",
+    installAppBrowserHint:
+      'افتح هذه الصفحة في سفاري أو كروم، ثم اختر "إضافة إلى الشاشة الرئيسية" أو "تثبيت التطبيق" من قائمة المتصفح.',
     installAppIosHint:
       'في سفاري، اضغط على زر المشاركة ثم "إضافة إلى الشاشة الرئيسية".',
     searchMenu: "البحث في القائمة",
