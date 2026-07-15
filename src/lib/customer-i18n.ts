@@ -83,6 +83,9 @@ export const customerTranslations = {
     quantityShort: "Qty",
     remove: "Remove",
     saveRestaurant: "Save restaurant",
+    installApp: "Install app",
+    installAppIosHint:
+      'In Safari, tap the Share button, then "Add to Home Screen".',
     searchMenu: "Search menu",
     sendOrder: "Send Order on WhatsApp",
     sendingOrder: "Saving order...",
@@ -179,6 +182,9 @@ export const customerTranslations = {
     quantityShort: "الكمية",
     remove: "إزالة",
     saveRestaurant: "حفظ المطعم",
+    installApp: "تثبيت التطبيق",
+    installAppIosHint:
+      'في سفاري، اضغط على زر المشاركة ثم "إضافة إلى الشاشة الرئيسية".',
     searchMenu: "البحث في القائمة",
     sendOrder: "إرسال الطلب على واتساب",
     sendingOrder: "جاري حفظ الطلب...",

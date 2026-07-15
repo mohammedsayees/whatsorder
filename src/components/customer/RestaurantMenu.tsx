@@ -39,6 +39,7 @@ import {
   resolveOptionGroupsByItem
 } from "@/components/customer/ItemOptionsSheet";
 import { useCart } from "@/components/customer/CartProvider";
+import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerPanel";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
@@ -499,6 +500,8 @@ export function RestaurantMenu({
                   </div>
                 </div>
               </div>
+
+              <InstallAppPrompt language={language} />
 
               {!orderingAvailable ? (
                 <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
