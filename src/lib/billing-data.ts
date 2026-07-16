@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   DEFAULT_CURRENCY,
@@ -82,7 +83,9 @@ export async function listActivePlans(): Promise<Plan[]> {
 // The one helper the app reads to gate features (Feature Brief §7). Pure read —
 // healing/aging happen on payment events and in the cron, never here, so this
 // is safe to call during render.
-export async function getTenantAccess(restaurantId: string): Promise<TenantAccess> {
+export const getTenantAccess = cache(async function getTenantAccess(
+  restaurantId: string
+): Promise<TenantAccess> {
   const admin = getSupabaseAdmin();
   if (!admin) {
     return NO_SUBSCRIPTION_ACCESS;
@@ -106,7 +109,7 @@ export async function getTenantAccess(restaurantId: string): Promise<TenantAcces
       max_staff: plan?.max_staff ?? null
     }
   };
-}
+});
 
 export type SubscriptionSummary = {
   subscription: Subscription;

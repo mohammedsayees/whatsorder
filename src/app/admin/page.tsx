@@ -18,8 +18,10 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<{ welcome?: string; error?: string }>;
 }) {
-  const query = await searchParams;
-  const { restaurant } = await requireRestaurantAdmin();
+  const [query, { restaurant }] = await Promise.all([
+    searchParams,
+    requireRestaurantAdmin()
+  ]);
 
   const [orders, analytics, dailySummary, commission] = await Promise.all([
     getRecentOrders(restaurant.id, 5),

@@ -33,6 +33,10 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // A separate lockfile exists above this repository on local machines. Keep
+  // server output tracing scoped to WhatsOrder so deploy artifacts do not scan
+  // or include unrelated files from the parent directory.
+  outputFileTracingRoot: process.cwd(),
   images: {
     // Only the configured Supabase project can use the image optimizer.
     // Admin-entered external image URLs remain supported as unoptimized images.

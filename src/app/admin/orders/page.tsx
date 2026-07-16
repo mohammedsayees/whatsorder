@@ -39,9 +39,11 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<{ fulfilment?: string; page?: string; status?: string }>;
 }) {
-  const session = await requireRestaurantAdmin();
+  const [session, query] = await Promise.all([
+    requireRestaurantAdmin(),
+    searchParams
+  ]);
   const { restaurant } = session;
-  const query = await searchParams;
   const status = statusTabs.some((tab) => tab.value === query.status)
     ? (query.status as OrderStatusView)
     : "active";

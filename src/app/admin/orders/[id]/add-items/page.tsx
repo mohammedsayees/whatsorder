@@ -11,8 +11,10 @@ export default async function AddOrderItemsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireRestaurantAdmin();
-  const { id } = await params;
+  const [session, { id }] = await Promise.all([
+    requireRestaurantAdmin(),
+    params
+  ]);
   const [order, menu, optionCatalog] = await Promise.all([
     getOrderForAdmin(session.restaurantId, id),
     getMenu(session.restaurantId, { admin: true }),

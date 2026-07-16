@@ -100,6 +100,34 @@ const orderListColumns = [
   "updated_at"
 ].join(", ");
 
+// Admin order cards and thermal tickets need only this subset. Keeping list
+// reads narrow reduces Supabase egress, React Server Component serialization,
+// and browser payload without changing the richer single-order/report reads.
+const adminOrderListColumns = [
+  "id",
+  "parent_order_id",
+  "customer_name",
+  "customer_phone",
+  "fulfilment_type",
+  "car_plate_number",
+  "car_description",
+  "table_number",
+  "delivery_area",
+  "delivery_address",
+  "delivery_google_maps_url",
+  "delivery_landmark",
+  "notes",
+  "payment_method",
+  "items",
+  "subtotal",
+  "delivery_fee",
+  "total",
+  "points_earned",
+  "loyalty_discount",
+  "status",
+  "created_at"
+].join(", ");
+
 export type OrderStatusView = "active" | "completed" | "cancelled";
 export type OrderFulfilmentView = "all" | FulfilmentType;
 
@@ -559,7 +587,7 @@ export async function getRecentOrders(
   if (supabase) {
     const { data, error } = await supabase
       .from("orders")
-      .select(orderListColumns)
+      .select(adminOrderListColumns)
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(Math.min(20, Math.max(1, limit)));
@@ -873,7 +901,7 @@ export async function getOrdersPage(
       // rows stay below PostgREST's threshold (verified identical to "exact"
       // at current volume) and switches to a planner estimate only once the
       // set is large enough that an exact COUNT would scan O(n) per page load.
-      .select(orderListColumns, { count: "estimated" })
+      .select(adminOrderListColumns, { count: "estimated" })
       .eq("restaurant_id", restaurantId);
 
     query = applyOrderStatusFilter(query, status);
@@ -1015,23 +1043,17 @@ export async function getNewOrderAlertState(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const [{ count, error: countError }, { data, error: ordersError }] =
-      await Promise.all([
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "New"),
-        supabase
-          .from("orders")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "New")
-          .order("created_at", { ascending: false })
-          .limit(100)
-      ]);
+    // Supabase returns the total count alongside the limited rows, so a
+    // single request can power both the badge and the alert ID reconciliation.
+    const { count, data, error } = await supabase
+      .from("orders")
+      .select("id", { count: "exact" })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "New")
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-    if (!countError && !ordersError) {
+    if (!error) {
       return {
         newOrderCount: count ?? 0,
         pendingOrderIds: (data ?? []).map((order) => String(order.id))
@@ -1039,7 +1061,7 @@ export async function getNewOrderAlertState(
     }
 
     if (!demoDataEnabled) {
-      productionDataFailure("New-order alert state", countError ?? ordersError);
+      productionDataFailure("New-order alert state", error);
     }
   } else if (!demoDataEnabled) {
     productionDataFailure("New-order alert state");

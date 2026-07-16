@@ -12,8 +12,10 @@ export default async function NewCampaignPage({
 }: {
   searchParams: Promise<{ segment?: string; q?: string }>;
 }) {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
-  const { segment, q } = await searchParams;
+  const [, { segment, q }] = await Promise.all([
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
+    searchParams
+  ]);
   const activeSegment = isSegmentFilter(segment) ? segment : "all";
   const segmentLabel =
     SEGMENT_TABS.find((tab) => tab.value === activeSegment)?.label ?? "All customers";

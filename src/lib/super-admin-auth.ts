@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
@@ -49,22 +50,26 @@ export type RestaurantSessionResolution =
   | { session: RestaurantAdminSession; issue: null }
   | { session: null; issue: RestaurantSessionIssue };
 
-export async function getAuthenticatedUser() {
-  const token = (await cookies()).get(superAdminCookieName)?.value;
-  const supabase = getSupabase();
+// Layouts and pages resolve auth independently during one render. React cache
+// keeps that work request-scoped so the same token is verified only once.
+export const getAuthenticatedUser = cache(
+  async function getAuthenticatedUser() {
+    const token = (await cookies()).get(superAdminCookieName)?.value;
+    const supabase = getSupabase();
 
-  if (!token || !supabase) {
-    return null;
+    if (!token || !supabase) {
+      return null;
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !authData.user) {
+      return null;
+    }
+
+    return authData.user;
   }
-
-  const { data: authData, error: authError } = await supabase.auth.getUser(token);
-
-  if (authError || !authData.user) {
-    return null;
-  }
-
-  return authData.user;
-}
+);
 
 export async function getSuperAdminSession(): Promise<SuperAdminSession | null> {
   const user = await getAuthenticatedUser();
@@ -102,7 +107,7 @@ export async function requireSuperAdmin() {
   return session;
 }
 
-export async function resolveRestaurantAdminSession(): Promise<RestaurantSessionResolution> {
+export const resolveRestaurantAdminSession = cache(async function resolveRestaurantAdminSession(): Promise<RestaurantSessionResolution> {
   const user = await getAuthenticatedUser();
   const admin = getSupabaseAdmin();
 
@@ -168,7 +173,7 @@ export async function resolveRestaurantAdminSession(): Promise<RestaurantSession
       restaurant: restaurant as Restaurant
     }
   };
-}
+});
 
 export async function getRestaurantAdminSession() {
   const resolution = await resolveRestaurantAdminSession();

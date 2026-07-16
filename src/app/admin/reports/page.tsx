@@ -78,16 +78,14 @@ export default async function AdminReportsPage({
     tab?: string;
   }>;
 }) {
-  const { restaurant } = await requireRestaurantRole([
-    "restaurant_admin",
-    "owner",
-    "manager"
+  const [{ restaurant }, query] = await Promise.all([
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
+    searchParams
   ]);
   const money = (value: number) => formatCurrency(value, restaurant);
   const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, restaurant);
-  const query = await searchParams;
   const activeTab = reportTabs.some((tab) => tab.value === query.tab)
     ? (query.tab as ReportTab)
     : "overview";
