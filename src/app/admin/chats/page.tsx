@@ -12,7 +12,6 @@ import {
   getChatCustomerSnapshot,
   getChatMessages,
   isChatConversationFilter,
-  markChatConversationRead,
   serviceWindowRemainingMs,
   type ChatConversation,
   type ChatConversationFilter,
@@ -140,15 +139,13 @@ export default async function AdminChatsPage({
 }: {
   searchParams: Promise<{ c?: string; filter?: string; q?: string }>;
 }) {
-  const { restaurant } = await requireRestaurantRole([
-    "restaurant_admin",
-    "owner",
-    "manager"
+  const [{ restaurant }, cookieStore, params] = await Promise.all([
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
+    cookies(),
+    searchParams
   ]);
-  const cookieStore = await cookies();
   const realtimeAccessToken =
     cookieStore.get(accessTokenCookieName)?.value ?? null;
-  const params = await searchParams;
   const filter: ChatConversationFilter | "all" = isChatConversationFilter(
     params.filter
   )
@@ -158,16 +155,15 @@ export default async function AdminChatsPage({
       : "open";
 
   const searchTerm = params.q?.trim() || undefined;
-  const conversations = await getChatConversations(
-    restaurant.id,
-    filter === "all" ? undefined : filter,
-    searchTerm
-  );
-
   const selectedId = params.c;
-  const selected = selectedId
-    ? await getChatConversation(restaurant.id, selectedId)
-    : null;
+  const [conversations, selected] = await Promise.all([
+    getChatConversations(
+      restaurant.id,
+      filter === "all" ? undefined : filter,
+      searchTerm
+    ),
+    selectedId ? getChatConversation(restaurant.id, selectedId) : null
+  ]);
   const [messages, customerSnapshot] = selected
     ? await Promise.all([
         getChatMessages(restaurant.id, selected.id),
@@ -181,18 +177,15 @@ export default async function AdminChatsPage({
     messages
       .filter((message) => message.media_path)
       .map(async (message) => {
-        const url = await getChatMediaSignedUrl(message.media_path as string);
+        const url = await getChatMediaSignedUrl(
+          restaurant.id,
+          message.media_path as string
+        );
         if (url) {
           mediaUrls.set(message.id, url);
         }
       })
   );
-
-  // Opening a thread clears its unread badge (page is force-dynamic, so this
-  // runs on every real view, never at build time).
-  if (selected && selected.unread_count > 0) {
-    await markChatConversationRead(restaurant.id, selected.id);
-  }
 
   const formatDateTime = (value: string) =>
     formatRestaurantDateTime(value, restaurant);
@@ -226,6 +219,8 @@ export default async function AdminChatsPage({
           <ChatsLive
             realtimeAccessToken={realtimeAccessToken}
             restaurantId={restaurant.id}
+            selectedConversationId={selected?.id}
+            selectedUnreadCount={selected?.unread_count}
           />
           <ChatRefreshButton />
         </div>
@@ -287,7 +282,8 @@ export default async function AdminChatsPage({
                       <span className="truncate text-sm font-black text-ink">
                         {conversationLabel(conversation)}
                       </span>
-                      {conversation.unread_count > 0 ? (
+                      {conversation.id !== selected?.id &&
+                      conversation.unread_count > 0 ? (
                         <span className="shrink-0 rounded-full bg-leaf px-2 py-0.5 text-[10px] font-black text-white">
                           {conversation.unread_count}
                         </span>

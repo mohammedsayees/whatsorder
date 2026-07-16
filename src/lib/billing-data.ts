@@ -289,6 +289,7 @@ async function transitionStatus(
     .from("subscriptions")
     .update({ status: toStatus, ...patch })
     .eq("id", subscription.id)
+    .eq("restaurant_id", subscription.restaurant_id)
     .select("*")
     .single();
 
@@ -453,6 +454,7 @@ export async function assignPlan(
         cancelled_at: null
       })
       .eq("id", existing.id)
+      .eq("restaurant_id", restaurantId)
       .select("*")
       .single();
     if (error) {
@@ -602,7 +604,8 @@ export async function recordPayment(
   const { data: payments } = await admin
     .from("payments")
     .select("amount")
-    .eq("invoice_id", invoiceId);
+    .eq("invoice_id", invoiceId)
+    .eq("restaurant_id", restaurantId);
   const paidToDate = ((payments as Array<{ amount: number }> | null) ?? []).reduce(
     (sum, row) => sum + Number(row.amount),
     0
@@ -613,7 +616,8 @@ export async function recordPayment(
     await admin
       .from("invoices")
       .update({ status: "paid", paid_at: new Date().toISOString() })
-      .eq("id", invoiceId);
+      .eq("id", invoiceId)
+      .eq("restaurant_id", restaurantId);
 
     // A settled invoice heals the subscription (§6: payment is the only thing
     // that recovers past_due / suspended; first paid invoice converts trial).
@@ -742,6 +746,7 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
       .from("subscriptions")
       .update({ billing_cycle_start: periodStart, billing_cycle_end: periodEnd })
       .eq("id", subscription.id)
+      .eq("restaurant_id", subscription.restaurant_id)
       .select("*")
       .single();
     summary.renewed += 1;

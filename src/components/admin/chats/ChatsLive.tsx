@@ -4,6 +4,7 @@ import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
+import { markChatReadAction } from "@/app/admin/chats/actions";
 
 // Push-based live updates for /admin/chats: a postgres_changes subscription on
 // whatsapp_messages (RLS-gated per subscriber) triggers a debounced
@@ -82,16 +83,29 @@ function playChime() {
 
 export function ChatsLive({
   restaurantId,
-  realtimeAccessToken
+  realtimeAccessToken,
+  selectedConversationId,
+  selectedUnreadCount
 }: {
   restaurantId: string;
   realtimeAccessToken: string | null;
+  selectedConversationId?: string;
+  selectedUnreadCount?: number;
 }) {
   const router = useRouter();
   const supabase = useMemo(createBrowserSupabaseClient, []);
   const [activeToken, setActiveToken] = useState(realtimeAccessToken);
   const [live, setLive] = useState(false);
   const refreshTimerRef = useRef<number | null>(null);
+
+  // Mark read only after the page hydrates in a real browser view. Doing this
+  // in the Server Component can clear unread state during Next.js prefetching.
+  useEffect(() => {
+    if (!selectedConversationId || !selectedUnreadCount) {
+      return;
+    }
+    void markChatReadAction(selectedConversationId);
+  }, [selectedConversationId, selectedUnreadCount]);
 
   // Keep the realtime JWT fresh — expired tokens silently drop the channel.
   useEffect(() => {

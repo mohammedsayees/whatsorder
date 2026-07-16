@@ -46,6 +46,7 @@ export async function createFeedbackRequestAction(
   const { data: existingFeedback } = await supabase
     .from("customer_feedback")
     .select("id")
+    .eq("restaurant_id", session.restaurantId)
     .eq("order_id", order.id)
     .maybeSingle();
 
@@ -170,7 +171,8 @@ export async function submitFeedbackAction(token: string, formData: FormData) {
   await supabase
     .from("feedback_requests")
     .update({ used_at: new Date().toISOString() })
-    .eq("id", context.request.id);
+    .eq("id", context.request.id)
+    .eq("restaurant_id", context.request.restaurant_id);
 
   // Comment-free feedback publishes immediately, so the cached public summary
   // must refresh (moderated feedback refreshes again on approval).

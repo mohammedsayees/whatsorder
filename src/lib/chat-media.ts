@@ -32,6 +32,20 @@ export function chatMediaPath(
   return `${restaurantId}/${safeId}`;
 }
 
+/** Prevent a signed URL from crossing the authenticated tenant's namespace. */
+export function isChatMediaPathForRestaurant(
+  restaurantId: string,
+  mediaPath: string
+): boolean {
+  const prefix = `${restaurantId}/`;
+  if (!mediaPath.startsWith(prefix)) {
+    return false;
+  }
+
+  const objectName = mediaPath.slice(prefix.length);
+  return Boolean(objectName) && !objectName.includes("/");
+}
+
 /**
  * Download each job's media from the Graph API and store it in the private
  * bucket, then point the message row at the stored copy. Never throws.
@@ -120,10 +134,11 @@ export async function downloadChatMedia(
  * this server-side after the auth guard; the bucket itself is private.
  */
 export async function getChatMediaSignedUrl(
+  restaurantId: string,
   mediaPath: string
 ): Promise<string | null> {
   const admin = getSupabaseAdmin();
-  if (!admin) {
+  if (!admin || !isChatMediaPathForRestaurant(restaurantId, mediaPath)) {
     return null;
   }
   const { data, error } = await admin.storage

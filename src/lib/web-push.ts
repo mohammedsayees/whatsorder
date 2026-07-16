@@ -20,6 +20,7 @@ type PushSubscriptionRow = {
   failure_count: number;
   id: string;
   p256dh: string;
+  restaurant_id: string;
 };
 
 type SendOrderPushInput = {
@@ -118,7 +119,8 @@ async function sendToSubscription(
         last_success_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .eq("id", subscription.id);
+      .eq("id", subscription.id)
+      .eq("restaurant_id", subscription.restaurant_id);
   } catch (error) {
     const statusCode = pushStatusCode(error);
     const expired = statusCode === 404 || statusCode === 410;
@@ -129,7 +131,8 @@ async function sendToSubscription(
         failure_count: subscription.failure_count + 1,
         updated_at: new Date().toISOString()
       })
-      .eq("id", subscription.id);
+      .eq("id", subscription.id)
+      .eq("restaurant_id", subscription.restaurant_id);
 
     console.info("WhatsOrder Web Push was not delivered", {
       statusCode,
@@ -164,7 +167,7 @@ export async function sendOrderStatusPushNotification(
 
     const { data, error } = await input.supabase
       .from("customer_push_subscriptions")
-      .select("auth,endpoint,failure_count,id,p256dh")
+      .select("auth,endpoint,failure_count,id,p256dh,restaurant_id")
       .eq("restaurant_id", input.restaurant.id)
       .eq("order_id", input.orderId)
       .eq("transactional_enabled", true)
