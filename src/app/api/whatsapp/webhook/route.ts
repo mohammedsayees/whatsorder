@@ -20,6 +20,11 @@
 //   NEXT_PUBLIC_APP_URL       — base URL used to build the deep link
 
 import { NextRequest, NextResponse } from "next/server";
+import {
+  recordInboundChatMessages,
+  recordOutboundChatMessage,
+  type InboundChatMessage
+} from "@/lib/chat-inbox";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import {
   buildCustomerLinkUrl,
@@ -50,7 +55,14 @@ type WhatsAppInbound = {
   entry?: Array<{
     changes?: Array<{
       value?: {
-        messages?: Array<{ from?: string; type?: string }>;
+        contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
+        messages?: Array<{
+          id?: string;
+          from?: string;
+          type?: string;
+          timestamp?: string;
+          text?: { body?: string };
+        }>;
       };
     }>;
   }>;
@@ -87,17 +99,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  // Collect distinct sender phones from this batch of inbound text messages.
-  // Capped: Meta batches a handful of messages per delivery, so anything
-  // beyond this is a malformed or forged payload — never fan out unbounded
-  // outbound sends from a single POST.
+  // Collect inbound messages from this batch. Capped: Meta batches a handful
+  // of messages per delivery, so anything beyond this is a malformed or forged
+  // payload — never fan out unbounded outbound sends from a single POST.
   const MAX_SENDERS_PER_DELIVERY = 5;
+  const MAX_MESSAGES_PER_DELIVERY = 20;
   const senders = new Set<string>();
+  const inboundMessages: InboundChatMessage[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      const profileNames = new Map<string, string>();
+      for (const contact of change.value?.contacts ?? []) {
+        if (contact.wa_id && contact.profile?.name) {
+          profileNames.set(contact.wa_id, contact.profile.name);
+        }
+      }
       for (const message of change.value?.messages ?? []) {
-        if (message.from && senders.size < MAX_SENDERS_PER_DELIVERY) {
-          senders.add(message.from);
+        if (!message.from) {
+          continue;
+        }
+        if (!senders.has(message.from) && senders.size >= MAX_SENDERS_PER_DELIVERY) {
+          continue;
+        }
+        senders.add(message.from);
+        if (inboundMessages.length < MAX_MESSAGES_PER_DELIVERY) {
+          inboundMessages.push({
+            waMessageId: message.id,
+            from: message.from,
+            type: message.type ?? "text",
+            body: message.type === "text" ? (message.text?.body ?? "") : "",
+            timestamp: message.timestamp,
+            profileName: profileNames.get(message.from)
+          });
         }
       }
     }
@@ -136,14 +169,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       }
 
+      // Persist chat history first (dedupes redeliveries), then reply. Both
+      // are best-effort and independently non-fatal.
+      await recordInboundChatMessages(restaurant.id, inboundMessages);
+
       await Promise.all(
         [...senders].map(async (phone) => {
           const token = await mintLinkToken({ restaurantId: restaurant.id, phone });
           const url = buildCustomerLinkUrl(baseUrl, token, restaurant.slug);
-          await sendWhatsAppText(
-            phone,
-            `View your order & stamps at ${restaurant.name} →\n${url}`
-          );
+          const body = `View your order & stamps at ${restaurant.name} →\n${url}`;
+          const sent = await sendWhatsAppText(phone, body);
+          if (sent) {
+            await recordOutboundChatMessage({
+              restaurantId: restaurant.id,
+              phone,
+              body
+            });
+          }
         })
       );
     }
