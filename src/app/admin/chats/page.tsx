@@ -132,7 +132,7 @@ export default async function AdminChatsPage({
 
       <div className="grid gap-4 lg:grid-cols-[320px,1fr]">
         {/* Conversation list */}
-        <div className="rounded-3xl border border-stone-200 bg-white">
+        <div className="min-w-0 rounded-3xl border border-stone-200 bg-white">
           {conversations.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
               <MessageCircle className="h-8 w-8 text-stone-300" />
@@ -187,7 +187,7 @@ export default async function AdminChatsPage({
         </div>
 
         {/* Thread */}
-        <div className="flex min-h-[420px] flex-col rounded-3xl border border-stone-200 bg-white">
+        <div className="flex min-h-[420px] min-w-0 flex-col rounded-3xl border border-stone-200 bg-white">
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
               <MessageCircle className="h-8 w-8 text-stone-300" />
@@ -235,7 +235,7 @@ export default async function AdminChatsPage({
                 </div>
               </div>
 
-              <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
+              <div className="max-h-[60vh] flex-1 space-y-2 overflow-y-auto px-5 py-4">
                 {messages.length === 0 ? (
                   <p className="text-center text-xs font-semibold text-stone-400">
                     No messages stored yet.
@@ -253,11 +253,11 @@ export default async function AdminChatsPage({
                       <div
                         className={`max-w-[80%] rounded-2xl px-4 py-2 ${
                           message.direction === "outbound"
-                            ? "bg-mint/25 text-ink"
+                            ? "bg-mint text-ink"
                             : "bg-stone-100 text-ink"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words text-sm font-medium">
+                        <p className="whitespace-pre-wrap text-sm font-medium [overflow-wrap:anywhere]">
                           {message.message_type === "text"
                             ? message.body
                             : `Unsupported message type: ${message.message_type}`}
