@@ -1,16 +1,21 @@
-import { Banknote, CheckCircle2, Clock, Repeat2, ShoppingBag, Star, TrendingUp } from "lucide-react";
+import { Banknote, CalendarRange, ShoppingBag, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import type { Analytics, Restaurant } from "@/lib/types";
 
-export function AnalyticsCards({ analytics, restaurant }: { analytics: Analytics; restaurant: Restaurant }) {
+export function AnalyticsCards({
+  analytics,
+  monthSales,
+  restaurant
+}: {
+  analytics: Analytics;
+  monthSales: number;
+  restaurant: Restaurant;
+}) {
   const cards = [
     { label: "Today's orders", value: analytics.todaysOrders, icon: ShoppingBag },
-    { label: "Today's revenue", value: formatCurrency(analytics.todaysRevenue, restaurant), icon: Banknote },
-    { label: "New orders", value: analytics.newOrders, icon: Clock },
-    { label: "Completed orders", value: analytics.completedOrders, icon: CheckCircle2 },
-    { label: "Repeat customers", value: analytics.repeatCustomers, icon: Repeat2 },
-    { label: "Average order value", value: formatCurrency(analytics.averageOrderValue, restaurant), icon: TrendingUp },
-    { label: "Top-selling item", value: analytics.topSellingItem, icon: Star }
+    { label: "Today's sales", value: formatCurrency(analytics.todaysRevenue, restaurant), icon: Banknote },
+    { label: "This month", value: formatCurrency(monthSales, restaurant), icon: CalendarRange },
+    { label: "Average order value", value: formatCurrency(analytics.averageOrderValue, restaurant), icon: TrendingUp }
   ];
 
   return (

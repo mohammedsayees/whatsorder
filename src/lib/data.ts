@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import {
+  getRestaurantDateKey,
   getRestaurantMonthStartIso,
   isSameUaeCalendarDay
 } from "@/lib/date-time";
@@ -31,6 +32,8 @@ import {
 import type {
   Analytics,
   Customer,
+  DashboardTrend,
+  DashboardTrendRange,
   MenuCategory,
   MenuItem,
   MenuItemOptionGroupLink,
@@ -680,6 +683,51 @@ export async function getDashboardAnalytics(
   return getAnalytics(
     demoOrders.filter((order) => order.restaurant_id === restaurantId),
     demoCustomers.filter((customer) => customer.restaurant_id === restaurantId)
+  );
+}
+
+export async function getDashboardTrend(
+  restaurantId: string,
+  range: DashboardTrendRange = "7d"
+): Promise<DashboardTrend> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc(
+      "get_restaurant_dashboard_trend",
+      { target_restaurant_id: restaurantId, range_mode: range }
+    );
+
+    if (!error && data) {
+      const trend = data as Record<string, unknown>;
+      const rawDays = Array.isArray(trend.days) ? trend.days : [];
+      return {
+        days: rawDays.map((rawDay) => {
+          const day = rawDay as Record<string, string | number>;
+          return {
+            date: String(day.date ?? ""),
+            orders: Number(day.orders ?? 0),
+            sales: Number(day.sales ?? 0)
+          };
+        }),
+        monthOrders: Number(trend.monthOrders ?? 0),
+        monthSales: Number(trend.monthSales ?? 0),
+        inProgressOrders: Number(trend.inProgressOrders ?? 0),
+        topItem: typeof trend.topItem === "string" ? trend.topItem : null,
+        topItemQuantity: Number(trend.topItemQuantity ?? 0)
+      };
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Dashboard trend", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Dashboard trend");
+  }
+
+  return getDashboardTrendFromOrders(
+    demoOrders.filter((order) => order.restaurant_id === restaurantId),
+    range
   );
 }
 
@@ -1388,6 +1436,72 @@ export async function getOrderPaymentChanges(
   }
 
   return changes;
+}
+
+// Mirror of the get_restaurant_dashboard_trend RPC for the demo-data fallback.
+// Day stepping uses fixed 24h increments, which is safe for the demo path (the
+// pilot timezone has no DST) and never runs in production.
+export function getDashboardTrendFromOrders(
+  orders: Order[],
+  range: DashboardTrendRange
+): DashboardTrend {
+  const now = new Date();
+  const todayKey = getRestaurantDateKey(now);
+  const windowDays =
+    range === "30d" ? 30 : range === "mtd" ? Number(todayKey.slice(8, 10)) : 7;
+
+  const dayKeys: string[] = [];
+  for (let offset = windowDays - 1; offset >= 0; offset -= 1) {
+    dayKeys.push(getRestaurantDateKey(new Date(now.getTime() - offset * 86_400_000)));
+  }
+
+  const buckets = new Map(
+    dayKeys.map((key) => [key, { orders: 0, sales: 0 }])
+  );
+  const itemCounts = new Map<string, number>();
+  const monthPrefix = todayKey.slice(0, 7);
+  let monthOrders = 0;
+  let monthSales = 0;
+  let inProgressOrders = 0;
+
+  orders.forEach((order) => {
+    const key = getRestaurantDateKey(order.created_at);
+    const completed = order.status === "Completed";
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.orders += 1;
+      if (completed) {
+        bucket.sales += order.total;
+        order.items.forEach((item) => {
+          itemCounts.set(item.name, (itemCounts.get(item.name) ?? 0) + item.quantity);
+        });
+      }
+    }
+    if (key.startsWith(monthPrefix)) {
+      monthOrders += 1;
+      if (completed) {
+        monthSales += order.total;
+      }
+    }
+    if (order.status !== "New" && order.status !== "Completed" && order.status !== "Cancelled") {
+      inProgressOrders += 1;
+    }
+  });
+
+  const topEntry = [...itemCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  return {
+    days: dayKeys.map((key) => ({
+      date: key,
+      orders: buckets.get(key)?.orders ?? 0,
+      sales: buckets.get(key)?.sales ?? 0
+    })),
+    monthOrders,
+    monthSales,
+    inProgressOrders,
+    topItem: topEntry?.[0] ?? null,
+    topItemQuantity: topEntry?.[1] ?? 0
+  };
 }
 
 export function getAnalytics(orders: Order[], customers: Customer[]): Analytics {
