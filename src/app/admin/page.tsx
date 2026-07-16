@@ -3,34 +3,49 @@ import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
 import { CommissionKeptCard } from "@/components/admin/CommissionKeptCard";
 import { DailySummaryCard } from "@/components/admin/DailySummaryCard";
-import { OrderList } from "@/components/admin/OrderList";
+import { DashboardAttentionStrip } from "@/components/admin/DashboardAttentionStrip";
+import {
+  DashboardTrendCard,
+  type DashboardTrendMetric
+} from "@/components/admin/DashboardTrendCard";
 import {
   getCommissionKept,
-  getCustomersByPhones,
   getDashboardAnalytics,
-  getLatestDailySummary,
-  getRecentOrders
+  getDashboardTrend,
+  getLatestDailySummary
 } from "@/lib/data";
+import type { DashboardTrendRange } from "@/lib/types";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+
+function parseRange(value: string | undefined): DashboardTrendRange {
+  return value === "30d" || value === "mtd" ? value : "7d";
+}
+
+function parseMetric(value: string | undefined): DashboardTrendMetric {
+  return value === "orders" ? "orders" : "sales";
+}
 
 export default async function AdminDashboardPage({
   searchParams
 }: {
-  searchParams: Promise<{ welcome?: string; error?: string }>;
+  searchParams: Promise<{
+    welcome?: string;
+    error?: string;
+    range?: string;
+    metric?: string;
+  }>;
 }) {
   const query = await searchParams;
   const { restaurant } = await requireRestaurantAdmin();
+  const range = parseRange(query.range);
+  const metric = parseMetric(query.metric);
 
-  const [orders, analytics, dailySummary, commission] = await Promise.all([
-    getRecentOrders(restaurant.id, 5),
+  const [analytics, trend, dailySummary, commission] = await Promise.all([
     getDashboardAnalytics(restaurant.id),
+    getDashboardTrend(restaurant.id, range),
     getLatestDailySummary(restaurant.id),
     getCommissionKept(restaurant)
   ]);
-  const customers = await getCustomersByPhones(
-    restaurant.id,
-    orders.map((order) => order.customer_phone)
-  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -59,11 +74,27 @@ export default async function AdminDashboardPage({
       ) : null}
 
       <div className="mt-6">
-        <CommissionKeptCard commission={commission} restaurant={restaurant} />
+        <DashboardAttentionStrip
+          inProgressOrders={trend.inProgressOrders}
+          newOrders={analytics.newOrders}
+        />
       </div>
 
       <div className="mt-6">
-        <AnalyticsCards analytics={analytics} restaurant={restaurant} />
+        <AnalyticsCards
+          analytics={analytics}
+          monthSales={trend.monthSales}
+          restaurant={restaurant}
+        />
+      </div>
+
+      <div className="mt-6">
+        <DashboardTrendCard
+          metric={metric}
+          range={range}
+          restaurant={restaurant}
+          trend={trend}
+        />
       </div>
 
       {dailySummary ? (
@@ -72,19 +103,9 @@ export default async function AdminDashboardPage({
         </div>
       ) : null}
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xl font-black">Recent orders</h2>
-          <Link className="text-sm font-bold text-leaf" href="/admin/orders">
-            View all
-          </Link>
-        </div>
-        <OrderList
-          customers={customers}
-          orders={orders}
-          restaurant={restaurant}
-        />
-      </section>
+      <div className="mt-6">
+        <CommissionKeptCard commission={commission} restaurant={restaurant} />
+      </div>
     </main>
   );
 }

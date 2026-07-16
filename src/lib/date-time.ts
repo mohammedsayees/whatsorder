@@ -76,6 +76,14 @@ export function formatRestaurantDate(
   }).format(asDate(value));
 }
 
+export function getRestaurantDateKey(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const { day, month, year } = restaurantDateParts(value, restaurant);
+  return `${year}-${month}-${day}`;
+}
+
 export function isSameUaeCalendarDay(first: DateInput, second: DateInput) {
   return isSameRestaurantCalendarDay(first, second);
 }

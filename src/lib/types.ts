@@ -494,3 +494,20 @@ export type Analytics = {
   averageOrderValue: number;
   topSellingItem: string;
 };
+
+export type DashboardTrendRange = "7d" | "30d" | "mtd";
+
+export type DashboardTrendDay = {
+  date: string;
+  orders: number;
+  sales: number;
+};
+
+export type DashboardTrend = {
+  days: DashboardTrendDay[];
+  monthOrders: number;
+  monthSales: number;
+  inProgressOrders: number;
+  topItem: string | null;
+  topItemQuantity: number;
+};
