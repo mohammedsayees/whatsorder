@@ -72,6 +72,7 @@ export async function runDailySummary(options?: {
     .from("restaurants")
     .select("id, name, owner_phone, daily_summary_phone, country_code, currency_code, locale, phone_country_code, time_zone, opening_hours_enabled, opening_hours")
     .eq("is_active", true)
+    .eq("is_demo", false)
     .eq("daily_summary_enabled", true);
 
   if (error) {

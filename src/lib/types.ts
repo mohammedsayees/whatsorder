@@ -71,6 +71,10 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
   latitude?: number | null;
   longitude?: number | null;
   delivery_radius_km?: number | null;
+  // Instant demo stores (self-serve funnel): drives the demo banner and
+  // "make this real" CTA on the customer PWA. Absent/false for real tenants.
+  is_demo?: boolean;
+  demo_expires_at?: string | null;
 };
 
 export type Restaurant = PublicRestaurant & {

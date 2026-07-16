@@ -206,7 +206,9 @@ function toPublicRestaurant(restaurant: Restaurant): PublicRestaurant {
     currency_code: restaurant.currency_code,
     locale: restaurant.locale,
     phone_country_code: restaurant.phone_country_code,
-    time_zone: restaurant.time_zone
+    time_zone: restaurant.time_zone,
+    is_demo: restaurant.is_demo,
+    demo_expires_at: restaurant.demo_expires_at
   };
 }
 
