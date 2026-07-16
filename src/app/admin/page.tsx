@@ -9,10 +9,7 @@ import {
   type DashboardTrendMetric
 } from "@/components/admin/DashboardTrendCard";
 import {
-  getCommissionKept,
-  getDashboardAnalytics,
-  getDashboardTrend,
-  getLatestDailySummary
+  getAdminDashboardSnapshot
 } from "@/lib/data";
 import type { DashboardTrendRange } from "@/lib/types";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -35,17 +32,15 @@ export default async function AdminDashboardPage({
     metric?: string;
   }>;
 }) {
-  const query = await searchParams;
-  const { restaurant } = await requireRestaurantAdmin();
+  const [query, { restaurant }] = await Promise.all([
+    searchParams,
+    requireRestaurantAdmin()
+  ]);
   const range = parseRange(query.range);
   const metric = parseMetric(query.metric);
 
-  const [analytics, trend, dailySummary, commission] = await Promise.all([
-    getDashboardAnalytics(restaurant.id),
-    getDashboardTrend(restaurant.id, range),
-    getLatestDailySummary(restaurant.id),
-    getCommissionKept(restaurant)
-  ]);
+  const { analytics, trend, dailySummary, commission } =
+    await getAdminDashboardSnapshot(restaurant, range);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">

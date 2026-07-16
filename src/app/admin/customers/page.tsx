@@ -51,14 +51,16 @@ export default async function AdminCustomersPage({
 }: {
   searchParams: Promise<{ page?: string; segment?: string; q?: string }>;
 }) {
-  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const [{ restaurant }, query] = await Promise.all([
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
+    searchParams
+  ]);
   const money = (value: number) => formatCurrency(value, restaurant);
   const countryProfile = getCountryProfile(restaurant.country_code);
   const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantDateTime(value, restaurant);
   const appUrl = publicAppUrl();
-  const query = await searchParams;
   const activeSegment: CustomerSegmentFilter = isSegmentFilter(query.segment)
     ? query.segment
     : "all";

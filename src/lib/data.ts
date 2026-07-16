@@ -103,6 +103,34 @@ const orderListColumns = [
   "updated_at"
 ].join(", ");
 
+// Admin order cards and thermal tickets need only this subset. Keeping list
+// reads narrow reduces Supabase egress, React Server Component serialization,
+// and browser payload without changing the richer single-order/report reads.
+const adminOrderListColumns = [
+  "id",
+  "parent_order_id",
+  "customer_name",
+  "customer_phone",
+  "fulfilment_type",
+  "car_plate_number",
+  "car_description",
+  "table_number",
+  "delivery_area",
+  "delivery_address",
+  "delivery_google_maps_url",
+  "delivery_landmark",
+  "notes",
+  "payment_method",
+  "items",
+  "subtotal",
+  "delivery_fee",
+  "total",
+  "points_earned",
+  "loyalty_discount",
+  "status",
+  "created_at"
+].join(", ");
+
 export type OrderStatusView = "active" | "completed" | "cancelled";
 export type OrderFulfilmentView = "all" | FulfilmentType;
 
@@ -115,6 +143,10 @@ export type PaginatedResult<T> = {
 };
 
 export type OrderFulfilmentCounts = Record<OrderFulfilmentView, number>;
+
+export type AdminOrdersPageResult = PaginatedResult<Order> & {
+  fulfilmentCounts: OrderFulfilmentCounts;
+};
 
 type OrdersPageOptions = {
   fulfilment?: OrderFulfilmentView;
@@ -564,7 +596,7 @@ export async function getRecentOrders(
   if (supabase) {
     const { data, error } = await supabase
       .from("orders")
-      .select(orderListColumns)
+      .select(adminOrderListColumns)
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(Math.min(20, Math.max(1, limit)));
@@ -649,6 +681,41 @@ export async function getLatestDailySummary(
   return data as DailySummaryCardData;
 }
 
+function dashboardAnalyticsFromPayload(data: unknown): Analytics {
+  const metrics = data as Record<string, string | number>;
+
+  return {
+    averageOrderValue: Number(metrics.averageOrderValue ?? 0),
+    completedOrders: Number(metrics.completedOrders ?? 0),
+    newOrders: Number(metrics.newOrders ?? 0),
+    repeatCustomers: Number(metrics.repeatCustomers ?? 0),
+    todaysOrders: Number(metrics.todaysOrders ?? 0),
+    todaysRevenue: Number(metrics.todaysRevenue ?? 0),
+    topSellingItem: String(metrics.topSellingItem ?? "No sales yet")
+  };
+}
+
+function dashboardTrendFromPayload(data: unknown): DashboardTrend {
+  const trend = data as Record<string, unknown>;
+  const rawDays = Array.isArray(trend.days) ? trend.days : [];
+
+  return {
+    days: rawDays.map((rawDay) => {
+      const day = rawDay as Record<string, string | number>;
+      return {
+        date: String(day.date ?? ""),
+        orders: Number(day.orders ?? 0),
+        sales: Number(day.sales ?? 0)
+      };
+    }),
+    monthOrders: Number(trend.monthOrders ?? 0),
+    monthSales: Number(trend.monthSales ?? 0),
+    inProgressOrders: Number(trend.inProgressOrders ?? 0),
+    topItem: typeof trend.topItem === "string" ? trend.topItem : null,
+    topItemQuantity: Number(trend.topItemQuantity ?? 0)
+  };
+}
+
 export async function getDashboardAnalytics(
   restaurantId: string
 ): Promise<Analytics> {
@@ -661,16 +728,7 @@ export async function getDashboardAnalytics(
     );
 
     if (!error && data) {
-      const metrics = data as Record<string, string | number>;
-      return {
-        averageOrderValue: Number(metrics.averageOrderValue ?? 0),
-        completedOrders: Number(metrics.completedOrders ?? 0),
-        newOrders: Number(metrics.newOrders ?? 0),
-        repeatCustomers: Number(metrics.repeatCustomers ?? 0),
-        todaysOrders: Number(metrics.todaysOrders ?? 0),
-        todaysRevenue: Number(metrics.todaysRevenue ?? 0),
-        topSellingItem: String(metrics.topSellingItem ?? "No sales yet")
-      };
+      return dashboardAnalyticsFromPayload(data);
     }
 
     if (!demoDataEnabled) {
@@ -699,23 +757,7 @@ export async function getDashboardTrend(
     );
 
     if (!error && data) {
-      const trend = data as Record<string, unknown>;
-      const rawDays = Array.isArray(trend.days) ? trend.days : [];
-      return {
-        days: rawDays.map((rawDay) => {
-          const day = rawDay as Record<string, string | number>;
-          return {
-            date: String(day.date ?? ""),
-            orders: Number(day.orders ?? 0),
-            sales: Number(day.sales ?? 0)
-          };
-        }),
-        monthOrders: Number(trend.monthOrders ?? 0),
-        monthSales: Number(trend.monthSales ?? 0),
-        inProgressOrders: Number(trend.inProgressOrders ?? 0),
-        topItem: typeof trend.topItem === "string" ? trend.topItem : null,
-        topItemQuantity: Number(trend.topItemQuantity ?? 0)
-      };
+      return dashboardTrendFromPayload(data);
     }
 
     if (!demoDataEnabled) {
@@ -731,17 +773,81 @@ export async function getDashboardTrend(
   );
 }
 
+type DashboardRestaurant = Pick<
+  Restaurant,
+  | "id"
+  | "commission_rate"
+  | "country_code"
+  | "currency_code"
+  | "locale"
+  | "phone_country_code"
+  | "time_zone"
+>;
+
+export type AdminDashboardSnapshot = {
+  analytics: Analytics;
+  trend: DashboardTrend;
+  dailySummary: DailySummaryCardData | null;
+  commission: CommissionKept;
+};
+
+export async function getAdminDashboardSnapshot(
+  restaurant: DashboardRestaurant,
+  range: DashboardTrendRange = "7d"
+): Promise<AdminDashboardSnapshot> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc("get_admin_dashboard_snapshot", {
+      target_restaurant_id: restaurant.id,
+      range_mode: range
+    });
+
+    if (!error && data) {
+      const payload = data as {
+        analytics?: unknown;
+        trend?: unknown;
+        dailySummary?: DailySummaryCardData | null;
+        commissionTotals?: Record<string, string | number>;
+      };
+
+      if (payload.analytics && payload.trend && payload.commissionTotals) {
+        return {
+          analytics: dashboardAnalyticsFromPayload(payload.analytics),
+          trend: dashboardTrendFromPayload(payload.trend),
+          dailySummary: payload.dailySummary ?? null,
+          commission: computeCommissionKept(
+            {
+              monthOrders: Number(payload.commissionTotals.monthOrders ?? 0),
+              monthBase: Number(payload.commissionTotals.monthBase ?? 0),
+              allTimeOrders: Number(payload.commissionTotals.allTimeOrders ?? 0),
+              allTimeBase: Number(payload.commissionTotals.allTimeBase ?? 0)
+            },
+            restaurant.commission_rate
+          )
+        };
+      }
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Admin dashboard snapshot", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Admin dashboard snapshot");
+  }
+
+  const [analytics, trend, dailySummary, commission] = await Promise.all([
+    getDashboardAnalytics(restaurant.id),
+    getDashboardTrend(restaurant.id, range),
+    getLatestDailySummary(restaurant.id),
+    getCommissionKept(restaurant)
+  ]);
+
+  return { analytics, trend, dailySummary, commission };
+}
+
 export async function getCommissionKept(
-  restaurant: Pick<
-    Restaurant,
-    | "id"
-    | "commission_rate"
-    | "country_code"
-    | "currency_code"
-    | "locale"
-    | "phone_country_code"
-    | "time_zone"
-  >
+  restaurant: DashboardRestaurant
 ): Promise<CommissionKept> {
   const supabase = getSupabaseAdmin();
 
@@ -923,7 +1029,7 @@ export async function getOrdersPage(
       // rows stay below PostgREST's threshold (verified identical to "exact"
       // at current volume) and switches to a planner estimate only once the
       // set is large enough that an exact COUNT would scan O(n) per page load.
-      .select(orderListColumns, { count: "estimated" })
+      .select(adminOrderListColumns, { count: "estimated" })
       .eq("restaurant_id", restaurantId);
 
     query = applyOrderStatusFilter(query, status);
@@ -973,6 +1079,65 @@ export async function getOrdersPage(
     total: filteredOrders.length,
     totalPages: Math.ceil(filteredOrders.length / pageSize)
   };
+}
+
+export async function getAdminOrdersPage(
+  restaurantId: string,
+  options: OrdersPageOptions = {}
+): Promise<AdminOrdersPageResult> {
+  const {
+    fulfilment = "all",
+    status = "active"
+  } = options;
+  const { page, pageSize } = normalizePagination(options.page, options.pageSize);
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc("get_admin_orders_page", {
+      target_restaurant_id: restaurantId,
+      target_status_view: status,
+      target_fulfilment: fulfilment,
+      target_page: page,
+      target_page_size: pageSize
+    });
+
+    if (!error && data) {
+      const payload = data as {
+        items?: Order[];
+        total?: number;
+        fulfilment_counts?: Partial<OrderFulfilmentCounts>;
+      };
+      const total = Number(payload.total ?? 0);
+
+      return {
+        items: payload.items ?? [],
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+        fulfilmentCounts: {
+          all: Number(payload.fulfilment_counts?.all ?? 0),
+          delivery: Number(payload.fulfilment_counts?.delivery ?? 0),
+          takeaway: Number(payload.fulfilment_counts?.takeaway ?? 0),
+          dine_in: Number(payload.fulfilment_counts?.dine_in ?? 0),
+          car_pickup: Number(payload.fulfilment_counts?.car_pickup ?? 0)
+        }
+      };
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Admin orders page", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Admin orders page");
+  }
+
+  const [ordersPage, fulfilmentCounts] = await Promise.all([
+    getOrdersPage(restaurantId, { fulfilment, page, pageSize, status }),
+    getOrderFulfilmentCounts(restaurantId, status)
+  ]);
+
+  return { ...ordersPage, fulfilmentCounts };
 }
 
 export async function getOrderFulfilmentCounts(
@@ -1065,23 +1230,17 @@ export async function getNewOrderAlertState(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const [{ count, error: countError }, { data, error: ordersError }] =
-      await Promise.all([
-        supabase
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "New"),
-        supabase
-          .from("orders")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "New")
-          .order("created_at", { ascending: false })
-          .limit(100)
-      ]);
+    // Supabase returns the total count alongside the limited rows, so a
+    // single request can power both the badge and the alert ID reconciliation.
+    const { count, data, error } = await supabase
+      .from("orders")
+      .select("id", { count: "exact" })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "New")
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-    if (!countError && !ordersError) {
+    if (!error) {
       return {
         newOrderCount: count ?? 0,
         pendingOrderIds: (data ?? []).map((order) => String(order.id))
@@ -1089,7 +1248,7 @@ export async function getNewOrderAlertState(
     }
 
     if (!demoDataEnabled) {
-      productionDataFailure("New-order alert state", countError ?? ordersError);
+      productionDataFailure("New-order alert state", error);
     }
   } else if (!demoDataEnabled) {
     productionDataFailure("New-order alert state");

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { Bell, BellRing, Radio, Volume2, VolumeX } from "lucide-react";
 import {
   getNewOrderAlertStateAction,
@@ -46,7 +46,7 @@ type ToastMessage = {
   message: string;
 };
 
-function createBrowserSupabaseClient() {
+async function createBrowserSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
@@ -55,6 +55,10 @@ function createBrowserSupabaseClient() {
   if (!url || !anonKey) {
     return null;
   }
+
+  // Realtime is progressive enhancement for the dashboard. Loading the SDK
+  // after hydration keeps it out of every admin route's critical JS bundle.
+  const { createClient } = await import("@supabase/supabase-js");
 
   return createClient(url, anonKey, {
     auth: {
@@ -150,7 +154,7 @@ export function NewOrderAlertsProvider({
   restaurantId
 }: NewOrderAlertsProviderProps) {
   const router = useRouter();
-  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pendingOrderIdsRef = useRef(
     new Set(initialNewOrderAlertState.pendingOrderIds)
@@ -160,6 +164,10 @@ export function NewOrderAlertsProvider({
   const seenOrderIdsRef = useRef(createInitialSeenOrderIds());
   const highlightTimersRef = useRef(new Map<string, number>());
   const soundEnabledRef = useRef(false);
+  const alertRefreshPromiseRef = useRef<Promise<{
+    state: NewOrderAlertState;
+    surfacedOrderCount: number;
+  }> | null>(null);
   const toastSequenceRef = useRef(0);
   const [highlightedOrderIds, setHighlightedOrderIds] = useState<Set<string>>(new Set());
   const [newOrderCount, setNewOrderCount] = useState(
@@ -169,7 +177,7 @@ export function NewOrderAlertsProvider({
   const [repeatEnabled, setRepeatEnabled] = useState(false);
   const [soundBlocked, setSoundBlocked] = useState(false);
   const [connectionState, setConnectionState] = useState<"connecting" | "live" | "offline">(
-    restaurantId && realtimeAccessToken && supabase ? "connecting" : "offline"
+    restaurantId && realtimeAccessToken ? "connecting" : "offline"
   );
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -177,6 +185,29 @@ export function NewOrderAlertsProvider({
     useState(realtimeAccessToken);
   const soundStorageKey = `whatsorder-sound-alerts:${restaurantId}`;
   const repeatStorageKey = `whatsorder-repeat-order-alerts:${restaurantId}`;
+
+  useEffect(() => {
+    let active = true;
+
+    void createBrowserSupabaseClient()
+      .then((client) => {
+        if (active) {
+          setSupabase(client);
+          if (!client) {
+            setConnectionState("offline");
+          }
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setConnectionState("offline");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const highlightTimers = highlightTimersRef.current;
@@ -291,16 +322,29 @@ export function NewOrderAlertsProvider({
     [playAlertSound, restaurantId, router, showToast]
   );
 
-  const refreshAlertState = useCallback(async () => {
-    try {
-      const state = await getNewOrderAlertStateAction();
-      surfaceNewOrders(state.pendingOrderIds);
-      pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
-      setNewOrderCount(state.newOrderCount);
-      setLastSyncedAt(new Date());
-    } catch {
-      // A stale/expired login should not crash the dashboard alert UI.
+  const refreshAlertState = useCallback(() => {
+    // Focus, visibility, fallback polling, and repeat alerts can fire together.
+    // Share one in-flight server action so those events never multiply reads.
+    if (alertRefreshPromiseRef.current) {
+      return alertRefreshPromiseRef.current;
     }
+
+    const refreshPromise = getNewOrderAlertStateAction()
+      .then((state) => {
+        const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
+        pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
+        setNewOrderCount(state.newOrderCount);
+        setLastSyncedAt(new Date());
+        return { state, surfacedOrderCount };
+      })
+      .finally(() => {
+        if (alertRefreshPromiseRef.current === refreshPromise) {
+          alertRefreshPromiseRef.current = null;
+        }
+      });
+
+    alertRefreshPromiseRef.current = refreshPromise;
+    return refreshPromise;
   }, [surfaceNewOrders]);
 
   const refreshRealtimeAccess = useCallback(async () => {
@@ -320,7 +364,9 @@ export function NewOrderAlertsProvider({
 
   useEffect(() => {
     const initialRefreshTimer = window.setTimeout(() => {
-      void refreshAlertState();
+      void refreshAlertState().catch(() => {
+        // A stale/expired login should not crash the dashboard alert UI.
+      });
     }, 0);
 
     // Hidden tabs skip reconciliation entirely; the wake handler below
@@ -329,14 +375,18 @@ export function NewOrderAlertsProvider({
       if (document.visibilityState === "hidden") {
         return;
       }
-      void refreshAlertState();
+      void refreshAlertState().catch(() => {
+        // A stale/expired login should not crash the dashboard alert UI.
+      });
     }, connectionState === "live" ? reconcileIntervalLiveMs : reconcileIntervalFallbackMs);
 
     const handleWake = () => {
       if (document.visibilityState === "hidden") {
         return;
       }
-      void refreshAlertState();
+      void refreshAlertState().catch(() => {
+        // A stale/expired login should not crash the dashboard alert UI.
+      });
       void refreshRealtimeAccess();
     };
     window.addEventListener("focus", handleWake);
@@ -453,11 +503,7 @@ export function NewOrderAlertsProvider({
 
     const interval = window.setInterval(async () => {
       try {
-        const state = await getNewOrderAlertStateAction();
-        const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
-        pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
-        setNewOrderCount(state.newOrderCount);
-        setLastSyncedAt(new Date());
+        const { state, surfacedOrderCount } = await refreshAlertState();
 
         if (state.pendingOrderIds.length > 0 && surfacedOrderCount === 0) {
           await playAlertSound();
@@ -470,7 +516,7 @@ export function NewOrderAlertsProvider({
     return () => {
       window.clearInterval(interval);
     };
-  }, [newOrderCount, playAlertSound, repeatEnabled, soundEnabled, surfaceNewOrders]);
+  }, [newOrderCount, playAlertSound, refreshAlertState, repeatEnabled, soundEnabled]);
 
   const enableSound = async () => {
     soundEnabledRef.current = true;
@@ -539,7 +585,7 @@ export function NewOrderAlertsProvider({
           </span>
           <span
             className="text-xs font-semibold text-stone-400"
-            title="The dashboard also checks Supabase every 30 seconds for orders missed by Realtime."
+            title="The dashboard periodically checks Supabase for orders missed by Realtime."
           >
             {lastSyncedAt
               ? `Checked ${lastSyncedAt.toLocaleTimeString([], {
@@ -551,7 +597,7 @@ export function NewOrderAlertsProvider({
           </span>
           {connectionState === "offline" ? (
             <p className="w-full text-xs font-bold text-amber-700">
-              Live connection is unavailable. Orders are still checked every 30 seconds.
+              Live connection is unavailable. Orders are still checked every 15 seconds.
             </p>
           ) : null}
           {soundBlocked ? (

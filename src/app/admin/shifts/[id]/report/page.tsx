@@ -74,8 +74,11 @@ export default async function ShiftCloseReportPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ version?: string }>;
 }) {
-  const session = await requireRestaurantAdmin();
-  const [{ id }, query] = await Promise.all([params, searchParams]);
+  const [session, { id }, query] = await Promise.all([
+    requireRestaurantAdmin(),
+    params,
+    searchParams
+  ]);
   const view = await getShiftCloseReportView(session, id);
 
   if (!view) {

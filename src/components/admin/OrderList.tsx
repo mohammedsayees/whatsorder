@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
