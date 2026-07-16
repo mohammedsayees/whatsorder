@@ -144,6 +144,10 @@ export type PaginatedResult<T> = {
 
 export type OrderFulfilmentCounts = Record<OrderFulfilmentView, number>;
 
+export type AdminOrdersPageResult = PaginatedResult<Order> & {
+  fulfilmentCounts: OrderFulfilmentCounts;
+};
+
 type OrdersPageOptions = {
   fulfilment?: OrderFulfilmentView;
   page?: number;
@@ -1001,6 +1005,65 @@ export async function getOrdersPage(
     total: filteredOrders.length,
     totalPages: Math.ceil(filteredOrders.length / pageSize)
   };
+}
+
+export async function getAdminOrdersPage(
+  restaurantId: string,
+  options: OrdersPageOptions = {}
+): Promise<AdminOrdersPageResult> {
+  const {
+    fulfilment = "all",
+    status = "active"
+  } = options;
+  const { page, pageSize } = normalizePagination(options.page, options.pageSize);
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc("get_admin_orders_page", {
+      target_restaurant_id: restaurantId,
+      target_status_view: status,
+      target_fulfilment: fulfilment,
+      target_page: page,
+      target_page_size: pageSize
+    });
+
+    if (!error && data) {
+      const payload = data as {
+        items?: Order[];
+        total?: number;
+        fulfilment_counts?: Partial<OrderFulfilmentCounts>;
+      };
+      const total = Number(payload.total ?? 0);
+
+      return {
+        items: payload.items ?? [],
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+        fulfilmentCounts: {
+          all: Number(payload.fulfilment_counts?.all ?? 0),
+          delivery: Number(payload.fulfilment_counts?.delivery ?? 0),
+          takeaway: Number(payload.fulfilment_counts?.takeaway ?? 0),
+          dine_in: Number(payload.fulfilment_counts?.dine_in ?? 0),
+          car_pickup: Number(payload.fulfilment_counts?.car_pickup ?? 0)
+        }
+      };
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Admin orders page", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Admin orders page");
+  }
+
+  const [ordersPage, fulfilmentCounts] = await Promise.all([
+    getOrdersPage(restaurantId, { fulfilment, page, pageSize, status }),
+    getOrderFulfilmentCounts(restaurantId, status)
+  ]);
+
+  return { ...ordersPage, fulfilmentCounts };
 }
 
 export async function getOrderFulfilmentCounts(

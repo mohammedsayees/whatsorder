@@ -6,9 +6,8 @@ import { PaginationNav } from "@/components/admin/PaginationNav";
 import { CurrentShiftBanner } from "@/components/admin/CurrentShiftBanner";
 import {
   getCustomersByPhones,
-  getOrderFulfilmentCounts,
+  getAdminOrdersPage,
   getOrderPaymentChanges,
-  getOrdersPage,
   type OrderFulfilmentView,
   type OrderStatusView
 } from "@/lib/data";
@@ -52,16 +51,16 @@ export default async function AdminOrdersPage({
     : "all";
   const requestedPage = positivePage(query.page);
 
-  const [ordersPage, fulfilmentCounts, currentShift] = await Promise.all([
-    getOrdersPage(restaurant.id, {
+  const [ordersPage, currentShift] = await Promise.all([
+    getAdminOrdersPage(restaurant.id, {
       fulfilment,
       page: requestedPage,
       pageSize: 25,
       status
     }),
-    getOrderFulfilmentCounts(restaurant.id, status),
     getCurrentShiftView(session)
   ]);
+  const fulfilmentCounts = ordersPage.fulfilmentCounts;
 
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
     redirect(

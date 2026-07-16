@@ -61,13 +61,22 @@ export const getAuthenticatedUser = cache(
       return null;
     }
 
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    // getClaims verifies the JWT signature and expiry. With Supabase's
+    // asymmetric signing keys this is local after the JWKS is cached, while
+    // symmetric-key projects safely fall back to the Auth server.
+    const { data: authData, error: authError } = await supabase.auth.getClaims(token);
 
-    if (authError || !authData.user) {
+    if (authError || !authData?.claims.sub) {
       return null;
     }
 
-    return authData.user;
+    return {
+      id: authData.claims.sub,
+      email:
+        typeof authData.claims.email === "string"
+          ? authData.claims.email
+          : undefined
+    };
   }
 );
 
