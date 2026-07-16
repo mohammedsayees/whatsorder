@@ -534,7 +534,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <p class="lede">Structured orders, AI daily growth insights, customer segments, loyalty, shift &amp; cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#contact">Request a demo</a>
-        <a class="btn btn-ghost" href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">See it live at Chai Xpress →</a>
+        <a class="btn btn-ghost" href="/try">See your menu live in 2 minutes →</a>
       </div>
       <div class="trust">
         <span>Commission-free</span>
@@ -1154,6 +1154,7 @@ const landingScript = String.raw`// year
       "everything after it": "كل ما بعده",
       "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "طلبات منظمة، وتحليلات نمو يومية بالذكاء الاصطناعي، وشرائح عملاء، وولاء، وتسوية الورديات والنقدية، وقوائم مبنية بالذكاء الاصطناعي — نظام نقاط بيع خفيف مدعوم بالذكاء الاصطناعي وبدون عمولة، يعمل على واتساب الذي يستخدمه عملاؤك أصلاً.",
       "See it live at Chai Xpress →": "شاهده مباشرةً في تشاي إكسبرس",
+      "See your menu live in 2 minutes →": "شاهد قائمتك مباشرةً خلال دقيقتين ←",
       "Commission-free": "بدون عمولة",
       "Works with WhatsApp": "يعمل مع واتساب",
       "AI inside": "مدعوم بالذكاء الاصطناعي",
@@ -1332,6 +1333,7 @@ const landingScript = String.raw`// year
       "everything after it": "അതിനു ശേഷമുള്ള എല്ലാം",
       "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "ചിട്ടയായ ഓർഡറുകൾ, AI ദിവസേനയുള്ള വളർച്ചാ ഉൾക്കാഴ്ചകൾ, കസ്റ്റമർ സെഗ്മെന്റുകൾ, ലോയൽറ്റി, ഷിഫ്റ്റ് & ക്യാഷ് കണക്ക്, AI ഉണ്ടാക്കുന്ന മെനുകൾ — നിങ്ങളുടെ കസ്റ്റമർമാർ ഇപ്പോൾ തന്നെ ഉപയോഗിക്കുന്ന വാട്ട്സ്ആപ്പിൽ പ്രവർത്തിക്കുന്ന, കമ്മീഷൻ ഇല്ലാത്ത, AI ശക്തിയുള്ള ലൈറ്റ്‌വെയ്റ്റ് POS.",
       "See it live at Chai Xpress →": "ചായ് എക്സ്പ്രസിൽ ലൈവ് കാണൂ →",
+      "See your menu live in 2 minutes →": "നിങ്ങളുടെ മെനു 2 മിനിറ്റിൽ ലൈവായി കാണൂ →",
       "Commission-free": "കമ്മീഷൻ ഇല്ല",
       "Works with WhatsApp": "വാട്ട്സ്ആപ്പിനൊപ്പം",
       "AI inside": "AI ഉള്ളിൽ",

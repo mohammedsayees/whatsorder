@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #2A211B; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; height: 297mm; padding: 14mm 14mm 12mm; position: relative; overflow: hidden; page-break-after: always; background: #fff; }
+  .page:last-child { page-break-after: auto; }
+  h1, h2, h3 { font-weight: 600; }
+  .muted { color: #6B5E52; }
+  .amber { color: #C9781A; }
+  .teal { color: #0F6E56; }
+
+  .cover-band { background: #1C140F; border-radius: 18px; padding: 30px 30px 28px; color: #FBF4EC; position: relative; overflow: hidden; }
+  .cover-band .topbar { width: 100%; height: 5px; background: #E08A1E; position: absolute; top: 0; left: 0; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 7px; background: #2A201A; color: #E8A94B; font-size: 11.5px; font-weight: 600; padding: 6px 13px; border-radius: 7px; }
+  .brand-tr { position: absolute; top: 28px; right: 30px; text-align: right; }
+  .brand-tr .b1 { font-size: 17px; font-weight: 600; color: #F2E7DA; }
+  .brand-tr .b2 { font-size: 11px; color: #B8A99B; letter-spacing: .3px; }
+  .hl { font-size: 34px; font-weight: 600; line-height: 1.18; margin: 16px 0 10px; letter-spacing: -.4px; }
+  .sub { font-size: 14px; line-height: 1.6; color: #C9BBAD; max-width: 430px; }
+  .pills { display: flex; gap: 9px; margin-top: 20px; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; padding: 8px 14px; border-radius: 8px; }
+  .pill.g { background: #11342A; color: #7FD9BC; }
+  .pill.a { background: #3A2912; color: #F6C879; }
+  .pill.b { background: #1E2A38; color: #8FB9E8; }
+
+  .sec-label { font-size: 12px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: #B79A6E; margin-bottom: 12px; }
+  .row { display: flex; gap: 22px; }
+
+  .steps { display: flex; flex-direction: column; gap: 12px; }
+  .step { display: flex; gap: 13px; align-items: flex-start; }
+  .step .num { flex: 0 0 38px; height: 38px; border-radius: 11px; background: #FAF1E2; color: #C9781A; display: flex; align-items: center; justify-content: center; }
+  .step .t1 { font-size: 15px; font-weight: 600; }
+  .step .t2 { font-size: 12.5px; line-height: 1.5; color: #6B5E52; margin-top: 2px; }
+
+  .feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  .card { border: 1px solid #EBE3D7; border-radius: 14px; padding: 16px 17px; background: #fff; }
+  .card.wide { grid-column: 1 / -1; }
+  .card-head { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+  .ic { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: 0 0 36px; }
+  .ic.info { background: #E9F1FB; } .ic.warn { background: #FAEEDA; } .ic.neut { background: #F1EFE8; } .ic.succ { background: #E7F4EC; }
+  .card-head .ct { font-size: 15.5px; font-weight: 600; }
+  .blist { display: flex; flex-direction: column; gap: 8px; }
+  .bl { display: flex; gap: 9px; align-items: flex-start; font-size: 12.7px; line-height: 1.45; }
+  .bl .dot { flex: 0 0 auto; margin-top: 5px; }
+  .two-col { columns: 2; column-gap: 22px; }
+  .two-col .bl { break-inside: avoid; margin-bottom: 8px; }
+
+  .why-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .why { border: 1px solid #EBE3D7; border-radius: 13px; padding: 15px 16px; }
+  .why .wt { font-size: 14.5px; font-weight: 600; margin: 9px 0 4px; }
+  .why .wd { font-size: 12.5px; line-height: 1.5; color: #6B5E52; }
+
+  .cta { background: #1C140F; border-radius: 16px; padding: 24px 26px; color: #FBF4EC; display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+  .cta .c1 { font-size: 20px; font-weight: 600; }
+  .cta .c2 { font-size: 13px; color: #C9BBAD; margin-top: 5px; }
+  .cta .btn { background: #E08A1E; color: #1C140F; font-size: 13.5px; font-weight: 600; padding: 12px 20px; border-radius: 10px; white-space: nowrap; display: inline-flex; gap: 8px; align-items: center; }
+
+  .foot { position: absolute; bottom: 9mm; left: 14mm; right: 14mm; display: flex; justify-content: space-between; font-size: 10.5px; color: #9A8B7D; border-top: 1px solid #EFE8DD; padding-top: 8px; }
+  .ph-wrap { flex: 0 0 188px; display: flex; align-items: flex-start; justify-content: center; }
+</style>
+</head>
+<body>
+
+<!-- ============ PAGE 1 ============ -->
+<div class="page">
+  <div class="cover-band">
+    <div class="topbar"></div>
+    <span class="eyebrow">◆ &nbsp;Modern, AI-driven ordering for UAE restaurants</span>
+    <div class="brand-tr"><div class="b1">WhatsOrder</div><div class="b2">order · cook · grow</div></div>
+    <div class="hl">Your whole restaurant<br>runs on WhatsOrder</div>
+    <div class="sub">Turn a QR code into orders and a busy kitchen into a calm one. No app for your customers. No chaos for your team. Just more revenue, fewer mistakes, and regulars who keep coming back.</div>
+    <div class="pills">
+      <span class="pill g">▲ More revenue</span>
+      <span class="pill a">✓ Less chaos</span>
+      <span class="pill b">♥ Loyal customers</span>
+    </div>
+  </div>
+
+  <div style="height: 26px;"></div>
+
+  <div class="row">
+    <div style="flex:1;">
+      <div class="sec-label">How your customer orders — under a minute</div>
+      <div class="steps">
+        <div class="step">
+          <div class="num">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C9781A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M14 17v4M17 17h4M21 14v3"/></svg>
+          </div>
+          <div><div class="t1">1 · Scan or tap</div><div class="t2">A QR on the table or a link in bio. Opens instantly — nothing to download or install.</div></div>
+        </div>
+        <div class="step">
+          <div class="num">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C9781A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-3a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h3z"/></svg>
+          </div>
+          <div><div class="t1">2 · Browse the menu</div><div class="t2">Photos, best-sellers and offers — in English or العربية, whichever they prefer.</div></div>
+        </div>
+        <div class="step">
+          <div class="num">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l2.1-5.7A8.4 8.4 0 1 1 21 11.5z"/></svg>
+          </div>
+          <div><div class="t1">3 · Send on WhatsApp</div><div class="t2">The order lands in your WhatsApp and on your dashboard — fully priced and ready to cook.</div></div>
+        </div>
+      </div>
+
+      <div style="height:22px;"></div>
+      <div class="sec-label">No printed menus to reprint · no commissions · your customers, your data</div>
+      <div style="border:1px solid #EBE3D7; border-radius:14px; padding:15px 17px; background:#FAF8F3;">
+        <div style="font-size:13px; line-height:1.6; color:#4A3F35;">WhatsOrder replaces the messy mix of paper menus, screenshot orders and a notebook of phone numbers with <b>one link and one dashboard</b> — set up by AI in a day.</div>
+      </div>
+    </div>
+
+    <div class="ph-wrap">
+      <!-- Phone mockup of the live bilingual menu -->
+      <svg width="188" height="392" viewBox="0 0 250 520" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="4" width="242" height="512" rx="34" fill="#1C140F"/>
+        <rect x="12" y="12" width="226" height="496" rx="27" fill="#FFFFFF"/>
+        <rect x="95" y="20" width="60" height="7" rx="3.5" fill="#1C140F"/>
+        <!-- header -->
+        <text x="26" y="62" font-family="Helvetica, Arial" font-size="17" font-weight="bold" fill="#1C140F">Your Restaurant</text>
+        <rect x="186" y="48" width="40" height="22" rx="11" fill="#FAF1E2"/>
+        <text x="206" y="63" text-anchor="middle" font-family="Helvetica, Arial" font-size="13" font-weight="bold" fill="#C9781A">ع</text>
+        <text x="26" y="80" font-family="Helvetica, Arial" font-size="10" fill="#8A7C6E">Dubai · Open now · 25–35 min</text>
+        <!-- category chips -->
+        <rect x="26" y="94" width="58" height="24" rx="12" fill="#1C140F"/>
+        <text x="55" y="110" text-anchor="middle" font-family="Helvetica, Arial" font-size="10" font-weight="bold" fill="#FFF">Best sellers</text>
+        <rect x="90" y="94" width="46" height="24" rx="12" fill="#F1EFE8"/>
+        <text x="113" y="110" text-anchor="middle" font-family="Helvetica, Arial" font-size="10" fill="#5F5E5A">Snacks</text>
+        <rect x="142" y="94" width="40" height="24" rx="12" fill="#F1EFE8"/>
+        <text x="162" y="110" text-anchor="middle" font-family="Helvetica, Arial" font-size="10" fill="#5F5E5A">Drinks</text>
+        <!-- offer ribbon -->
+        <rect x="26" y="130" width="200" height="40" rx="10" fill="#FBEFD9"/>
+        <rect x="26" y="130" width="5" height="40" rx="2" fill="#E08A1E"/>
+        <text x="40" y="148" font-family="Helvetica, Arial" font-size="11" font-weight="bold" fill="#B36B12">Breakfast combo offer</text>
+        <text x="40" y="162" font-family="Helvetica, Arial" font-size="9.5" fill="#9A7333">Karak + paratha · AED 9</text>
+        <!-- item card 1 -->
+        <rect x="26" y="182" width="200" height="74" rx="13" fill="#FFFFFF" stroke="#EDE7DC"/>
+        <rect x="34" y="190" width="58" height="58" rx="10" fill="#FAE7CE"/>
+        <path d="M55 210v28M63 210v28M59 210v28M70 210c0 6-3 8-3 14v14" fill="none" stroke="#D79A4E" stroke-width="2.4" stroke-linecap="round"/>
+        <text x="102" y="206" font-family="Helvetica, Arial" font-size="12.5" font-weight="bold" fill="#1C140F">Chicken Nuggets</text>
+        <text x="102" y="221" font-family="Helvetica, Arial" font-size="10" fill="#9A8B7D">قطع الدجاج المقرمشة</text>
+        <text x="102" y="244" font-family="Helvetica, Arial" font-size="12" font-weight="bold" fill="#0F6E56">AED 10</text>
+        <circle cx="210" cy="240" r="13" fill="#1C140F"/>
+        <path d="M210 234v12M204 240h12" stroke="#FFF" stroke-width="2.2" stroke-linecap="round"/>
+        <!-- item card 2 -->
+        <rect x="26" y="266" width="200" height="74" rx="13" fill="#FFFFFF" stroke="#EDE7DC"/>
+        <rect x="34" y="274" width="58" height="58" rx="10" fill="#D9EFE6"/>
+        <path d="M48 318c6-16 24-16 30 0M63 290a7 7 0 1 1 0.01 0" fill="none" stroke="#4FA98A" stroke-width="2.4" stroke-linecap="round"/>
+        <text x="102" y="290" font-family="Helvetica, Arial" font-size="12.5" font-weight="bold" fill="#1C140F">Karak Tea</text>
+        <text x="102" y="305" font-family="Helvetica, Arial" font-size="10" fill="#9A8B7D">شاي كرك</text>
+        <text x="102" y="328" font-family="Helvetica, Arial" font-size="12" font-weight="bold" fill="#0F6E56">AED 2</text>
+        <circle cx="210" cy="324" r="13" fill="#1C140F"/>
+        <path d="M210 318v12M204 324h12" stroke="#FFF" stroke-width="2.2" stroke-linecap="round"/>
+        <!-- search hint -->
+        <rect x="26" y="352" width="200" height="30" rx="15" fill="#F4F2EC"/>
+        <circle cx="44" cy="367" r="5" fill="none" stroke="#9A8B7D" stroke-width="2"/>
+        <path d="M48 371l4 4" stroke="#9A8B7D" stroke-width="2" stroke-linecap="round"/>
+        <text x="58" y="371" font-family="Helvetica, Arial" font-size="10" fill="#9A8B7D">Search the menu…</text>
+        <!-- cart bar -->
+        <rect x="26" y="446" width="200" height="44" rx="13" fill="#1C140F"/>
+        <text x="42" y="473" font-family="Helvetica, Arial" font-size="12" font-weight="bold" fill="#FFF">View cart · 3 items</text>
+        <text x="210" y="473" text-anchor="end" font-family="Helvetica, Arial" font-size="12" font-weight="bold" fill="#F6C879">AED 22</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="foot"><span>WhatsOrder — WhatsApp ordering &amp; restaurant management for the UAE</span><span>Page 1</span></div>
+</div>
+
+<!-- ============ PAGE 2 ============ -->
+<div class="page">
+  <div class="sec-label">Everything WhatsOrder does</div>
+  <h2 style="font-size:24px; letter-spacing:-.3px; margin-bottom:4px;">One platform. Your storefront, kitchen and back office.</h2>
+  <p class="muted" style="font-size:13px; margin-bottom:18px;">Every feature below is live in the product today.</p>
+
+  <div class="feat-grid">
+
+    <div class="card">
+      <div class="card-head">
+        <span class="ic info"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#185FA5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M11 18h2"/></svg></span>
+        <span class="ct">A storefront customers love</span>
+      </div>
+      <div class="blist">
+        <div class="bl"><span class="dot">●</span><span>QR &amp; link ordering — installable web app, no app store</span></div>
+        <div class="bl"><span class="dot">●</span><span>Fully bilingual menu — English + Arabic, right-to-left</span></div>
+        <div class="bl"><span class="dot">●</span><span>Rich menu with photos, best-sellers &amp; instant search</span></div>
+        <div class="bl"><span class="dot">●</span><span>Offers carousel — promote items at a special price</span></div>
+        <div class="bl"><span class="dot">●</span><span>Delivery, takeaway, curbside pickup &amp; dine-in</span></div>
+        <div class="bl"><span class="dot">●</span><span>Reviews &amp; ratings that build your reputation</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="ic warn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8zM18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z"/></svg></span>
+        <span class="ct">AI that does the heavy lifting</span>
+      </div>
+      <div class="blist">
+        <div class="bl"><span class="dot amber">●</span><span>AI menu builder — snap a photo or PDF, get a full digital menu</span></div>
+        <div class="bl"><span class="dot amber">●</span><span>One-tap English → Arabic translation</span></div>
+        <div class="bl"><span class="dot amber">●</span><span>Auto-written, appetizing item descriptions</span></div>
+        <div class="bl"><span class="dot amber">●</span><span>Photos auto-optimized — menus load fast on any data plan</span></div>
+      </div>
+      <div style="margin-top:13px; background:#FBF1DE; border-radius:9px; padding:9px 12px; font-size:11.5px; color:#9A7333;"><b>Set up in a day:</b> send a photo of your current menu — AI does the typing.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="ic neut"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#444441" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg></span>
+        <span class="ct">Command your floor</span>
+      </div>
+      <div class="blist">
+        <div class="bl"><span class="dot">●</span><span>Live order board — New → Preparing → Completed</span></div>
+        <div class="bl"><span class="dot">●</span><span>Instant new-order alerts — nothing slips through</span></div>
+        <div class="bl"><span class="dot">●</span><span>One-tap kitchen tickets (KOT) &amp; customer receipts</span></div>
+        <div class="bl"><span class="dot">●</span><span>Staff order entry for walk-ins &amp; phone orders</span></div>
+        <div class="bl"><span class="dot">●</span><span>Smart status flow tailored to each order type</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="ic succ"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B6D11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+        <span class="ct">Know your business</span>
+      </div>
+      <div class="blist">
+        <div class="bl"><span class="dot teal">●</span><span>Sales, product, payment &amp; fulfilment reports — export to CSV</span></div>
+        <div class="bl"><span class="dot teal">●</span><span>Customer CRM — VIP, repeat, new &amp; inactive segments</span></div>
+        <div class="bl"><span class="dot teal">●</span><span>Insights: average spend, favourite items, last order</span></div>
+        <div class="bl"><span class="dot teal">●</span><span>Shift &amp; cash reconciliation — expected vs counted</span></div>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="card-head">
+        <span class="ic info"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#185FA5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+        <span class="ct">Built for the UAE</span>
+      </div>
+      <div class="two-col blist">
+        <div class="bl"><span class="dot">●</span><span>Delivery zones by distance — only take orders you can serve</span></div>
+        <div class="bl"><span class="dot">●</span><span>Cash or card on delivery</span></div>
+        <div class="bl"><span class="dot">●</span><span>Customer privacy &amp; consent, PDPL-aligned</span></div>
+        <div class="bl"><span class="dot">●</span><span>Opening hours — auto-pause when you're closed</span></div>
+        <div class="bl"><span class="dot">●</span><span>Team roles — owner, manager &amp; staff access</span></div>
+        <div class="bl"><span class="dot">●</span><span>Delivery fees &amp; minimum order, set your way (AED)</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot"><span>WhatsOrder — WhatsApp ordering &amp; restaurant management for the UAE</span><span>Page 2</span></div>
+</div>
+
+<!-- ============ PAGE 3 ============ -->
+<div class="page">
+  <div class="sec-label">Why owners switch</div>
+  <h2 style="font-size:24px; letter-spacing:-.3px; margin-bottom:18px;">Built to grow revenue and kill the chaos.</h2>
+
+  <div class="why-grid">
+    <div class="why">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>
+      <div class="wt">Bigger baskets</div>
+      <div class="wd">Offers, best-sellers and mouth-watering photos quietly lift every order's value.</div>
+    </div>
+    <div class="why">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#185FA5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+      <div class="wt">Fewer mistakes</div>
+      <div class="wd">Clear tickets and printed KOTs replace misheard phone orders and lost paper chits.</div>
+    </div>
+    <div class="why">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+      <div class="wt">More repeat orders</div>
+      <div class="wd">Know your regulars by segment — VIP, repeat, inactive — and bring them back.</div>
+    </div>
+    <div class="why">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#444441" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <div class="wt">Hours saved every week</div>
+      <div class="wd">AI setup and one dashboard replace menu retyping, manual tallies and scattered tools.</div>
+    </div>
+  </div>
+
+  <div style="height:26px;"></div>
+  <div class="sec-label">Order types you can switch on</div>
+  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:150px; border:1px solid #EBE3D7; border-radius:12px; padding:14px;"><div style="font-weight:600; font-size:13.5px;">Delivery</div><div style="font-size:11.5px; color:#6B5E52; margin-top:3px;">Address, area &amp; landmark, with delivery-radius control.</div></div>
+    <div style="flex:1; min-width:150px; border:1px solid #EBE3D7; border-radius:12px; padding:14px;"><div style="font-weight:600; font-size:13.5px;">Takeaway</div><div style="font-size:11.5px; color:#6B5E52; margin-top:3px;">Pickup orders, priced and queued in the kitchen.</div></div>
+    <div style="flex:1; min-width:150px; border:1px solid #EBE3D7; border-radius:12px; padding:14px;"><div style="font-weight:600; font-size:13.5px;">Curbside pickup</div><div style="font-size:11.5px; color:#6B5E52; margin-top:3px;">Captures car plate &amp; description for fast handoff.</div></div>
+    <div style="flex:1; min-width:150px; border:1px solid #EBE3D7; border-radius:12px; padding:14px;"><div style="font-weight:600; font-size:13.5px;">Dine-in</div><div style="font-size:11.5px; color:#6B5E52; margin-top:3px;">Table-number orders sent straight to the kitchen.</div></div>
+  </div>
+
+  <div style="height:34px;"></div>
+  <div class="cta">
+    <div>
+      <div class="c1">Live on your menu in a day</div>
+      <div class="c2">Send us your current menu — we'll set the rest up with AI, ready in a day.</div>
+    </div>
+    <span class="btn">✆ Book a demo</span>
+  </div>
+
+  <div class="foot"><span>WhatsOrder — WhatsApp ordering &amp; restaurant management for the UAE</span><span>Page 3</span></div>
+</div>
+
+</body>
+</html>
