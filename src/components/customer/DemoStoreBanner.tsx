@@ -47,3 +47,21 @@ export function DemoStoreBanner({ restaurant }: { restaurant: PublicRestaurant }
     </div>
   );
 }
+
+// Viral loop: demo stores get shared with partners/staff, so every viewer
+// sees the pitch. Real tenants never render this — their stores stay clean.
+export function DemoStoreFooter({ restaurant }: { restaurant: PublicRestaurant }) {
+  if (!restaurant.is_demo) {
+    return null;
+  }
+
+  return (
+    <a
+      href="/try?src=demo"
+      className="block bg-emerald-950 px-4 py-3.5 text-center text-sm text-emerald-100 hover:bg-emerald-900"
+    >
+      ⚡ This store was built by AI from a menu photo —{" "}
+      <span className="font-semibold underline">build yours in 2 minutes →</span>
+    </a>
+  );
+}

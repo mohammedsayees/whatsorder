@@ -14,6 +14,7 @@ import {
 import {
   inviteRestaurantOwnerAction,
   inviteRestaurantUserAction,
+  promoteDemoRestaurantAction,
   toggleOnboardingTaskAction,
   updateRestaurantNotesAction,
   updateSuperAdminRestaurantAction
@@ -106,6 +107,11 @@ export default async function SuperAdminRestaurantDetailPage({
           <div className="flex flex-wrap items-center gap-2">
             <RestaurantStatusBadge status={restaurant.status ?? "draft"} />
             <RestaurantPlanBadge plan={restaurant.plan ?? "trial"} />
+            {restaurant.is_demo ? (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-800">
+                Demo store
+              </span>
+            ) : null}
           </div>
           <h1 className="mt-3 text-3xl font-black">{restaurant.name}</h1>
           <p className="mt-1 text-stone-500">/r/{restaurant.slug} · {restaurant.city || "City not set"}</p>
@@ -153,6 +159,39 @@ export default async function SuperAdminRestaurantDetailPage({
         <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
           {query.access_revoked}
         </p>
+      ) : null}
+
+      {restaurant.is_demo ? (
+        <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="text-lg font-black text-amber-900">Promote this demo to a real restaurant</h2>
+          <p className="mt-1 text-sm text-amber-800">
+            Keeps the same link, menu, and order history. Test orders currently go to the
+            WhatsOrder number — enter the restaurant&apos;s real WhatsApp number to take over.
+            {restaurant.owner_phone ? (
+              <>
+                {" "}
+                Owner&apos;s WhatsApp from the funnel: <b>{restaurant.owner_phone}</b>
+              </>
+            ) : null}
+          </p>
+          <form action={promoteDemoRestaurantAction} className="mt-4 flex flex-wrap items-center gap-3">
+            <input name="restaurant_id" type="hidden" value={restaurant.id} />
+            <input
+              className="focus-ring w-64 rounded-lg border border-amber-300 bg-white px-4 py-3 text-sm"
+              defaultValue={restaurant.owner_phone ?? ""}
+              name="whatsapp_number"
+              placeholder="Restaurant WhatsApp number"
+              required
+              type="tel"
+            />
+            <button
+              className="focus-ring rounded-lg bg-amber-600 px-4 py-3 text-sm font-black text-white hover:bg-amber-500"
+              type="submit"
+            >
+              Promote to real restaurant
+            </button>
+          </form>
+        </section>
       ) : null}
 
       <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-stone-200">
