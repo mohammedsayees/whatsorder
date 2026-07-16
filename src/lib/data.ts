@@ -681,6 +681,41 @@ export async function getLatestDailySummary(
   return data as DailySummaryCardData;
 }
 
+function dashboardAnalyticsFromPayload(data: unknown): Analytics {
+  const metrics = data as Record<string, string | number>;
+
+  return {
+    averageOrderValue: Number(metrics.averageOrderValue ?? 0),
+    completedOrders: Number(metrics.completedOrders ?? 0),
+    newOrders: Number(metrics.newOrders ?? 0),
+    repeatCustomers: Number(metrics.repeatCustomers ?? 0),
+    todaysOrders: Number(metrics.todaysOrders ?? 0),
+    todaysRevenue: Number(metrics.todaysRevenue ?? 0),
+    topSellingItem: String(metrics.topSellingItem ?? "No sales yet")
+  };
+}
+
+function dashboardTrendFromPayload(data: unknown): DashboardTrend {
+  const trend = data as Record<string, unknown>;
+  const rawDays = Array.isArray(trend.days) ? trend.days : [];
+
+  return {
+    days: rawDays.map((rawDay) => {
+      const day = rawDay as Record<string, string | number>;
+      return {
+        date: String(day.date ?? ""),
+        orders: Number(day.orders ?? 0),
+        sales: Number(day.sales ?? 0)
+      };
+    }),
+    monthOrders: Number(trend.monthOrders ?? 0),
+    monthSales: Number(trend.monthSales ?? 0),
+    inProgressOrders: Number(trend.inProgressOrders ?? 0),
+    topItem: typeof trend.topItem === "string" ? trend.topItem : null,
+    topItemQuantity: Number(trend.topItemQuantity ?? 0)
+  };
+}
+
 export async function getDashboardAnalytics(
   restaurantId: string
 ): Promise<Analytics> {
@@ -693,16 +728,7 @@ export async function getDashboardAnalytics(
     );
 
     if (!error && data) {
-      const metrics = data as Record<string, string | number>;
-      return {
-        averageOrderValue: Number(metrics.averageOrderValue ?? 0),
-        completedOrders: Number(metrics.completedOrders ?? 0),
-        newOrders: Number(metrics.newOrders ?? 0),
-        repeatCustomers: Number(metrics.repeatCustomers ?? 0),
-        todaysOrders: Number(metrics.todaysOrders ?? 0),
-        todaysRevenue: Number(metrics.todaysRevenue ?? 0),
-        topSellingItem: String(metrics.topSellingItem ?? "No sales yet")
-      };
+      return dashboardAnalyticsFromPayload(data);
     }
 
     if (!demoDataEnabled) {
@@ -731,23 +757,7 @@ export async function getDashboardTrend(
     );
 
     if (!error && data) {
-      const trend = data as Record<string, unknown>;
-      const rawDays = Array.isArray(trend.days) ? trend.days : [];
-      return {
-        days: rawDays.map((rawDay) => {
-          const day = rawDay as Record<string, string | number>;
-          return {
-            date: String(day.date ?? ""),
-            orders: Number(day.orders ?? 0),
-            sales: Number(day.sales ?? 0)
-          };
-        }),
-        monthOrders: Number(trend.monthOrders ?? 0),
-        monthSales: Number(trend.monthSales ?? 0),
-        inProgressOrders: Number(trend.inProgressOrders ?? 0),
-        topItem: typeof trend.topItem === "string" ? trend.topItem : null,
-        topItemQuantity: Number(trend.topItemQuantity ?? 0)
-      };
+      return dashboardTrendFromPayload(data);
     }
 
     if (!demoDataEnabled) {
@@ -763,17 +773,81 @@ export async function getDashboardTrend(
   );
 }
 
+type DashboardRestaurant = Pick<
+  Restaurant,
+  | "id"
+  | "commission_rate"
+  | "country_code"
+  | "currency_code"
+  | "locale"
+  | "phone_country_code"
+  | "time_zone"
+>;
+
+export type AdminDashboardSnapshot = {
+  analytics: Analytics;
+  trend: DashboardTrend;
+  dailySummary: DailySummaryCardData | null;
+  commission: CommissionKept;
+};
+
+export async function getAdminDashboardSnapshot(
+  restaurant: DashboardRestaurant,
+  range: DashboardTrendRange = "7d"
+): Promise<AdminDashboardSnapshot> {
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data, error } = await supabase.rpc("get_admin_dashboard_snapshot", {
+      target_restaurant_id: restaurant.id,
+      range_mode: range
+    });
+
+    if (!error && data) {
+      const payload = data as {
+        analytics?: unknown;
+        trend?: unknown;
+        dailySummary?: DailySummaryCardData | null;
+        commissionTotals?: Record<string, string | number>;
+      };
+
+      if (payload.analytics && payload.trend && payload.commissionTotals) {
+        return {
+          analytics: dashboardAnalyticsFromPayload(payload.analytics),
+          trend: dashboardTrendFromPayload(payload.trend),
+          dailySummary: payload.dailySummary ?? null,
+          commission: computeCommissionKept(
+            {
+              monthOrders: Number(payload.commissionTotals.monthOrders ?? 0),
+              monthBase: Number(payload.commissionTotals.monthBase ?? 0),
+              allTimeOrders: Number(payload.commissionTotals.allTimeOrders ?? 0),
+              allTimeBase: Number(payload.commissionTotals.allTimeBase ?? 0)
+            },
+            restaurant.commission_rate
+          )
+        };
+      }
+    }
+
+    if (!demoDataEnabled) {
+      productionDataFailure("Admin dashboard snapshot", error);
+    }
+  } else if (!demoDataEnabled) {
+    productionDataFailure("Admin dashboard snapshot");
+  }
+
+  const [analytics, trend, dailySummary, commission] = await Promise.all([
+    getDashboardAnalytics(restaurant.id),
+    getDashboardTrend(restaurant.id, range),
+    getLatestDailySummary(restaurant.id),
+    getCommissionKept(restaurant)
+  ]);
+
+  return { analytics, trend, dailySummary, commission };
+}
+
 export async function getCommissionKept(
-  restaurant: Pick<
-    Restaurant,
-    | "id"
-    | "commission_rate"
-    | "country_code"
-    | "currency_code"
-    | "locale"
-    | "phone_country_code"
-    | "time_zone"
-  >
+  restaurant: DashboardRestaurant
 ): Promise<CommissionKept> {
   const supabase = getSupabaseAdmin();
 
