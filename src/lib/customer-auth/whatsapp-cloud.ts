@@ -50,15 +50,50 @@ export function verifyMetaSignature(
 }
 
 /**
- * Send a plain-text WhatsApp message via the Cloud API. No-op (returns false)
+ * Send a plain-text WhatsApp message via the Cloud API. No-op (returns null)
  * until the access token + phone-number id are set, so the webhook can be wired
- * up before credentials exist. Never throws — logs and returns false on error.
+ * up before credentials exist. Never throws — logs and returns null on error.
+ *
+ * On success returns Meta's message id (wamid.…) so callers can correlate the
+ * send with later `statuses` webhook events (delivered/read ticks); returns
+ * "unknown" if the API accepted the send but no id could be parsed. Callers
+ * that only care about success can keep treating the result as a boolean.
  */
-export async function sendWhatsAppText(to: string, body: string): Promise<boolean> {
+export async function sendWhatsAppText(
+  to: string,
+  body: string
+): Promise<string | null> {
+  return sendWhatsAppMessagePayload(to, {
+    type: "text",
+    text: { preview_url: true, body }
+  });
+}
+
+/**
+ * Send a pre-approved template message — the only send Meta allows outside the
+ * customer-initiated 24h service window. Template sends are billed per
+ * message, so callers must gate this behind an explicit user action.
+ * Same contract as sendWhatsAppText: wamid on success, null on failure.
+ */
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  languageCode: string
+): Promise<string | null> {
+  return sendWhatsAppMessagePayload(to, {
+    type: "template",
+    template: { name: templateName, language: { code: languageCode } }
+  });
+}
+
+async function sendWhatsAppMessagePayload(
+  to: string,
+  payload: Record<string, unknown>
+): Promise<string | null> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!phoneNumberId || !accessToken) {
-    return false;
+    return null;
   }
 
   try {
@@ -74,18 +109,24 @@ export async function sendWhatsAppText(to: string, body: string): Promise<boolea
           messaging_product: "whatsapp",
           recipient_type: "individual",
           to,
-          type: "text",
-          text: { preview_url: true, body }
+          ...payload
         })
       }
     );
     if (!res.ok) {
       console.error("WhatsApp send failed", res.status, await res.text());
-      return false;
+      return null;
     }
-    return true;
+    try {
+      const body = (await res.json()) as {
+        messages?: Array<{ id?: string }>;
+      };
+      return body.messages?.[0]?.id || "unknown";
+    } catch {
+      return "unknown";
+    }
   } catch (error) {
     console.error("WhatsApp send error", error);
-    return false;
+    return null;
   }
 }

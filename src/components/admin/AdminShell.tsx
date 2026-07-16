@@ -4,6 +4,7 @@ import {
   ClipboardList,
   LogOut,
   MenuSquare,
+  MessagesSquare,
   MessageSquareText,
   PieChart,
   Settings,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/admin/shifts", label: "Shifts", icon: WalletCards, staff: true },
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
+  { href: "/admin/chats", label: "Chats", icon: MessagesSquare, staff: false },
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquareText, staff: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }

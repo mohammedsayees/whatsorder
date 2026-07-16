@@ -18,15 +18,15 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
 
 :root{
     --pine:#0B3D2E;
-    --emerald:#12805A;
-    --emerald-bright:#16A06F;
-    --karak:#D98A3A;
-    --karak-deep:#B86E22;
-    --paper:#FBF7EF;
-    --paper-2:#F4EEE1;
+    --emerald:#0FA36B;
+    --emerald-bright:#12B87B;
+    --karak:#E8912D;
+    --karak-deep:#C97615;
+    --paper:#FDFDFB;
+    --paper-2:#EAF6F0;
     --ink:#1A2420;
     --ink-soft:#4C5650;
-    --line:#E6DECF;
+    --line:#E2EAE5;
     --wa:#25D366;
     --white:#ffffff;
     --r-lg:22px;
@@ -79,7 +79,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
     cursor:pointer;transition:transform .15s ease, box-shadow .2s ease, background .2s ease;
     white-space:nowrap;
   }
-  .btn-primary{background:var(--emerald);color:#fff;box-shadow:0 10px 24px -12px rgba(18,128,90,.7)}
+  .btn-primary{background:var(--emerald);color:#fff;box-shadow:0 10px 24px -12px rgba(15,163,107,.7)}
   .btn-primary:hover{background:var(--emerald-bright);transform:translateY(-2px)}
   .btn-ghost{background:transparent;color:var(--pine);border-color:var(--line)}
   .btn-ghost:hover{border-color:var(--pine);transform:translateY(-2px);background:#fff}
@@ -87,7 +87,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .btn-wa:hover{transform:translateY(-2px);filter:brightness(1.04)}
 
   /* ---------- header ---------- */
-  header{position:sticky;top:0;z-index:50;background:rgba(251,247,239,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  header{position:sticky;top:0;z-index:50;background:rgba(253,253,251,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   .nav{display:flex;align-items:center;justify-content:space-between;gap:20px;height:68px}
   .brand{display:flex;align-items:center;gap:.6rem;font-family:"Bricolage Grotesque";font-weight:700;font-size:1.18rem;letter-spacing:-.02em;color:var(--pine);white-space:nowrap;flex:0 0 auto}
   .brand-mark{width:30px;height:30px;flex:0 0 auto}
@@ -110,8 +110,8 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .hero{position:relative;padding:72px 0 30px;isolation:isolate}
   .hero::before{content:"";position:absolute;inset:-10% 0 0;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(46% 42% at 80% 26%,rgba(18,128,90,.10),transparent 70%),
-      radial-gradient(34% 34% at 10% 8%,rgba(217,138,58,.09),transparent 70%);}
+      radial-gradient(46% 42% at 80% 26%,rgba(15,163,107,.14),transparent 70%),
+      radial-gradient(34% 34% at 10% 8%,rgba(232,145,45,.12),transparent 70%);}
   .hero-grid{position:relative;display:grid;grid-template-columns:1.02fr .98fr;gap:54px;align-items:center}
   .hero h1{font-size:clamp(2.5rem,5.4vw,4.25rem);margin:.7rem 0 0;color:var(--pine)}
   .hero h1 .hl{color:var(--karak-deep);position:relative;white-space:nowrap}
@@ -143,7 +143,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
 
   .ticket .card-top{background:var(--paper-2);justify-content:space-between}
   .ticket .card-top .lbl{display:flex;align-items:center;gap:.5rem}
-  .ticket .badge{font-family:"Geist Mono",monospace;font-size:.62rem;color:var(--emerald);background:rgba(18,128,90,.1);padding:.18rem .45rem;border-radius:5px;letter-spacing:.04em}
+  .ticket .badge{font-family:"Geist Mono",monospace;font-size:.62rem;color:var(--emerald);background:rgba(15,163,107,.1);padding:.18rem .45rem;border-radius:5px;letter-spacing:.04em}
   .ticket-body{padding:.9rem .95rem;font-family:"Geist Mono",monospace;font-size:.82rem}
   .trow{display:flex;justify-content:space-between;padding:.32rem 0;border-bottom:1px dashed var(--line);opacity:0;transform:translateY(6px)}
   .trow .qty{color:var(--ink-soft)}
@@ -220,7 +220,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:46px;counter-reset:step}
   .step{position:relative;padding:0 18px}
   .step:not(:last-child)::after{content:"";position:absolute;top:19px;right:-2px;left:calc(50% + 26px);height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 12px)}
-  .step .num{width:40px;height:40px;border-radius:50%;background:var(--emerald);color:#fff;display:grid;place-items:center;font-family:"Bricolage Grotesque";font-weight:700;position:relative;z-index:2;box-shadow:0 8px 18px -10px rgba(18,128,90,.8)}
+  .step .num{width:40px;height:40px;border-radius:50%;background:var(--emerald);color:#fff;display:grid;place-items:center;font-family:"Bricolage Grotesque";font-weight:700;position:relative;z-index:2;box-shadow:0 8px 18px -10px rgba(15,163,107,.8)}
   .step h4{font-family:"Bricolage Grotesque";font-weight:600;font-size:1.02rem;margin:18px 0 .3rem;color:var(--pine)}
   .step p{margin:0;font-size:.9rem;color:var(--ink-soft)}
 
@@ -262,7 +262,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .pricing{background:var(--paper-2)}
   .price-wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:34px;margin-top:42px;align-items:center}
   .price-card{background:var(--pine);color:#eaf3ee;border-radius:var(--r-lg);padding:34px;box-shadow:var(--shadow);position:relative;overflow:hidden}
-  .price-card::before{content:"";position:absolute;right:-60px;top:-60px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(217,138,58,.35),transparent 70%)}
+  .price-card::before{content:"";position:absolute;right:-60px;top:-60px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(232,145,45,.35),transparent 70%)}
   .price-tag{display:inline-block;font-family:"Geist Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;background:var(--karak);color:#3a2406;padding:.3rem .7rem;border-radius:999px;font-weight:600}
   .price-amt{font-family:"Bricolage Grotesque";font-weight:800;font-size:3.4rem;line-height:1;margin:1.1rem 0 .2rem;color:#fff}
   .price-amt small{font-size:1.05rem;font-weight:500;color:#bcd3c8;font-family:"Instrument Sans"}
@@ -354,7 +354,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .fb{display:grid;grid-template-columns:1.05fr 1fr;gap:0;overflow:hidden;padding:0}
   .fb-left{padding:26px 26px 26px 26px}
   .fb-left .tagrow{display:flex;align-items:center;gap:.5rem;font-family:"Geist Mono",monospace;font-size:.7rem;letter-spacing:.05em;color:var(--emerald);text-transform:uppercase;margin-bottom:.7rem}
-  .fb-left .tagrow .pill{background:rgba(18,128,90,.1);padding:.2rem .5rem;border-radius:5px}
+  .fb-left .tagrow .pill{background:rgba(15,163,107,.1);padding:.2rem .5rem;border-radius:5px}
   .fb-left h3{font-size:1.25rem;margin:0 0 .4rem}
   .fb-left p{font-size:.98rem}
   .fb-right{background:#ECE5DD;padding:22px;display:flex;flex-direction:column;gap:.55rem;justify-content:center;border-left:1px solid var(--line)}
@@ -376,7 +376,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .srow.vendor .lab span{display:block;font-size:.66rem;color:#9aa39d}
   .sresult{display:flex;justify-content:space-between;align-items:center;margin-top:.7rem;padding-top:.7rem;border-top:2px solid var(--ink)}
   .sresult .lab{font-family:"Instrument Sans";font-weight:600;color:var(--pine)}
-  .balanced{display:inline-flex;align-items:center;gap:.4rem;background:rgba(18,128,90,.12);color:var(--emerald);font-weight:600;padding:.3rem .6rem;border-radius:999px;font-size:.8rem}
+  .balanced{display:inline-flex;align-items:center;gap:.4rem;background:rgba(15,163,107,.12);color:var(--emerald);font-weight:600;padding:.3rem .6rem;border-radius:999px;font-size:.8rem}
   .balanced svg{width:14px;height:14px}
 
   /* AI menu card */
@@ -410,7 +410,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
 
   /* ===== proof band (live pilot) ===== */
   .proof-band{position:relative;overflow:hidden;background:var(--pine);color:#eaf3ee;border-radius:var(--r-lg);padding:38px;display:grid;grid-template-columns:1.25fr 1fr;gap:34px;align-items:center;box-shadow:var(--shadow)}
-  .proof-band::before{content:"";position:absolute;right:-80px;bottom:-90px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(217,138,58,.30),transparent 70%);pointer-events:none}
+  .proof-band::before{content:"";position:absolute;right:-80px;bottom:-90px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(232,145,45,.30),transparent 70%);pointer-events:none}
   .proof-band .eyebrow{color:#ffd9a8}
   .proof-band .eyebrow::before{background:var(--karak)}
   .proof-band h3{position:relative;font-family:"Bricolage Grotesque";font-weight:700;font-size:clamp(1.55rem,3vw,2.1rem);line-height:1.08;letter-spacing:-.02em;color:#fff;margin:.7rem 0 .55rem}
@@ -428,7 +428,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .crow .cc{padding:16px 20px;display:flex;align-items:center;gap:.5rem;font-size:.98rem;line-height:1.3}
   .crow .cc.feat-lbl{color:var(--ink);font-weight:500}
   .crow .cc.mkt{color:var(--ink-soft);border-left:1px solid var(--line)}
-  .crow .cc.wo{background:rgba(18,128,90,.055);border-left:1px solid var(--line);color:var(--pine);font-weight:600}
+  .crow .cc.wo{background:rgba(15,163,107,.055);border-left:1px solid var(--line);color:var(--pine);font-weight:600}
   .crow.chead .cc{font-family:"Geist Mono",monospace;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;font-weight:500;background:var(--paper-2);color:var(--ink-soft)}
   .crow.chead .cc.wo{background:var(--pine);color:#fff}
   .crow .cc svg{width:17px;height:17px;flex:0 0 auto}
@@ -448,9 +448,9 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .growth .bento{margin-top:42px}
   .segchips{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:1rem}
   .segchips span{font-family:"Geist Mono",monospace;font-size:.7rem;letter-spacing:.05em;padding:.3rem .65rem;border-radius:999px;font-weight:500}
-  .seg-new{background:rgba(18,128,90,.12);color:var(--emerald)}
+  .seg-new{background:rgba(15,163,107,.12);color:var(--emerald)}
   .seg-rep{background:rgba(11,61,46,.1);color:var(--pine)}
-  .seg-vip{background:rgba(217,138,58,.16);color:var(--karak-deep)}
+  .seg-vip{background:rgba(232,145,45,.16);color:var(--karak-deep)}
   .seg-ina{background:#eee7d8;color:var(--ink-soft)}
   .soon{display:inline-block;font-family:"Geist Mono",monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--karak);color:#3a2406;padding:.2rem .55rem;border-radius:5px;margin-left:.5rem;vertical-align:middle}
   .recap-msg{background:#fff;border-radius:12px;border-top-left-radius:3px;padding:.7rem .8rem;font-size:.84rem;line-height:1.5;max-width:95%;box-shadow:0 1px 1px rgba(0,0,0,.06)}
@@ -497,9 +497,9 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
   <div class="wrap nav">
     <a class="brand" href="#top" aria-label="WhatsOrder home">
       <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect width="32" height="32" rx="9" fill="#12805A"/>
-        <path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FBF7EF"/>
-        <path d="M13.2 15.6l2 2 3.8-4.2" stroke="#12805A" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect width="32" height="32" rx="9" fill="#0FA36B"/>
+        <path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FFFFFF"/>
+        <path d="M13.2 15.6l2 2 3.8-4.2" stroke="#0FA36B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       WhatsOrder
     </a>
@@ -534,7 +534,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <p class="lede">Structured orders, AI daily growth insights, customer segments, loyalty, shift &amp; cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#contact">Request a demo</a>
-        <a class="btn btn-ghost" href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">See it live at Chai Xpress →</a>
+        <a class="btn btn-ghost" href="/try">See your menu live in 2 minutes →</a>
       </div>
       <div class="trust">
         <span>Commission-free</span>
@@ -1073,7 +1073,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="foot-grid">
       <div>
         <div class="foot-brand">
-          <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#12805A"/><path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FBF7EF"/><path d="m13.2 15.6 2 2 3.8-4.2" stroke="#12805A" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0FA36B"/><path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FFFFFF"/><path d="m13.2 15.6 2 2 3.8-4.2" stroke="#0FA36B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
           WhatsOrder
         </div>
         <p style="margin:.7rem 0 0;max-width:34ch;font-size:.92rem">Structured WhatsApp ordering for small UAE restaurants. Built in Ajman.</p>
@@ -1154,6 +1154,7 @@ const landingScript = String.raw`// year
       "everything after it": "كل ما بعده",
       "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "طلبات منظمة، وتحليلات نمو يومية بالذكاء الاصطناعي، وشرائح عملاء، وولاء، وتسوية الورديات والنقدية، وقوائم مبنية بالذكاء الاصطناعي — نظام نقاط بيع خفيف مدعوم بالذكاء الاصطناعي وبدون عمولة، يعمل على واتساب الذي يستخدمه عملاؤك أصلاً.",
       "See it live at Chai Xpress →": "شاهده مباشرةً في تشاي إكسبرس",
+      "See your menu live in 2 minutes →": "شاهد قائمتك مباشرةً خلال دقيقتين ←",
       "Commission-free": "بدون عمولة",
       "Works with WhatsApp": "يعمل مع واتساب",
       "AI inside": "مدعوم بالذكاء الاصطناعي",
@@ -1332,6 +1333,7 @@ const landingScript = String.raw`// year
       "everything after it": "അതിനു ശേഷമുള്ള എല്ലാം",
       "Structured orders, AI daily growth insights, customer segments, loyalty, shift & cash reconciliation, AI-built menus — a commission-free, AI-enabled lightweight POS running on the WhatsApp your customers already use.": "ചിട്ടയായ ഓർഡറുകൾ, AI ദിവസേനയുള്ള വളർച്ചാ ഉൾക്കാഴ്ചകൾ, കസ്റ്റമർ സെഗ്മെന്റുകൾ, ലോയൽറ്റി, ഷിഫ്റ്റ് & ക്യാഷ് കണക്ക്, AI ഉണ്ടാക്കുന്ന മെനുകൾ — നിങ്ങളുടെ കസ്റ്റമർമാർ ഇപ്പോൾ തന്നെ ഉപയോഗിക്കുന്ന വാട്ട്സ്ആപ്പിൽ പ്രവർത്തിക്കുന്ന, കമ്മീഷൻ ഇല്ലാത്ത, AI ശക്തിയുള്ള ലൈറ്റ്‌വെയ്റ്റ് POS.",
       "See it live at Chai Xpress →": "ചായ് എക്സ്പ്രസിൽ ലൈവ് കാണൂ →",
+      "See your menu live in 2 minutes →": "നിങ്ങളുടെ മെനു 2 മിനിറ്റിൽ ലൈവായി കാണൂ →",
       "Commission-free": "കമ്മീഷൻ ഇല്ല",
       "Works with WhatsApp": "വാട്ട്സ്ആപ്പിനൊപ്പം",
       "AI inside": "AI ഉള്ളിൽ",

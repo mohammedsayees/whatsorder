@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DemoStoreBanner, DemoStoreFooter } from "@/components/customer/DemoStoreBanner";
 import { getRestaurantBySlug } from "@/lib/data";
 
 // Overrides the root layout's global manifest so "Add to Home Screen" from a
@@ -24,8 +25,26 @@ export async function generateMetadata({
   };
 }
 
-export default function RestaurantLayout({
-  children
-}: Readonly<{ children: React.ReactNode }>) {
-  return children;
+export default async function RestaurantLayout({
+  children,
+  params
+}: Readonly<{
+  children: React.ReactNode;
+  params: Promise<{ restaurantSlug: string }>;
+}>) {
+  const { restaurantSlug } = await params;
+  // Cached read (same tag as the page's fetch) — no extra DB hit in practice.
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+
+  if (!restaurant?.is_demo) {
+    return children;
+  }
+
+  return (
+    <>
+      <DemoStoreBanner restaurant={restaurant} />
+      {children}
+      <DemoStoreFooter restaurant={restaurant} />
+    </>
+  );
 }

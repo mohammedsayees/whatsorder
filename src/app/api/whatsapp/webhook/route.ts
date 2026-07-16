@@ -19,7 +19,16 @@
 //   WHATSAPP_PHONE_NUMBER_ID  — the sending number's id
 //   NEXT_PUBLIC_APP_URL       — base URL used to build the deep link
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import {
+  applyChatMessageStatuses,
+  maskCustomerLinkToken,
+  recordInboundChatMessages,
+  recordOutboundChatMessage,
+  type ChatStatusEvent,
+  type InboundChatMessage
+} from "@/lib/chat-inbox";
+import { downloadChatMedia, type ChatMediaJob } from "@/lib/chat-media";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import {
   buildCustomerLinkUrl,
@@ -46,15 +55,54 @@ export function GET(req: NextRequest): NextResponse {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+type WhatsAppMediaPayload = {
+  id?: string;
+  caption?: string;
+  filename?: string;
+};
+
+type WhatsAppInboundMessage = {
+  id?: string;
+  from?: string;
+  type?: string;
+  timestamp?: string;
+  text?: { body?: string };
+  image?: WhatsAppMediaPayload;
+  video?: WhatsAppMediaPayload;
+  audio?: WhatsAppMediaPayload;
+  document?: WhatsAppMediaPayload;
+  sticker?: WhatsAppMediaPayload;
+};
+
+const MEDIA_MESSAGE_TYPES = [
+  "image",
+  "video",
+  "audio",
+  "document",
+  "sticker"
+] as const;
+
 type WhatsAppInbound = {
   entry?: Array<{
     changes?: Array<{
       value?: {
-        messages?: Array<{ from?: string; type?: string }>;
+        contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
+        messages?: Array<WhatsAppInboundMessage>;
+        statuses?: Array<{ id?: string; status?: string }>;
       };
     }>;
   }>;
 };
+
+function mediaPayloadFor(
+  message: WhatsAppInboundMessage
+): WhatsAppMediaPayload | null {
+  const type = message.type as (typeof MEDIA_MESSAGE_TYPES)[number];
+  if (!MEDIA_MESSAGE_TYPES.includes(type)) {
+    return null;
+  }
+  return message[type] ?? null;
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // Read the raw body so we can verify the signature over exact bytes.
@@ -87,20 +135,63 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  // Collect distinct sender phones from this batch of inbound text messages.
-  // Capped: Meta batches a handful of messages per delivery, so anything
-  // beyond this is a malformed or forged payload — never fan out unbounded
-  // outbound sends from a single POST.
+  // Collect inbound messages from this batch. Capped: Meta batches a handful
+  // of messages per delivery, so anything beyond this is a malformed or forged
+  // payload — never fan out unbounded outbound sends from a single POST.
   const MAX_SENDERS_PER_DELIVERY = 5;
+  const MAX_MESSAGES_PER_DELIVERY = 20;
+  const MAX_STATUSES_PER_DELIVERY = 50;
   const senders = new Set<string>();
+  const inboundMessages: InboundChatMessage[] = [];
+  const statusEvents: ChatStatusEvent[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      for (const status of change.value?.statuses ?? []) {
+        if (
+          status.id &&
+          status.status &&
+          statusEvents.length < MAX_STATUSES_PER_DELIVERY
+        ) {
+          statusEvents.push({ waMessageId: status.id, status: status.status });
+        }
+      }
+      const profileNames = new Map<string, string>();
+      for (const contact of change.value?.contacts ?? []) {
+        if (contact.wa_id && contact.profile?.name) {
+          profileNames.set(contact.wa_id, contact.profile.name);
+        }
+      }
       for (const message of change.value?.messages ?? []) {
-        if (message.from && senders.size < MAX_SENDERS_PER_DELIVERY) {
-          senders.add(message.from);
+        if (!message.from) {
+          continue;
+        }
+        if (!senders.has(message.from) && senders.size >= MAX_SENDERS_PER_DELIVERY) {
+          continue;
+        }
+        senders.add(message.from);
+        if (inboundMessages.length < MAX_MESSAGES_PER_DELIVERY) {
+          const media = mediaPayloadFor(message);
+          inboundMessages.push({
+            waMessageId: message.id,
+            from: message.from,
+            type: message.type ?? "text",
+            // Media captions / document filenames read best as the body.
+            body:
+              message.type === "text"
+                ? (message.text?.body ?? "")
+                : (media?.caption ?? media?.filename ?? ""),
+            timestamp: message.timestamp,
+            profileName: profileNames.get(message.from),
+            mediaId: media?.id
+          });
         }
       }
     }
+  }
+
+  // Delivery/read ticks for outbound sends — independent of inbound handling.
+  if (statusEvents.length > 0) {
+    await applyChatMessageStatuses(statusEvents);
   }
 
   if (senders.size > 0) {
@@ -136,14 +227,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       }
 
+      // Persist chat history first (dedupes redeliveries), then reply. Both
+      // are best-effort and independently non-fatal.
+      await recordInboundChatMessages(restaurant.id, inboundMessages);
+
+      // Media downloads run after the 200 ack — Meta's media URLs are only
+      // valid briefly, but blocking the ack on multi-MB downloads risks
+      // webhook retries and duplicate deliveries.
+      const mediaJobs: ChatMediaJob[] = inboundMessages
+        .filter((m): m is InboundChatMessage & { waMessageId: string; mediaId: string } =>
+          Boolean(m.waMessageId && m.mediaId)
+        )
+        .map((m) => ({ waMessageId: m.waMessageId, mediaId: m.mediaId }));
+      if (mediaJobs.length > 0) {
+        after(() => downloadChatMedia(restaurant.id, mediaJobs));
+      }
+
       await Promise.all(
         [...senders].map(async (phone) => {
           const token = await mintLinkToken({ restaurantId: restaurant.id, phone });
           const url = buildCustomerLinkUrl(baseUrl, token, restaurant.slug);
-          await sendWhatsAppText(
-            phone,
-            `View your order & stamps at ${restaurant.name} →\n${url}`
-          );
+          const body = `View your order & stamps at ${restaurant.name} →\n${url}`;
+          const sent = await sendWhatsAppText(phone, body);
+          if (sent) {
+            await recordOutboundChatMessage({
+              restaurantId: restaurant.id,
+              phone,
+              // Stored copy is redacted: staff reading the thread must not get
+              // a usable customer-login link.
+              body: maskCustomerLinkToken(body),
+              waMessageId: sent
+            });
+          }
         })
       );
     }

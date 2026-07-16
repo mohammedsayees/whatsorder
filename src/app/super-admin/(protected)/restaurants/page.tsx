@@ -98,6 +98,11 @@ export default async function SuperAdminRestaurantsPage({
               <div className="flex flex-wrap gap-2">
                 <RestaurantStatusBadge status={(restaurant.status ?? "draft") as RestaurantStatus} />
                 <RestaurantPlanBadge plan={restaurant.plan ?? "trial"} />
+                {restaurant.is_demo ? (
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black uppercase tracking-wide text-amber-800">
+                    Demo
+                  </span>
+                ) : null}
               </div>
               <div className="text-sm">
                 <p className="font-bold">{restaurant.whatsapp_number}</p>
