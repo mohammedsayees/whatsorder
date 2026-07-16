@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DemoStoreBanner } from "@/components/customer/DemoStoreBanner";
+import { DemoStoreBanner, DemoStoreFooter } from "@/components/customer/DemoStoreBanner";
 import { getRestaurantBySlug } from "@/lib/data";
 
 // Overrides the root layout's global manifest so "Add to Home Screen" from a
@@ -44,6 +44,7 @@ export default async function RestaurantLayout({
     <>
       <DemoStoreBanner restaurant={restaurant} />
       {children}
+      <DemoStoreFooter restaurant={restaurant} />
     </>
   );
 }

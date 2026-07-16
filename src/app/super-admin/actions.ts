@@ -365,6 +365,89 @@ export async function createRestaurantAction(formData: FormData) {
   redirect(`/super-admin/restaurants/${restaurant.id}?created=1`);
 }
 
+// Instant demo stores (funnel Phase 2): promote a self-serve demo tenant to a
+// real one in place — same slug, same menu, same order history. Requires the
+// restaurant's real WhatsApp number because demo tenants point at the founder
+// number; promoting without changing it would misroute customer orders.
+export async function promoteDemoRestaurantAction(formData: FormData) {
+  await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    redirect("/super-admin/restaurants?error=" + queryError("Supabase is not configured."));
+  }
+
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const detailUrl = `/super-admin/restaurants/${restaurantId}`;
+
+  const { data: demo } = await supabase
+    .from("restaurants")
+    .select("id, slug, name, country_code, owner_phone")
+    .eq("id", restaurantId)
+    .eq("is_demo", true)
+    .maybeSingle();
+
+  if (!demo) {
+    redirect(`${detailUrl}?error=${queryError("This restaurant is not a demo store.")}`);
+  }
+
+  const countryProfile = getCountryProfile(demo.country_code);
+  const whatsappNumber = normalizeWhatsAppNumber(
+    stringValue(formData, "whatsapp_number"),
+    countryProfile.phoneCountryCode
+  );
+
+  if (!whatsappNumber) {
+    redirect(
+      `${detailUrl}?error=${queryError("Enter the restaurant's real WhatsApp number to promote it.")}`
+    );
+  }
+
+  const { error: promoteError } = await supabase
+    .from("restaurants")
+    .update({
+      is_demo: false,
+      demo_expires_at: null,
+      demo_ip_hash: null,
+      whatsapp_number: whatsappNumber,
+      subtitle: null,
+      status: "onboarding"
+    })
+    .eq("id", demo.id)
+    .eq("is_demo", true);
+
+  if (promoteError) {
+    redirect(`${detailUrl}?error=${queryError(promoteError.message)}`);
+  }
+
+  // Seed the same onboarding checklist real tenants get at creation. The demo
+  // build already covered the menu steps; mark those done so the checklist
+  // reflects reality.
+  const now = new Date().toISOString();
+  const preCompleted = new Set([
+    "restaurant_details",
+    "whatsapp_number",
+    "menu_uploaded",
+    "categories_created",
+    "items_added"
+  ]);
+  await supabase.from("onboarding_tasks").upsert(
+    onboardingTaskTemplates.map(([taskKey, taskLabel]) => ({
+      restaurant_id: demo.id,
+      task_key: taskKey,
+      task_label: taskLabel,
+      is_completed: preCompleted.has(taskKey),
+      completed_at: preCompleted.has(taskKey) ? now : null
+    })),
+    { onConflict: "restaurant_id,task_key", ignoreDuplicates: true }
+  );
+
+  revalidatePublicRestaurantCache({ id: demo.id, slug: demo.slug });
+  revalidatePath(`/r/${demo.slug}`);
+  revalidatePath("/super-admin/restaurants");
+  redirect(`${detailUrl}?saved=1`);
+}
+
 export async function inviteRestaurantOwnerAction(formData: FormData) {
   await requireSuperAdmin();
   const supabase = getSupabaseAdmin();

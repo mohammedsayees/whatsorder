@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { extractMenuPageItems } from "@/lib/menu-extraction/extract";
+import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import {
   DEMO_BUILDS_PER_DAY,
   DEMO_MAX_PAGES,
@@ -28,7 +29,7 @@ const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BASE64_LENGTH = 10_000_000;
 
 export type DemoBuildResult =
-  | { ok: true; slug: string; url: string; itemCount: number }
+  | { ok: true; slug: string; url: string; itemCount: number; ownerWhatsApp: string | null }
   | { ok: false; error: string; rateLimited?: boolean };
 
 type DemoPage = { imageBase64: string; mimeType: string };
@@ -47,7 +48,12 @@ async function clientIpHash(): Promise<string> {
   return hashDemoIp(ip);
 }
 
-async function notifyFounder(payload: { name: string; slug: string; url: string }) {
+async function notifyFounder(payload: {
+  name: string;
+  slug: string;
+  url: string;
+  ownerWhatsApp: string | null;
+}) {
   // Optional webhook (e.g. a Zapier/Make hook that pings WhatsApp). Failures
   // are logged and swallowed — the prospect's build must never fail because
   // the notification did.
@@ -73,6 +79,9 @@ async function notifyFounder(payload: { name: string; slug: string; url: string 
 export async function buildDemoStoreAction(input: {
   restaurantName: string;
   pages: DemoPage[];
+  // Optional lead capture: the prospect's own WhatsApp number, so follow-up
+  // has a channel even if they never tap a CTA.
+  ownerWhatsApp?: string;
 }): Promise<DemoBuildResult> {
   const supabase = getSupabaseAdmin();
   if (!supabase || !process.env.GEMINI_API_KEY) {
@@ -86,6 +95,11 @@ export async function buildDemoStoreAction(input: {
   if (!name) {
     return { ok: false, error: "Enter your restaurant name (at least 2 characters)." };
   }
+
+  // Optional and best-effort: an unparseable number is dropped, never a blocker.
+  const ownerPhone = input.ownerWhatsApp
+    ? normalizeWhatsAppNumber(String(input.ownerWhatsApp).slice(0, 20)) || null
+    : null;
 
   const pages = (Array.isArray(input.pages) ? input.pages : []).slice(0, DEMO_MAX_PAGES);
   if (pages.length === 0) {
@@ -164,6 +178,7 @@ export async function buildDemoStoreAction(input: {
       is_demo: true,
       demo_expires_at: demoExpiryDate().toISOString(),
       demo_ip_hash: ipHash,
+      owner_phone: ownerPhone,
       delivery_fee: 0,
       minimum_order_amount: 0
     })
@@ -186,6 +201,7 @@ export async function buildDemoStoreAction(input: {
         is_demo: true,
         demo_expires_at: demoExpiryDate().toISOString(),
         demo_ip_hash: ipHash,
+        owner_phone: ownerPhone,
         delivery_fee: 0,
         minimum_order_amount: 0
       })
@@ -199,10 +215,10 @@ export async function buildDemoStoreAction(input: {
       return { ok: false, error: "Could not create your demo store. Try again in a moment." };
     }
 
-    return finishBuild(supabase, retry, name, drafts);
+    return finishBuild(supabase, retry, name, drafts, ownerPhone);
   }
 
-  return finishBuild(supabase, restaurant, name, drafts);
+  return finishBuild(supabase, restaurant, name, drafts, ownerPhone);
 }
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -211,7 +227,8 @@ async function finishBuild(
   supabase: AdminClient,
   restaurant: { id: string; slug: string },
   name: string,
-  drafts: ReturnType<typeof dedupeDraftItems>
+  drafts: ReturnType<typeof dedupeDraftItems>,
+  ownerPhone: string | null
 ): Promise<DemoBuildResult> {
   const categoryNames = [...new Set(drafts.map((row) => row.category.trim() || "Menu"))];
   const { data: categories, error: categoryError } = await supabase
@@ -256,7 +273,13 @@ async function finishBuild(
   revalidatePublicRestaurantCache({ id: restaurant.id, slug: restaurant.slug });
 
   const url = `/r/${restaurant.slug}`;
-  await notifyFounder({ name, slug: restaurant.slug, url });
+  await notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone });
 
-  return { ok: true, slug: restaurant.slug, url, itemCount: items.length };
+  return {
+    ok: true,
+    slug: restaurant.slug,
+    url,
+    itemCount: items.length,
+    ownerWhatsApp: ownerPhone
+  };
 }

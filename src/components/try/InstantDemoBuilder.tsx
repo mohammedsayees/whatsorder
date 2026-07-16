@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Upload, X } from "lucide-react";
 import { buildDemoStoreAction } from "@/app/try/actions";
 import { FOUNDER_WHATSAPP_NUMBER, DEMO_MAX_PAGES } from "@/lib/demo-store";
@@ -87,13 +87,67 @@ const fallbackWhatsAppUrl = `https://wa.me/${FOUNDER_WHATSAPP_NUMBER}?text=${enc
   "Hi! I'd like a demo store for my restaurant."
 )}`;
 
+// Progress theater: the build takes 30-90s of opaque server work, so the UI
+// narrates believable stages on a timer to keep the wait feeling short. The
+// last stage holds until the real response lands.
+const BUILD_STAGES = [
+  "Uploading your menu ✓",
+  "AI is reading items & prices…",
+  "Building your categories…",
+  "Putting your store live…"
+];
+
+function BuildProgress() {
+  const [stage, setStage] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStage((current) => Math.min(current + 1, BUILD_STAGES.length - 1));
+    }, 9000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+      <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all duration-1000"
+          style={{ width: `${((stage + 1) / BUILD_STAGES.length) * 92}%` }}
+        />
+      </div>
+      <ul className="mt-3 space-y-1.5 text-sm">
+        {BUILD_STAGES.map((label, index) => (
+          <li
+            key={label}
+            className={
+              index < stage
+                ? "text-emerald-800"
+                : index === stage
+                  ? "flex items-center gap-2 font-semibold text-emerald-900"
+                  : "text-slate-400"
+            }
+          >
+            {index === stage && <Loader2 className="animate-spin" size={14} />}
+            {label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function InstantDemoBuilder() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [name, setName] = useState("");
+  const [whatsApp, setWhatsApp] = useState("");
   const [pages, setPages] = useState<PagePreview[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
-  const [result, setResult] = useState<{ url: string; itemCount: number } | null>(null);
+  const [result, setResult] = useState<{
+    url: string;
+    itemCount: number;
+    ownerWhatsApp: string | null;
+  } | null>(null);
   const [preparing, setPreparing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -148,6 +202,7 @@ export default function InstantDemoBuilder() {
     try {
       const response = await buildDemoStoreAction({
         restaurantName: name,
+        ownerWhatsApp: whatsApp.trim() || undefined,
         pages: pages.map((page) => ({
           imageBase64: dataUrlToBase64(page.dataUrl),
           mimeType: page.mimeType
@@ -161,7 +216,11 @@ export default function InstantDemoBuilder() {
         return;
       }
 
-      setResult({ url: response.url, itemCount: response.itemCount });
+      setResult({
+        url: response.url,
+        itemCount: response.itemCount,
+        ownerWhatsApp: response.ownerWhatsApp
+      });
       setPhase("done");
     } catch {
       setPhase("idle");
@@ -196,6 +255,20 @@ export default function InstantDemoBuilder() {
             Copy link
           </button>
         </div>
+        {result.ownerWhatsApp && (
+          <a
+            href={`https://wa.me/${result.ownerWhatsApp}?text=${encodeURIComponent(
+              `My WhatsOrder demo store: ${
+                typeof window !== "undefined" ? window.location.origin : ""
+              }${result.url}`
+            )}`}
+            target="_blank"
+            rel="noopener"
+            className="mt-3 inline-block text-sm font-semibold text-emerald-800 underline"
+          >
+            Send the link to my WhatsApp →
+          </a>
+        )}
       </div>
     );
   }
@@ -265,6 +338,21 @@ export default function InstantDemoBuilder() {
         </p>
       </div>
 
+      <label className="mt-4 block text-sm font-semibold text-emerald-950" htmlFor="demo-whatsapp">
+        Your WhatsApp number{" "}
+        <span className="font-normal text-slate-500">(optional — so we can help you go live)</span>
+      </label>
+      <input
+        id="demo-whatsapp"
+        type="tel"
+        value={whatsApp}
+        onChange={(event) => setWhatsApp(event.target.value)}
+        placeholder="05x xxx xxxx"
+        maxLength={20}
+        className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
+        disabled={phase === "building"}
+      />
+
       {error && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {error}
@@ -280,6 +368,8 @@ export default function InstantDemoBuilder() {
         </div>
       )}
 
+      {phase === "building" && <BuildProgress />}
+
       <button
         type="button"
         onClick={onBuild}
@@ -289,7 +379,7 @@ export default function InstantDemoBuilder() {
         {phase === "building" ? (
           <>
             <Loader2 className="animate-spin" size={18} />
-            Reading your menu with AI… (about a minute)
+            Building… (about a minute)
           </>
         ) : (
           "Build my demo store"
