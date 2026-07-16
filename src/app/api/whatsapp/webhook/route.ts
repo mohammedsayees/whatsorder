@@ -21,8 +21,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import {
+  applyChatMessageStatuses,
+  maskCustomerLinkToken,
   recordInboundChatMessages,
   recordOutboundChatMessage,
+  type ChatStatusEvent,
   type InboundChatMessage
 } from "@/lib/chat-inbox";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
@@ -63,6 +66,7 @@ type WhatsAppInbound = {
           timestamp?: string;
           text?: { body?: string };
         }>;
+        statuses?: Array<{ id?: string; status?: string }>;
       };
     }>;
   }>;
@@ -104,10 +108,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // payload — never fan out unbounded outbound sends from a single POST.
   const MAX_SENDERS_PER_DELIVERY = 5;
   const MAX_MESSAGES_PER_DELIVERY = 20;
+  const MAX_STATUSES_PER_DELIVERY = 50;
   const senders = new Set<string>();
   const inboundMessages: InboundChatMessage[] = [];
+  const statusEvents: ChatStatusEvent[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      for (const status of change.value?.statuses ?? []) {
+        if (
+          status.id &&
+          status.status &&
+          statusEvents.length < MAX_STATUSES_PER_DELIVERY
+        ) {
+          statusEvents.push({ waMessageId: status.id, status: status.status });
+        }
+      }
       const profileNames = new Map<string, string>();
       for (const contact of change.value?.contacts ?? []) {
         if (contact.wa_id && contact.profile?.name) {
@@ -134,6 +149,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       }
     }
+  }
+
+  // Delivery/read ticks for outbound sends — independent of inbound handling.
+  if (statusEvents.length > 0) {
+    await applyChatMessageStatuses(statusEvents);
   }
 
   if (senders.size > 0) {
@@ -183,7 +203,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             await recordOutboundChatMessage({
               restaurantId: restaurant.id,
               phone,
-              body
+              // Stored copy is redacted: staff reading the thread must not get
+              // a usable customer-login link.
+              body: maskCustomerLinkToken(body),
+              waMessageId: sent
             });
           }
         })

@@ -1,8 +1,11 @@
 import { MessageCircle } from "lucide-react";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { setChatStatusAction } from "@/app/admin/chats/actions";
 import { ChatComposer } from "@/components/admin/chats/ChatComposer";
 import { ChatRefreshButton } from "@/components/admin/chats/ChatRefreshButton";
+import { ChatsLive } from "@/components/admin/chats/ChatsLive";
+import { accessTokenCookieName } from "@/lib/auth-cookies";
 import {
   getChatConversation,
   getChatConversations,
@@ -58,6 +61,9 @@ export default async function AdminChatsPage({
     "owner",
     "manager"
   ]);
+  const cookieStore = await cookies();
+  const realtimeAccessToken =
+    cookieStore.get(accessTokenCookieName)?.value ?? null;
   const params = await searchParams;
   const filter: ChatConversationFilter | "all" = isChatConversationFilter(
     params.filter
@@ -111,7 +117,13 @@ export default async function AdminChatsPage({
             WhatsApp conversations on your connected number.
           </p>
         </div>
-        <ChatRefreshButton />
+        <div className="flex items-center gap-2">
+          <ChatsLive
+            realtimeAccessToken={realtimeAccessToken}
+            restaurantId={restaurant.id}
+          />
+          <ChatRefreshButton />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -264,6 +276,23 @@ export default async function AdminChatsPage({
                         </p>
                         <p className="mt-1 text-right text-[10px] font-semibold text-stone-400">
                           {formatDateTime(message.created_at)}
+                          {message.direction === "outbound" && message.status ? (
+                            <span
+                              className={`ml-1.5 ${
+                                message.status === "read"
+                                  ? "text-leaf"
+                                  : message.status === "failed"
+                                    ? "text-rose-500"
+                                    : ""
+                              }`}
+                            >
+                              {message.status === "sent"
+                                ? "✓"
+                                : message.status === "failed"
+                                  ? "✕ failed"
+                                  : "✓✓"}
+                            </span>
+                          ) : null}
                         </p>
                       </div>
                     </div>

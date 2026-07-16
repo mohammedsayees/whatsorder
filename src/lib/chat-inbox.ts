@@ -86,6 +86,40 @@ export function chatMessagePreview(messageType: string, body: string): string {
   return `[${messageType}]`;
 }
 
+/**
+ * Mask the customer-login token in a stored copy of an outbound deep link, so
+ * chat history never exposes a usable login link to dashboard staff. The
+ * customer still receives the real link; only our stored copy is redacted.
+ */
+export function maskCustomerLinkToken(body: string): string {
+  return body.replace(/([?&]token=)[^&\s]+/g, "$1•••");
+}
+
+// ── Outbound delivery status (Meta `statuses` webhook) ──────────────────────
+
+const STATUS_RANK: Record<string, number> = {
+  sent: 1,
+  delivered: 2,
+  read: 3,
+  failed: 4
+};
+
+/**
+ * Meta delivers status events at-least-once and out of order (a `delivered`
+ * can arrive after `read`). Only move a message's status forward.
+ */
+export function shouldUpgradeChatStatus(
+  current: string | null,
+  next: string
+): boolean {
+  const nextRank = STATUS_RANK[next];
+  if (!nextRank) {
+    return false;
+  }
+  const currentRank = current ? (STATUS_RANK[current] ?? 0) : 0;
+  return nextRank > currentRank;
+}
+
 // ── Persistence (service role) ───────────────────────────────────────────────
 
 export type InboundChatMessage = {
@@ -267,6 +301,8 @@ export async function recordOutboundChatMessage(input: {
   conversationId?: string;
   body: string;
   sentBy?: string;
+  /** Meta's message id from the send response — correlates status webhooks. */
+  waMessageId?: string;
 }): Promise<void> {
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -292,8 +328,15 @@ export async function recordOutboundChatMessage(input: {
       conversation_id: conversationId,
       restaurant_id: input.restaurantId,
       direction: "outbound" as const,
+      // "unknown" means the send succeeded but Meta's response had no parseable
+      // id — never store it, or two such sends would collide on the unique index.
+      wa_message_id:
+        input.waMessageId && input.waMessageId !== "unknown"
+          ? input.waMessageId
+          : null,
       message_type: "text",
       body: input.body,
+      status: "sent",
       sent_by: input.sentBy ?? null,
       created_at: nowIso
     });
@@ -319,6 +362,65 @@ export async function recordOutboundChatMessage(input: {
     }
   } catch (error) {
     console.error("WhatsOrder chat: outbound persist error", error);
+  }
+}
+
+export type ChatStatusEvent = {
+  /** Meta message id the status refers to. */
+  waMessageId: string;
+  /** sent | delivered | read | failed */
+  status: string;
+};
+
+/**
+ * Apply Meta `statuses` webhook events to stored outbound messages. Events for
+ * wamids we never stored (order notifications, pre-inbox sends) are ignored.
+ * Statuses only move forward — see shouldUpgradeChatStatus.
+ */
+export async function applyChatMessageStatuses(
+  events: ChatStatusEvent[]
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin || events.length === 0) {
+    return;
+  }
+
+  try {
+    // Latest status per wamid within this delivery.
+    const latest = new Map<string, string>();
+    for (const event of events) {
+      const previous = latest.get(event.waMessageId);
+      if (!previous || shouldUpgradeChatStatus(previous, event.status)) {
+        latest.set(event.waMessageId, event.status);
+      }
+    }
+
+    const { data: rows, error } = await admin
+      .from("whatsapp_messages")
+      .select("id, wa_message_id, status")
+      .in("wa_message_id", [...latest.keys()]);
+    if (error || !rows) {
+      if (error) {
+        console.error("WhatsOrder chat: status lookup failed", error.code);
+      }
+      return;
+    }
+
+    for (const row of rows) {
+      const next = latest.get(row.wa_message_id as string);
+      if (!next || !shouldUpgradeChatStatus(row.status as string | null, next)) {
+        continue;
+      }
+      const { error: updateError } = await admin
+        .from("whatsapp_messages")
+        .update({ status: next })
+        .eq("id", row.id);
+      if (updateError) {
+        console.error("WhatsOrder chat: status update failed", updateError.code);
+      }
+    }
+  } catch (error) {
+    console.error("WhatsOrder chat: status apply error", error);
   }
 }
 

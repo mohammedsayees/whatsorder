@@ -3,8 +3,10 @@ import {
   chatMessagePreview,
   isChatConversationFilter,
   isWithinServiceWindow,
+  maskCustomerLinkToken,
   SERVICE_WINDOW_MS,
-  serviceWindowRemainingMs
+  serviceWindowRemainingMs,
+  shouldUpgradeChatStatus
 } from "@/lib/chat-inbox";
 
 const NOW = Date.parse("2026-07-16T12:00:00Z");
@@ -55,6 +57,48 @@ describe("chatMessagePreview", () => {
   it("uses a type placeholder for non-text messages", () => {
     expect(chatMessagePreview("image", "")).toBe("[image]");
     expect(chatMessagePreview("audio", "")).toBe("[audio]");
+  });
+});
+
+describe("maskCustomerLinkToken", () => {
+  it("redacts the token query param but keeps the rest of the link", () => {
+    const body =
+      "View your order →\nhttps://x.app/api/customer/link?token=eyJhbGciOi.abc_d-ef&next=%2Fr%2Fchaixpress";
+    expect(maskCustomerLinkToken(body)).toBe(
+      "View your order →\nhttps://x.app/api/customer/link?token=•••&next=%2Fr%2Fchaixpress"
+    );
+  });
+
+  it("redacts a trailing token with no following param", () => {
+    expect(maskCustomerLinkToken("https://x.app/link?token=abc123")).toBe(
+      "https://x.app/link?token=•••"
+    );
+  });
+
+  it("leaves token-free messages untouched", () => {
+    expect(maskCustomerLinkToken("hello there")).toBe("hello there");
+  });
+});
+
+describe("shouldUpgradeChatStatus", () => {
+  it("moves forward from null through sent/delivered/read", () => {
+    expect(shouldUpgradeChatStatus(null, "sent")).toBe(true);
+    expect(shouldUpgradeChatStatus("sent", "delivered")).toBe(true);
+    expect(shouldUpgradeChatStatus("delivered", "read")).toBe(true);
+  });
+
+  it("never downgrades on out-of-order webhook deliveries", () => {
+    expect(shouldUpgradeChatStatus("read", "delivered")).toBe(false);
+    expect(shouldUpgradeChatStatus("delivered", "sent")).toBe(false);
+    expect(shouldUpgradeChatStatus("read", "read")).toBe(false);
+  });
+
+  it("ignores unknown statuses", () => {
+    expect(shouldUpgradeChatStatus("sent", "bogus")).toBe(false);
+  });
+
+  it("treats failed as terminal-forward", () => {
+    expect(shouldUpgradeChatStatus("sent", "failed")).toBe(true);
   });
 });
 

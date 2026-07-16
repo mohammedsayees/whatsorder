@@ -66,7 +66,8 @@ export async function sendChatMessageAction(
     restaurantId: session.restaurantId,
     conversationId: conversation.id,
     body,
-    sentBy: session.userId
+    sentBy: session.userId,
+    waMessageId: sent
   });
   await markChatConversationRead(session.restaurantId, conversation.id);
 
