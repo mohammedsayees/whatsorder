@@ -63,6 +63,33 @@ export async function sendWhatsAppText(
   to: string,
   body: string
 ): Promise<string | null> {
+  return sendWhatsAppMessagePayload(to, {
+    type: "text",
+    text: { preview_url: true, body }
+  });
+}
+
+/**
+ * Send a pre-approved template message — the only send Meta allows outside the
+ * customer-initiated 24h service window. Template sends are billed per
+ * message, so callers must gate this behind an explicit user action.
+ * Same contract as sendWhatsAppText: wamid on success, null on failure.
+ */
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  languageCode: string
+): Promise<string | null> {
+  return sendWhatsAppMessagePayload(to, {
+    type: "template",
+    template: { name: templateName, language: { code: languageCode } }
+  });
+}
+
+async function sendWhatsAppMessagePayload(
+  to: string,
+  payload: Record<string, unknown>
+): Promise<string | null> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!phoneNumberId || !accessToken) {
@@ -82,8 +109,7 @@ export async function sendWhatsAppText(
           messaging_product: "whatsapp",
           recipient_type: "individual",
           to,
-          type: "text",
-          text: { preview_url: true, body }
+          ...payload
         })
       }
     );
@@ -92,10 +118,10 @@ export async function sendWhatsAppText(
       return null;
     }
     try {
-      const payload = (await res.json()) as {
+      const body = (await res.json()) as {
         messages?: Array<{ id?: string }>;
       };
-      return payload.messages?.[0]?.id || "unknown";
+      return body.messages?.[0]?.id || "unknown";
     } catch {
       return "unknown";
     }

@@ -58,6 +58,15 @@ describe("chatMessagePreview", () => {
     expect(chatMessagePreview("image", "")).toBe("[image]");
     expect(chatMessagePreview("audio", "")).toBe("[audio]");
   });
+
+  it("appends the caption to media placeholders", () => {
+    expect(chatMessagePreview("image", "our new menu")).toBe(
+      "[image] our new menu"
+    );
+    expect(chatMessagePreview("document", "menu.pdf")).toBe(
+      "[document] menu.pdf"
+    );
+  });
 });
 
 describe("maskCustomerLinkToken", () => {

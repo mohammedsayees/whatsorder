@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import {
   sendChatMessageAction,
+  sendChatTemplateAction,
   type SendChatMessageState
 } from "@/app/admin/chats/actions";
 
@@ -17,6 +18,48 @@ function SendButton() {
     >
       {pending ? "Sending…" : "Send"}
     </button>
+  );
+}
+
+function TemplateButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      className="focus-ring shrink-0 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-black text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+      disabled={pending}
+      type="submit"
+    >
+      {pending ? "Sending…" : "Send template (paid)"}
+    </button>
+  );
+}
+
+function ClosedWindowActions({ conversationId }: { conversationId: string }) {
+  const [state, formAction] = useActionState<SendChatMessageState, FormData>(
+    sendChatTemplateAction,
+    {}
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-stone-100 px-4 py-3">
+        <p className="text-sm font-semibold text-stone-500">
+          The 24-hour reply window has closed. Send an approved template to
+          re-engage (billed per message by WhatsApp), or wait for the customer
+          to message again.
+        </p>
+        <form action={formAction}>
+          <input name="conversationId" type="hidden" value={conversationId} />
+          <TemplateButton />
+        </form>
+      </div>
+      {state.error ? (
+        <p className="text-xs font-bold text-rose-600">{state.error}</p>
+      ) : null}
+      {state.sentAt ? (
+        <p className="text-xs font-bold text-leaf">Template sent.</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -42,10 +85,7 @@ export function ChatComposer({
 
   if (!windowOpen) {
     return (
-      <p className="rounded-2xl bg-stone-100 px-4 py-3 text-sm font-semibold text-stone-500">
-        The 24-hour reply window has closed. You can reply once the customer
-        messages again.
-      </p>
+      <ClosedWindowActions conversationId={conversationId} />
     );
   }
 

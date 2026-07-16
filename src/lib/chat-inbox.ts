@@ -34,6 +34,8 @@ export type ChatMessage = {
   body: string;
   status: string | null;
   sent_by: string | null;
+  media_path: string | null;
+  media_mime: string | null;
   created_at: string;
 };
 
@@ -77,13 +79,14 @@ const PREVIEW_MAX_LENGTH = 120;
 
 /** Inbox-list preview: trimmed text, or a placeholder for non-text messages. */
 export function chatMessagePreview(messageType: string, body: string): string {
+  const compact = body.replace(/\s+/g, " ").trim();
   if (messageType === "text") {
-    const compact = body.replace(/\s+/g, " ").trim();
     return compact.length > PREVIEW_MAX_LENGTH
       ? `${compact.slice(0, PREVIEW_MAX_LENGTH - 1)}…`
       : compact;
   }
-  return `[${messageType}]`;
+  // Media messages may carry a caption/filename in body.
+  return compact ? `[${messageType}] ${compact}`.slice(0, PREVIEW_MAX_LENGTH) : `[${messageType}]`;
 }
 
 /**
@@ -135,6 +138,8 @@ export type InboundChatMessage = {
   timestamp?: string;
   /** WhatsApp profile name from the contacts payload. */
   profileName?: string;
+  /** Meta media id for image/audio/video/document/sticker messages. */
+  mediaId?: string;
 };
 
 function inboundSentAtIso(timestamp: string | undefined, fallback: Date): string {
@@ -429,6 +434,7 @@ export async function applyChatMessageStatuses(
 export async function getChatConversations(
   restaurantId: string,
   filter?: ChatConversationFilter,
+  search?: string,
   limit = 50
 ): Promise<ChatConversation[]> {
   const admin = getSupabaseAdmin();
@@ -449,6 +455,15 @@ export async function getChatConversations(
     query = query.gt("unread_count", 0);
   } else if (filter) {
     query = query.eq("status", filter);
+  }
+
+  // Strip PostgREST or() syntax characters so the term can't break out of the
+  // ilike patterns.
+  const term = search?.replace(/[%,()\\]/g, "").trim();
+  if (term) {
+    query = query.or(
+      `customer_phone.ilike.%${term}%,customer_name.ilike.%${term}%`
+    );
   }
 
   const { data, error } = await query;
@@ -498,7 +513,7 @@ export async function getChatMessages(
   const { data, error } = await admin
     .from("whatsapp_messages")
     .select(
-      "id, conversation_id, direction, message_type, body, status, sent_by, created_at"
+      "id, conversation_id, direction, message_type, body, status, sent_by, media_path, media_mime, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .eq("conversation_id", conversationId)
@@ -510,6 +525,42 @@ export async function getChatMessages(
     return [];
   }
   return ((data ?? []) as ChatMessage[]).reverse();
+}
+
+export type ChatCustomerSnapshot = {
+  name: string | null;
+  total_orders: number;
+  total_spend: number;
+  last_order_at: string | null;
+  loyalty_points_balance: number;
+};
+
+/**
+ * Order-history snapshot for the context strip beside a chat. Matches on the
+ * digits-only phone shared by customers.phone and conversations.customer_phone;
+ * returns null when the chat sender has never placed an order.
+ */
+export async function getChatCustomerSnapshot(
+  restaurantId: string,
+  customerPhone: string
+): Promise<ChatCustomerSnapshot | null> {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    return null;
+  }
+
+  const { data, error } = await admin
+    .from("customers")
+    .select("name, total_orders, total_spend, last_order_at, loyalty_points_balance")
+    .eq("restaurant_id", restaurantId)
+    .eq("phone", customerPhone)
+    .maybeSingle();
+
+  if (error) {
+    console.error("WhatsOrder chat: customer snapshot failed", error.code);
+    return null;
+  }
+  return (data as ChatCustomerSnapshot | null) ?? null;
 }
 
 export async function markChatConversationRead(

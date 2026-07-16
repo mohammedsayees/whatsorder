@@ -8,7 +8,10 @@ import {
   recordOutboundChatMessage,
   setChatConversationStatus
 } from "@/lib/chat-inbox";
-import { sendWhatsAppText } from "@/lib/customer-auth/whatsapp-cloud";
+import {
+  sendWhatsAppTemplate,
+  sendWhatsAppText
+} from "@/lib/customer-auth/whatsapp-cloud";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 const CHAT_ROLES = ["restaurant_admin", "owner", "manager"] as const;
@@ -70,6 +73,64 @@ export async function sendChatMessageAction(
     waMessageId: sent
   });
   await markChatConversationRead(session.restaurantId, conversation.id);
+
+  revalidatePath("/admin/chats");
+  return { sentAt: Date.now() };
+}
+
+/**
+ * Send the configured re-engagement template — the only send Meta permits once
+ * the 24h window has closed. Deliberately restricted to closed-window
+ * conversations so nobody pays template rates when a free-form reply works.
+ */
+export async function sendChatTemplateAction(
+  _prevState: SendChatMessageState,
+  formData: FormData
+): Promise<SendChatMessageState> {
+  const session = await requireRestaurantRole([...CHAT_ROLES]);
+
+  const conversationId = String(formData.get("conversationId") ?? "");
+  if (!conversationId) {
+    return { error: "Missing conversation." };
+  }
+
+  const conversation = await getChatConversation(
+    session.restaurantId,
+    conversationId
+  );
+  if (!conversation) {
+    return { error: "Conversation not found." };
+  }
+
+  if (isWithinServiceWindow(conversation.last_inbound_at)) {
+    return {
+      error: "The reply window is still open — send a normal (free) reply instead."
+    };
+  }
+
+  const templateName =
+    process.env.WHATSAPP_REOPEN_TEMPLATE_NAME ?? "hello_world";
+  const templateLang = process.env.WHATSAPP_REOPEN_TEMPLATE_LANG ?? "en_US";
+
+  const sent = await sendWhatsAppTemplate(
+    conversation.customer_phone,
+    templateName,
+    templateLang
+  );
+  if (!sent) {
+    return {
+      error:
+        "Template send failed. Check that the template is approved in the WhatsApp Business account."
+    };
+  }
+
+  await recordOutboundChatMessage({
+    restaurantId: session.restaurantId,
+    conversationId: conversation.id,
+    body: `Template message sent: ${templateName}`,
+    sentBy: session.userId,
+    waMessageId: sent
+  });
 
   revalidatePath("/admin/chats");
   return { sentAt: Date.now() };

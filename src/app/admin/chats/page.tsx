@@ -9,14 +9,18 @@ import { accessTokenCookieName } from "@/lib/auth-cookies";
 import {
   getChatConversation,
   getChatConversations,
+  getChatCustomerSnapshot,
   getChatMessages,
   isChatConversationFilter,
   markChatConversationRead,
   serviceWindowRemainingMs,
   type ChatConversation,
-  type ChatConversationFilter
+  type ChatConversationFilter,
+  type ChatMessage
 } from "@/lib/chat-inbox";
-import { formatRestaurantDateTime } from "@/lib/date-time";
+import { getChatMediaSignedUrl } from "@/lib/chat-media";
+import { formatCurrency } from "@/lib/currency";
+import { formatRestaurantDate, formatRestaurantDateTime } from "@/lib/date-time";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -51,10 +55,90 @@ function windowBadge(lastInboundAt: string | null) {
   };
 }
 
+function ChatMessageContent({
+  message,
+  mediaUrl
+}: {
+  message: ChatMessage;
+  mediaUrl?: string;
+}) {
+  if (message.message_type === "text") {
+    return (
+      <p className="whitespace-pre-wrap text-sm font-medium [overflow-wrap:anywhere]">
+        {message.body}
+      </p>
+    );
+  }
+
+  const caption = message.body ? (
+    <p className="mt-1 whitespace-pre-wrap text-sm font-medium [overflow-wrap:anywhere]">
+      {message.body}
+    </p>
+  ) : null;
+
+  if (!mediaUrl) {
+    return (
+      <div>
+        <p className="text-sm font-semibold italic text-stone-500">
+          [{message.message_type}]
+          {message.media_path ? "" : " — media unavailable"}
+        </p>
+        {caption}
+      </div>
+    );
+  }
+
+  const mime = message.media_mime ?? "";
+  if (mime.startsWith("image/")) {
+    return (
+      <div>
+        {/* Signed URLs expire hourly, so next/image optimization caching is
+            counterproductive here. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          alt={message.body || "Image from customer"}
+          className="max-h-64 max-w-full rounded-xl"
+          src={mediaUrl}
+        />
+        {caption}
+      </div>
+    );
+  }
+  if (mime.startsWith("audio/")) {
+    return (
+      <div>
+        <audio className="max-w-full" controls preload="none" src={mediaUrl} />
+        {caption}
+      </div>
+    );
+  }
+  if (mime.startsWith("video/")) {
+    return (
+      <div>
+        <video className="max-h-64 max-w-full rounded-xl" controls preload="none" src={mediaUrl} />
+        {caption}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <a
+        className="focus-ring text-sm font-black text-leaf underline underline-offset-2"
+        href={mediaUrl}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Download {message.message_type}
+        {message.body ? ` — ${message.body}` : ""}
+      </a>
+    </div>
+  );
+}
+
 export default async function AdminChatsPage({
   searchParams
 }: {
-  searchParams: Promise<{ c?: string; filter?: string }>;
+  searchParams: Promise<{ c?: string; filter?: string; q?: string }>;
 }) {
   const { restaurant } = await requireRestaurantRole([
     "restaurant_admin",
@@ -73,18 +157,36 @@ export default async function AdminChatsPage({
       ? "all"
       : "open";
 
+  const searchTerm = params.q?.trim() || undefined;
   const conversations = await getChatConversations(
     restaurant.id,
-    filter === "all" ? undefined : filter
+    filter === "all" ? undefined : filter,
+    searchTerm
   );
 
   const selectedId = params.c;
   const selected = selectedId
     ? await getChatConversation(restaurant.id, selectedId)
     : null;
-  const messages = selected
-    ? await getChatMessages(restaurant.id, selected.id)
-    : [];
+  const [messages, customerSnapshot] = selected
+    ? await Promise.all([
+        getChatMessages(restaurant.id, selected.id),
+        getChatCustomerSnapshot(restaurant.id, selected.customer_phone)
+      ])
+    : [[] as ChatMessage[], null];
+
+  // Signed URLs for stored media (bucket is private; links live for an hour).
+  const mediaUrls = new Map<string, string>();
+  await Promise.all(
+    messages
+      .filter((message) => message.media_path)
+      .map(async (message) => {
+        const url = await getChatMediaSignedUrl(message.media_path as string);
+        if (url) {
+          mediaUrls.set(message.id, url);
+        }
+      })
+  );
 
   // Opening a thread clears its unread badge (page is force-dynamic, so this
   // runs on every real view, never at build time).
@@ -100,6 +202,9 @@ export default async function AdminChatsPage({
     const query = new URLSearchParams();
     if (nextFilter !== "open") {
       query.set("filter", nextFilter);
+    }
+    if (searchTerm) {
+      query.set("q", searchTerm);
     }
     if (conversationId) {
       query.set("c", conversationId);
@@ -126,7 +231,19 @@ export default async function AdminChatsPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <form action="/admin/chats" className="flex items-center gap-2" method="get">
+          {filter !== "open" ? (
+            <input name="filter" type="hidden" value={filter} />
+          ) : null}
+          <input
+            className="focus-ring w-48 rounded-full border border-stone-200 px-4 py-1.5 text-xs font-semibold"
+            defaultValue={searchTerm ?? ""}
+            name="q"
+            placeholder="Search name or phone…"
+            type="search"
+          />
+        </form>
         {FILTER_TABS.map((tab) => (
           <Link
             className={`focus-ring rounded-full px-4 py-1.5 text-xs font-black ${
@@ -247,6 +364,39 @@ export default async function AdminChatsPage({
                 </div>
               </div>
 
+              {customerSnapshot ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-stone-100 bg-stone-50/60 px-5 py-2 text-xs font-semibold text-stone-600">
+                  <span className="font-black text-ink">
+                    {customerSnapshot.name || "Customer"}
+                  </span>
+                  <span>{customerSnapshot.total_orders} orders</span>
+                  <span>
+                    {formatCurrency(Number(customerSnapshot.total_spend), restaurant)}{" "}
+                    spent
+                  </span>
+                  <span>{customerSnapshot.loyalty_points_balance} stamps</span>
+                  {customerSnapshot.last_order_at ? (
+                    <span>
+                      Last order{" "}
+                      {formatRestaurantDate(
+                        customerSnapshot.last_order_at,
+                        restaurant
+                      )}
+                    </span>
+                  ) : null}
+                  <Link
+                    className="focus-ring font-black text-leaf underline-offset-2 hover:underline"
+                    href={`/admin/customers?q=${encodeURIComponent(selected.customer_phone)}`}
+                  >
+                    View profile →
+                  </Link>
+                </div>
+              ) : (
+                <div className="border-b border-stone-100 bg-stone-50/60 px-5 py-2 text-xs font-semibold text-stone-400">
+                  No orders yet from this number.
+                </div>
+              )}
+
               <div className="max-h-[60vh] flex-1 space-y-2 overflow-y-auto px-5 py-4">
                 {messages.length === 0 ? (
                   <p className="text-center text-xs font-semibold text-stone-400">
@@ -269,11 +419,10 @@ export default async function AdminChatsPage({
                             : "bg-stone-100 text-ink"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap text-sm font-medium [overflow-wrap:anywhere]">
-                          {message.message_type === "text"
-                            ? message.body
-                            : `Unsupported message type: ${message.message_type}`}
-                        </p>
+                        <ChatMessageContent
+                          mediaUrl={mediaUrls.get(message.id)}
+                          message={message}
+                        />
                         <p className="mt-1 text-right text-[10px] font-semibold text-stone-400">
                           {formatDateTime(message.created_at)}
                           {message.direction === "outbound" && message.status ? (

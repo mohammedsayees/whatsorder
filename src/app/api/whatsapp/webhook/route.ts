@@ -19,7 +19,7 @@
 //   WHATSAPP_PHONE_NUMBER_ID  — the sending number's id
 //   NEXT_PUBLIC_APP_URL       — base URL used to build the deep link
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import {
   applyChatMessageStatuses,
   maskCustomerLinkToken,
@@ -28,6 +28,7 @@ import {
   type ChatStatusEvent,
   type InboundChatMessage
 } from "@/lib/chat-inbox";
+import { downloadChatMedia, type ChatMediaJob } from "@/lib/chat-media";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import {
   buildCustomerLinkUrl,
@@ -54,23 +55,54 @@ export function GET(req: NextRequest): NextResponse {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+type WhatsAppMediaPayload = {
+  id?: string;
+  caption?: string;
+  filename?: string;
+};
+
+type WhatsAppInboundMessage = {
+  id?: string;
+  from?: string;
+  type?: string;
+  timestamp?: string;
+  text?: { body?: string };
+  image?: WhatsAppMediaPayload;
+  video?: WhatsAppMediaPayload;
+  audio?: WhatsAppMediaPayload;
+  document?: WhatsAppMediaPayload;
+  sticker?: WhatsAppMediaPayload;
+};
+
+const MEDIA_MESSAGE_TYPES = [
+  "image",
+  "video",
+  "audio",
+  "document",
+  "sticker"
+] as const;
+
 type WhatsAppInbound = {
   entry?: Array<{
     changes?: Array<{
       value?: {
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
-        messages?: Array<{
-          id?: string;
-          from?: string;
-          type?: string;
-          timestamp?: string;
-          text?: { body?: string };
-        }>;
+        messages?: Array<WhatsAppInboundMessage>;
         statuses?: Array<{ id?: string; status?: string }>;
       };
     }>;
   }>;
 };
+
+function mediaPayloadFor(
+  message: WhatsAppInboundMessage
+): WhatsAppMediaPayload | null {
+  const type = message.type as (typeof MEDIA_MESSAGE_TYPES)[number];
+  if (!MEDIA_MESSAGE_TYPES.includes(type)) {
+    return null;
+  }
+  return message[type] ?? null;
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // Read the raw body so we can verify the signature over exact bytes.
@@ -138,13 +170,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
         senders.add(message.from);
         if (inboundMessages.length < MAX_MESSAGES_PER_DELIVERY) {
+          const media = mediaPayloadFor(message);
           inboundMessages.push({
             waMessageId: message.id,
             from: message.from,
             type: message.type ?? "text",
-            body: message.type === "text" ? (message.text?.body ?? "") : "",
+            // Media captions / document filenames read best as the body.
+            body:
+              message.type === "text"
+                ? (message.text?.body ?? "")
+                : (media?.caption ?? media?.filename ?? ""),
             timestamp: message.timestamp,
-            profileName: profileNames.get(message.from)
+            profileName: profileNames.get(message.from),
+            mediaId: media?.id
           });
         }
       }
@@ -192,6 +230,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // Persist chat history first (dedupes redeliveries), then reply. Both
       // are best-effort and independently non-fatal.
       await recordInboundChatMessages(restaurant.id, inboundMessages);
+
+      // Media downloads run after the 200 ack — Meta's media URLs are only
+      // valid briefly, but blocking the ack on multi-MB downloads risks
+      // webhook retries and duplicate deliveries.
+      const mediaJobs: ChatMediaJob[] = inboundMessages
+        .filter((m): m is InboundChatMessage & { waMessageId: string; mediaId: string } =>
+          Boolean(m.waMessageId && m.mediaId)
+        )
+        .map((m) => ({ waMessageId: m.waMessageId, mediaId: m.mediaId }));
+      if (mediaJobs.length > 0) {
+        after(() => downloadChatMedia(restaurant.id, mediaJobs));
+      }
 
       await Promise.all(
         [...senders].map(async (phone) => {
