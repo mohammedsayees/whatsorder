@@ -1,0 +1,9 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`poster render pipeline > renders bestseller photo deterministically and inside the PNG contract 1`] = `"c30bc71b589984b260565c48f356b02c8b11ba8544e0010850fec598c71ac063"`;
+
+exports[`poster render pipeline > renders bestseller typographic (no photo, no logo) deterministically and inside the PNG contract 1`] = `"8c08410afde66d8bc103c8fdaafdde4222603d85f2e15090b2c818b63e8a1f5a"`;
+
+exports[`poster render pipeline > renders offer photo with struck price deterministically and inside the PNG contract 1`] = `"470ebfe747c40ea28931c277bb7fe670189b24b9d37d8fae640d72013b234fd4"`;
+
+exports[`poster render pipeline > renders offer typographic deterministically and inside the PNG contract 1`] = `"0f3d638522b5633526451fe2ba5c0f46366faa0510a289eb3bb6611a0f9b8f12"`;
