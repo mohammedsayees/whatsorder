@@ -68,11 +68,13 @@ export function MenuPrintDesigner({
 }) {
   const hasArabic = categories.some((category) => category.name_ar) ||
     items.some((item) => item.name_ar || item.description_ar);
+  const hasItemPhotos = items.some((item) => item.image_url);
   const [paperSize, setPaperSize] = useState<PaperSize>("a4");
   const [template, setTemplate] = useState<PrintTemplate>("modern");
   const [columnCount, setColumnCount] = useState<ColumnCount>("two");
   const [accentColour, setAccentColour] = useState(accentColours[0]);
   const [showDescriptions, setShowDescriptions] = useState(true);
+  const [showItemPhotos, setShowItemPhotos] = useState(hasItemPhotos);
   const [showArabic, setShowArabic] = useState(hasArabic);
   const [showUnavailable, setShowUnavailable] = useState(false);
   const [showQrCode, setShowQrCode] = useState(true);
@@ -223,6 +225,9 @@ export function MenuPrintDesigner({
             <h2 className="font-black">Content</h2>
             <div className="mt-3 grid gap-2">
               <DesignerToggle checked={showDescriptions} label="Descriptions" onChange={setShowDescriptions} />
+              {hasItemPhotos ? (
+                <DesignerToggle checked={showItemPhotos} label="Item photos" onChange={setShowItemPhotos} />
+              ) : null}
               {hasArabic ? (
                 <DesignerToggle checked={showArabic} label="Arabic text" onChange={setShowArabic} />
               ) : null}
@@ -302,25 +307,32 @@ export function MenuPrintDesigner({
                     <div className="menu-item-list">
                       {section.items.map((item) => (
                         <article className="print-menu-item" key={item.id}>
-                          <div className="menu-item-topline">
-                            <h3>
-                              {item.name}
-                              {item.is_featured ? <span className="menu-bestseller">Popular</span> : null}
-                              {!item.is_available ? <span className="menu-unavailable">Unavailable</span> : null}
-                            </h3>
-                            <span className="menu-price">{formatCurrency(item.price, restaurant)}</span>
-                          </div>
-                          {showDescriptions && item.description ? (
-                            <p className="menu-description">{item.description}</p>
+                          {showItemPhotos && item.image_url ? (
+                            // Item photos are remote storage URLs and stay unoptimized so all supported sources render.
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img alt="" className="menu-item-photo" src={item.image_url} />
                           ) : null}
-                          {showArabic && item.name_ar ? (
-                            <div className="menu-arabic-copy" dir="rtl">
-                              <p className="menu-name-ar">{item.name_ar}</p>
-                              {showDescriptions && item.description_ar ? (
-                                <p>{item.description_ar}</p>
-                              ) : null}
+                          <div className="menu-item-copy">
+                            <div className="menu-item-topline">
+                              <h3>
+                                {item.name}
+                                {item.is_featured ? <span className="menu-bestseller">Popular</span> : null}
+                                {!item.is_available ? <span className="menu-unavailable">Unavailable</span> : null}
+                              </h3>
+                              <span className="menu-price">{formatCurrency(item.price, restaurant)}</span>
                             </div>
-                          ) : null}
+                            {showDescriptions && item.description ? (
+                              <p className="menu-description">{item.description}</p>
+                            ) : null}
+                            {showArabic && item.name_ar ? (
+                              <div className="menu-arabic-copy" dir="rtl">
+                                <p className="menu-name-ar">{item.name_ar}</p>
+                                {showDescriptions && item.description_ar ? (
+                                  <p>{item.description_ar}</p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         </article>
                       ))}
                     </div>
@@ -403,12 +415,23 @@ export function MenuPrintDesigner({
         }
         .menu-category-heading p { margin: .5mm 0 0; font-size: 10pt; font-weight: 800; }
         .print-menu-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 3mm;
           break-inside: avoid;
           border-bottom: .25mm solid #e7e5e4;
           padding: 0 0 3mm;
           margin: 0 0 3mm;
         }
         .print-menu-item:last-child { margin-bottom: 0; }
+        .menu-item-photo {
+          width: 16mm;
+          height: 16mm;
+          flex: 0 0 auto;
+          border-radius: 2mm;
+          object-fit: cover;
+        }
+        .menu-item-copy { min-width: 0; flex: 1; }
         .menu-item-topline { display: flex; align-items: baseline; justify-content: space-between; gap: 4mm; }
         .menu-item-topline h3 { margin: 0; font-size: 10.5pt; font-weight: 900; line-height: 1.25; }
         .menu-price { flex: 0 0 auto; color: var(--menu-accent); font-size: 10pt; font-weight: 950; white-space: nowrap; }
@@ -459,6 +482,7 @@ export function MenuPrintDesigner({
         .menu-template-compact .menu-rule { margin: 5mm 0; }
         .menu-template-compact .print-menu-section { margin-bottom: 5mm; }
         .menu-template-compact .print-menu-item { margin-bottom: 2mm; padding-bottom: 2mm; }
+        .menu-template-compact .menu-item-photo { width: 12mm; height: 12mm; }
         .menu-template-compact .menu-category-heading h2 { font-size: 13pt; }
         .menu-template-compact .menu-item-topline h3 { font-size: 9.5pt; }
         .menu-template-compact .menu-description { font-size: 7.5pt; }
