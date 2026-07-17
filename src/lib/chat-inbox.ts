@@ -309,6 +309,8 @@ export async function recordOutboundChatMessage(input: {
   sentBy?: string;
   /** Meta's message id from the send response — correlates status webhooks. */
   waMessageId?: string;
+  /** Meta message type of the send; defaults to "text" (poster sends: "image"). */
+  messageType?: string;
 }): Promise<void> {
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -340,7 +342,7 @@ export async function recordOutboundChatMessage(input: {
         input.waMessageId && input.waMessageId !== "unknown"
           ? input.waMessageId
           : null,
-      message_type: "text",
+      message_type: input.messageType ?? "text",
       body: input.body,
       status: "sent",
       sent_by: input.sentBy ?? null,
@@ -355,7 +357,10 @@ export async function recordOutboundChatMessage(input: {
       .from("whatsapp_conversations")
       .update({
         last_message_at: nowIso,
-        last_message_preview: chatMessagePreview("text", input.body),
+        last_message_preview: chatMessagePreview(
+          input.messageType ?? "text",
+          input.body
+        ),
         updated_at: nowIso
       })
       .eq("id", conversationId)

@@ -37,6 +37,13 @@ const nextConfig: NextConfig = {
   // server output tracing scoped to WhatsOrder so deploy artifacts do not scan
   // or include unrelated files from the parent directory.
   outputFileTracingRoot: process.cwd(),
+  // Native Rust addon — must load via require at runtime, not be bundled.
+  serverExternalPackages: ["@resvg/resvg-js"],
+  // Poster Studio reads its font files (assets/fonts/*.woff) at runtime; the
+  // tracer can't see fs reads, so include them for the render route.
+  outputFileTracingIncludes: {
+    "/api/poster/generate": ["./assets/fonts/*.woff"]
+  },
   images: {
     // Only the configured Supabase project can use the image optimizer.
     // Admin-entered external image URLs remain supported as unoptimized images.

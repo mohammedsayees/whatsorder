@@ -3,6 +3,7 @@ import {
   BarChart3,
   ClipboardList,
   LogOut,
+  Megaphone,
   MenuSquare,
   MessagesSquare,
   MessageSquareText,
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
   { href: "/admin/chats", label: "Chats", icon: MessagesSquare, staff: false },
+  { href: "/admin/marketing", label: "Marketing", icon: Megaphone, staff: false },
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquareText, staff: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }

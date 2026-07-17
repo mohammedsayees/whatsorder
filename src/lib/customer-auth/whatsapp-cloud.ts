@@ -130,3 +130,65 @@ async function sendWhatsAppMessagePayload(
     return null;
   }
 }
+
+/**
+ * Upload media bytes to the Cloud API, returning Meta's media id for use in
+ * an image/document message. Same inert-until-configured contract as the
+ * senders: null when credentials are missing or the upload fails.
+ */
+export async function uploadWhatsAppMedia(
+  bytes: Uint8Array,
+  mimeType: string,
+  filename = "media"
+): Promise<string | null> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!phoneNumberId || !accessToken) {
+    return null;
+  }
+
+  try {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append(
+      "file",
+      new Blob([bytes as BlobPart], { type: mimeType }),
+      filename
+    );
+
+    const res = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/media`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form
+      }
+    );
+    if (!res.ok) {
+      console.error("WhatsApp media upload failed", res.status, await res.text());
+      return null;
+    }
+    const body = (await res.json()) as { id?: string };
+    return body.id || null;
+  } catch (error) {
+    console.error("WhatsApp media upload error", error);
+    return null;
+  }
+}
+
+/**
+ * Send an image message referencing an uploaded media id. Free-form send —
+ * Meta only accepts it inside the customer's open 24h service window, so
+ * callers must gate on isWithinServiceWindow. wamid on success, else null.
+ */
+export async function sendWhatsAppImage(
+  to: string,
+  mediaId: string,
+  caption?: string
+): Promise<string | null> {
+  return sendWhatsAppMessagePayload(to, {
+    type: "image",
+    image: { id: mediaId, ...(caption ? { caption } : {}) }
+  });
+}
