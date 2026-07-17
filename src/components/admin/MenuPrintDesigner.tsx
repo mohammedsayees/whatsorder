@@ -243,7 +243,8 @@ export function MenuPrintDesigner({
             <p className="font-black text-stone-700">{printableItemCount} items ready</p>
             <p>
               In the print dialog, choose <strong>Save as PDF</strong> to download the file. Enable
-              background graphics for the full colour design.
+              background graphics for the full colour design, and untick{" "}
+              <strong>Headers and footers</strong> so the date and page URL don&apos;t print.
             </p>
           </div>
         </aside>
