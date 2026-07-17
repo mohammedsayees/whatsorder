@@ -282,7 +282,8 @@ export async function recordInboundChatMessages(
           ...(profileName ? { customer_name: profileName } : {}),
           updated_at: now.toISOString()
         })
-        .eq("id", conversation.id);
+        .eq("id", conversation.id)
+        .eq("restaurant_id", restaurantId);
       if (updateError) {
         console.error(
           "WhatsOrder chat: conversation update failed",
@@ -383,6 +384,7 @@ export type ChatStatusEvent = {
  * Statuses only move forward — see shouldUpgradeChatStatus.
  */
 export async function applyChatMessageStatuses(
+  restaurantId: string,
   events: ChatStatusEvent[]
 ): Promise<void> {
   const admin = getSupabaseAdmin();
@@ -403,6 +405,7 @@ export async function applyChatMessageStatuses(
     const { data: rows, error } = await admin
       .from("whatsapp_messages")
       .select("id, wa_message_id, status")
+      .eq("restaurant_id", restaurantId)
       .in("wa_message_id", [...latest.keys()]);
     if (error || !rows) {
       if (error) {
@@ -419,7 +422,8 @@ export async function applyChatMessageStatuses(
       const { error: updateError } = await admin
         .from("whatsapp_messages")
         .update({ status: next })
-        .eq("id", row.id);
+        .eq("id", row.id)
+        .eq("restaurant_id", restaurantId);
       if (updateError) {
         console.error("WhatsOrder chat: status update failed", updateError.code);
       }

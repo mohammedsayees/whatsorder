@@ -148,3 +148,12 @@ export async function setChatStatusAction(formData: FormData): Promise<void> {
   await setChatConversationStatus(session.restaurantId, conversationId, status);
   revalidatePath("/admin/chats");
 }
+
+export async function markChatReadAction(conversationId: string): Promise<void> {
+  if (!conversationId) {
+    return;
+  }
+
+  const session = await requireRestaurantRole([...CHAT_ROLES]);
+  await markChatConversationRead(session.restaurantId, conversationId);
+}

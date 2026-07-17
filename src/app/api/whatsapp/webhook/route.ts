@@ -189,12 +189,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Delivery/read ticks for outbound sends — independent of inbound handling.
-  if (statusEvents.length > 0) {
-    await applyChatMessageStatuses(statusEvents);
-  }
-
-  if (senders.size > 0) {
+  if (senders.size > 0 || statusEvents.length > 0) {
     // PILOT: a single WhatsApp number maps to the default café. For multi-number
     // tenancy, resolve the restaurant from the inbound metadata.phone_number_id
     // instead (e.g. a restaurants.whatsapp_phone_number_id column).
@@ -202,6 +197,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
 
     if (restaurant) {
+      // Delivery/read ticks belong to the same receiving WhatsApp number and
+      // must remain scoped to that restaurant even though wamids are unique.
+      if (statusEvents.length > 0) {
+        await applyChatMessageStatuses(restaurant.id, statusEvents);
+      }
+
+      if (senders.size === 0) {
+        return NextResponse.json({ ok: true }, { status: 200 });
+      }
+
       // Every inbound message opens Meta's 24h customer-service window —
       // record it so order-status notifications know free-form sends are
       // allowed (src/lib/order-notifications.ts). Best-effort: a failed

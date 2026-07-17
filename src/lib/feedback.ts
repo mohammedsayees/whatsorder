@@ -126,6 +126,7 @@ export async function getFeedbackPageContext(token: string) {
       supabase
         .from("customer_feedback")
         .select("id")
+        .eq("restaurant_id", request.restaurant_id)
         .eq("order_id", request.order_id)
         .maybeSingle()
     ]);
