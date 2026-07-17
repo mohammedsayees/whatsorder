@@ -15,7 +15,7 @@ export function BillingBanner({ status }: { status: SubscriptionStatus | null })
     : "border-amber-200 bg-amber-50 text-amber-900";
 
   return (
-    <div className={`flex items-start gap-2 border-b px-4 py-3 text-sm font-bold ${tone}`}>
+    <div className={`flex items-start gap-2 border-b px-4 py-3 text-sm font-bold print:hidden ${tone}`}>
       <AlertTriangle className="mt-0.5 shrink-0" size={16} />
       <p>
         {isSuspended

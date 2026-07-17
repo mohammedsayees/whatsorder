@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { FileDown, Sparkles } from "lucide-react";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { OptionGroupsManager } from "@/components/admin/OptionGroupsManager";
@@ -38,15 +38,24 @@ export default async function AdminMenuPage() {
             Add items, edit prices, tag Best Sellers, and mark items unavailable when the kitchen runs out.
           </p>
         </div>
-        {canWrite ? (
+        <div className="flex flex-wrap gap-2">
           <Link
-            className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf px-4 py-3 font-black text-leaf hover:bg-mint"
-            href="/admin/menu/import"
+            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white hover:bg-leaf/90"
+            href="/admin/menu/print"
           >
-            <Sparkles size={18} />
-            AI Menu Builder
+            <FileDown size={18} />
+            Print menu
           </Link>
-        ) : null}
+          {canWrite ? (
+            <Link
+              className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf px-4 py-3 font-black text-leaf hover:bg-mint"
+              href="/admin/menu/import"
+            >
+              <Sparkles size={18} />
+              AI Menu Builder
+            </Link>
+          ) : null}
+        </div>
       </div>
       {!hasDatabaseAccess ? (
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
