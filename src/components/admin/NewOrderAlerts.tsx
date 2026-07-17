@@ -545,7 +545,7 @@ export function NewOrderAlertsProvider({
 
   return (
     <NewOrderAlertsContext.Provider value={contextValue}>
-      <div className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
+      <div className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur print:hidden sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 sm:gap-3">
           <span className="inline-flex items-center gap-2 rounded-full bg-mint px-3 py-2 text-sm font-black text-leaf">
             <BellRing size={16} />
@@ -613,7 +613,7 @@ export function NewOrderAlertsProvider({
       {toast ? (
         <div
           aria-live="assertive"
-          className="fixed right-4 top-20 z-50 flex max-w-sm items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm font-black text-white shadow-xl"
+          className="fixed right-4 top-20 z-50 flex max-w-sm items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm font-black text-white shadow-xl print:hidden"
           role="status"
         >
           <Bell className="text-mint" size={20} />
