@@ -19,6 +19,7 @@ import {
   POSTER_HEIGHT,
   POSTER_MAX_BYTES,
   POSTER_WIDTH,
+  type PosterLayoutId,
   type PosterProps,
   type PosterTemplateId
 } from "./types";
@@ -56,6 +57,7 @@ beforeAll(async () => {
 function makeProps(
   templateId: PosterTemplateId,
   overrides: {
+    layout?: PosterLayoutId;
     photo?: boolean;
     logo?: boolean;
     soldQty?: number | null;
@@ -64,6 +66,7 @@ function makeProps(
 ): PosterProps {
   return {
     templateId,
+    layout: overrides.layout ?? "photo_hero",
     branding: {
       restaurantName: "Chai Xpress",
       logoDataUri: overrides.logo === false ? null : logoDataUri
@@ -84,20 +87,57 @@ function makeProps(
   };
 }
 
+// Every layout × photo-availability combination — each must be visually
+// distinct and render inside the PNG contract.
 const scenarios: { name: string; props: () => PosterProps }[] = [
-  { name: "bestseller photo", props: () => makeProps("bestseller") },
+  { name: "bestseller photo-hero", props: () => makeProps("bestseller") },
   {
-    name: "bestseller typographic (no photo, no logo)",
+    name: "bestseller photo-hero fallback pine (no photo, no logo)",
     props: () => makeProps("bestseller", { photo: false, logo: false })
   },
   {
-    name: "offer photo with struck price",
+    name: "bestseller full-bleed",
+    props: () => makeProps("bestseller", { layout: "full_bleed" })
+  },
+  {
+    name: "bestseller full-bleed fallback ink (no photo)",
+    props: () => makeProps("bestseller", { layout: "full_bleed", photo: false })
+  },
+  {
+    name: "bestseller stat-led amber",
+    props: () => makeProps("bestseller", { layout: "stat_led" })
+  },
+  {
+    name: "bestseller stat-led cold start (no sold qty)",
+    props: () => makeProps("bestseller", { layout: "stat_led", soldQty: null })
+  },
+  {
+    name: "offer photo-hero with struck price",
     props: () => makeProps("offer", { originalPriceLine: "AED 15" })
   },
   {
-    name: "offer typographic",
+    name: "offer photo-hero fallback amber (no photo)",
     props: () =>
       makeProps("offer", { photo: false, originalPriceLine: "AED 15" })
+  },
+  {
+    name: "offer full-bleed",
+    props: () =>
+      makeProps("offer", { layout: "full_bleed", originalPriceLine: "AED 15" })
+  },
+  {
+    name: "offer full-bleed fallback pine (no photo)",
+    props: () =>
+      makeProps("offer", {
+        layout: "full_bleed",
+        photo: false,
+        originalPriceLine: "AED 15"
+      })
+  },
+  {
+    name: "offer price-led ink",
+    props: () =>
+      makeProps("offer", { layout: "stat_led", originalPriceLine: "AED 15" })
   }
 ];
 

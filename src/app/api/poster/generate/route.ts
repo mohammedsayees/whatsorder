@@ -14,6 +14,7 @@ import { buildPosterBranding, buildPosterSubjectBundle } from "@/lib/poster/subj
 import {
   POSTER_BUCKET,
   isPosterTemplateId,
+  layoutForVariant,
   type PosterCopy,
   type PosterSubjectRef
 } from "@/lib/poster/types";
@@ -110,8 +111,12 @@ export async function POST(request: Request) {
     copyVariants.map(async (copy: PosterCopy, variantIndex: number) => {
       const posterId = randomUUID();
       const storagePath = `${restaurantId}/${posterId}.png`;
+      // Each variant slot gets its own composition, so one generation offers
+      // three visually distinct posters — not the same layout thrice.
+      const layout = layoutForVariant(variantIndex);
       const png = await renderPosterPng({
         templateId,
+        layout,
         branding,
         subject: bundle.subject,
         copy
@@ -129,7 +134,7 @@ export async function POST(request: Request) {
         restaurant_id: restaurantId,
         template_id: templateId,
         subject_ref: subjectRef,
-        copy: { ...copy, variant_index: variantIndex },
+        copy: { ...copy, variant_index: variantIndex, layout },
         storage_path: storagePath,
         status: "rendered"
       });
