@@ -10,6 +10,7 @@ import {
   getNewOrderAlertState,
   type NewOrderAlertState
 } from "@/lib/data";
+import { getUnreadChatConversationIds } from "@/lib/chat-inbox";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -146,4 +147,13 @@ export async function getRealtimeAccessTokenAction(): Promise<RealtimeAccess | n
 export async function getNewOrderAlertStateAction(): Promise<NewOrderAlertState> {
   const session = await requireRestaurantAdmin();
   return getNewOrderAlertState(session.restaurantId);
+}
+
+export async function getUnreadChatConversationIdsAction(): Promise<string[]> {
+  const session = await requireRestaurantAdmin();
+  if (session.role === "staff") {
+    return [];
+  }
+
+  return getUnreadChatConversationIds(session.restaurantId);
 }

@@ -483,6 +483,28 @@ export async function getChatConversations(
   return (data ?? []) as ChatConversation[];
 }
 
+export async function getUnreadChatConversationIds(
+  restaurantId: string
+): Promise<string[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    return [];
+  }
+
+  const { data, error } = await admin
+    .from("whatsapp_conversations")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .gt("unread_count", 0);
+
+  if (error) {
+    console.error("WhatsOrder chat: unread conversations read failed", error.code);
+    return [];
+  }
+
+  return (data ?? []).map((conversation) => String(conversation.id));
+}
+
 export async function getChatConversation(
   restaurantId: string,
   conversationId: string
