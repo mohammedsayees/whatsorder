@@ -15,6 +15,7 @@ import {
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 import { AdminAlertsProvider } from "@/components/admin/AdminAlertsProvider";
 import { BillingBanner } from "@/components/admin/BillingBanner";
+import { ChatUnreadNavBadge } from "@/components/admin/ChatUnreadNavBadge";
 import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
@@ -35,12 +36,14 @@ const navItems = [
 export function AdminShell({
   children,
   billingStatus,
+  initialUnreadChatConversationIds,
   initialNewOrderAlertState,
   realtimeAccessToken,
   session
 }: {
   children: React.ReactNode;
   billingStatus?: SubscriptionStatus | null;
+  initialUnreadChatConversationIds: string[];
   initialNewOrderAlertState: NewOrderAlertState;
   realtimeAccessToken: string | null;
   session: RestaurantAdminSession;
@@ -61,12 +64,19 @@ export function AdminShell({
 
             return (
               <Link
-                className="focus-ring flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-bold text-stone-600 hover:bg-mint hover:text-leaf lg:min-w-0 lg:flex-row lg:px-3 lg:py-3 lg:text-sm"
+                className="focus-ring relative flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-bold text-stone-600 hover:bg-mint hover:text-leaf lg:min-w-0 lg:w-full lg:flex-row lg:px-3 lg:py-3 lg:text-sm"
                 href={item.href}
                 key={item.href}
               >
                 <Icon size={18} />
                 {item.label}
+                {item.href === "/admin/chats" ? (
+                  <ChatUnreadNavBadge
+                    initialUnreadConversationIds={initialUnreadChatConversationIds}
+                    realtimeAccessToken={realtimeAccessToken}
+                    restaurantId={session.restaurantId}
+                  />
+                ) : null}
               </Link>
             );
           })}
