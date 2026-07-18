@@ -112,6 +112,117 @@ export function footerBar(
 }
 
 /**
+ * Color fields for the typographic designs. Each layout's photo-less
+ * fallback lands on a different field, so a café with no photos still gets
+ * three visually distinct posters per generation. Code-owned and finite —
+ * never an owner-facing choice.
+ */
+export type PosterField = "pine" | "amber" | "ink";
+
+export const FIELD_STYLES: Record<
+  PosterField,
+  {
+    background: string;
+    headline: string;
+    subline: string;
+    accent: string;
+    headerTone: "light" | "dark";
+    chip: { background: string; color: string };
+    /** footerBar tone that contrasts with this field. */
+    footerTone: "light" | "dark";
+    /** itemCard/priceCard background that contrasts with this field. */
+    card: "pine" | "cream";
+  }
+> = {
+  pine: {
+    background: pine,
+    headline: cream,
+    subline: mint,
+    accent: amber,
+    headerTone: "dark",
+    chip: { background: amber, color: ink },
+    footerTone: "dark",
+    card: "cream"
+  },
+  amber: {
+    background: amber,
+    headline: ink,
+    subline: ink,
+    accent: pine,
+    headerTone: "light",
+    chip: { background: pine, color: cream },
+    footerTone: "dark",
+    card: "pine"
+  },
+  ink: {
+    background: ink,
+    headline: cream,
+    subline: mint,
+    accent: amber,
+    headerTone: "dark",
+    chip: { background: amber, color: ink },
+    footerTone: "light",
+    card: "cream"
+  }
+};
+
+/**
+ * Full-bleed photo backdrop: the image covers the entire frame with scrims
+ * top and bottom so the header and content stay legible over any photo.
+ * Place inside a position:relative root before the flowed children.
+ */
+export function fullBleedBackdrop(photoDataUri: string): PosterNode[] {
+  return [
+    img(photoDataUri, {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "cover"
+    }),
+    // Owner photos are often bright; a full-frame dim plus deep top/bottom
+    // gradients keeps cream/mint type legible over ANY photo while leaving
+    // the middle of the image visible.
+    box(
+      {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        backgroundColor: "rgba(23,32,27,0.30)"
+      },
+      []
+    ),
+    box(
+      {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: 420,
+        backgroundImage:
+          "linear-gradient(180deg, rgba(23,32,27,0.75) 0%, rgba(23,32,27,0) 100%)"
+      },
+      []
+    ),
+    box(
+      {
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        width: "100%",
+        height: 1150,
+        backgroundImage:
+          "linear-gradient(0deg, rgba(23,32,27,0.95) 0%, rgba(23,32,27,0.82) 45%, rgba(23,32,27,0) 100%)"
+      },
+      []
+    )
+  ];
+}
+
+/**
  * Fixed photo window with object-fit-cover semantics — owner photo aspect
  * ratios are never trusted. Children overlay the photo (badges).
  */

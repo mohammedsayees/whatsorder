@@ -15,6 +15,22 @@ export function isPosterTemplateId(value: unknown): value is PosterTemplateId {
   );
 }
 
+// Compositions. Each generated variant slot gets a different one, so one
+// generation yields three visually distinct posters — variety is the
+// system's job, never an owner control. Interpretation is per-template:
+// stat_led leads with the sold count (bestseller) or the price (offer).
+// Every layout has a photo-less fallback on a distinct color field, so even
+// a café with no photos gets three different designs.
+export const POSTER_LAYOUT_IDS = ["photo_hero", "full_bleed", "stat_led"] as const;
+export type PosterLayoutId = (typeof POSTER_LAYOUT_IDS)[number];
+
+export function layoutForVariant(variantIndex: number): PosterLayoutId {
+  return POSTER_LAYOUT_IDS[
+    ((variantIndex % POSTER_LAYOUT_IDS.length) + POSTER_LAYOUT_IDS.length) %
+      POSTER_LAYOUT_IDS.length
+  ];
+}
+
 // All v1 templates are WhatsApp-status-first: 9:16 vertical.
 export const POSTER_WIDTH = 1080;
 export const POSTER_HEIGHT = 1920;
@@ -64,6 +80,7 @@ export type PosterSubject = {
 
 export type PosterProps = {
   templateId: PosterTemplateId;
+  layout: PosterLayoutId;
   branding: PosterBranding;
   subject: PosterSubject;
   copy: PosterCopy;
@@ -81,7 +98,7 @@ export type PosterRow = {
   restaurant_id: string;
   template_id: PosterTemplateId;
   subject_ref: PosterSubjectRef;
-  copy: PosterCopy & { variant_index: number };
+  copy: PosterCopy & { variant_index: number; layout?: PosterLayoutId };
   storage_path: string;
   status: PosterStatus;
   created_at: string;

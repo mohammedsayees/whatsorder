@@ -1,9 +1,23 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`poster render pipeline > renders bestseller photo deterministically and inside the PNG contract 1`] = `"c30bc71b589984b260565c48f356b02c8b11ba8544e0010850fec598c71ac063"`;
+exports[`poster render pipeline > renders bestseller full-bleed deterministically and inside the PNG contract 1`] = `"a21ea12ec644502c6ae48db86c4e044329a994b3c41e27bcca7cc553a2f72d77"`;
 
-exports[`poster render pipeline > renders bestseller typographic (no photo, no logo) deterministically and inside the PNG contract 1`] = `"8c08410afde66d8bc103c8fdaafdde4222603d85f2e15090b2c818b63e8a1f5a"`;
+exports[`poster render pipeline > renders bestseller full-bleed fallback ink (no photo) deterministically and inside the PNG contract 1`] = `"a8c7d92dd6c028ffcb6a451caf050c13c609461de9702c93160c76b273ad3760"`;
 
-exports[`poster render pipeline > renders offer photo with struck price deterministically and inside the PNG contract 1`] = `"470ebfe747c40ea28931c277bb7fe670189b24b9d37d8fae640d72013b234fd4"`;
+exports[`poster render pipeline > renders bestseller photo-hero deterministically and inside the PNG contract 1`] = `"c30bc71b589984b260565c48f356b02c8b11ba8544e0010850fec598c71ac063"`;
 
-exports[`poster render pipeline > renders offer typographic deterministically and inside the PNG contract 1`] = `"0f3d638522b5633526451fe2ba5c0f46366faa0510a289eb3bb6611a0f9b8f12"`;
+exports[`poster render pipeline > renders bestseller photo-hero fallback pine (no photo, no logo) deterministically and inside the PNG contract 1`] = `"2350ee49315e17948cffda15e4a6f56a56522cef50286072151b4a6d1ba2a786"`;
+
+exports[`poster render pipeline > renders bestseller stat-led amber deterministically and inside the PNG contract 1`] = `"3fb17453e839030a97063db654a3ce24de3b656e2de7e0b1a934b0f946419586"`;
+
+exports[`poster render pipeline > renders bestseller stat-led cold start (no sold qty) deterministically and inside the PNG contract 1`] = `"3fb17453e839030a97063db654a3ce24de3b656e2de7e0b1a934b0f946419586"`;
+
+exports[`poster render pipeline > renders offer full-bleed deterministically and inside the PNG contract 1`] = `"f60372bbfd1c9818bfcc5873cd96d31bd02e8fd81029a6ae96dfc53b2c03d475"`;
+
+exports[`poster render pipeline > renders offer full-bleed fallback pine (no photo) deterministically and inside the PNG contract 1`] = `"10965ca01eb5c80949a9db0e1043cbfcc233e5274eb1cf238ab85dd20a038465"`;
+
+exports[`poster render pipeline > renders offer photo-hero fallback amber (no photo) deterministically and inside the PNG contract 1`] = `"0f3d638522b5633526451fe2ba5c0f46366faa0510a289eb3bb6611a0f9b8f12"`;
+
+exports[`poster render pipeline > renders offer photo-hero with struck price deterministically and inside the PNG contract 1`] = `"470ebfe747c40ea28931c277bb7fe670189b24b9d37d8fae640d72013b234fd4"`;
+
+exports[`poster render pipeline > renders offer price-led ink deterministically and inside the PNG contract 1`] = `"ffcde861d1af5e7d1dd9b7cc1f41aabd5c45f38290a87aa89896b8303fae66cb"`;
