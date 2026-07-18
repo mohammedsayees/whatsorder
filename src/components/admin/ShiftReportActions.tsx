@@ -1,41 +1,80 @@
 "use client";
 
-import { useActionState } from "react";
-import { FileDown, Loader2, MessageCircle, PencilLine } from "lucide-react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { FileDown, Loader2, MessageCircle, PencilLine, Printer } from "lucide-react";
 import {
   reviseShiftReportAction,
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { MarketplaceReconciliationFields } from "@/components/admin/ShiftForms";
+import { printHtmlDocument } from "@/lib/print-ticket";
+import { renderShiftCloseThermalReport } from "@/lib/shift-report-print";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
 
 const initialState: ShiftActionState = {};
 
 export function ShiftReportActions({
+  autoPrintThermal,
+  report,
   shareUrl
 }: {
+  autoPrintThermal: boolean;
+  report: ShiftCloseReportSnapshot;
   shareUrl: string | null;
 }) {
+  const autoPrintStarted = useRef(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+
+  const printThermal = useCallback(() => {
+    setPrintError(null);
+    printHtmlDocument(renderShiftCloseThermalReport(report), setPrintError);
+  }, [report]);
+
+  useEffect(() => {
+    if (!autoPrintThermal || autoPrintStarted.current) {
+      return;
+    }
+
+    autoPrintStarted.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("print");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    printThermal();
+  }, [autoPrintThermal, printThermal]);
+
   return (
-    <div className="flex flex-wrap gap-2 print:hidden">
-      <button
-        className="focus-ring inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-black text-white"
-        onClick={() => window.print()}
-        type="button"
-      >
-        <FileDown size={16} />
-        Print / save PDF
-      </button>
-      {shareUrl ? (
-        <a
-          className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-2.5 text-sm font-black text-white"
-          href={shareUrl}
-          rel="noreferrer"
-          target="_blank"
+    <div className="print:hidden">
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="focus-ring inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-black text-white"
+          onClick={printThermal}
+          type="button"
         >
-          <MessageCircle size={16} />
-          Share summary
-        </a>
+          <Printer size={16} />
+          Print 80 mm summary
+        </button>
+        <button
+          className="focus-ring inline-flex items-center gap-2 rounded-lg border border-ink px-4 py-2.5 text-sm font-black"
+          onClick={() => window.print()}
+          type="button"
+        >
+          <FileDown size={16} />
+          Print / save A4 PDF
+        </button>
+        {shareUrl ? (
+          <a
+            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-2.5 text-sm font-black text-white"
+            href={shareUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <MessageCircle size={16} />
+            Share summary
+          </a>
+        ) : null}
+      </div>
+      {printError ? (
+        <p className="mt-2 text-xs font-bold text-rose-700" role="status">{printError}</p>
       ) : null}
     </div>
   );
