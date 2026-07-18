@@ -72,7 +72,7 @@ export default async function ShiftCloseReportPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ version?: string }>;
+  searchParams: Promise<{ print?: string; version?: string }>;
 }) {
   const [session, { id }, query] = await Promise.all([
     requireRestaurantAdmin(),
@@ -134,7 +134,11 @@ export default async function ShiftCloseReportPage({
         <Link className="focus-ring inline-flex items-center gap-2 text-sm font-black text-leaf" href="/admin/shifts">
           <ArrowLeft size={16} /> Back to shifts
         </Link>
-        <ShiftReportActions shareUrl={shareUrl} />
+        <ShiftReportActions
+          autoPrintThermal={query.print === "thermal"}
+          report={report}
+          shareUrl={shareUrl}
+        />
       </div>
 
       <article className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm print:mt-0 print:border-0 print:p-0 print:shadow-none">

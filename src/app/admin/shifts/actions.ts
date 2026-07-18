@@ -224,7 +224,7 @@ export async function closeShiftAction(
   }
 
   refreshShiftViews();
-  redirect(`/admin/shifts/${shiftId}/report`);
+  redirect(`/admin/shifts/${shiftId}/report?print=thermal`);
 }
 
 export async function reviseShiftReportAction(
