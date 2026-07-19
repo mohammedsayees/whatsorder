@@ -2,7 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   Bike,
   CarFront,
@@ -34,32 +43,49 @@ import {
   type CustomerLanguage
 } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
-import {
-  ItemOptionsSheet,
-  resolveOptionGroupsByItem
-} from "@/components/customer/ItemOptionsSheet";
 import { useCart } from "@/components/customer/CartProvider";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerPanel";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
+import { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type {
   CartLine,
-  MenuCategory,
-  MenuItem,
-  MenuOffer,
-  MenuOptionCatalog,
+  CustomerMenuCategory,
+  CustomerMenuItem,
+  CustomerMenuOffer,
+  CustomerMenuOptionCatalog,
   PublicFeedbackSummary,
   PublicRestaurant
 } from "@/lib/types";
 
 const CATEGORY_SCROLL_OFFSET = 172;
 const BEST_SELLERS_CATEGORY_ID = "best-sellers";
+const EMPTY_MENU_ITEMS: CustomerMenuItem[] = [];
+
+// Most menu visits never customize an item. Keep the options UI out of the
+// critical customer bundle and load it only after a configurable item is
+// opened. The grouping helper stays in the initial chunk because the menu
+// needs it to decide whether each item has options.
+const ItemOptionsSheet = dynamic(
+  () =>
+    import("@/components/customer/ItemOptionsSheet").then(
+      (module) => module.ItemOptionsSheet
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-4">
+        <div className="h-48 w-full animate-pulse rounded-t-[28px] bg-white sm:max-w-md sm:rounded-[28px]" />
+      </div>
+    )
+  }
+);
 
 type CategoryWithItems = {
-  category: Pick<MenuCategory, "id" | "name" | "name_ar">;
-  items: MenuItem[];
+  category: CustomerMenuCategory;
+  items: CustomerMenuItem[];
   availableItemCount: number;
 };
 
@@ -90,12 +116,12 @@ export function RestaurantMenu({
   tableNumber
 }: {
   restaurant: PublicRestaurant;
-  categories: MenuCategory[];
+  categories: CustomerMenuCategory[];
   feedback: PublicFeedbackSummary;
-  items: MenuItem[];
-  offers: MenuOffer[];
+  items: CustomerMenuItem[];
+  offers: CustomerMenuOffer[];
   loyalty?: CustomerLoyalty | null;
-  optionCatalog?: MenuOptionCatalog;
+  optionCatalog?: CustomerMenuOptionCatalog;
   recentOrders?: CustomerRecentOrder[];
   tableNumber?: string;
 }) {
@@ -125,8 +151,8 @@ export function RestaurantMenu({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [optionsSheet, setOptionsSheet] = useState<{
-    item: MenuItem;
-    offer: MenuOffer | null;
+    item: CustomerMenuItem;
+    offer: CustomerMenuOffer | null;
   } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -166,30 +192,46 @@ export function RestaurantMenu({
   const categoriesWithItems = useMemo<CategoryWithItems[]>(
     () => {
       const normalizedSearch = deferredSearchQuery.trim().toLowerCase();
-      const matchesSearch = (item: MenuItem) =>
+      const matchesSearch = (item: CustomerMenuItem) =>
         !normalizedSearch ||
         [item.name, item.name_ar, item.description, item.description_ar].some((value) =>
           value?.toLowerCase().includes(normalizedSearch)
         );
-      const bestSellerItems = items.filter(
-        (item) => item.is_featured && item.is_available && matchesSearch(item)
-      );
+
+      // Index in one pass so search work grows with the number of items, not
+      // categories × items. Large menus used to rescan the full item array for
+      // every category on each deferred keystroke.
+      const itemsByCategoryId = new Map<string, CustomerMenuItem[]>();
+      const availableCountByCategoryId = new Map<string, number>();
+      const bestSellerItems: CustomerMenuItem[] = [];
+
+      for (const item of items) {
+        if (!matchesSearch(item)) {
+          continue;
+        }
+
+        const categoryItems = itemsByCategoryId.get(item.category_id) ?? [];
+        categoryItems.push(item);
+        itemsByCategoryId.set(item.category_id, categoryItems);
+
+        if (item.is_available) {
+          availableCountByCategoryId.set(
+            item.category_id,
+            (availableCountByCategoryId.get(item.category_id) ?? 0) + 1
+          );
+
+          if (item.is_featured) {
+            bestSellerItems.push(item);
+          }
+        }
+      }
+
       const regularCategories = categories
-        .map((category) => {
-          const categoryItems = items.filter((item) => {
-            if (item.category_id !== category.id) {
-              return false;
-            }
-
-            return matchesSearch(item);
-          });
-
-          return {
-            category,
-            items: categoryItems,
-            availableItemCount: categoryItems.filter((item) => item.is_available).length
-          };
-        })
+        .map((category) => ({
+          category,
+          items: itemsByCategoryId.get(category.id) ?? EMPTY_MENU_ITEMS,
+          availableItemCount: availableCountByCategoryId.get(category.id) ?? 0
+        }))
         .filter((entry) => entry.availableItemCount > 0);
 
       return bestSellerItems.length > 0
@@ -330,7 +372,8 @@ export function RestaurantMenu({
 
   // Stable reference so memoized item cards don't re-render on parent renders.
   const openOptionsSheet = useCallback(
-    (item: MenuItem, offer: MenuOffer | null) => setOptionsSheet({ item, offer }),
+    (item: CustomerMenuItem, offer: CustomerMenuOffer | null) =>
+      setOptionsSheet({ item, offer }),
     []
   );
 
@@ -973,8 +1016,8 @@ export function RestaurantMenu({
 }
 
 type MenuItemCardProps = {
-  item: MenuItem;
-  activeOffer: MenuOffer | null;
+  item: CustomerMenuItem;
+  activeOffer: CustomerMenuOffer | null;
   hasOptions: boolean;
   /** The plain (option-less) cart line for this item, if any. */
   cartLine: CartLine | undefined;
@@ -985,12 +1028,12 @@ type MenuItemCardProps = {
   orderingAvailable: boolean;
   language: CustomerLanguage;
   restaurant: PublicRestaurant;
-  onAddItem: (item: MenuItem) => void;
-  onAddOffer: (item: MenuItem, offer: MenuOffer) => void;
+  onAddItem: (item: CustomerMenuItem) => void;
+  onAddOffer: (item: CustomerMenuItem, offer: CustomerMenuOffer) => void;
   onIncrement: (lineKey: string) => void;
-  onIncrementOffer: (lineKey: string, offer: MenuOffer) => void;
+  onIncrementOffer: (lineKey: string, offer: CustomerMenuOffer) => void;
   onDecrement: (lineKey: string) => void;
-  onOpenOptions: (item: MenuItem, offer: MenuOffer | null) => void;
+  onOpenOptions: (item: CustomerMenuItem, offer: CustomerMenuOffer | null) => void;
 };
 
 // Memoized so a cart tap only re-renders the card whose quantity changed —
@@ -1022,7 +1065,7 @@ const MenuItemCard = memo(function MenuItemCard({
 
   return (
     <article
-      className={`rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
+      className={`[contain-intrinsic-size:auto_160px] [content-visibility:auto] rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
         item.is_available ? "" : "opacity-65"
       }`}
       data-testid={`menu-item-${item.id}`}
