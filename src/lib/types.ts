@@ -185,6 +185,67 @@ export type MenuOptionCatalog = {
   links: MenuItemOptionGroupLink[];
 };
 
+// Customer-facing projections. Public menu rows cross an RSC boundary, so
+// omit tenant keys, timestamps, and admin-only state that the browser never
+// reads. Full menu records remain the source of truth for server-side pricing.
+export type CustomerMenuCategory = Pick<
+  MenuCategory,
+  "id" | "name" | "name_ar"
+>;
+
+export type CustomerMenuItem = Pick<
+  MenuItem,
+  | "id"
+  | "category_id"
+  | "name"
+  | "name_ar"
+  | "description"
+  | "description_ar"
+  | "price"
+  | "image_url"
+  | "is_available"
+  | "is_featured"
+>;
+
+export type CustomerMenuOffer = Pick<
+  MenuOffer,
+  | "id"
+  | "menu_item_id"
+  | "title"
+  | "title_ar"
+  | "description"
+  | "description_ar"
+  | "promotional_price"
+  | "max_quantity_per_order"
+>;
+
+export type CustomerMenuOptionGroup = Pick<
+  MenuOptionGroup,
+  "id" | "name" | "name_ar" | "min_select" | "max_select" | "display_order"
+>;
+
+export type CustomerMenuOption = Pick<
+  MenuOption,
+  | "id"
+  | "group_id"
+  | "name"
+  | "name_ar"
+  | "price_delta"
+  | "is_available"
+  | "display_order"
+>;
+
+export type CustomerMenuItemOptionGroupLink = Pick<
+  MenuItemOptionGroupLink,
+  "menu_item_id" | "group_id" | "display_order"
+>;
+
+export type CustomerMenuOptionCatalog = {
+  groups: CustomerMenuOptionGroup[];
+  options: CustomerMenuOption[];
+  links: CustomerMenuItemOptionGroupLink[];
+};
+
 // A selected option snapshot on a cart/order line. name/name_ar/price_delta
 // are denormalized at verification time from DB truth, so historical orders
 // keep rendering after options are renamed or deleted.

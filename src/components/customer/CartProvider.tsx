@@ -10,7 +10,12 @@ import {
 } from "react";
 import { cartLineKey, configuredUnitPrice } from "@/lib/cart-line";
 import { parseAndValidateCart } from "@/lib/security";
-import type { CartLine, CartLineOption, MenuItem, MenuOffer } from "@/lib/types";
+import type {
+  CartLine,
+  CartLineOption,
+  CustomerMenuItem,
+  CustomerMenuOffer
+} from "@/lib/types";
 
 // Cart lines are identified by cartLineKey (item + offer + selected options):
 // the same item can sit in the cart twice with different configurations
@@ -23,16 +28,16 @@ type CartContextValue = {
   count: number;
   subtotal: number;
   isReady: boolean;
-  addItem: (item: MenuItem) => void;
-  addOffer: (item: MenuItem, offer: MenuOffer) => void;
+  addItem: (item: CustomerMenuItem) => void;
+  addOffer: (item: CustomerMenuItem, offer: CustomerMenuOffer) => void;
   addConfiguredLine: (input: {
-    item: MenuItem;
-    offer?: MenuOffer | null;
+    item: CustomerMenuItem;
+    offer?: CustomerMenuOffer | null;
     options: CartLineOption[];
     quantity: number;
   }) => void;
   addLines: (lines: CartLine[]) => void;
-  incrementOffer: (lineKey: string, offer: MenuOffer) => void;
+  incrementOffer: (lineKey: string, offer: CustomerMenuOffer) => void;
   increment: (lineKey: string) => void;
   decrement: (lineKey: string) => void;
   clearCart: () => void;
@@ -140,7 +145,7 @@ export function CartProvider({
 
   // Fast path for optionless items: targets the plain (no offer, no options)
   // line only. Option-ful items go through addConfiguredLine via the sheet.
-  const addItem = useCallback((item: MenuItem) => {
+  const addItem = useCallback((item: CustomerMenuItem) => {
     setLines((current) => {
       const plainKey = cartLineKey({ item_id: item.id });
       const existing = current.find((line) => cartLineKey(line) === plainKey);
@@ -166,7 +171,7 @@ export function CartProvider({
     });
   }, []);
 
-  const addOffer = useCallback((item: MenuItem, offer: MenuOffer) => {
+  const addOffer = useCallback((item: CustomerMenuItem, offer: CustomerMenuOffer) => {
     setLines((current) => {
       const offerKey = cartLineKey({ item_id: item.id, offer_id: offer.id });
       const existingOfferLine = current.find(
@@ -217,8 +222,8 @@ export function CartProvider({
   // computed client-side for display; the server re-prices from DB truth.
   const addConfiguredLine = useCallback(
     (input: {
-      item: MenuItem;
-      offer?: MenuOffer | null;
+      item: CustomerMenuItem;
+      offer?: CustomerMenuOffer | null;
       options: CartLineOption[];
       quantity: number;
     }) => {
@@ -311,7 +316,7 @@ export function CartProvider({
     });
   }, []);
 
-  const incrementOffer = useCallback((lineKey: string, offer: MenuOffer) => {
+  const incrementOffer = useCallback((lineKey: string, offer: CustomerMenuOffer) => {
     setLines((current) => {
       if (offerQuantityTotal(current, offer.id) >= offer.max_quantity_per_order) {
         return current;

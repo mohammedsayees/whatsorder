@@ -8,78 +8,33 @@ import {
   customerTranslations,
   type CustomerLanguage
 } from "@/lib/customer-i18n";
+import type { ResolvedOptionGroup } from "@/lib/menu-option-groups";
 import type {
   CartLineOption,
-  MenuItem,
-  MenuOffer,
-  MenuOption,
-  MenuOptionCatalog,
-  MenuOptionGroup,
+  CustomerMenuItem,
+  CustomerMenuOffer,
+  CustomerMenuOption,
+  CustomerMenuOptionGroup,
   PublicRestaurant
 } from "@/lib/types";
+
+export { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
+export type { ResolvedOptionGroup } from "@/lib/menu-option-groups";
 
 // Bottom-sheet option picker for items with attached option groups. Purely
 // presentational: the parent decides what "add" means (customer cart vs staff
 // ticket). Selection state lives here and resets each open because the parent
 // mounts the sheet conditionally.
 
-export type ResolvedOptionGroup = {
-  group: MenuOptionGroup;
-  options: MenuOption[];
-};
-
-/**
- * Groups attached to each item in link order, keeping only available options
- * and dropping groups with none. Items with an entry here should open the
- * options picker instead of instant-add. Shared by the customer menu and the
- * staff punch screen.
- */
-export function resolveOptionGroupsByItem(
-  catalog: MenuOptionCatalog | undefined
-): Map<string, ResolvedOptionGroup[]> {
-  const map = new Map<string, ResolvedOptionGroup[]>();
-
-  if (!catalog) {
-    return map;
-  }
-
-  const groupsById = new Map(catalog.groups.map((group) => [group.id, group]));
-  const optionsByGroupId = new Map<string, MenuOption[]>();
-  for (const option of [...catalog.options].sort(
-    (first, second) => first.display_order - second.display_order
-  )) {
-    if (!option.is_available) {
-      continue;
-    }
-    const list = optionsByGroupId.get(option.group_id) ?? [];
-    list.push(option);
-    optionsByGroupId.set(option.group_id, list);
-  }
-  for (const link of [...catalog.links].sort(
-    (first, second) => first.display_order - second.display_order
-  )) {
-    const group = groupsById.get(link.group_id);
-    const groupOptions = optionsByGroupId.get(link.group_id) ?? [];
-    if (!group || groupOptions.length === 0) {
-      continue;
-    }
-    const entries = map.get(link.menu_item_id) ?? [];
-    entries.push({ group, options: groupOptions });
-    map.set(link.menu_item_id, entries);
-  }
-
-  return map;
-}
-
-function isVariantGroup(group: MenuOptionGroup) {
+function isVariantGroup(group: CustomerMenuOptionGroup) {
   return group.min_select === 1 && group.max_select === 1;
 }
 
-function optionName(option: MenuOption, language: CustomerLanguage) {
+function optionName(option: CustomerMenuOption, language: CustomerLanguage) {
   return language === "ar" && option.name_ar ? option.name_ar : option.name;
 }
 
-function groupName(group: MenuOptionGroup, language: CustomerLanguage) {
+function groupName(group: CustomerMenuOptionGroup, language: CustomerLanguage) {
   return language === "ar" && group.name_ar ? group.name_ar : group.name;
 }
 
@@ -90,7 +45,7 @@ function deltaLabel(delta: number, restaurant: PublicRestaurant) {
   return `${delta > 0 ? "+" : "−"}${formatCurrency(Math.abs(delta), restaurant)}`;
 }
 
-function toCartOption(option: MenuOption): CartLineOption {
+function toCartOption(option: CustomerMenuOption): CartLineOption {
   return {
     option_id: option.id,
     group_id: option.group_id,
@@ -114,11 +69,11 @@ export function ItemOptionsSheet({
   /** Item base price, or the offer's promotional price when seeded by an offer. */
   basePrice: number;
   groups: ResolvedOptionGroup[];
-  item: MenuItem;
+  item: CustomerMenuItem;
   language: CustomerLanguage;
   /** Remaining allowed quantity (offer cap minus in-cart total); undefined = unlimited. */
   maxQuantity?: number;
-  offer?: MenuOffer | null;
+  offer?: CustomerMenuOffer | null;
   onAdd: (options: CartLineOption[], quantity: number) => void;
   onClose: () => void;
   restaurant: PublicRestaurant;
@@ -141,7 +96,7 @@ export function ItemOptionsSheet({
     [groups]
   );
 
-  const toggleOption = (group: MenuOptionGroup, optionId: string) => {
+  const toggleOption = (group: CustomerMenuOptionGroup, optionId: string) => {
     setSelected((current) => {
       const chosen = current[group.id] ?? [];
 
