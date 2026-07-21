@@ -21,6 +21,14 @@ type RefreshedSession = {
   expires_in: number;
 };
 
+function nextResponse(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  // AdminLayout uses this server-controlled value to enforce Jobs-only route
+  // boundaries. Always overwrite a same-named client header.
+  requestHeaders.set("x-whatsorder-pathname", request.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 // Direct GoTrue call instead of @supabase/supabase-js — the full client pulls
 // ~85 kB (postgrest/realtime/storage) into the middleware bundle and rebuilds
 // it per request, only to issue this single POST.
@@ -69,7 +77,7 @@ export async function middleware(request: NextRequest) {
   const refreshToken = request.cookies.get(refreshTokenCookieName)?.value;
 
   if (!refreshToken || (accessToken && !tokenExpiresSoon(accessToken))) {
-    return NextResponse.next();
+    return nextResponse(request);
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -80,11 +88,11 @@ export async function middleware(request: NextRequest) {
     process.env.SUPABASE_PUBLISHABLE_KEY;
 
   if (!url || !anonKey) {
-    return NextResponse.next();
+    return nextResponse(request);
   }
 
   const session = await refreshSupabaseSession(url, anonKey, refreshToken);
-  const response = NextResponse.next();
+  const response = nextResponse(request);
 
   if (!session) {
     response.cookies.delete(accessTokenCookieName);

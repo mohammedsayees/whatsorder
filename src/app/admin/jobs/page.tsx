@@ -29,7 +29,9 @@ export default async function AdminJobsPage({
   searchParams: Promise<{ tab?: string; error?: string; success?: string }>;
 }) {
   const [session, query] = await Promise.all([
-    requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"], {
+      allowJobsOnly: true
+    }),
     searchParams
   ]);
   const jobs = await getRestaurantJobs(session.restaurantId);

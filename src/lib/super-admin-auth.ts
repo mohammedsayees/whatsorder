@@ -189,7 +189,9 @@ export async function getRestaurantAdminSession() {
   return resolution.session;
 }
 
-export async function requireRestaurantAdmin() {
+type RestaurantAccessOptions = { allowJobsOnly?: boolean };
+
+export async function requireRestaurantAdmin(options: RestaurantAccessOptions = {}) {
   const resolution = await resolveRestaurantAdminSession();
 
   if (resolution.issue === "restaurant_selection_required") {
@@ -208,6 +210,10 @@ export async function requireRestaurantAdmin() {
       restaurant_unavailable: "This restaurant account is currently unavailable."
     };
     redirect(`/admin-login?error=${encodeURIComponent(messages[resolution.issue])}`);
+  }
+
+  if (resolution.session.restaurant.jobs_only && !options.allowJobsOnly) {
+    redirect("/admin/jobs");
   }
 
   return resolution.session;
@@ -263,9 +269,10 @@ export async function getSelectableRestaurants(): Promise<SelectableRestaurant[]
 }
 
 export async function requireRestaurantRole(
-  allowedRoles: RestaurantAdminSession["role"][]
+  allowedRoles: RestaurantAdminSession["role"][],
+  options: RestaurantAccessOptions = {}
 ) {
-  const session = await requireRestaurantAdmin();
+  const session = await requireRestaurantAdmin(options);
 
   if (!allowedRoles.includes(session.role)) {
     redirect("/admin?error=You%20do%20not%20have%20permission%20for%20that%20action.");

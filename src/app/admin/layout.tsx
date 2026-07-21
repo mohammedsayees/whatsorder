@@ -1,4 +1,5 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { accessTokenCookieName } from "@/lib/auth-cookies";
 import { getTenantAccess } from "@/lib/billing-data";
@@ -7,7 +8,15 @@ import { getNewOrderAlertState } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireRestaurantAdmin();
+  const session = await requireRestaurantAdmin({ allowJobsOnly: true });
+  const jobsOnly = session.restaurant.jobs_only === true;
+  const pathname = (await headers()).get("x-whatsorder-pathname") ?? "/admin";
+
+  const isJobsPath = pathname === "/admin/jobs" || pathname.startsWith("/admin/jobs/");
+  if (jobsOnly && !isJobsPath) {
+    redirect("/admin/jobs");
+  }
+
   const [
     cookieStore,
     initialNewOrderAlertState,
@@ -15,11 +24,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     access
   ] = await Promise.all([
     cookies(),
-    getNewOrderAlertState(session.restaurantId),
-    session.role === "staff"
+    jobsOnly
+      ? Promise.resolve({ newOrderCount: 0, pendingOrderIds: [] })
+      : getNewOrderAlertState(session.restaurantId),
+    jobsOnly || session.role === "staff"
       ? Promise.resolve([])
       : getUnreadChatConversationIds(session.restaurantId),
-    getTenantAccess(session.restaurantId)
+    jobsOnly ? Promise.resolve({ status: null }) : getTenantAccess(session.restaurantId)
   ]);
   const realtimeAccessToken = cookieStore.get(accessTokenCookieName)?.value ?? null;
 

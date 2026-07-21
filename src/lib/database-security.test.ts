@@ -166,7 +166,7 @@ describe("public order database boundary", () => {
     expect(inviteActions).toContain(
       '.eq("password_setup_token_hash", tokenHash)'
     );
-    expect(inviteActions).toContain('.select("id")');
+    expect(inviteActions).toContain('.select("id,restaurant_id")');
     expect(inviteActions).toContain("password_setup_token_hash: null");
   });
 

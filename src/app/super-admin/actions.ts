@@ -12,7 +12,10 @@ import {
   requireSuperAdmin,
   superAdminCookieName
 } from "@/lib/super-admin-auth";
-import { getPublicAppUrl } from "@/lib/super-admin-data";
+import {
+  inviteRestaurantUser,
+  type RestaurantInviteRole as InviteRole
+} from "@/lib/restaurant-invitations";
 import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
 import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
 import {
@@ -60,123 +63,6 @@ function slugify(value: string) {
 
 function queryError(message: string) {
   return encodeURIComponent(message);
-}
-
-async function findAuthUserByEmail(
-  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
-  email: string
-) {
-  const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  return data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
-}
-
-type InviteRole = "restaurant_admin" | "manager" | "staff";
-
-async function inviteRestaurantUser(
-  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
-  restaurantId: string,
-  email: string,
-  role: InviteRole
-) {
-  const { data: existingMemberships, error: existingMembershipError } = await supabase
-    .from("restaurant_users")
-    .select("restaurant_id")
-    .eq("email", email);
-
-  if (existingMembershipError) {
-    return { ok: false as const, error: existingMembershipError.message };
-  }
-
-  if (
-    (existingMemberships ?? []).some(
-      (membership) => String(membership.restaurant_id) !== restaurantId
-    )
-  ) {
-    return {
-      ok: false as const,
-      error:
-        "This email is already assigned to another restaurant. Multi-restaurant accounts require an account selector and are not enabled yet."
-    };
-  }
-
-  const redirectTo = `${getPublicAppUrl()}/auth/invite`;
-  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo,
-    data: { restaurant_id: restaurantId, role }
-  });
-
-  let user = data.user;
-  let invitationSent = !error;
-
-  if (error) {
-    user = await findAuthUserByEmail(supabase, email);
-
-    if (!user) {
-      return { ok: false as const, error: error.message };
-    }
-
-    const { error: metadataError } = await supabase.auth.admin.updateUserById(user.id, {
-      user_metadata: { restaurant_id: restaurantId, role }
-    });
-
-    if (metadataError) {
-      return { ok: false as const, error: metadataError.message };
-    }
-
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo
-    });
-    if (resetError) {
-      return { ok: false as const, error: resetError.message };
-    }
-    invitationSent = !resetError;
-  }
-
-  if (!user) {
-    return { ok: false as const, error: "Supabase did not return the invited user." };
-  }
-
-  const now = new Date().toISOString();
-  const { error: membershipError } = await supabase.from("restaurant_users").upsert(
-    {
-      restaurant_id: restaurantId,
-      user_id: user.id,
-      email,
-      role,
-      invited_at: now
-    },
-    { onConflict: "restaurant_id,email" }
-  );
-
-  if (membershipError) {
-    return { ok: false as const, error: membershipError.message };
-  }
-
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (existingProfile?.role !== "super_admin") {
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: user.id,
-      email,
-      role: role === "staff" ? "staff" : "restaurant_admin",
-      updated_at: now
-    });
-    if (profileError) {
-      return { ok: false as const, error: profileError.message };
-    }
-  }
-
-  return {
-    ok: true as const,
-    invitationSent,
-    message: invitationSent
-      ? `Account activation email sent to ${email}.`
-      : `${email} already has an account and has been linked to this restaurant.`
-  };
 }
 
 export async function loginSuperAdminAction(formData: FormData) {

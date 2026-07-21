@@ -7,7 +7,10 @@ export default async function SetRestaurantPasswordPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const [session, query] = await Promise.all([requireRestaurantAdmin(), searchParams]);
+  const [session, query] = await Promise.all([
+    requireRestaurantAdmin({ allowJobsOnly: true }),
+    searchParams
+  ]);
 
   return (
     <main className="grid min-h-screen place-items-center bg-stone-100 px-4 py-10">
@@ -18,7 +21,7 @@ export default async function SetRestaurantPasswordPage({
         <h1 className="mt-5 text-2xl font-black">Create your password</h1>
         <p className="mt-2 text-sm leading-6 text-stone-600">
           Activate access for <strong>{session.restaurant.name}</strong>. You will use this password
-          with {session.email} at the restaurant login.
+          with {session.email} at the employer login.
         </p>
         {query.error ? (
           <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
@@ -49,7 +52,7 @@ export default async function SetRestaurantPasswordPage({
             />
           </label>
           <button className="focus-ring w-full rounded-lg bg-leaf px-5 py-3 font-black text-white" type="submit">
-            Activate restaurant account
+            {session.restaurant.jobs_only ? "Activate employer account" : "Activate restaurant account"}
           </button>
         </form>
       </section>

@@ -18,7 +18,9 @@ Supported statuses are extensible, but Phase 1 employer flows use `draft`, `publ
 
 ## Local setup
 
-Apply `supabase/migrations/20260721120000_jobs_phase1.sql` before deploying the application. Optionally set a high-entropy `JOB_REPORT_SALT` in Vercel and local server environments. The fallback is functional but a deployment-specific salt provides better unlinkability.
+Apply `supabase/migrations/20260721120000_jobs_phase1.sql` before deploying the application. For subscription-free employer onboarding, then apply `supabase/migrations/20260721180000_jobs_only_employer_onboarding.sql` and set a high-entropy `JOB_EMPLOYER_SIGNUP_SALT` in Vercel. The public signup fails closed in production if neither that value nor `JOB_REPORT_SALT` is configured.
+
+`jobs_only` tenants do not receive a subscription row. Their authenticated admin surface is restricted to `/admin/jobs`, signup attempts are stored only as salted hashes, and the free tier is limited to three open listings at a time.
 
 Demo data is intentionally not automatic. On a local database only:
 

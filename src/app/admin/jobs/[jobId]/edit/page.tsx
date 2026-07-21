@@ -12,7 +12,11 @@ export default async function EditJobPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const [session, route, query] = await Promise.all([
-    requireRestaurantRole(["restaurant_admin", "owner", "manager"]), params, searchParams
+    requireRestaurantRole(["restaurant_admin", "owner", "manager"], {
+      allowJobsOnly: true
+    }),
+    params,
+    searchParams
   ]);
   const job = await getRestaurantJob(session.restaurantId, route.jobId);
   if (!job) notFound();
