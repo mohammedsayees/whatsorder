@@ -93,7 +93,7 @@ export default async function JobsPage({
                   <p className="mt-2 text-sm font-black text-leaf">{formatJobSalary(job)}</p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-600">{job.accommodation_provided ? <span>Accommodation</span> : null}{job.food_provided ? <span>• Food</span> : null}{job.visa_provided ? <span>• Visa</span> : null}</div>
                   <p className="mt-3 text-xs text-stone-400">Published {job.published_at ? new Date(job.published_at).toLocaleDateString("en-AE") : "recently"} · {job.employment_type}</p>
-                  <div className="mt-auto grid grid-cols-2 gap-2 pt-5"><Link className="focus-ring rounded-lg border border-stone-300 px-3 py-2.5 text-center text-sm font-black" href={`/jobs/${job.id}`}>View details</Link><form action={`/jobs/${job.id}/apply`} method="post"><button className="focus-ring w-full rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-black text-[#073b24]">Apply</button></form></div>
+                  <div className="mt-auto grid grid-cols-2 gap-2 pt-5"><Link className="focus-ring rounded-lg border border-stone-300 px-3 py-2.5 text-center text-sm font-black" href={`/jobs/${job.id}`}>View details</Link><a className="focus-ring rounded-lg bg-[#25D366] px-3 py-2.5 text-center text-sm font-black text-[#073b24]" href={`/jobs/${job.id}/apply`} rel="noopener noreferrer" target="_blank">Apply</a></div>
                 </article>
               ))}
             </div>

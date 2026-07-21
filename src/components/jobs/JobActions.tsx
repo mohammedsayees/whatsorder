@@ -41,9 +41,14 @@ export function JobActions({ jobId, title }: { jobId: string; title: string }) {
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-3">
-        <form action={`/jobs/${jobId}/apply`} method="post">
-          <button className="focus-ring w-full rounded-xl bg-[#25D366] px-5 py-3.5 font-black text-[#073b24]" type="submit">Apply on WhatsApp</button>
-        </form>
+        <a
+          className="focus-ring w-full rounded-xl bg-[#25D366] px-5 py-3.5 text-center font-black text-[#073b24]"
+          href={`/jobs/${jobId}/apply`}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Apply on WhatsApp
+        </a>
         <button className="focus-ring rounded-xl border border-stone-300 bg-white px-5 py-3.5 font-black" onClick={() => void share()} type="button">{shared ? "Link shared" : "Share job"}</button>
         <button className="focus-ring rounded-xl border border-stone-300 bg-white px-5 py-3.5 font-black text-stone-700" onClick={() => dialogRef.current?.showModal()} type="button">Report job</button>
       </div>
