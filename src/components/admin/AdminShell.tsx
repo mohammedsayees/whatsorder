@@ -50,18 +50,26 @@ export function AdminShell({
   realtimeAccessToken: string | null;
   session: RestaurantAdminSession;
 }) {
+  const jobsOnly = session.restaurant.jobs_only === true;
+  const visibleNavItems = navItems.filter((item) => {
+    if (jobsOnly) return item.href === "/admin/jobs";
+    return session.role !== "staff" || item.staff;
+  });
+
   return (
     <div className="min-h-screen bg-stone-50">
       <aside className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white print:hidden lg:inset-y-0 lg:left-0 lg:right-auto lg:w-64 lg:border-r lg:border-t-0">
         <div className="hidden px-6 py-6 lg:block">
-          <Link className="text-xl font-black text-ink" href="/admin">
+          <Link className="text-xl font-black text-ink" href={jobsOnly ? "/admin/jobs" : "/admin"}>
             WhatsOrder
           </Link>
           <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
-          <p className="mt-0.5 text-xs capitalize text-stone-500">{session.role.replace("_", " ")}</p>
+          <p className="mt-0.5 text-xs capitalize text-stone-500">
+            {jobsOnly ? "Jobs employer account" : session.role.replace("_", " ")}
+          </p>
         </div>
         <nav className="flex gap-1 overflow-x-auto p-2 lg:block lg:space-y-1 lg:overflow-visible lg:px-3">
-          {navItems.filter((item) => session.role !== "staff" || item.staff).map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
 
             return (
@@ -92,14 +100,16 @@ export function AdminShell({
         </form>
       </aside>
       <div className="pb-24 print:pb-0 lg:pb-0 lg:pl-64 lg:print:pl-0">
-        <AdminAlertsProvider
-          initialNewOrderAlertState={initialNewOrderAlertState}
-          realtimeAccessToken={realtimeAccessToken}
-          restaurantId={session.restaurantId}
-        >
-          <BillingBanner status={billingStatus ?? null} />
-          {children}
-        </AdminAlertsProvider>
+        {jobsOnly ? children : (
+          <AdminAlertsProvider
+            initialNewOrderAlertState={initialNewOrderAlertState}
+            realtimeAccessToken={realtimeAccessToken}
+            restaurantId={session.restaurantId}
+          >
+            <BillingBanner status={billingStatus ?? null} />
+            {children}
+          </AdminAlertsProvider>
+        )}
       </div>
     </div>
   );

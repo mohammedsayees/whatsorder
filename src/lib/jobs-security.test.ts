@@ -42,7 +42,8 @@ describe("jobs database boundary", () => {
     expect(actions).toContain("restaurant_id: session.restaurantId");
     expect(actions).toContain('.eq("restaurant_id", session.restaurantId)');
     expect(actions).not.toContain('formData.get("restaurant_id")');
-    expect(actions).toContain('requireRestaurantRole(["restaurant_admin", "owner"])');
+    expect(actions).toContain('["restaurant_admin", "owner"]');
+    expect(actions).toContain("allowJobsOnly: true");
   });
 
   it("opens WhatsApp through normal navigation instead of a CSP-blocked form redirect", () => {

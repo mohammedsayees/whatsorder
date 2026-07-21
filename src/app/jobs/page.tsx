@@ -40,7 +40,7 @@ export default async function JobsPage({
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <Link className="text-xl font-black text-leaf" href="/">WhatsOrder</Link>
-          <Link className="text-sm font-bold text-stone-600" href="/admin/jobs">Post a job</Link>
+          <Link className="text-sm font-bold text-stone-600" href="/jobs/post">Post a job free</Link>
         </div>
       </header>
       <section className="bg-ink px-4 py-10 text-white sm:py-14">

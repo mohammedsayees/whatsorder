@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Store } from "lucide-react";
 import { loginRestaurantAdminAction } from "@/app/admin-login/actions";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
@@ -42,6 +43,12 @@ export default async function RestaurantAdminLoginPage({
             Sign in
           </button>
         </form>
+        <p className="mt-5 text-center text-sm text-stone-500">
+          Need to hire?{" "}
+          <Link className="font-black text-leaf" href="/jobs/post">
+            Post a job without subscribing
+          </Link>
+        </p>
       </section>
     </main>
   );

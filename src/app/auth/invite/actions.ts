@@ -119,7 +119,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
     .eq("id", membership.id)
     .eq("restaurant_id", invitedRestaurantId)
     .is("accepted_at", null)
-    .select("id")
+    .select("id,restaurant_id")
     .maybeSingle();
 
   if (membershipError || !acceptedMembership) {
@@ -196,7 +196,7 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
     .eq("user_id", user.id)
     .eq("password_setup_token_hash", tokenHash)
     .gt("password_setup_expires_at", now)
-    .select("id")
+    .select("id,restaurant_id")
     .maybeSingle();
 
   if (membershipClaimError || !membership) {
@@ -212,5 +212,11 @@ export async function setRestaurantOwnerPasswordAction(formData: FormData) {
 
   cookieStore.delete(invitePasswordSetupCookieName);
 
-  redirect("/admin?welcome=1");
+  const { data: restaurant } = await admin
+    .from("restaurants")
+    .select("jobs_only")
+    .eq("id", membership.restaurant_id)
+    .maybeSingle();
+
+  redirect(restaurant?.jobs_only ? "/admin/jobs/new?welcome=1" : "/admin?welcome=1");
 }

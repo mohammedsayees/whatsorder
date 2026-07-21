@@ -31,7 +31,9 @@ function unavailable(returnTo: string): never {
 }
 
 export async function saveJobAction(formData: FormData) {
-  const session = await requireRestaurantRole([...JOB_MANAGEMENT_ROLES]);
+  const session = await requireRestaurantRole([...JOB_MANAGEMENT_ROLES], {
+    allowJobsOnly: true
+  });
   const admin = getSupabaseAdmin();
   const jobId = String(formData.get("job_id") ?? "").trim();
   const returnTo = String(formData.get("return_to") ?? "/admin/jobs/new");
@@ -90,6 +92,18 @@ export async function saveJobAction(formData: FormData) {
       .eq("restaurant_id", session.restaurantId);
     if (error) formError(returnTo, "The job could not be saved. Check the fields and try again.");
   } else {
+    if (session.restaurant.jobs_only) {
+      const { count, error: countError } = await admin
+        .from("jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", session.restaurantId)
+        .in("status", ["draft", "pending_review", "published", "unpublished"]);
+      if (countError) unavailable(returnTo);
+      if ((count ?? 0) >= 3) {
+        formError(returnTo, "Jobs-only accounts can have up to three open listings at a time. Close a listing before creating another.");
+      }
+    }
+
     const { error } = await admin.from("jobs").insert({
       ...result.data,
       ...publishFields,
@@ -106,7 +120,9 @@ export async function saveJobAction(formData: FormData) {
 }
 
 export async function transitionJobAction(formData: FormData) {
-  const session = await requireRestaurantRole([...JOB_MANAGEMENT_ROLES]);
+  const session = await requireRestaurantRole([...JOB_MANAGEMENT_ROLES], {
+    allowJobsOnly: true
+  });
   const admin = getSupabaseAdmin();
   const jobId = String(formData.get("job_id") ?? "");
   const nextStatus = String(formData.get("status") ?? "") as JobStatus;
@@ -147,7 +163,9 @@ export async function transitionJobAction(formData: FormData) {
 }
 
 export async function deleteDraftJobAction(formData: FormData) {
-  const session = await requireRestaurantRole(["restaurant_admin", "owner"]);
+  const session = await requireRestaurantRole(["restaurant_admin", "owner"], {
+    allowJobsOnly: true
+  });
   const admin = getSupabaseAdmin();
   const jobId = String(formData.get("job_id") ?? "");
   if (!admin) unavailable("/admin/jobs");
