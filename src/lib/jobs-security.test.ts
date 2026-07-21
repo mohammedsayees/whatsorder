@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260721120000_jobs_phase1.sql"), "utf8");
 const actions = readFileSync(resolve(process.cwd(), "src/app/admin/jobs/actions.ts"), "utf8");
+const applyRoute = readFileSync(resolve(process.cwd(), "src/app/jobs/[jobId]/apply/route.ts"), "utf8");
+const jobActions = readFileSync(resolve(process.cwd(), "src/components/jobs/JobActions.tsx"), "utf8");
+const jobsPage = readFileSync(resolve(process.cwd(), "src/app/jobs/page.tsx"), "utf8");
 
 describe("jobs database boundary", () => {
   it("keeps browser roles read-only and public users off private tables", () => {
@@ -40,5 +43,13 @@ describe("jobs database boundary", () => {
     expect(actions).toContain('.eq("restaurant_id", session.restaurantId)');
     expect(actions).not.toContain('formData.get("restaurant_id")');
     expect(actions).toContain('requireRestaurantRole(["restaurant_admin", "owner"])');
+  });
+
+  it("opens WhatsApp through normal navigation instead of a CSP-blocked form redirect", () => {
+    expect(applyRoute).toContain("export const GET = redirectToWhatsApp");
+    expect(jobActions).toContain('href={`/jobs/${jobId}/apply`}');
+    expect(jobActions).not.toContain('method="post"');
+    expect(jobsPage).toContain('href={`/jobs/${job.id}/apply`}');
+    expect(jobsPage).not.toContain('action={`/jobs/${job.id}/apply`}');
   });
 });
