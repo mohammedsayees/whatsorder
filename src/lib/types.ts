@@ -324,6 +324,12 @@ export type ShiftSummary = {
   card_on_delivery_total: number;
   upi_total: number;
   cash_paid_out_total: number;
+  other_income_total: number;
+  cash_other_income_total: number;
+  card_other_income_total: number;
+  upi_other_income_total: number;
+  bank_other_income_total: number;
+  other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
   cancelled_order_count: number;
   fulfilment_breakdown: ShiftFulfilmentSummary;
   expected_cash_amount: number;
@@ -342,6 +348,13 @@ export type RestaurantShift = {
   card_on_delivery_total: number;
   upi_total: number;
   cash_paid_out_total: number;
+  business_day_id: string | null;
+  other_income_total: number;
+  cash_other_income_total: number;
+  card_other_income_total: number;
+  upi_other_income_total: number;
+  bank_other_income_total: number;
+  other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
   cancelled_order_count: number;
   fulfilment_breakdown: ShiftFulfilmentSummary;
   expected_cash_amount: number | null;
@@ -411,6 +424,13 @@ export type ShiftCloseReportSnapshot = {
   marketplace_sales: ShiftMarketplaceSale[];
   marketplace_sales_total: number;
   combined_operational_sales: number;
+  other_income_total: number;
+  cash_other_income_total: number;
+  card_other_income_total: number;
+  upi_other_income_total: number;
+  bank_other_income_total: number;
+  other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
+  combined_operational_receipts: number;
   report_generated_at: string;
   correction_reason: string | null;
 };
@@ -434,6 +454,106 @@ export type ShiftCashPaidOut = {
   reason: string;
   recorded_by_user_id: string;
   recorded_at: string;
+};
+
+export type OtherIncomeCategory =
+  | "used_oil_sale"
+  | "scrap_sale"
+  | "supplier_rebate"
+  | "rental_income"
+  | "other";
+
+export type OtherIncomePaymentMethod =
+  | "cash"
+  | "card"
+  | "upi"
+  | "bank_transfer"
+  | "other";
+
+export type ShiftOtherIncomeEntry = {
+  id: string;
+  restaurant_id: string;
+  shift_id: string;
+  category: OtherIncomeCategory;
+  amount: number;
+  payment_method: OtherIncomePaymentMethod;
+  description: string;
+  reference: string | null;
+  recorded_by_user_id: string;
+  recorded_at: string;
+  voided_at: string | null;
+  voided_by_user_id: string | null;
+  void_reason: string | null;
+};
+
+export type BusinessDayStatus = "open" | "closed";
+
+export type BusinessDayShiftSnapshot = {
+  id: string;
+  name: string;
+  opened_at: string;
+  closed_at: string;
+  completed_orders: number;
+  sales: number;
+  marketplace_sales: number;
+  other_income: number;
+  cash_paid_outs: number;
+  opening_cash: number;
+  expected_cash: number;
+  cash_counted: number;
+  cash_difference: number;
+  report_version: number;
+};
+
+export type BusinessDayCloseReportSnapshot = RestaurantLocalization & {
+  schema_version: number;
+  report_version: number;
+  business_day_id: string;
+  business_date: string;
+  restaurant_id: string;
+  restaurant_name: string;
+  opened_at: string;
+  closed_at: string;
+  report_generated_at: string;
+  shift_count: number;
+  completed_order_count: number;
+  cancelled_order_count: number;
+  whatsorder_sales: number;
+  marketplace_sales: number;
+  combined_operational_sales: number;
+  other_income_total: number;
+  cash_other_income_total: number;
+  card_other_income_total: number;
+  upi_other_income_total: number;
+  bank_other_income_total: number;
+  total_operational_receipts: number;
+  cash_order_sales: number;
+  card_order_sales: number;
+  upi_order_sales: number;
+  cash_paid_out_total: number;
+  net_cash_movement: number;
+  cash_difference_total: number;
+  card_difference_total: number;
+  upi_difference_total: number;
+  final_cash_counted: number;
+  shifts: BusinessDayShiftSnapshot[];
+  other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
+};
+
+export type BusinessDay = {
+  id: string;
+  restaurant_id: string;
+  business_date: string;
+  status: BusinessDayStatus;
+  opened_by_user_id: string;
+  closed_by_user_id: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  close_report_snapshot: BusinessDayCloseReportSnapshot | null;
+  close_report_generated_at: string | null;
+  close_report_version: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Customer = {

@@ -14,11 +14,14 @@ import {
   type ReportTab
 } from "@/lib/reports";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { getOtherIncomeForReport } from "@/lib/business-day-data";
+import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 
 const reportTabs: Array<{ label: string; value: ReportTab }> = [
   { label: "Overview", value: "overview" },
   { label: "Sales", value: "sales" },
   { label: "Payments", value: "payments" },
+  { label: "Other income", value: "other_income" },
   { label: "Products", value: "products" },
   { label: "Customers", value: "customers" },
   { label: "Fulfilment", value: "fulfilment" }
@@ -96,11 +99,10 @@ export default async function AdminReportsPage({
     new Date(),
     restaurant
   );
-  const orders = await getOrdersForReport(
-    restaurant.id,
-    range.startIso,
-    range.endExclusiveIso
-  );
+  const [orders, otherIncomeEntries] = await Promise.all([
+    getOrdersForReport(restaurant.id, range.startIso, range.endExclusiveIso),
+    getOtherIncomeForReport(restaurant.id, range.startIso, range.endExclusiveIso)
+  ]);
   const customerPhones = [
     ...new Set(
       orders
@@ -120,6 +122,9 @@ export default async function AdminReportsPage({
     1,
     ...report.salesRows.map((row) => row.sales)
   );
+  const otherIncomeTotal = otherIncomeEntries.reduce(
+    (sum, entry) => sum + Number(entry.amount), 0
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -127,7 +132,7 @@ export default async function AdminReportsPage({
         <div>
           <h1 className="text-3xl font-black">Reports</h1>
           <p className="mt-2 text-stone-600">
-            Completed-order reporting in UAE time. Payment values show selected methods, not bank
+            Completed-order reporting in the restaurant&apos;s local time. Payment values show selected methods, not bank
             settlement.
           </p>
         </div>
@@ -227,6 +232,41 @@ export default async function AdminReportsPage({
           </div>
         ))}
       </section>
+
+      {activeTab === "other_income" ? (
+        <section className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-xl font-black">Other income</h2>
+              <p className="mt-1 text-sm text-stone-500">Non-order receipts remain separate from completed sales and average order value.</p>
+            </div>
+            <div className="rounded-lg bg-emerald-50 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Period total</p>
+              <p className="text-2xl font-black text-emerald-950">{money(otherIncomeTotal)}</p>
+            </div>
+          </div>
+          {otherIncomeEntries.length ? (
+            <div className="mt-5 overflow-x-auto rounded-lg border border-stone-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                  <tr><th className="px-3 py-2">Recorded</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Method</th><th className="px-3 py-2">Amount</th></tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {otherIncomeEntries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td className="whitespace-nowrap px-3 py-2">{formatDateTime(entry.recorded_at)}</td>
+                      <td className="px-3 py-2 font-black">{otherIncomeCategoryLabels[entry.category]}</td>
+                      <td className="px-3 py-2">{entry.description}{entry.reference ? <p className="text-xs text-stone-500">Ref: {entry.reference}</p> : null}</td>
+                      <td className="px-3 py-2">{otherIncomePaymentLabels[entry.payment_method]}</td>
+                      <td className="px-3 py-2 font-black text-emerald-700">{money(Number(entry.amount))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="mt-5 rounded-lg border border-dashed border-stone-200 p-8 text-center text-sm text-stone-500">No other income was recorded in this period.</p>}
+        </section>
+      ) : null}
 
       <div className="mt-5">
         {activeTab === "overview" ? (

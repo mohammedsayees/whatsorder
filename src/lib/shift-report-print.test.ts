@@ -43,6 +43,13 @@ const report: ShiftCloseReportSnapshot = {
   ],
   marketplace_sales_total: 35,
   combined_operational_sales: 230,
+  other_income_total: 0,
+  cash_other_income_total: 0,
+  card_other_income_total: 0,
+  upi_other_income_total: 0,
+  bank_other_income_total: 0,
+  other_income_breakdown: {},
+  combined_operational_receipts: 230,
   report_generated_at: "2026-07-17T15:20:00.000Z",
   correction_reason: null
 };

@@ -1,11 +1,16 @@
-import { AlertTriangle, Banknote, CreditCard, QrCode, ReceiptText, WalletCards } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarCheck, CircleDollarSign, CreditCard, QrCode, ReceiptText, WalletCards } from "lucide-react";
 import Link from "next/link";
 import {
   AssignUnassignedOrdersButton,
   CloseShiftForm,
+  CloseBusinessDayButton,
   OpenShiftForm,
-  PaidOutForm
+  OtherIncomeForm,
+  PaidOutForm,
+  VoidOtherIncomeForm
 } from "@/components/admin/ShiftForms";
+import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
+import { getOpenBusinessDay, getPreviousBusinessDays } from "@/lib/business-day-data";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
@@ -42,11 +47,13 @@ export default async function AdminShiftsPage() {
   const money = (value: number) => formatCurrency(value, session.restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, session.restaurant);
-  const [currentShift, previousShifts, unassignedCompletedOrders] =
+  const [currentShift, previousShifts, unassignedCompletedOrders, openBusinessDay, previousBusinessDays] =
     await Promise.all([
       getCurrentShiftView(session),
       getPreviousShifts(session),
-      getUnassignedCompletedOrderCount(session.restaurantId)
+      getUnassignedCompletedOrderCount(session.restaurantId),
+      getOpenBusinessDay(session),
+      getPreviousBusinessDays(session)
     ]);
 
   return (
@@ -61,6 +68,27 @@ export default async function AdminShiftsPage() {
           a printable close report. This is an operational summary, not an accounting ledger.
         </p>
       </div>
+
+      {openBusinessDay ? (
+        <section className="mt-5 rounded-lg border border-sky-200 bg-sky-50 p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <CalendarCheck className="mt-0.5 shrink-0 text-sky-700" size={21} />
+              <div>
+                <p className="font-black text-sky-950">Business day {openBusinessDay.day.business_date}</p>
+                <p className="mt-1 text-sm text-sky-800">
+                  {openBusinessDay.shifts.length} shift{openBusinessDay.shifts.length === 1 ? "" : "s"} attached. It remains the same operating day even after midnight.
+                </p>
+              </div>
+            </div>
+            {!currentShift && session.role !== "staff" && openBusinessDay.shifts.length > 0 ? (
+              <div className="w-full sm:w-72">
+                <CloseBusinessDayButton businessDayId={openBusinessDay.day.id} />
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {unassignedCompletedOrders > 0 ? (
         <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
@@ -151,6 +179,11 @@ export default async function AdminShiftsPage() {
                   value: money(currentShift.summary.cash_paid_out_total)
                 },
                 {
+                  icon: CircleDollarSign,
+                  label: "Other income",
+                  value: money(currentShift.summary.other_income_total)
+                },
+                {
                   icon: CreditCard,
                   label: "Card on delivery",
                   value: money(currentShift.summary.card_on_delivery_total)
@@ -182,7 +215,7 @@ export default async function AdminShiftsPage() {
                   {money(currentShift.summary.expected_cash_amount)}
                 </p>
                 <p className="mt-2 text-xs font-semibold text-emerald-800">
-                  Opening cash + completed cash orders − cash paid-outs
+                  Opening cash + cash order sales + cash other income − cash paid-outs
                 </p>
               </div>
               <div className="rounded-lg border border-stone-200 p-4">
@@ -229,7 +262,7 @@ export default async function AdminShiftsPage() {
             </div>
           </section>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <div className="mt-5 grid gap-5 lg:grid-cols-3">
             <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
               <h2 className="text-xl font-black">Cash paid-outs</h2>
               <p className="mt-1 text-sm text-stone-500">
@@ -262,6 +295,38 @@ export default async function AdminShiftsPage() {
                   <p className="rounded-lg border border-dashed border-stone-200 p-5 text-center text-sm text-stone-500">
                     No cash paid-outs recorded.
                   </p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-black">Other income</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Record receipts that are not customer-order sales. Cash entries increase expected drawer cash.
+              </p>
+              {currentShift.canManage ? (
+                <div className="mt-4">
+                  <OtherIncomeForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
+                </div>
+              ) : null}
+              <div className="mt-5 space-y-2">
+                {currentShift.otherIncomeEntries.length ? currentShift.otherIncomeEntries.map((entry) => (
+                  <div className="rounded-lg bg-stone-50 p-3" key={entry.id}>
+                    <div className="flex justify-between gap-3">
+                      <div>
+                        <p className="font-bold">{otherIncomeCategoryLabels[entry.category]}</p>
+                        <p className="text-xs text-stone-500">{entry.description}</p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
+                          {entry.reference ? ` · ${entry.reference}` : ""}
+                        </p>
+                        {currentShift.canManage ? <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} /> : null}
+                      </div>
+                      <p className="shrink-0 font-black text-emerald-700">+{money(Number(entry.amount))}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="rounded-lg border border-dashed border-stone-200 p-5 text-center text-sm text-stone-500">No other income recorded.</p>
                 )}
               </div>
             </section>
@@ -378,6 +443,30 @@ export default async function AdminShiftsPage() {
           )}
         </div>
       </section>
+
+      {session.role !== "staff" ? (
+        <section className="mt-8">
+          <h2 className="text-xl font-black">Closed business days</h2>
+          <p className="mt-1 text-sm text-stone-500">Combined reports across all shifts in each operating day.</p>
+          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+            {previousBusinessDays.length ? (
+              <div className="divide-y divide-stone-100">
+                {previousBusinessDays.map((day) => (
+                  <div className="flex items-center justify-between gap-4 p-4" key={day.id}>
+                    <div>
+                      <p className="font-black">Business day {day.business_date}</p>
+                      <p className="text-xs text-stone-500">Closed {day.closed_at ? formatDateTime(day.closed_at) : ""}</p>
+                    </div>
+                    <Link className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-sm font-black" href={`/admin/business-days/${day.id}/report`}>
+                      View combined report
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="p-5 text-sm text-stone-500">No business day has been closed yet.</p>}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

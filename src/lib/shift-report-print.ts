@@ -148,6 +148,8 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
           ${moneyRow("WhatsOrder sales", money(report.completed_sales))}
           ${moneyRow("Marketplace sales", money(report.marketplace_sales_total))}
           ${moneyRow("Combined sales", money(report.combined_operational_sales), "grand")}
+          ${moneyRow("Other income", money(report.other_income_total))}
+          ${moneyRow("Total receipts", money(report.combined_operational_receipts), "grand")}
           <p class="explanation">Marketplace figures are manually reported gross sales, not settlement figures.</p>
         </section>
 

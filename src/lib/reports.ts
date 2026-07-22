@@ -22,6 +22,7 @@ export type ReportTab =
   | "overview"
   | "sales"
   | "payments"
+  | "other_income"
   | "products"
   | "customers"
   | "fulfilment";

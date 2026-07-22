@@ -150,9 +150,29 @@ describe("restaurant operational reliability boundaries", () => {
     expect(migration).toContain("Cannot close shift while active orders remain");
     expect(migration).toContain("constraint shift_close_reports_shift_tenant_fkey");
     expect(migration).toContain("Only restaurant management can correct a closed shift report");
-    expect(action).toContain('supabase.rpc("close_restaurant_shift_v2"');
+    expect(action).toContain('supabase.rpc("close_restaurant_shift_v3"');
     expect(action).toContain("session.restaurantId");
     expect(reportData).toContain('.eq("restaurant_id", session.restaurantId)');
+  });
+
+  it("keeps other income and business-day closure tenant-scoped and service-role-only", () => {
+    const migration = source(
+      "supabase/migrations/20260722120000_other_income_business_days.sql"
+    );
+    const actions = source("src/app/admin/shifts/actions.ts");
+
+    expect(migration).toContain("alter table public.business_days enable row level security");
+    expect(migration).toContain("alter table public.shift_other_income_entries enable row level security");
+    expect(migration).toContain("revoke all on table public.shift_other_income_entries from anon, authenticated");
+    expect(migration).toContain("grant execute on function public.add_shift_other_income");
+    expect(migration).toContain("to service_role");
+    expect(migration).toContain("business_day_id, restaurant_id");
+    expect(migration).toContain("and restaurant_id = target_restaurant_id");
+    expect(migration).toContain("Close every shift before closing the business day");
+    expect(migration).toContain("and shift_id is null and created_at >= target_day.opened_at");
+    expect(actions).toContain('supabase.rpc("add_shift_other_income"');
+    expect(actions).toContain('supabase.rpc("close_business_day"');
+    expect(actions).toContain("session.restaurantId");
   });
 
   it("adds items through a tenant-scoped, idempotent online staff workflow", () => {
