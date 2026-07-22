@@ -8,6 +8,7 @@ import type {
   RestaurantShift,
   ShiftCashPaidOut,
   ShiftCloseReport,
+  ShiftOtherIncomeEntry,
   ShiftSummary
 } from "@/lib/types";
 import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
@@ -16,6 +17,7 @@ export type CurrentShiftView = {
   activeOrderCount: number;
   canManage: boolean;
   paidOuts: ShiftCashPaidOut[];
+  otherIncomeEntries: ShiftOtherIncomeEntry[];
   shift: RestaurantShift;
   summary: ShiftSummary;
 };
@@ -25,6 +27,12 @@ const emptySummary: ShiftSummary = {
   card_on_delivery_total: 0,
   upi_total: 0,
   cash_paid_out_total: 0,
+  other_income_total: 0,
+  cash_other_income_total: 0,
+  card_other_income_total: 0,
+  upi_other_income_total: 0,
+  bank_other_income_total: 0,
+  other_income_breakdown: {},
   completed_cash_order_total: 0,
   completed_order_count: 0,
   completed_sales: 0,
@@ -48,6 +56,12 @@ function numericSummary(value: unknown) {
     card_on_delivery_total: Number(summary.card_on_delivery_total ?? 0),
     upi_total: Number(summary.upi_total ?? 0),
     cash_paid_out_total: Number(summary.cash_paid_out_total ?? 0),
+    other_income_total: Number(summary.other_income_total ?? 0),
+    cash_other_income_total: Number(summary.cash_other_income_total ?? 0),
+    card_other_income_total: Number(summary.card_other_income_total ?? 0),
+    upi_other_income_total: Number(summary.upi_other_income_total ?? 0),
+    bank_other_income_total: Number(summary.bank_other_income_total ?? 0),
+    other_income_breakdown: summary.other_income_breakdown ?? {},
     completed_cash_order_total: Number(
       summary.completed_cash_order_total ?? 0
     ),
@@ -85,7 +99,8 @@ export async function getCurrentShiftView(
   const [
     { data: summary, error: summaryError },
     { data: paidOuts, error: paidOutError },
-    { count: activeOrderCount, error: activeOrderError }
+    { count: activeOrderCount, error: activeOrderError },
+    { data: otherIncomeEntries, error: otherIncomeError }
   ] =
     await Promise.all([
       supabase.rpc("calculate_restaurant_shift_summary", {
@@ -103,10 +118,18 @@ export async function getCurrentShiftView(
         .from("orders")
         .select("id", { count: "exact", head: true })
         .eq("restaurant_id", session.restaurantId)
-        .in("status", [...activeOrderStatuses])
+        .in("status", [...activeOrderStatuses]),
+      supabase
+        .from("shift_other_income_entries")
+        .select("*")
+        .eq("restaurant_id", session.restaurantId)
+        .eq("shift_id", shift.id)
+        .is("voided_at", null)
+        .order("recorded_at", { ascending: false })
+        .limit(100)
     ]);
 
-  if (summaryError || paidOutError || activeOrderError) {
+  if (summaryError || paidOutError || activeOrderError || otherIncomeError) {
     throw new Error("Current shift totals could not be loaded.");
   }
 
@@ -115,6 +138,7 @@ export async function getCurrentShiftView(
     canManage:
       session.role !== "staff" || shift.opened_by_user_id === session.userId,
     paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[],
+    otherIncomeEntries: (otherIncomeEntries ?? []) as ShiftOtherIncomeEntry[],
     shift: shift as RestaurantShift,
     summary: summary ? numericSummary(summary) : emptySummary
   };

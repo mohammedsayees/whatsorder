@@ -4,12 +4,16 @@ import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   addShiftPaidOutAction,
+  addOtherIncomeAction,
   assignUnassignedOrdersAction,
+  closeBusinessDayAction,
   closeShiftAction,
   openShiftAction,
+  voidOtherIncomeAction,
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
+import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import { calculateCashDifference } from "@/lib/shift-calculations";
 import {
   reconciliationNeedsNote,
@@ -23,6 +27,25 @@ import type {
 } from "@/lib/types";
 
 const initialState: ShiftActionState = {};
+
+export function CloseBusinessDayButton({ businessDayId }: { businessDayId: string }) {
+  const [state, action, pending] = useActionState(closeBusinessDayAction, initialState);
+  return (
+    <div className="space-y-2">
+      <form action={action}>
+        <input name="business_day_id" type="hidden" value={businessDayId} />
+        <button
+          className="focus-ring w-full rounded-lg bg-ink px-4 py-3 font-black text-white disabled:opacity-60"
+          disabled={pending}
+          type="submit"
+        >
+          {pending ? "Closing business day…" : "Close business day & create report"}
+        </button>
+      </form>
+      <ActionMessage state={state} />
+    </div>
+  );
+}
 
 function ActionMessage({ state }: { state: ShiftActionState }) {
   if (!state.error && !state.success) {
@@ -163,6 +186,75 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
         <ActionMessage state={state} />
       </div>
     </form>
+  );
+}
+
+export function OtherIncomeForm({
+  restaurant,
+  shiftId
+}: {
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
+  const [state, action, pending] = useActionState(addOtherIncomeAction, initialState);
+  return (
+    <form action={action} className="space-y-3">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-bold text-stone-700">
+          Category
+          <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="category" required>
+            {Object.entries(otherIncomeCategoryLabels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm font-bold text-stone-700">
+          Payment method
+          <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="payment_method" required>
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            {restaurant.country_code === "IN" ? <option value="upi">UPI</option> : null}
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-bold text-stone-700">
+          Amount
+          <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" min="0.01" name="amount" required step="0.01" type="number" />
+        </label>
+        <label className="text-sm font-bold text-stone-700">
+          Reference <span className="font-normal text-stone-400">(optional)</span>
+          <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" maxLength={120} name="reference" placeholder="Receipt or buyer reference" />
+        </label>
+      </div>
+      <label className="block text-sm font-bold text-stone-700">
+        Description
+        <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" maxLength={300} name="description" placeholder="e.g. 35 litres sold to ABC Recycling" required />
+      </label>
+      <ActionMessage state={state} />
+      <button className="focus-ring w-full rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-black text-emerald-800 disabled:opacity-60" disabled={pending} type="submit">
+        {pending ? "Saving…" : "Record other income"}
+      </button>
+    </form>
+  );
+}
+
+export function VoidOtherIncomeForm({ entryId, shiftId }: { entryId: string; shiftId: string }) {
+  const [state, action, pending] = useActionState(voidOtherIncomeAction, initialState);
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="focus-ring cursor-pointer font-bold text-rose-700">Void incorrect entry</summary>
+      <form action={action} className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <input name="entry_id" type="hidden" value={entryId} />
+        <input name="shift_id" type="hidden" value={shiftId} />
+        <input className="focus-ring min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-2" maxLength={300} name="reason" placeholder="Reason (kept in audit history)" required />
+        <button className="focus-ring rounded-lg border border-rose-300 px-3 py-2 font-black text-rose-700 disabled:opacity-60" disabled={pending} type="submit">{pending ? "Voiding…" : "Confirm void"}</button>
+      </form>
+      <ActionMessage state={state} />
+    </details>
   );
 }
 
@@ -367,7 +459,7 @@ export function CloseShiftForm({
         </div>
         <div className="rounded-lg bg-stone-100 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-            WhatsOrder card sales
+            Expected card receipts
           </p>
           <p className="mt-1 text-2xl font-black">{formatCurrency(expectedCard, restaurant)}</p>
         </div>
@@ -410,7 +502,7 @@ export function CloseShiftForm({
         <div className="space-y-2">
           <div className="rounded-lg bg-stone-100 p-3">
             <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-              WhatsOrder UPI sales
+              Expected UPI receipts
             </p>
             <p className="mt-1 text-2xl font-black">
               {formatCurrency(expectedUpi, restaurant)}

@@ -11,6 +11,7 @@ import { getShiftCloseReportView } from "@/lib/shift-data";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
 
 const fulfilmentLabels: Record<string, string> = {
@@ -122,6 +123,8 @@ export default async function ShiftCloseReportPage({
           `WhatsOrder sales: ${money(report.completed_sales)}\n` +
           `Marketplace sales: ${money(report.marketplace_sales_total)}\n` +
           `Combined operational sales: ${money(report.combined_operational_sales)}\n` +
+          `Other income: ${money(report.other_income_total)}\n` +
+          `Total operational receipts: ${money(report.combined_operational_receipts)}\n` +
           `Cash difference: ${money(report.cash_difference_amount)}\n` +
           `Card difference: ${money(report.card_difference_amount)}`,
         session.restaurant.phone_country_code
@@ -180,6 +183,25 @@ export default async function ShiftCloseReportPage({
         </section>
 
         <section className="mt-6">
+          <h2 className="text-lg font-black">Other income</h2>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+            <ReportValue label="Other income" value={money(report.other_income_total)} />
+            <ReportValue label="Cash other income" value={money(report.cash_other_income_total)} />
+            <ReportValue label="Total operational receipts" tone="good" value={money(report.combined_operational_receipts)} />
+          </dl>
+          {Object.keys(report.other_income_breakdown).length ? (
+            <div className="mt-3 rounded-lg bg-stone-50 p-3 text-sm">
+              {Object.entries(report.other_income_breakdown).map(([category, amount]) => (
+                <p className="flex justify-between gap-3 py-1" key={category}>
+                  <span>{otherIncomeCategoryLabels[category as keyof typeof otherIncomeCategoryLabels] ?? category}</span>
+                  <span className="font-bold">{money(Number(amount))}</span>
+                </p>
+              ))}
+            </div>
+          ) : <p className="mt-2 text-sm text-stone-500">No non-sales income was recorded.</p>}
+        </section>
+
+        <section className="mt-6">
           <h2 className="text-lg font-black">Reconciliation</h2>
           <div className="mt-3 grid gap-4 md:grid-cols-3">
             <div>
@@ -193,7 +215,7 @@ export default async function ShiftCloseReportPage({
             <div>
               <h3 className="text-sm font-black">Card</h3>
               <dl className="mt-2 space-y-2">
-                <ReportValue label="WhatsOrder" value={money(report.expected_card_amount)} />
+                <ReportValue label="Expected receipts" value={money(report.expected_card_amount)} />
                 <ReportValue label="Terminal" value={money(report.card_terminal_total)} />
                 <DifferenceValue label="Difference" report={report} value={report.card_difference_amount} />
               </dl>
@@ -202,7 +224,7 @@ export default async function ShiftCloseReportPage({
               <div>
                 <h3 className="text-sm font-black">UPI</h3>
                 <dl className="mt-2 space-y-2">
-                  <ReportValue label="WhatsOrder" value={money(report.expected_upi_amount)} />
+                  <ReportValue label="Expected receipts" value={money(report.expected_upi_amount)} />
                   <ReportValue label="Reported" value={money(report.upi_reported_total ?? 0)} />
                   <DifferenceValue label="Difference" report={report} value={report.upi_difference_amount} />
                 </dl>

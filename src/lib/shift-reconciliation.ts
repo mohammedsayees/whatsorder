@@ -226,6 +226,14 @@ export function parseShiftCloseReportSnapshot(
   }
 
   const marketplaces = parseMarketplaceSales(value.marketplace_sales);
+  const otherIncomeTotal = finiteNumber(value.other_income_total) ?? 0;
+  const cashOtherIncomeTotal = finiteNumber(value.cash_other_income_total) ?? 0;
+  const cardOtherIncomeTotal = finiteNumber(value.card_other_income_total) ?? 0;
+  const upiOtherIncomeTotal = finiteNumber(value.upi_other_income_total) ?? 0;
+  const bankOtherIncomeTotal = finiteNumber(value.bank_other_income_total) ?? 0;
+  const combinedOperationalReceipts =
+    finiteNumber(value.combined_operational_receipts) ??
+    numbers.combined_operational_sales! + otherIncomeTotal;
   const upiReported = value.upi_reported_total === null
     ? null
     : finiteNumber(value.upi_reported_total);
@@ -284,6 +292,15 @@ export function parseShiftCloseReportSnapshot(
     marketplace_sales: marketplaces,
     marketplace_sales_total: numbers.marketplace_sales_total!,
     combined_operational_sales: numbers.combined_operational_sales!,
+    other_income_total: otherIncomeTotal,
+    cash_other_income_total: cashOtherIncomeTotal,
+    card_other_income_total: cardOtherIncomeTotal,
+    upi_other_income_total: upiOtherIncomeTotal,
+    bank_other_income_total: bankOtherIncomeTotal,
+    other_income_breakdown: isRecord(value.other_income_breakdown)
+      ? value.other_income_breakdown as ShiftCloseReportSnapshot["other_income_breakdown"]
+      : {},
+    combined_operational_receipts: combinedOperationalReceipts,
     report_generated_at: value.report_generated_at as string,
     correction_reason: nullableString(value.correction_reason)
   };
