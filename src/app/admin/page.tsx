@@ -4,6 +4,7 @@ import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
 import { CommissionKeptCard } from "@/components/admin/CommissionKeptCard";
 import { DailySummaryCard } from "@/components/admin/DailySummaryCard";
 import { DashboardAttentionStrip } from "@/components/admin/DashboardAttentionStrip";
+import { OnboardingProgressCard } from "@/components/admin/OnboardingProgressCard";
 import {
   DashboardTrendCard,
   type DashboardTrendMetric
@@ -13,6 +14,7 @@ import {
 } from "@/lib/data";
 import type { DashboardTrendRange } from "@/lib/types";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { getOnboardingProgress } from "@/lib/onboarding-progress";
 
 function parseRange(value: string | undefined): DashboardTrendRange {
   return value === "30d" || value === "mtd" ? value : "7d";
@@ -39,8 +41,10 @@ export default async function AdminDashboardPage({
   const range = parseRange(query.range);
   const metric = parseMetric(query.metric);
 
-  const { analytics, trend, dailySummary, commission } =
-    await getAdminDashboardSnapshot(restaurant, range);
+  const [{ analytics, trend, dailySummary, commission }, onboarding] = await Promise.all([
+    getAdminDashboardSnapshot(restaurant, range),
+    getOnboardingProgress(restaurant.id)
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -73,6 +77,10 @@ export default async function AdminDashboardPage({
           inProgressOrders={trend.inProgressOrders}
           newOrders={analytics.newOrders}
         />
+      </div>
+
+      <div className="mt-6">
+        <OnboardingProgressCard progress={onboarding} />
       </div>
 
       <div className="mt-6">

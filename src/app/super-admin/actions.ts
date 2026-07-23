@@ -306,6 +306,14 @@ export async function promoteDemoRestaurantAction(formData: FormData) {
     redirect(`${detailUrl}?error=${queryError(promoteError.message)}`);
   }
 
+  // Super Admin promotion is an explicit override. Invalidate any outstanding
+  // self-serve proof so the old builder session can never claim afterward.
+  await supabase
+    .from("demo_restaurant_claims")
+    .update({ claim_token_hash: null, claimed_at: new Date().toISOString() })
+    .eq("restaurant_id", demo.id)
+    .is("claimed_at", null);
+
   // Seed the same onboarding checklist real tenants get at creation. The demo
   // build already covered the menu steps; mark those done so the checklist
   // reflects reality.
