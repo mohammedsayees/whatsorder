@@ -262,7 +262,7 @@ export default async function AdminShiftsPage() {
             </div>
           </section>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-3">
+          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
               <h2 className="text-xl font-black">Cash paid-outs</h2>
               <p className="mt-1 text-sm text-stone-500">
@@ -331,7 +331,7 @@ export default async function AdminShiftsPage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
               <h2 className="text-xl font-black">Close shift</h2>
               <p className="mt-1 text-sm text-stone-500">
                 Count the physical cash after all paid-outs are recorded.
