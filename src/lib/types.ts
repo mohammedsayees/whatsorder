@@ -83,6 +83,8 @@ export type Restaurant = PublicRestaurant & {
   owner_phone?: string | null;
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
+  activated_at?: string | null;
+  activation_order_id?: string | null;
   internal_notes?: string | null;
   jobs_only?: boolean;
   // Aggregator commission percentage (e.g. 27) used to compute "commission
@@ -652,6 +654,14 @@ export type OnboardingTask = {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OnboardingProgress = {
+  tasks: OnboardingTask[];
+  completed: number;
+  total: number;
+  activatedAt: string | null;
+  activationOrderId: string | null;
 };
 
 export type SuperAdminRestaurant = Restaurant & {

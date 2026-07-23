@@ -4,9 +4,6 @@ import type { PublicRestaurant } from "@/lib/types";
 // customer PWA when the tenant is a self-serve demo. Server component with
 // zero client JS — the customer bundle stays untouched.
 
-const FOUNDER_WHATSAPP_NUMBER =
-  process.env.NEXT_PUBLIC_DEMO_WHATSAPP_NUMBER ?? "971551150068";
-
 function daysLeft(expiresAt: string | null | undefined): number | null {
   if (!expiresAt) {
     return null;
@@ -24,10 +21,6 @@ export function DemoStoreBanner({ restaurant }: { restaurant: PublicRestaurant }
   }
 
   const remaining = daysLeft(restaurant.demo_expires_at);
-  const waUrl = `https://wa.me/${FOUNDER_WHATSAPP_NUMBER}?text=${encodeURIComponent(
-    `Hi! I built a demo store (${restaurant.slug}) and I'd like to make it real.`
-  )}`;
-
   return (
     <div className="sticky top-0 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-emerald-950 px-4 py-2.5 text-center text-sm text-emerald-50">
       <span>
@@ -37,12 +30,10 @@ export function DemoStoreBanner({ restaurant }: { restaurant: PublicRestaurant }
         )}
       </span>
       <a
-        href={waUrl}
-        target="_blank"
-        rel="noopener"
+        href="/try/claim"
         className="rounded-full bg-emerald-500 px-3 py-1 font-semibold text-emerald-950 hover:bg-emerald-400"
       >
-        Make this real →
+        Claim this restaurant →
       </a>
     </div>
   );
