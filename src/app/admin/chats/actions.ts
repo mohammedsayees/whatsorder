@@ -5,14 +5,20 @@ import {
   getChatConversation,
   isWithinServiceWindow,
   markChatConversationRead,
+  pauseChatAutomation,
   recordOutboundChatMessage,
   setChatConversationStatus
 } from "@/lib/chat-inbox";
 import {
-  sendWhatsAppTemplate,
-  sendWhatsAppText
+  sendWhatsAppTemplate
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { getWhatsAppChatbotSettings } from "@/lib/whatsapp-ai";
+import {
+  getWhatsAppIntegration,
+  integrationAllowsFreeForm,
+  sendRestaurantWhatsAppText
+} from "@/lib/whatsapp-integration";
 
 const CHAT_ROLES = ["restaurant_admin", "owner", "manager"] as const;
 const MAX_MESSAGE_LENGTH = 4096;
@@ -51,14 +57,24 @@ export async function sendChatMessageAction(
 
   // Meta rejects free-form sends outside the 24h customer-service window;
   // template messages are phase 2, so block the send with a clear reason.
-  if (!isWithinServiceWindow(conversation.last_inbound_at)) {
+  const integration = await getWhatsAppIntegration(session.restaurantId);
+  if (
+    !integrationAllowsFreeForm(
+      integration,
+      isWithinServiceWindow(conversation.last_inbound_at)
+    )
+  ) {
     return {
       error:
         "The 24-hour reply window has closed. You can reply once the customer messages again."
     };
   }
 
-  const sent = await sendWhatsAppText(conversation.customer_phone, body);
+  const sent = await sendRestaurantWhatsAppText(
+    session.restaurantId,
+    conversation.customer_phone,
+    body
+  );
   if (!sent) {
     return {
       error: "WhatsApp send failed. Check the WhatsApp connection and try again."
@@ -73,6 +89,12 @@ export async function sendChatMessageAction(
     waMessageId: sent
   });
   await markChatConversationRead(session.restaurantId, conversation.id);
+  const chatbotSettings = await getWhatsAppChatbotSettings(session.restaurantId);
+  await pauseChatAutomation(
+    session.restaurantId,
+    conversation.id,
+    chatbotSettings.human_pause_minutes
+  );
 
   revalidatePath("/admin/chats");
   return { sentAt: Date.now() };

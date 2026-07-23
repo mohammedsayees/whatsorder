@@ -11,6 +11,7 @@ import {
   getChatConversations,
   getChatCustomerSnapshot,
   getChatMessages,
+  isChatAutomationActive,
   isChatConversationFilter,
   serviceWindowRemainingMs,
   type ChatConversation,
@@ -21,6 +22,7 @@ import { getChatMediaSignedUrl } from "@/lib/chat-media";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDate, formatRestaurantDateTime } from "@/lib/date-time";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
 
 export const dynamic = "force-dynamic";
 
@@ -156,13 +158,14 @@ export default async function AdminChatsPage({
 
   const searchTerm = params.q?.trim() || undefined;
   const selectedId = params.c;
-  const [conversations, selected] = await Promise.all([
+  const [conversations, selected, whatsappIntegration] = await Promise.all([
     getChatConversations(
       restaurant.id,
       filter === "all" ? undefined : filter,
       searchTerm
     ),
-    selectedId ? getChatConversation(restaurant.id, selectedId) : null
+    selectedId ? getChatConversation(restaurant.id, selectedId) : null,
+    getWhatsAppIntegration(restaurant.id)
   ]);
   const [messages, customerSnapshot] = selected
     ? await Promise.all([
@@ -189,7 +192,17 @@ export default async function AdminChatsPage({
 
   const formatDateTime = (value: string) =>
     formatRestaurantDateTime(value, restaurant);
-  const badge = selected ? windowBadge(selected.last_inbound_at) : null;
+  const webConnected =
+    whatsappIntegration?.provider === "whatsapp_web" &&
+    whatsappIntegration.status === "active";
+  const badge = selected
+    ? webConnected
+      ? { label: "WhatsApp Web connected", className: "bg-mint/20 text-leaf" }
+      : windowBadge(selected.last_inbound_at)
+    : null;
+  const automationPaused = selected
+    ? !isChatAutomationActive(selected)
+    : false;
 
   const listHref = (nextFilter: string, conversationId?: string) => {
     const query = new URLSearchParams();
@@ -332,6 +345,11 @@ export default async function AdminChatsPage({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {automationPaused ? (
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black text-amber-800">
+                      AI paused for staff
+                    </span>
+                  ) : null}
                   {badge ? (
                     <span
                       className={`rounded-full px-3 py-1 text-[11px] font-black ${badge.className}`}
@@ -448,7 +466,10 @@ export default async function AdminChatsPage({
               <div className="border-t border-stone-100 px-5 py-4">
                 <ChatComposer
                   conversationId={selected.id}
-                  windowOpen={serviceWindowRemainingMs(selected.last_inbound_at) > 0}
+                  windowOpen={
+                    webConnected ||
+                    serviceWindowRemainingMs(selected.last_inbound_at) > 0
+                  }
                 />
               </div>
             </>
