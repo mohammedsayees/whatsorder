@@ -1,4 +1,4 @@
-// Order status notifications over WhatsApp (phase 1: free, in-window only).
+// Order status notifications over the restaurant's active WhatsApp transport.
 //
 // Meta's rule: any inbound customer message opens a 24h customer-service
 // window in which free-form Cloud API texts are FREE. Customers place orders
@@ -6,7 +6,8 @@
 // window is open — status updates cost nothing. The webhook records window
 // opens in whatsapp_service_windows; this module consults that before
 // sending, and never attempts an outside-window send (that requires paid
-// templates — phase 2).
+// templates. A connected WhatsApp Web transport does not use Meta's Cloud API
+// service-window check, so the provider-aware guard below permits the send.
 //
 // Product invariant: a notification failure must NEVER fail or slow a status
 // change. Everything here is best-effort and never throws.
@@ -14,7 +15,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import { normalizeCustomerPhone } from "@/lib/whatsapp";
-import { sendWhatsAppText } from "@/lib/customer-auth/whatsapp-cloud";
+import {
+  getWhatsAppIntegration,
+  integrationAllowsFreeForm,
+  sendRestaurantWhatsAppText
+} from "@/lib/whatsapp-integration";
 import type { OrderStatus } from "@/lib/types";
 
 export const SERVICE_WINDOW_HOURS = 24;
@@ -159,7 +164,13 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
       .eq("phone", phone)
       .maybeSingle();
 
-    if (!isServiceWindowOpen(window?.last_inbound_at ?? null)) {
+    const integration = await getWhatsAppIntegration(restaurant.id);
+    if (
+      !integrationAllowsFreeForm(
+        integration,
+        isServiceWindowOpen(window?.last_inbound_at ?? null)
+      )
+    ) {
       return; // outside the free window — phase 2 (templates) territory
     }
 
@@ -176,7 +187,11 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
       }) ?? baseMessage;
     }
 
-    const sent = await sendWhatsAppText(phone, message);
+    const sent = await sendRestaurantWhatsAppText(
+      restaurant.id,
+      phone,
+      message
+    );
 
     if (!sent) {
       console.info("WhatsOrder status notification not delivered", {

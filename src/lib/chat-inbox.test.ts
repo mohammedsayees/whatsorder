@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatMessagePreview,
   isChatConversationFilter,
+  isChatAutomationActive,
   isWithinServiceWindow,
   maskCustomerLinkToken,
   SERVICE_WINDOW_MS,
@@ -122,5 +123,43 @@ describe("isChatConversationFilter", () => {
     expect(isChatConversationFilter("all")).toBe(false);
     expect(isChatConversationFilter(undefined)).toBe(false);
     expect(isChatConversationFilter("delete * from")).toBe(false);
+  });
+});
+
+describe("isChatAutomationActive", () => {
+  it("allows active and expired-pause conversations", () => {
+    expect(
+      isChatAutomationActive({
+        automation_state: "active",
+        automation_paused_until: null
+      })
+    ).toBe(true);
+    expect(
+      isChatAutomationActive(
+        {
+          automation_state: "paused",
+          automation_paused_until: "2026-07-23T00:00:00.000Z"
+        },
+        Date.parse("2026-07-23T01:00:00.000Z")
+      )
+    ).toBe(true);
+  });
+
+  it("blocks indefinite and current pauses", () => {
+    expect(
+      isChatAutomationActive({
+        automation_state: "paused",
+        automation_paused_until: null
+      })
+    ).toBe(false);
+    expect(
+      isChatAutomationActive(
+        {
+          automation_state: "paused",
+          automation_paused_until: "2026-07-23T02:00:00.000Z"
+        },
+        Date.parse("2026-07-23T01:00:00.000Z")
+      )
+    ).toBe(false);
   });
 });

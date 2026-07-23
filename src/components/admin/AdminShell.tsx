@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   BarChart3,
   BriefcaseBusiness,
+  BotMessageSquare,
   ClipboardList,
   LogOut,
   Megaphone,
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
   { href: "/admin/chats", label: "Chats", icon: MessagesSquare, staff: false },
+  { href: "/admin/integrations/whatsapp", label: "Chatbot", icon: BotMessageSquare, staff: false },
   { href: "/admin/jobs", label: "Team · Jobs", icon: BriefcaseBusiness, staff: false },
   { href: "/admin/marketing", label: "Marketing", icon: Megaphone, staff: false },
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },

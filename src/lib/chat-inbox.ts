@@ -23,6 +23,9 @@ export type ChatConversation = {
   last_inbound_at: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
+  automation_state: "active" | "paused";
+  automation_paused_until: string | null;
+  last_bot_reply_at: string | null;
   created_at: string;
 };
 
@@ -71,6 +74,19 @@ export function isWithinServiceWindow(
   now: number = Date.now()
 ): boolean {
   return serviceWindowRemainingMs(lastInboundAt, now) > 0;
+}
+
+export function isChatAutomationActive(
+  conversation: Pick<
+    ChatConversation,
+    "automation_state" | "automation_paused_until"
+  >,
+  now = Date.now()
+): boolean {
+  if (conversation.automation_state !== "paused") return true;
+  if (!conversation.automation_paused_until) return false;
+  const pausedUntil = Date.parse(conversation.automation_paused_until);
+  return Number.isFinite(pausedUntil) && pausedUntil <= now;
 }
 
 // ── Message previews ─────────────────────────────────────────────────────────
@@ -454,7 +470,7 @@ export async function getChatConversations(
   let query = admin
     .from("whatsapp_conversations")
     .select(
-      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, created_at"
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -517,7 +533,7 @@ export async function getChatConversation(
   const { data, error } = await admin
     .from("whatsapp_conversations")
     .select(
-      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, created_at"
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .eq("id", conversationId)
@@ -525,6 +541,28 @@ export async function getChatConversation(
 
   if (error) {
     console.error("WhatsOrder chat: conversation read failed", error.code);
+    return null;
+  }
+  return (data as ChatConversation | null) ?? null;
+}
+
+export async function getChatConversationByPhone(
+  restaurantId: string,
+  customerPhone: string
+): Promise<ChatConversation | null> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+
+  const { data, error } = await admin
+    .from("whatsapp_conversations")
+    .select(
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
+    )
+    .eq("restaurant_id", restaurantId)
+    .eq("customer_phone", customerPhone)
+    .maybeSingle();
+  if (error) {
+    console.error("WhatsOrder chat: phone conversation read failed", error.code);
     return null;
   }
   return (data as ChatConversation | null) ?? null;
@@ -628,5 +666,50 @@ export async function setChatConversationStatus(
     .eq("id", conversationId);
   if (error) {
     console.error("WhatsOrder chat: status update failed", error.code);
+  }
+}
+
+export async function pauseChatAutomation(
+  restaurantId: string,
+  conversationId: string,
+  minutes: number
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  const boundedMinutes = Math.min(10080, Math.max(15, Math.round(minutes)));
+  const pausedUntil = new Date(Date.now() + boundedMinutes * 60_000).toISOString();
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({
+      automation_state: "paused",
+      automation_paused_until: pausedUntil,
+      updated_at: new Date().toISOString()
+    })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: automation pause failed", error.code);
+  }
+}
+
+export async function recordBotReply(
+  restaurantId: string,
+  conversationId: string
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({
+      automation_state: "active",
+      automation_paused_until: null,
+      last_bot_reply_at: nowIso,
+      updated_at: nowIso
+    })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: bot reply marker failed", error.code);
   }
 }
