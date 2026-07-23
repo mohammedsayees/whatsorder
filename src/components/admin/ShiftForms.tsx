@@ -151,9 +151,9 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
   );
 
   return (
-    <form action={action} className="grid gap-3 sm:grid-cols-[160px_1fr_auto]">
+    <form action={action} className="flex flex-wrap items-end gap-3">
       <input name="shift_id" type="hidden" value={shiftId} />
-      <label className="text-sm font-bold text-stone-700">
+      <label className="min-w-[130px] flex-1 text-sm font-bold text-stone-700">
         Amount
         <input
           className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5"
@@ -165,7 +165,7 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
           type="number"
         />
       </label>
-      <label className="text-sm font-bold text-stone-700">
+      <label className="min-w-[200px] flex-[2] text-sm font-bold text-stone-700">
         Reason
         <input
           className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5"
@@ -176,13 +176,13 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
         />
       </label>
       <button
-        className="focus-ring self-end rounded-lg border border-ink px-4 py-2.5 text-sm font-black disabled:opacity-60"
+        className="focus-ring shrink-0 rounded-lg border border-ink px-4 py-2.5 text-sm font-black disabled:opacity-60"
         disabled={pending}
         type="submit"
       >
         {pending ? "Saving…" : "Record paid-out"}
       </button>
-      <div className="sm:col-span-3">
+      <div className="w-full">
         <ActionMessage state={state} />
       </div>
     </form>
@@ -200,8 +200,8 @@ export function OtherIncomeForm({
   return (
     <form action={action} className="space-y-3">
       <input name="shift_id" type="hidden" value={shiftId} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-bold text-stone-700">
+      <div className="flex flex-wrap gap-3">
+        <label className="min-w-[160px] flex-1 text-sm font-bold text-stone-700">
           Category
           <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="category" required>
             {Object.entries(otherIncomeCategoryLabels).map(([value, label]) => (
@@ -209,7 +209,7 @@ export function OtherIncomeForm({
             ))}
           </select>
         </label>
-        <label className="text-sm font-bold text-stone-700">
+        <label className="min-w-[160px] flex-1 text-sm font-bold text-stone-700">
           Payment method
           <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="payment_method" required>
             <option value="cash">Cash</option>
@@ -220,12 +220,12 @@ export function OtherIncomeForm({
           </select>
         </label>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-bold text-stone-700">
+      <div className="flex flex-wrap gap-3">
+        <label className="min-w-[140px] flex-1 text-sm font-bold text-stone-700">
           Amount
           <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" min="0.01" name="amount" required step="0.01" type="number" />
         </label>
-        <label className="text-sm font-bold text-stone-700">
+        <label className="min-w-[160px] flex-1 text-sm font-bold text-stone-700">
           Reference <span className="font-normal text-stone-400">(optional)</span>
           <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" maxLength={120} name="reference" placeholder="Receipt or buyer reference" />
         </label>
