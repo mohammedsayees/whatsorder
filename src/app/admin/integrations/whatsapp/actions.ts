@@ -7,6 +7,10 @@ import {
   callWhatsAppWebConnector,
   getWhatsAppIntegration
 } from "@/lib/whatsapp-integration";
+import {
+  generateWhatsAppAiReply,
+  getWhatsAppChatbotSettings
+} from "@/lib/whatsapp-ai";
 
 const CONNECTION_ROLES = ["restaurant_admin", "owner"] as const;
 
@@ -109,7 +113,7 @@ export async function saveWhatsAppChatbotSettingsAction(
   const tone = String(formData.get("tone") ?? "friendly");
   const pauseMinutes = Math.min(
     10080,
-    Math.max(15, Math.round(Number(formData.get("human_pause_minutes") ?? 480)))
+    Math.max(0, Math.round(Number(formData.get("human_pause_minutes") ?? 480)))
   );
   if (!["customer", "english", "arabic", "malayalam"].includes(languageMode)) {
     return { error: "Select a valid language mode." };
@@ -143,3 +147,26 @@ export async function saveWhatsAppChatbotSettingsAction(
   return { savedAt: Date.now() };
 }
 
+export type WhatsAppChatbotTestState = {
+  error?: string;
+  reply?: string;
+};
+
+export async function testWhatsAppChatbotAction(
+  _previous: WhatsAppChatbotTestState,
+  formData: FormData
+): Promise<WhatsAppChatbotTestState> {
+  const session = await requireRestaurantRole([...CONNECTION_ROLES]);
+  const text = String(formData.get("test_message") ?? "").trim().slice(0, 1000);
+  if (!text) return { error: "Enter a customer message to test." };
+  const settings = await getWhatsAppChatbotSettings(session.restaurantId);
+  const result = await generateWhatsAppAiReply({
+    restaurantId: session.restaurantId,
+    text,
+    settings,
+    allowWelcome: true,
+    baseUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://whatsorder.app"
+  });
+  if (!result) return { error: "A preview could not be generated." };
+  return { reply: result.reply };
+}

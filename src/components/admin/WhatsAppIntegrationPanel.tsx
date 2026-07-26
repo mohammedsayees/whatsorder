@@ -7,6 +7,8 @@ import {
   connectWhatsAppWebAction,
   disconnectWhatsAppWebAction,
   saveWhatsAppChatbotSettingsAction,
+  testWhatsAppChatbotAction,
+  type WhatsAppChatbotTestState,
   type WhatsAppChatbotSettingsState,
   type WhatsAppConnectionState
 } from "@/app/admin/integrations/whatsapp/actions";
@@ -50,6 +52,10 @@ export function WhatsAppIntegrationPanel({
     WhatsAppChatbotSettingsState,
     FormData
   >(saveWhatsAppChatbotSettingsAction, {});
+  const [testState, testAction] = useActionState<
+    WhatsAppChatbotTestState,
+    FormData
+  >(testWhatsAppChatbotAction, {});
 
   const refreshing = ["connecting", "qr_ready"].includes(
     integration?.status ?? ""
@@ -80,6 +86,14 @@ export function WhatsAppIntegrationPanel({
               Link the restaurant&apos;s existing WhatsApp number by scanning a QR code.
               The phone must remain signed in and periodically connected to the internet.
             </p>
+            {integration?.last_seen_at ? (
+              <p className="mt-1 text-xs font-bold text-stone-400">
+                Last connection activity{" "}
+                <span suppressHydrationWarning>
+                  {new Date(integration.last_seen_at).toLocaleString()}
+                </span>
+              </p>
+            ) : null}
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-black ${
@@ -162,7 +176,11 @@ export function WhatsAppIntegrationPanel({
           continues through the structured WhatsOrder menu.
         </p>
 
-        <label className="mt-5 flex items-start gap-3 rounded-2xl border border-stone-200 p-4">
+        <section className="mt-5 rounded-2xl border border-stone-200 p-4">
+          <h3 className="text-sm font-black uppercase tracking-wide text-stone-500">
+            1. Availability
+          </h3>
+        <label className="mt-3 flex items-start gap-3">
           <input
             className="mt-1"
             defaultChecked={settings.enabled}
@@ -186,6 +204,14 @@ export function WhatsAppIntegrationPanel({
             <input defaultChecked={settings.answer_audio} name="answer_audio" type="checkbox" />
             Understand voice messages
           </label>
+        </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-stone-200 p-4">
+          <h3 className="text-sm font-black uppercase tracking-wide text-stone-500">
+            2. Replies
+          </h3>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm font-bold">Reply language</span>
             <select
@@ -221,7 +247,18 @@ export function WhatsAppIntegrationPanel({
               placeholder="Leave blank to generate a welcome with the live menu link."
               rows={3}
             />
+            <span className="mt-1 block text-xs font-semibold text-stone-400">
+              Sent once when a conversation starts, not after every customer message.
+            </span>
           </label>
+        </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-stone-200 p-4">
+          <h3 className="text-sm font-black uppercase tracking-wide text-stone-500">
+            3. Human takeover
+          </h3>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="text-sm font-bold">Human handoff message</span>
             <textarea
@@ -234,18 +271,27 @@ export function WhatsAppIntegrationPanel({
             />
           </label>
           <label className="block sm:max-w-xs">
-            <span className="text-sm font-bold">Pause after staff reply (minutes)</span>
-            <input
+            <span className="text-sm font-bold">Pause AI after a staff reply</span>
+            <select
               className="focus-ring mt-1 w-full rounded-xl border border-stone-200 px-3 py-2.5"
               defaultValue={settings.human_pause_minutes}
-              max={10080}
-              min={15}
               name="human_pause_minutes"
-              type="number"
               required
-            />
+            >
+              {[0, 30, 120, 480, 1440].includes(settings.human_pause_minutes) ? null : (
+                <option value={settings.human_pause_minutes}>
+                  Current setting · {settings.human_pause_minutes} minutes
+                </option>
+              )}
+              <option value={30}>30 minutes</option>
+              <option value={120}>2 hours</option>
+              <option value={480}>8 hours</option>
+              <option value={1440}>24 hours</option>
+              <option value={0}>Until staff resumes AI</option>
+            </select>
           </label>
         </div>
+        </section>
 
         {settingsState.error ? (
           <p className="mt-4 text-sm font-bold text-rose-600">{settingsState.error}</p>
@@ -257,7 +303,39 @@ export function WhatsAppIntegrationPanel({
           <SubmitButton>Save chatbot settings</SubmitButton>
         </div>
       </form>
+
+      <form
+        action={testAction}
+        className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm"
+      >
+        <h2 className="text-xl font-black text-ink">Test chatbot</h2>
+        <p className="mt-1 text-sm leading-6 text-stone-500">
+          Preview a reply using the currently saved settings. Nothing is sent to
+          WhatsApp.
+        </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input
+            className="focus-ring w-full rounded-xl border border-stone-200 px-4 py-3 text-sm"
+            name="test_message"
+            placeholder='Try “Please send me the menu”'
+            required
+          />
+          <SubmitButton>Preview reply</SubmitButton>
+        </div>
+        {testState.error ? (
+          <p className="mt-3 text-sm font-bold text-rose-600">{testState.error}</p>
+        ) : null}
+        {testState.reply ? (
+          <div className="mt-4 rounded-2xl bg-mint/30 px-4 py-3">
+            <p className="text-xs font-black uppercase tracking-wide text-leaf">
+              AI preview
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-ink">
+              {testState.reply}
+            </p>
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }
-
