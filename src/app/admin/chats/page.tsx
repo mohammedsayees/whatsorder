@@ -1,15 +1,22 @@
 import { MessageCircle } from "lucide-react";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { setChatStatusAction } from "@/app/admin/chats/actions";
+import {
+  assignChatConversationAction,
+  setChatAutomationAction,
+  setChatStatusAction
+} from "@/app/admin/chats/actions";
 import { ChatComposer } from "@/components/admin/chats/ChatComposer";
 import { ChatRefreshButton } from "@/components/admin/chats/ChatRefreshButton";
 import { ChatsLive } from "@/components/admin/chats/ChatsLive";
+import { WhatsAppSectionNav } from "@/components/admin/WhatsAppSectionNav";
 import { accessTokenCookieName } from "@/lib/auth-cookies";
 import {
   getChatConversation,
   getChatConversations,
   getChatCustomerSnapshot,
+  getChatAssignees,
+  getChatMetrics,
   getChatMessages,
   isChatAutomationActive,
   isChatConversationFilter,
@@ -29,6 +36,7 @@ export const dynamic = "force-dynamic";
 const FILTER_TABS: Array<{ value: ChatConversationFilter | "all"; label: string }> = [
   { value: "open", label: "Open" },
   { value: "unread", label: "Unread" },
+  { value: "handoff", label: "Needs staff" },
   { value: "closed", label: "Closed" },
   { value: "all", label: "All" }
 ];
@@ -141,11 +149,12 @@ export default async function AdminChatsPage({
 }: {
   searchParams: Promise<{ c?: string; filter?: string; q?: string }>;
 }) {
-  const [{ restaurant }, cookieStore, params] = await Promise.all([
+  const [session, cookieStore, params] = await Promise.all([
     requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
     cookies(),
     searchParams
   ]);
+  const { restaurant } = session;
   const realtimeAccessToken =
     cookieStore.get(accessTokenCookieName)?.value ?? null;
   const filter: ChatConversationFilter | "all" = isChatConversationFilter(
@@ -158,14 +167,17 @@ export default async function AdminChatsPage({
 
   const searchTerm = params.q?.trim() || undefined;
   const selectedId = params.c;
-  const [conversations, selected, whatsappIntegration] = await Promise.all([
+  const [conversations, selected, whatsappIntegration, assignees, metrics] =
+    await Promise.all([
     getChatConversations(
       restaurant.id,
       filter === "all" ? undefined : filter,
       searchTerm
     ),
     selectedId ? getChatConversation(restaurant.id, selectedId) : null,
-    getWhatsAppIntegration(restaurant.id)
+    getWhatsAppIntegration(restaurant.id),
+    getChatAssignees(restaurant.id),
+    getChatMetrics(restaurant.id)
   ]);
   const [messages, customerSnapshot] = selected
     ? await Promise.all([
@@ -203,6 +215,14 @@ export default async function AdminChatsPage({
   const automationPaused = selected
     ? !isChatAutomationActive(selected)
     : false;
+  const assigneeNames = new Map(
+    assignees.map((assignee) => [
+      assignee.user_id,
+      assignee.name || assignee.email
+    ])
+  );
+  const canManageAutomation =
+    session.role === "owner" || session.role === "restaurant_admin";
 
   const listHref = (nextFilter: string, conversationId?: string) => {
     const query = new URLSearchParams();
@@ -221,11 +241,16 @@ export default async function AdminChatsPage({
 
   return (
     <div className="space-y-4">
+      <WhatsAppSectionNav
+        active="inbox"
+        canManageAutomation={canManageAutomation}
+        integration={whatsappIntegration}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-ink">Chats</h1>
+          <h2 className="text-xl font-black text-ink">Inbox</h2>
           <p className="text-sm font-semibold text-stone-500">
-            WhatsApp conversations on your connected number.
+            Review customer messages, take over from AI, and resolve conversations.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -237,6 +262,26 @@ export default async function AdminChatsPage({
           />
           <ChatRefreshButton />
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Open", metrics.open, "All active conversations"],
+          ["Needs staff", metrics.handoffs, "AI handoffs waiting"],
+          ["Unanswered", metrics.unanswered, "Customer sent the last message"],
+          ["AI handled · 7d", metrics.aiHandled, "Conversations answered by AI"]
+        ].map(([label, value, description]) => (
+          <div
+            className="rounded-2xl border border-stone-200 bg-white px-4 py-3"
+            key={String(label)}
+          >
+            <p className="text-xs font-black uppercase tracking-wide text-stone-400">
+              {label}
+            </p>
+            <p className="mt-1 text-2xl font-black text-ink">{value}</p>
+            <p className="text-xs font-semibold text-stone-500">{description}</p>
+          </div>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -312,6 +357,18 @@ export default async function AdminChatsPage({
                         </span>
                       ) : null}
                     </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {conversation.handoff_requested_at ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">
+                          Needs staff
+                        </span>
+                      ) : null}
+                      {conversation.assigned_to ? (
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+                          {assigneeNames.get(conversation.assigned_to) ?? "Assigned"}
+                        </span>
+                      ) : null}
+                    </div>
                     {conversation.last_message_at ? (
                       <p className="mt-0.5 text-[11px] font-semibold text-stone-400">
                         {formatDateTime(conversation.last_message_at)}
@@ -347,7 +404,9 @@ export default async function AdminChatsPage({
                 <div className="flex items-center gap-2">
                   {automationPaused ? (
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black text-amber-800">
-                      AI paused for staff
+                      {selected.automation_paused_until
+                        ? `AI paused until ${formatDateTime(selected.automation_paused_until)}`
+                        : "AI paused until resumed"}
                     </span>
                   ) : null}
                   {badge ? (
@@ -357,6 +416,24 @@ export default async function AdminChatsPage({
                       {badge.label}
                     </span>
                   ) : null}
+                  <form action={setChatAutomationAction}>
+                    <input name="conversationId" type="hidden" value={selected.id} />
+                    <input
+                      name="mode"
+                      type="hidden"
+                      value={automationPaused ? "resume" : "pause"}
+                    />
+                    <button
+                      className={`focus-ring rounded-full px-3 py-1 text-[11px] font-black ${
+                        automationPaused
+                          ? "bg-leaf text-white"
+                          : "border border-amber-300 bg-amber-50 text-amber-800"
+                      }`}
+                      type="submit"
+                    >
+                      {automationPaused ? "Resume AI" : "Take over"}
+                    </button>
+                  </form>
                   <form action={setChatStatusAction}>
                     <input
                       name="conversationId"
@@ -376,6 +453,46 @@ export default async function AdminChatsPage({
                     </button>
                   </form>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 bg-stone-50/60 px-5 py-2">
+                <div className="text-xs font-semibold text-stone-600">
+                  {selected.handoff_requested_at ? (
+                    <span className="font-black text-amber-800">
+                      Staff requested: {selected.handoff_reason || "Customer needs help"}
+                    </span>
+                  ) : (
+                    <span>
+                      {selected.assigned_to
+                        ? `Assigned to ${assigneeNames.get(selected.assigned_to) ?? "team member"}`
+                        : "Not assigned"}
+                    </span>
+                  )}
+                </div>
+                <form action={assignChatConversationAction} className="flex items-center gap-2">
+                  <input name="conversationId" type="hidden" value={selected.id} />
+                  <select
+                    className="focus-ring rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold"
+                    defaultValue={selected.assigned_to ?? "unassigned"}
+                    name="assignedTo"
+                  >
+                    <option value="unassigned">Unassigned</option>
+                    <option value="me">Assign to me</option>
+                    {assignees
+                      .filter((assignee) => assignee.user_id !== session.userId)
+                      .map((assignee) => (
+                        <option key={assignee.user_id} value={assignee.user_id}>
+                          {assignee.name || assignee.email}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    className="focus-ring rounded-full bg-ink px-3 py-1.5 text-xs font-black text-white"
+                    type="submit"
+                  >
+                    Assign
+                  </button>
+                </form>
               </div>
 
               {customerSnapshot ? (
@@ -433,6 +550,15 @@ export default async function AdminChatsPage({
                             : "bg-stone-100 text-ink"
                         }`}
                       >
+                        {message.direction === "outbound" ? (
+                          <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-stone-500">
+                            {message.sender_type === "ai"
+                              ? "AI receptionist"
+                              : message.sender_type === "staff" || message.sent_by
+                                ? assigneeNames.get(message.sent_by ?? "") ?? "Staff"
+                                : "System"}
+                          </p>
+                        ) : null}
                         <ChatMessageContent
                           mediaUrl={mediaUrls.get(message.id)}
                           message={message}

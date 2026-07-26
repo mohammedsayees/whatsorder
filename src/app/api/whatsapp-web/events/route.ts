@@ -1,15 +1,17 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import {
   getChatConversationByPhone,
+  isRecentDuplicateBotReply,
   isChatAutomationActive,
-  pauseChatAutomation,
   recordBotReply,
   recordInboundChatMessages,
-  recordOutboundChatMessage
+  recordOutboundChatMessage,
+  requestChatHandoff
 } from "@/lib/chat-inbox";
 import {
   generateWhatsAppAiReply,
-  getWhatsAppChatbotSettings
+  getWhatsAppChatbotSettings,
+  shouldSendWhatsAppWelcome
 } from "@/lib/whatsapp-ai";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -72,11 +74,21 @@ async function runReceptionist(input: {
     text: input.text,
     baseUrl: input.baseUrl,
     settings,
+    allowWelcome: shouldSendWhatsAppWelcome(conversation.last_bot_reply_at),
     ...(input.audioBase64 && input.audioMime
       ? { audio: { base64: input.audioBase64, mimeType: input.audioMime } }
       : {})
   });
   if (!result) return;
+  if (
+    await isRecentDuplicateBotReply(
+      input.restaurantId,
+      conversation.id,
+      result.reply
+    )
+  ) {
+    return;
+  }
 
   const sent = await sendRestaurantWhatsAppText(
     input.restaurantId,
@@ -89,13 +101,14 @@ async function runReceptionist(input: {
     restaurantId: input.restaurantId,
     conversationId: conversation.id,
     body: result.reply,
+    senderType: "ai",
     waMessageId: sent
   });
   if (result.handoff) {
-    await pauseChatAutomation(
+    await requestChatHandoff(
       input.restaurantId,
       conversation.id,
-      settings.human_pause_minutes
+      input.text || "Customer voice message requires staff"
     );
   } else {
     await recordBotReply(input.restaurantId, conversation.id);

@@ -26,6 +26,10 @@ export type ChatConversation = {
   automation_state: "active" | "paused";
   automation_paused_until: string | null;
   last_bot_reply_at: string | null;
+  assigned_to: string | null;
+  handoff_requested_at: string | null;
+  handoff_reason: string | null;
+  last_message_direction: "inbound" | "outbound" | null;
   created_at: string;
 };
 
@@ -37,17 +41,23 @@ export type ChatMessage = {
   body: string;
   status: string | null;
   sent_by: string | null;
+  sender_type: "customer" | "ai" | "staff" | "system" | null;
   media_path: string | null;
   media_mime: string | null;
   created_at: string;
 };
 
-export type ChatConversationFilter = "open" | "closed" | "unread";
+export type ChatConversationFilter = "open" | "closed" | "unread" | "handoff";
 
 export function isChatConversationFilter(
   value: string | undefined
 ): value is ChatConversationFilter {
-  return value === "open" || value === "closed" || value === "unread";
+  return (
+    value === "open" ||
+    value === "closed" ||
+    value === "unread" ||
+    value === "handoff"
+  );
 }
 
 // ── 24h customer-service window ──────────────────────────────────────────────
@@ -274,6 +284,7 @@ export async function recordInboundChatMessages(
           conversation_id: conversation.id,
           restaurant_id: restaurantId,
           direction: "inbound" as const,
+          sender_type: "customer",
           wa_message_id: m.waMessageId ?? null,
           message_type: m.type,
           body: m.body,
@@ -295,6 +306,7 @@ export async function recordInboundChatMessages(
           last_inbound_at: lastAt,
           last_message_at: lastAt,
           last_message_preview: chatMessagePreview(last.type, last.body),
+          last_message_direction: "inbound",
           ...(profileName ? { customer_name: profileName } : {}),
           updated_at: now.toISOString()
         })
@@ -327,6 +339,8 @@ export async function recordOutboundChatMessage(input: {
   waMessageId?: string;
   /** Meta message type of the send; defaults to "text" (poster sends: "image"). */
   messageType?: string;
+  /** Explicit attribution shown in the inbox and used by automation metrics. */
+  senderType?: "ai" | "staff" | "system";
 }): Promise<void> {
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -362,6 +376,7 @@ export async function recordOutboundChatMessage(input: {
       body: input.body,
       status: "sent",
       sent_by: input.sentBy ?? null,
+      sender_type: input.senderType ?? (input.sentBy ? "staff" : "system"),
       created_at: nowIso
     });
     if (insertError) {
@@ -377,6 +392,7 @@ export async function recordOutboundChatMessage(input: {
           input.messageType ?? "text",
           input.body
         ),
+        last_message_direction: "outbound",
         updated_at: nowIso
       })
       .eq("id", conversationId)
@@ -470,7 +486,7 @@ export async function getChatConversations(
   let query = admin
     .from("whatsapp_conversations")
     .select(
-      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, assigned_to, handoff_requested_at, handoff_reason, last_message_direction, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -478,6 +494,8 @@ export async function getChatConversations(
 
   if (filter === "unread") {
     query = query.gt("unread_count", 0);
+  } else if (filter === "handoff") {
+    query = query.eq("status", "open").not("handoff_requested_at", "is", null);
   } else if (filter) {
     query = query.eq("status", filter);
   }
@@ -533,7 +551,7 @@ export async function getChatConversation(
   const { data, error } = await admin
     .from("whatsapp_conversations")
     .select(
-      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, assigned_to, handoff_requested_at, handoff_reason, last_message_direction, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .eq("id", conversationId)
@@ -556,7 +574,7 @@ export async function getChatConversationByPhone(
   const { data, error } = await admin
     .from("whatsapp_conversations")
     .select(
-      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, created_at"
+      "id, restaurant_id, customer_phone, customer_name, status, unread_count, last_inbound_at, last_message_at, last_message_preview, automation_state, automation_paused_until, last_bot_reply_at, assigned_to, handoff_requested_at, handoff_reason, last_message_direction, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .eq("customer_phone", customerPhone)
@@ -582,7 +600,7 @@ export async function getChatMessages(
   const { data, error } = await admin
     .from("whatsapp_messages")
     .select(
-      "id, conversation_id, direction, message_type, body, status, sent_by, media_path, media_mime, created_at"
+      "id, conversation_id, direction, message_type, body, status, sent_by, sender_type, media_path, media_mime, created_at"
     )
     .eq("restaurant_id", restaurantId)
     .eq("conversation_id", conversationId)
@@ -661,7 +679,13 @@ export async function setChatConversationStatus(
   }
   const { error } = await admin
     .from("whatsapp_conversations")
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({
+      status,
+      ...(status === "closed"
+        ? { handoff_requested_at: null, handoff_reason: null }
+        : {}),
+      updated_at: new Date().toISOString()
+    })
     .eq("restaurant_id", restaurantId)
     .eq("id", conversationId);
   if (error) {
@@ -672,12 +696,18 @@ export async function setChatConversationStatus(
 export async function pauseChatAutomation(
   restaurantId: string,
   conversationId: string,
-  minutes: number
+  minutes: number | null
 ): Promise<void> {
   const admin = getSupabaseAdmin();
   if (!admin) return;
-  const boundedMinutes = Math.min(10080, Math.max(15, Math.round(minutes)));
-  const pausedUntil = new Date(Date.now() + boundedMinutes * 60_000).toISOString();
+  const boundedMinutes =
+    minutes === null || minutes === 0
+      ? null
+      : Math.min(10080, Math.max(15, Math.round(minutes)));
+  const pausedUntil =
+    boundedMinutes === null
+      ? null
+      : new Date(Date.now() + boundedMinutes * 60_000).toISOString();
   const { error } = await admin
     .from("whatsapp_conversations")
     .update({
@@ -690,6 +720,213 @@ export async function pauseChatAutomation(
   if (error) {
     console.error("WhatsOrder chat: automation pause failed", error.code);
   }
+}
+
+export async function resumeChatAutomation(
+  restaurantId: string,
+  conversationId: string
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({
+      automation_state: "active",
+      automation_paused_until: null,
+      handoff_requested_at: null,
+      handoff_reason: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: automation resume failed", error.code);
+  }
+}
+
+export async function requestChatHandoff(
+  restaurantId: string,
+  conversationId: string,
+  reason: string
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({
+      automation_state: "paused",
+      automation_paused_until: null,
+      handoff_requested_at: new Date().toISOString(),
+      handoff_reason: reason.trim().slice(0, 500) || "Customer requested staff",
+      updated_at: new Date().toISOString()
+    })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: handoff request failed", error.code);
+  }
+}
+
+export async function clearChatHandoff(
+  restaurantId: string,
+  conversationId: string
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({
+      handoff_requested_at: null,
+      handoff_reason: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: handoff clear failed", error.code);
+  }
+}
+
+export type ChatAssignee = {
+  user_id: string;
+  email: string;
+  role: string;
+  name: string | null;
+};
+
+export async function getChatAssignees(
+  restaurantId: string
+): Promise<ChatAssignee[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return [];
+  const { data: memberships, error } = await admin
+    .from("restaurant_users")
+    .select("user_id, email, role")
+    .eq("restaurant_id", restaurantId)
+    .not("accepted_at", "is", null)
+    .not("user_id", "is", null)
+    .in("role", ["restaurant_admin", "owner", "manager", "staff"])
+    .order("email");
+  if (error || !memberships) {
+    if (error) console.error("WhatsOrder chat: assignees read failed", error.code);
+    return [];
+  }
+  if (memberships.length === 0) return [];
+  const ids = memberships.map((membership) => String(membership.user_id));
+  const { data: profiles } = await admin
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", ids);
+  const names = new Map(
+    (profiles ?? []).map((profile) => [
+      String(profile.id),
+      profile.full_name ? String(profile.full_name) : null
+    ])
+  );
+  return memberships.map((membership) => ({
+    user_id: String(membership.user_id),
+    email: String(membership.email),
+    role: String(membership.role),
+    name: names.get(String(membership.user_id)) ?? null
+  }));
+}
+
+export async function assignChatConversation(
+  restaurantId: string,
+  conversationId: string,
+  userId: string | null
+): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return false;
+  if (userId) {
+    const { data: membership } = await admin
+      .from("restaurant_users")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("user_id", userId)
+      .not("accepted_at", "is", null)
+      .maybeSingle();
+    if (!membership) return false;
+  }
+  const { error } = await admin
+    .from("whatsapp_conversations")
+    .update({ assigned_to: userId, updated_at: new Date().toISOString() })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", conversationId);
+  if (error) {
+    console.error("WhatsOrder chat: assignment failed", error.code);
+    return false;
+  }
+  return true;
+}
+
+export type ChatMetrics = {
+  open: number;
+  handoffs: number;
+  unanswered: number;
+  aiHandled: number;
+};
+
+export async function getChatMetrics(restaurantId: string): Promise<ChatMetrics> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return { open: 0, handoffs: 0, unanswered: 0, aiHandled: 0 };
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [openResult, handoffResult, unansweredResult, aiResult] = await Promise.all([
+    admin
+      .from("whatsapp_conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "open"),
+    admin
+      .from("whatsapp_conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "open")
+      .not("handoff_requested_at", "is", null),
+    admin
+      .from("whatsapp_conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "open")
+      .eq("last_message_direction", "inbound"),
+    admin
+      .from("whatsapp_messages")
+      .select("conversation_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("sender_type", "ai")
+      .gte("created_at", since)
+  ]);
+  const aiConversations = new Set(
+    (aiResult.data ?? []).map((message) => String(message.conversation_id))
+  );
+  return {
+    open: openResult.count ?? 0,
+    handoffs: handoffResult.count ?? 0,
+    unanswered: unansweredResult.count ?? 0,
+    aiHandled: aiConversations.size
+  };
+}
+
+export async function isRecentDuplicateBotReply(
+  restaurantId: string,
+  conversationId: string,
+  body: string,
+  now = Date.now()
+): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return false;
+  const cutoff = new Date(now - 2 * 60 * 1000).toISOString();
+  const { data } = await admin
+    .from("whatsapp_messages")
+    .select("body")
+    .eq("restaurant_id", restaurantId)
+    .eq("conversation_id", conversationId)
+    .eq("sender_type", "ai")
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return String(data?.body ?? "").trim() === body.trim();
 }
 
 export async function recordBotReply(

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import {
   sendChatMessageAction,
+  sendChatQuickReplyAction,
   sendChatTemplateAction,
   type SendChatMessageState
 } from "@/app/admin/chats/actions";
@@ -63,6 +64,41 @@ function ClosedWindowActions({ conversationId }: { conversationId: string }) {
   );
 }
 
+function QuickReplyButtons({ conversationId }: { conversationId: string }) {
+  const [state, formAction] = useActionState<SendChatMessageState, FormData>(
+    sendChatQuickReplyAction,
+    {}
+  );
+  return (
+    <div className="space-y-2">
+      <form action={formAction} className="flex flex-wrap gap-2">
+        <input name="conversationId" type="hidden" value={conversationId} />
+        {[
+          ["menu", "Send menu"],
+          ["hours", "Send hours"],
+          ["location", "Send location"]
+        ].map(([value, label]) => (
+          <button
+            className="focus-ring rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-black text-stone-600 hover:border-leaf hover:text-leaf"
+            key={value}
+            name="quickReply"
+            type="submit"
+            value={value}
+          >
+            {label}
+          </button>
+        ))}
+      </form>
+      {state.error ? (
+        <p className="text-xs font-bold text-rose-600">{state.error}</p>
+      ) : null}
+      {state.sentAt ? (
+        <p className="text-xs font-bold text-leaf">Quick reply sent.</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ChatComposer({
   conversationId,
   windowOpen
@@ -90,22 +126,25 @@ export function ChatComposer({
   }
 
   return (
-    <form action={formAction} className="space-y-2" ref={formRef}>
-      <input name="conversationId" type="hidden" value={conversationId} />
-      <div className="flex items-end gap-2">
-        <textarea
-          className="focus-ring min-h-[44px] w-full resize-y rounded-2xl border border-stone-200 px-4 py-2.5 text-sm"
-          maxLength={4096}
-          name="body"
-          placeholder="Type a reply…"
-          required
-          rows={2}
-        />
-        <SendButton />
-      </div>
-      {state.error ? (
-        <p className="text-xs font-bold text-rose-600">{state.error}</p>
-      ) : null}
-    </form>
+    <div className="space-y-3">
+      <QuickReplyButtons conversationId={conversationId} />
+      <form action={formAction} className="space-y-2" ref={formRef}>
+        <input name="conversationId" type="hidden" value={conversationId} />
+        <div className="flex items-end gap-2">
+          <textarea
+            className="focus-ring min-h-[44px] w-full resize-y rounded-2xl border border-stone-200 px-4 py-2.5 text-sm"
+            maxLength={4096}
+            name="body"
+            placeholder="Type a reply…"
+            required
+            rows={2}
+          />
+          <SendButton />
+        </div>
+        {state.error ? (
+          <p className="text-xs font-bold text-rose-600">{state.error}</p>
+        ) : null}
+      </form>
+    </div>
   );
 }
