@@ -35,7 +35,7 @@ export type StaffOrderState = {
   mode?: "amended" | "add_on";
   success?: string;
   // The saved order, returned so the punch screen can print its KOT/receipt
-  // without navigating away. Absent on errors and on idempotent replays.
+  // without navigating away. Absent on errors.
   order?: Order;
 };
 
@@ -86,6 +86,22 @@ export async function submitStaffOrderAction(
 
   if (!isClientOrderId(payload.clientOrderId)) {
     return { error: "The order could not be read. Please rebuild the ticket." };
+  }
+
+  // Resolve a replay before mutable menu/fulfilment validation. A saved order
+  // remains successful even when its original response was lost and the menu changed.
+  const findSavedOrder = () => supabase
+    .from("orders")
+    .select("*")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("client_order_id", payload.clientOrderId)
+    .maybeSingle();
+  const existing = await findSavedOrder();
+  if (existing.error) {
+    return { error: "The previous order attempt could not be checked. Please retry." };
+  }
+  if (existing.data) {
+    return { success: "Order already synced.", order: existing.data as Order };
   }
 
   let items;
@@ -222,7 +238,11 @@ export async function submitStaffOrderAction(
     // out on slow internet after the insert succeeded) is a success, not a
     // failure — the outbox can safely drop it.
     if (isDuplicateClientOrderError(error)) {
-      return { success: "Order already synced." };
+      const saved = await findSavedOrder();
+      if (saved.error || !saved.data) {
+        return { error: "The saved order could not be loaded. Please retry." };
+      }
+      return { success: "Order already synced.", order: saved.data as Order };
     }
 
     console.error("WhatsOrder staff order creation failed", {
@@ -390,9 +410,7 @@ function isPaymentMethodAvailable(
   );
 }
 
-// Completes an unpaid ticket by recording how the customer paid. The payment
-// method is set first, then the order transitions to Completed through the same
-// audited RPC the normal status flow uses.
+// Payment, status, loyalty and audit are committed by one database transaction.
 export async function collectPaymentAndCompleteAction(formData: FormData) {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
@@ -407,35 +425,21 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     throw new Error("Choose a payment method available for this restaurant.");
   }
 
-  const { error: paymentError } = await supabase
-    .from("orders")
-    .update({ payment_method: paymentMethod })
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId)
-    .is("payment_method", null);
+  const { data, error } = await supabase.rpc("record_order_payment", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: orderId,
+    requested_payment_method: paymentMethod,
+    complete_order: true,
+    event_actor_user_id: session.userId
+  });
 
-  if (paymentError) {
-    throw new Error("The payment could not be recorded. Try again.");
+  if (error || !data?.order_id) {
+    throw new Error("Payment and order completion could not be saved. Refresh and try again.");
   }
-
-  const { data: completedOrderId, error: statusError } = await supabase.rpc(
-    "transition_order_status_and_record_event",
-    {
-      event_actor_role: session.role,
-      event_actor_user_id: session.userId,
-      event_reason: null,
-      target_order_id: orderId,
-      target_restaurant_id: session.restaurantId,
-      target_status: "Completed"
-    }
-  );
-
-  if (statusError) {
-    throw new Error(`Order completion failed: ${statusError.message}`);
-  }
-
-  if (!completedOrderId) {
-    throw new Error("This order could not be completed. Refresh and try again.");
+  // A retry must not re-send the completion notification.
+  if (!data.changed) {
+    revalidatePath("/admin/orders");
+    return;
   }
 
   // Free in-window WhatsApp "completed" update (includes the stamp-card line).
@@ -465,8 +469,6 @@ export type ChangePaymentState = {
   success?: string;
 };
 
-const managementRoles = ["restaurant_admin", "owner", "manager"];
-
 // Lets staff correct a mis-punched Cash/Card. Changes are audited in
 // order_payment_events. Correcting an order in a CLOSED shift is restricted to
 // managers/owners, because it cannot retroactively fix that shift's already
@@ -488,69 +490,23 @@ export async function changeOrderPaymentMethodAction(
     return { error: "Choose a payment method available for this restaurant." };
   }
 
-  const { data: order } = await supabase
-    .from("orders")
-    .select("payment_method, shift_id")
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId)
-    .maybeSingle();
-
-  if (!order) {
-    return { error: "Order not found." };
-  }
-
-  const currentMethod = (order.payment_method as PaymentMethod | null) ?? null;
-
-  if (!currentMethod) {
-    return { error: "This order hasn't been paid yet. Set payment when you complete it." };
-  }
-
-  if (currentMethod === newMethod) {
-    return { success: "Payment method unchanged." };
-  }
-
-  // Closed-shift corrections are manager/owner only.
-  if (order.shift_id) {
-    const { data: shift } = await supabase
-      .from("restaurant_shifts")
-      .select("status")
-      .eq("id", order.shift_id)
-      .eq("restaurant_id", session.restaurantId)
-      .maybeSingle();
-
-    if (shift?.status === "closed" && !managementRoles.includes(session.role)) {
-      return {
-        error: "That order is in a closed shift — only a manager or owner can change its payment."
-      };
-    }
-  }
-
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({ payment_method: newMethod })
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId);
-
-  if (updateError) {
-    return { error: "The payment method could not be updated. Try again." };
-  }
-
-  const { error: auditError } = await supabase.from("order_payment_events").insert({
-    restaurant_id: session.restaurantId,
-    order_id: orderId,
-    from_method: currentMethod,
-    to_method: newMethod,
-    actor_user_id: session.userId,
-    actor_role: session.role
+  const { data, error } = await supabase.rpc("record_order_payment", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: orderId,
+    requested_payment_method: newMethod,
+    complete_order: false,
+    event_actor_user_id: session.userId
   });
-
-  if (auditError) {
-    console.error("WhatsOrder payment-change audit failed", {
-      code: auditError.code,
-      orderId,
-      restaurantId: session.restaurantId
-    });
+  if (error || !data?.order_id) {
+    const knownErrors = [
+      "Order not found",
+      "Set payment when completing the order",
+      "Only management can correct a closed shift payment"
+    ];
+    return { error: knownErrors.find((message) => error?.message.includes(message)) ??
+      "The payment method could not be updated. Try again." };
   }
+  if (!data.changed) return { success: "Payment method unchanged." };
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
