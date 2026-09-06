@@ -10,3 +10,13 @@ export async function collectPaymentAndCompleteAction(data: FormData) {
  window.dispatchEvent(new Event("fixture-completed"));
 }
 export const updateOrderStatusAction = collectPaymentAndCompleteAction;
+export async function recordOrderPrintEventsAction() {}
+export const addItemsToOrderAction = async (_id: string, payload: unknown) => {
+ const result = await fetch("/__addition", { method: "POST", body: JSON.stringify(payload) });
+ return result.json();
+};
+export async function createQuickProduct(input: unknown) {
+ const result = await fetch("/__product", { method: "POST", body: JSON.stringify(input) });
+ if (!result.ok) throw new Error("Connection interrupted");
+ return result.json();
+}

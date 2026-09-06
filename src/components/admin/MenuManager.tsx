@@ -1153,7 +1153,8 @@ function ItemForm({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-4 text-sm">
-        <label className="flex items-center gap-2 font-semibold">
+        <label className="block text-sm font-bold">Visibility<select name="staff_only" defaultValue={String(item?.staff_only ?? false)} disabled={!canWrite} className="ml-2 rounded border p-2"><option value="false">Customer menu and staff</option><option value="true">Staff billing only</option></select></label>
+              <label className="flex items-center gap-2 font-semibold">
           <input defaultChecked={item?.is_available ?? true} disabled={!canWrite} name="is_available" type="checkbox" />
           Available
         </label>

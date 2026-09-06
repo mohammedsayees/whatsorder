@@ -52,9 +52,13 @@ async function withStore<T>(
 
   try {
     return await new Promise<T>((resolve, reject) => {
-      const request = run(db.transaction(STORE, mode).objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const transaction = db.transaction(STORE, mode);
+      const request = run(transaction.objectStore(STORE));
+      // A successful request can still be rolled back. Only clear its draft
+      // after the entire outbox transaction has committed.
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onerror = () => reject(transaction.error ?? request.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error("Offline save was aborted"));
     });
   } finally {
     db.close();

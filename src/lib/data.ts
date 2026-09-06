@@ -151,6 +151,7 @@ export type AdminOrdersPageResult = PaginatedResult<Order> & {
 };
 
 type OrdersPageOptions = {
+  sort?: "oldest" | "overdue";
   fulfilment?: OrderFulfilmentView;
   page?: number;
   pageSize?: number;
@@ -1060,7 +1061,8 @@ export async function getAdminOrdersPage(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const { data, error } = await supabase.rpc("get_admin_orders_page", {
+    const { data, error } = await supabase.rpc("get_admin_orders_page_v2", {
+      target_sort: options.sort ?? "oldest",
       target_restaurant_id: restaurantId,
       target_status_view: status,
       target_fulfilment: fulfilment,

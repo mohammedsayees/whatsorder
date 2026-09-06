@@ -1,5 +1,7 @@
 "use client";
 
+import { QuickProduct } from "./QuickProduct";
+import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
@@ -19,6 +21,7 @@ import {
 } from "@/components/customer/ItemOptionsSheet";
 import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
+import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { renderOrderTickets, type PrintKind } from "@/lib/order-print";
 import { printHtmlDocument } from "@/lib/print-ticket";
 import {
@@ -69,6 +72,7 @@ type SubmitFeedback =
 const LIVE_SUBMIT_TIMEOUT_MS = 8_000;
 
 export function StaffOrderEntry({
+  staffUserId = "fixture",
   addToOrder,
   deliveryFee,
   menu,
@@ -76,6 +80,7 @@ export function StaffOrderEntry({
   orderTypes,
   restaurant
 }: {
+  staffUserId?: string;
   addToOrder?: Order;
   deliveryFee: number;
   menu: MenuWithCategories;
@@ -85,12 +90,15 @@ export function StaffOrderEntry({
 }) {
   const restaurantId = restaurant.id;
   const isAddingToOrder = Boolean(addToOrder);
-  const [lines, setLines] = useState<Record<string, TicketLine>>({});
+  const draftStore = useStaffDraft(`${restaurantId}:${staffUserId}:${addToOrder?.id ?? "new"}`, addToOrder?.fulfilment_type ?? orderTypes[0]);
+  const draft = draftStore.draft;
+  const lines = draft?.lines ?? {};
+  const setLines = (update: (current: Record<string, TicketLine>) => Record<string, TicketLine>) => { void draftStore.patch({ lines: update(lines) }).catch(() => {}); };
+  const [extraItems, setExtraItems] = useState<MenuItem[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
-  const [fulfilmentType, setFulfilmentType] = useState<FulfilmentType>(
-    addToOrder?.fulfilment_type ?? orderTypes[0]
-  );
+  const fulfilmentType = draft?.fulfilmentType ?? addToOrder?.fulfilment_type ?? orderTypes[0];
+  const setFulfilmentType = (type: FulfilmentType) => { void draftStore.patch({ fulfilmentType: type }).catch(() => {}); };
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
@@ -103,16 +111,23 @@ export function StaffOrderEntry({
     [optionCatalog]
   );
 
-  function clearTicket() {
+  async function runDraftOperation(operation: () => Promise<void>) {
+    setPending(true);
+    try { await operation(); setFeedback(null); }
+    catch { setFeedback({ kind: "error", message: "Could not update the draft. Keep this page open and retry." }); }
+    finally { setPending(false); }
+  }
+
+  async function clearTicket() {
+    await draftStore.finish();
     additionAttemptIdRef.current = null;
-    setLines({});
     setSearch("");
     setSelectedCategoryId("all");
   }
 
   const availableItems = useMemo(
-    () => menu.items.filter((item) => item.is_available),
-    [menu.items]
+    () => [...menu.items, ...extraItems.filter(item => !menu.items.some(existing => existing.id === item.id))].filter((item) => item.is_available),
+    [menu.items, extraItems]
   );
 
   const orderedCategories = useMemo(
@@ -147,7 +162,7 @@ export function StaffOrderEntry({
 
   // Tap-to-add: option-ful items open the picker, plain items add instantly.
   function handleAdd(itemId: string) {
-    if (additionAttemptIdRef.current) {
+    if (draft?.attempt || additionAttemptIdRef.current) {
       setFeedback({
         kind: "error",
         message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
@@ -170,7 +185,7 @@ export function StaffOrderEntry({
   }
 
   function addTicketLine(item: MenuItem, options: CartLineOption[], quantity: number) {
-    if (additionAttemptIdRef.current) {
+    if (draft?.attempt || additionAttemptIdRef.current) {
       setPickerItem(null);
       setFeedback({
         kind: "error",
@@ -198,7 +213,7 @@ export function StaffOrderEntry({
   }
 
   function changeQuantity(lineKey: string, delta: number) {
-    if (additionAttemptIdRef.current) {
+    if (draft?.attempt || additionAttemptIdRef.current) {
       setFeedback({
         kind: "error",
         message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
@@ -221,7 +236,7 @@ export function StaffOrderEntry({
   }
 
   function removeItem(lineKey: string) {
-    if (additionAttemptIdRef.current) {
+    if (draft?.attempt || additionAttemptIdRef.current) {
       setFeedback({
         kind: "error",
         message: "Retry the unchanged add-on ticket first; its previous result is still being checked."
@@ -243,6 +258,9 @@ export function StaffOrderEntry({
     quantity: line.quantity,
     ...(line.options && line.options.length > 0 ? { options: line.options } : {})
   }));
+  const menuReview = verifyCartAgainstMenu(cartPayload, { ...menu, items: [...menu.items, ...extraItems] }, [], optionCatalog);
+  const pricesChanged = menuReview.ok && menuReview.items.some((item, index) => item.price !== cartPayload[index]?.price);
+  const needsReview = !draft?.attempt && ticketLines.length > 0 && (!menuReview.ok || pricesChanged);
 
   // Build the payload, try to send it live within a short timeout, and fall
   // back to the device outbox on any network/timeout failure. Either way the
@@ -251,7 +269,7 @@ export function StaffOrderEntry({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (ticketLines.length === 0 || pending) {
+    if (ticketLines.length === 0 || pending || !draft || draftStore.error || needsReview) {
       return;
     }
 
@@ -266,7 +284,7 @@ export function StaffOrderEntry({
     }
 
     const formData = new FormData(form);
-    const readField = (key: string) => String(formData.get(key) ?? "").trim();
+    const readField = (key: string) => String(draft.fields[key] ?? formData.get(key) ?? "").trim();
 
     if (addToOrder) {
       setPending(true);
@@ -281,7 +299,8 @@ export function StaffOrderEntry({
           return;
         }
 
-        const clientOrderId = additionAttemptIdRef.current ?? crypto.randomUUID();
+        const clientOrderId = draft.attempt?.id ?? additionAttemptIdRef.current ?? crypto.randomUUID();
+        await draftStore.patch({ attempt: { id: clientOrderId } });
         additionAttemptIdRef.current = clientOrderId;
 
         const result = await withTimeout(
@@ -297,11 +316,12 @@ export function StaffOrderEntry({
           // A definite server rejection did not mutate the order; allow staff
           // to correct the ticket and submit it as a new attempt.
           additionAttemptIdRef.current = null;
+          if (!result.retryUnchanged) await draftStore.patch({ attempt: undefined });
           setFeedback({ kind: "error", message: result.error });
           return;
         }
 
-        clearTicket();
+        await clearTicket();
         setFeedback({
           kind: "success",
           message: result.success ?? "Items added.",
@@ -322,7 +342,7 @@ export function StaffOrderEntry({
       return;
     }
 
-    const payload: StaffOrderPayload = {
+    const payload: StaffOrderPayload = draft.attempt?.payload ?? {
       clientOrderId: crypto.randomUUID(),
       restaurantId,
       punchedAt: new Date().toISOString(),
@@ -346,7 +366,7 @@ export function StaffOrderEntry({
     const queueOffline = async () => {
       try {
         await enqueue(payload, total);
-        clearTicket();
+        await clearTicket();
         setFeedback({
           kind: "queued",
           message: "No connection — order saved on this device. It will sync automatically."
@@ -359,7 +379,10 @@ export function StaffOrderEntry({
       }
     };
 
+    let prepared = false;
     try {
+      await draftStore.patch({ attempt: { id: payload.clientOrderId, payload } });
+      prepared = true;
       // Offline devices skip the doomed round-trip and queue immediately.
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await queueOffline();
@@ -374,9 +397,10 @@ export function StaffOrderEntry({
       if (result.error) {
         // A real server rejection (e.g. item unavailable) — surface it and
         // keep the ticket so staff can fix it. Not a connectivity problem.
+        if (!result.retryUnchanged) await draftStore.patch({ attempt: undefined });
         setFeedback({ kind: "error", message: result.error });
       } else {
-        clearTicket();
+        await clearTicket();
         setFeedback({
           kind: "success",
           message: result.success ?? "Order saved.",
@@ -392,7 +416,8 @@ export function StaffOrderEntry({
       }
     } catch {
       // Timed out or the request threw (offline / slow) — queue it.
-      await queueOffline();
+      if (prepared) await queueOffline();
+      else setFeedback({ kind: "error", message: "The draft could not be saved. No order was submitted. Reload to recover the saved draft." });
     } finally {
       setPending(false);
     }
@@ -420,6 +445,16 @@ export function StaffOrderEntry({
 
   return (
     <div className="space-y-6">
+      <section className="rounded-lg border bg-white p-3" aria-label="Billing drafts">
+        <p role="status" className={draftStore.error ? "font-bold text-rose-700" : "text-sm text-stone-600"}>{draftStore.error || draftStore.status}</p>
+        {draft?.attempt ? <p className="font-bold text-amber-800">A submission is being checked. Retry this unchanged bill to avoid a duplicate.</p> : null}
+        <div className="mt-2 flex flex-wrap gap-3">
+          <button type="button" disabled={!draft || pending || !!draft.attempt || !!draftStore.error} onClick={() => { void runDraftOperation(draftStore.hold); }}>Hold & new bill</button>
+          <button type="button" disabled={!draft || pending || !!draft.attempt || !!draftStore.error} onClick={() => { if (window.confirm("Discard this unfinished bill?")) void runDraftOperation(clearTicket); }}>Discard draft</button>
+          <details><summary className="cursor-pointer font-bold">Drafts ({draftStore.drafts.length})</summary>{draftStore.drafts.map(row => <button type="button" className="mt-2 block rounded border p-2 text-left" key={row.id} disabled={pending || !!draft?.attempt || !!draftStore.error} onClick={() => { void runDraftOperation(() => draftStore.resume(row.id)); }}>{row.fields.table_number ? `Table ${row.fields.table_number}` : row.fields.customer_name || "Walk-in"} · {Object.values(row.lines).reduce((sum, line) => sum + line.quantity, 0)} items · {formatCurrency(Object.values(row.lines).reduce((sum, line) => sum + line.quantity * line.price, 0), restaurant)} · Saved {new Date(row.updatedAt).toLocaleTimeString()}</button>)}</details>
+        </div>
+      </section>
+      <fieldset disabled={!draft || !!draftStore.error || pending} className="min-w-0">
       {/* Offline queue — orders punched while disconnected, waiting to sync. */}
       {!isAddingToOrder ? (
         <QueuedOrdersPanel
@@ -448,6 +483,11 @@ export function StaffOrderEntry({
           />
         </label>
 
+        <QuickProduct menu={{ ...menu, items: [...menu.items, ...extraItems] }} search={search} categoryId={selectedCategoryId} disabled={!draft || !!draft?.attempt || pending} onAdd={(item, quantity) => {
+          if (availableItems.some(existing => existing.id === item.id) && (resolvedGroupsByItemId.get(item.id) ?? []).length > 0) { handleAdd(item.id); return; }
+          setExtraItems(current => [...current.filter(row => row.id !== item.id), item]);
+          addTicketLine(item, [], quantity);
+        }} />
         {/* Quick category picker — hidden while searching (search spans all). */}
         {!matchingItems && categoriesWithItems.length > 1 ? (
           <div
@@ -533,9 +573,16 @@ export function StaffOrderEntry({
       <section className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
         <form
           className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
+          key={draft?.id}
           onSubmit={handleSubmit}
         >
           <h2 className="shrink-0 text-lg font-black">Ticket</h2>
+          {needsReview ? <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            {menuReview.ok ? "Menu prices have changed since this bill was saved." : menuReview.error}
+            {menuReview.ok ? <button type="button" className="mt-2 block font-bold underline" onClick={() => {
+              setLines(current => Object.fromEntries(Object.entries(current).map(([key, line], index) => [key, { ...line, price: menuReview.items[index].price }])));
+            }}>Use current menu prices</button> : <p>Remove and re-add the affected item before submitting.</p>}
+          </div> : null}
 
           {/* Scrollable order body — totals and actions stay pinned below */}
           <div className="mt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
@@ -614,7 +661,7 @@ export function StaffOrderEntry({
                       : "border-stone-200 text-stone-600 hover:bg-stone-50"
                   }`}
                   key={type}
-                  disabled={isAddingToOrder}
+                  disabled={isAddingToOrder || !!draft?.attempt}
                   onClick={() => setFulfilmentType(type)}
                   type="button"
                 >
@@ -632,8 +679,9 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={120}
                   name="delivery_area"
-                  defaultValue={addToOrder?.delivery_area ?? ""}
-                  readOnly={isAddingToOrder}
+                value={draft?.fields.delivery_area ?? addToOrder?.delivery_area ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, delivery_area: event.target.value } }).catch(() => {}); }}
+                  readOnly={isAddingToOrder || !!draft?.attempt}
                   required
                   type="text"
                 />
@@ -644,8 +692,9 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={500}
                   name="delivery_address"
-                  defaultValue={addToOrder?.delivery_address ?? ""}
-                  readOnly={isAddingToOrder}
+                value={draft?.fields.delivery_address ?? addToOrder?.delivery_address ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, delivery_address: event.target.value } }).catch(() => {}); }}
+                  readOnly={isAddingToOrder || !!draft?.attempt}
                   required
                   type="text"
                 />
@@ -656,8 +705,9 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={250}
                   name="delivery_landmark"
-                  defaultValue={addToOrder?.delivery_landmark ?? ""}
-                  readOnly={isAddingToOrder}
+                value={draft?.fields.delivery_landmark ?? addToOrder?.delivery_landmark ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, delivery_landmark: event.target.value } }).catch(() => {}); }}
+                  readOnly={isAddingToOrder || !!draft?.attempt}
                   type="text"
                 />
               </label>
@@ -672,8 +722,9 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={40}
                   name="car_plate_number"
-                  defaultValue={addToOrder?.car_plate_number ?? ""}
-                  readOnly={isAddingToOrder}
+                value={draft?.fields.car_plate_number ?? addToOrder?.car_plate_number ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, car_plate_number: event.target.value } }).catch(() => {}); }}
+                  readOnly={isAddingToOrder || !!draft?.attempt}
                   required
                   type="text"
                 />
@@ -685,8 +736,9 @@ export function StaffOrderEntry({
                   className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                   maxLength={120}
                   name="car_description"
-                  defaultValue={addToOrder?.car_description ?? ""}
-                  readOnly={isAddingToOrder}
+                value={draft?.fields.car_description ?? addToOrder?.car_description ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, car_description: event.target.value } }).catch(() => {}); }}
+                  readOnly={isAddingToOrder || !!draft?.attempt}
                   type="text"
                 />
               </label>
@@ -700,8 +752,9 @@ export function StaffOrderEntry({
                 className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                 maxLength={40}
                 name="table_number"
-                defaultValue={addToOrder?.table_number ?? ""}
-                readOnly={isAddingToOrder}
+                value={draft?.fields.table_number ?? addToOrder?.table_number ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, table_number: event.target.value } }).catch(() => {}); }}
+                readOnly={isAddingToOrder || !!draft?.attempt}
                 required
                 type="text"
               />
@@ -716,9 +769,10 @@ export function StaffOrderEntry({
                 className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                 maxLength={120}
                 name="customer_name"
+                value={draft?.fields.customer_name ?? addToOrder?.customer_name ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, customer_name: event.target.value } }).catch(() => {}); }}
                 placeholder="Walk-in customer"
-                defaultValue={addToOrder?.customer_name ?? ""}
-                readOnly={isAddingToOrder}
+                readOnly={isAddingToOrder || !!draft?.attempt}
                 type="text"
               />
             </label>
@@ -729,8 +783,9 @@ export function StaffOrderEntry({
                 inputMode="tel"
                 maxLength={24}
                 name="customer_phone"
-                defaultValue={addToOrder?.customer_phone ?? ""}
-                readOnly={isAddingToOrder}
+                value={draft?.fields.customer_phone ?? addToOrder?.customer_phone ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, customer_phone: event.target.value } }).catch(() => {}); }}
+                readOnly={isAddingToOrder || !!draft?.attempt}
                 type="tel"
               />
             </label>
@@ -739,7 +794,10 @@ export function StaffOrderEntry({
               <input
                 className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
                 maxLength={1000}
+                readOnly={!!draft?.attempt}
                 name="notes"
+                value={draft?.fields.notes ?? ""}
+                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, notes: event.target.value } }).catch(() => {}); }}
                 placeholder={isAddingToOrder ? "Optional note for the added items" : undefined}
                 type="text"
               />
@@ -836,7 +894,7 @@ export function StaffOrderEntry({
             {/* Primary flow: payment is collected later, at completion. */}
             <button
               className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-              disabled={pending || ticketLines.length === 0}
+              disabled={pending || ticketLines.length === 0 || needsReview}
               name="action"
               type="submit"
               value="kitchen"
@@ -910,6 +968,7 @@ export function StaffOrderEntry({
       </section>
       </div>
 
+      </fieldset>
       {pickerItem ? (
         <ItemOptionsSheet
           basePrice={pickerItem.price}

@@ -78,6 +78,7 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
 };
 
 export type Restaurant = PublicRestaurant & {
+  order_target_minutes?: Partial<Record<FulfilmentType, number>>;
   owner_name?: string | null;
   owner_email?: string | null;
   owner_phone?: string | null;
@@ -111,6 +112,7 @@ export type MenuCategory = {
 };
 
 export type MenuItem = {
+  staff_only?: boolean;
   id: string;
   restaurant_id: string;
   category_id: string;
@@ -276,6 +278,8 @@ export type CartLine = {
 export type OrderItem = CartLine;
 
 export type Order = {
+  status_started_at?: string | null;
+  closed_at?: string | null;
   id: string;
   restaurant_id: string;
   parent_order_id?: string | null;

@@ -710,6 +710,7 @@ export async function addMenuItemAction(formData: FormData) {
     .insert({
       restaurant_id: restaurant.id,
       category_id: categoryId,
+      ...(formData.has("staff_only") ? { staff_only: formData.get("staff_only") === "true" } : {}),
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
       description: stringValue(formData, "description") || null,
@@ -753,6 +754,7 @@ export async function updateMenuItemAction(formData: FormData) {
   const { error } = await supabase
     .from("menu_items")
     .update({
+      ...(formData.has("staff_only") ? { staff_only: formData.get("staff_only") === "true" } : {}),
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
       description: stringValue(formData, "description") || null,
@@ -1260,6 +1262,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       accepting_orders: formData.get("accepting_orders") === "on",
       status_notifications_enabled:
         formData.get("status_notifications_enabled") === "on",
+      order_target_minutes: orderTargetsFromForm(formData),
       shift_marketplace_channels: configuredMarketplaceChannels(
         formData.getAll("shift_marketplace_channels")
       ),
@@ -1818,4 +1821,12 @@ function storagePathFromPublicUrl(url: string, bucketName = "menu-images") {
   }
 
   return decodeURIComponent(url.slice(markerIndex + marker.length).split("?")[0]);
+}
+
+function orderTargetsFromForm(form: FormData) {
+  return Object.fromEntries(["delivery", "takeaway", "dine_in", "car_pickup"].map(type => {
+    const value = Number(form.get(`order_target_${type}`));
+    if (!Number.isInteger(value) || value < 1 || value > 1440) throw new Error("Order targets must be between 1 and 1440 minutes.");
+    return [type, value];
+  }));
 }
