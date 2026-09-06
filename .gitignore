@@ -13,3 +13,6 @@ supabase/.temp/
 .claude/
 .vercel
 
+
+playwright-report/
+test-results/

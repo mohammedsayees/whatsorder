@@ -29,12 +29,10 @@ import {
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
-import { sendOrderStatusNotification } from "@/lib/order-notifications";
 import {
   getConfiguredWebPushPublicKey,
   setOrderPushAuthorization
 } from "@/lib/push-auth";
-import { sendOrderStatusPushNotification } from "@/lib/web-push";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
@@ -49,7 +47,6 @@ import type {
   CartLine,
   FulfilmentType,
   MenuCategory,
-  OrderStatus,
   PaymentMethod
 } from "@/lib/types";
 
@@ -63,16 +60,6 @@ type CreateOrderResult =
       whatsappAppUrl: string;
     }
   | { ok: false; error: string; fallbackWhatsappUrl?: string };
-
-const statusValues: OrderStatus[] = [
-  "New",
-  "Accepted",
-  "Preparing",
-  "Ready to Serve",
-  "Out for Delivery",
-  "Completed",
-  "Cancelled"
-];
 
 type MenuImportRow = {
   category: string;
@@ -632,90 +619,7 @@ export async function createOrderAction(
   };
 }
 
-export async function updateOrderStatusAction(formData: FormData) {
-  const session = await requireRestaurantAdmin();
-  const orderId = stringValue(formData, "order_id");
-  const status = stringValue(formData, "status") as OrderStatus;
-  const reason = limitedStringValue(formData, "reason", 300);
-  const restaurant = session.restaurant;
-  const supabase = getSupabaseAdmin();
-
-  if (!restaurant || !orderId || !statusValues.includes(status)) {
-    return;
-  }
-
-  if (supabase) {
-    const { data: updatedOrderId, error } = await supabase.rpc(
-      "transition_order_status_and_record_event",
-      {
-        event_actor_role: session.role,
-        event_actor_user_id: session.userId,
-        event_reason: reason || null,
-        target_order_id: orderId,
-        target_restaurant_id: restaurant.id,
-        target_status: status
-      }
-    );
-    databaseFailure("Order status update", error);
-
-    if (!updatedOrderId) {
-      throw new Error("This order could not be updated. Refresh and try again.");
-    }
-
-    // Free in-window WhatsApp update ("accepted", "ready", ...). Best-effort:
-    // never throws, never blocks the status change.
-    await Promise.all([
-      sendOrderStatusNotification({ supabase, restaurant, orderId, status }),
-      sendOrderStatusPushNotification({ supabase, restaurant, orderId, status })
-    ]);
-  }
-
-  revalidatePath("/admin");
-  revalidatePath("/admin/orders");
-  revalidatePath("/admin/shifts");
-}
-
-export async function recordOrderPrintEventsAction(
-  orderId: string,
-  events: Array<{ kind: "kot" | "receipt"; isReprint: boolean }>,
-  deviceLabel: string
-) {
-  const session = await requireRestaurantAdmin();
-  const supabase = getSupabaseAdmin();
-  const safeEvents = events
-    .filter((event) => event.kind === "kot" || event.kind === "receipt")
-    .slice(0, 2);
-
-  if (!supabase || !orderId || safeEvents.length === 0) {
-    return { ok: false as const, error: "Print tracking is unavailable." };
-  }
-
-  for (const event of safeEvents) {
-    const { error } = await supabase.rpc("record_order_print_event", {
-      event_actor_role: session.role,
-      event_actor_user_id: session.userId,
-      event_device_label: deviceLabel.slice(0, 160),
-      event_is_reprint: event.isReprint,
-      target_order_id: orderId,
-      target_print_kind: event.kind,
-      target_restaurant_id: session.restaurantId
-    });
-
-    if (error) {
-      console.error("WhatsOrder print event persistence failed", {
-        code: error.code,
-        orderId,
-        restaurantId: session.restaurantId
-      });
-      return {
-        ok: false as const,
-        error: "The print opened, but tracking could not be saved."
-      };
-    }
-  }
-
-  return { ok: true as const };
-}
+export { updateOrderStatusAction, recordOrderPrintEventsAction } from "@/app/admin/orders/status-actions";
 
 export async function withdrawCustomerMarketingConsentAction(formData: FormData) {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);

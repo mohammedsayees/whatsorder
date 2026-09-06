@@ -101,6 +101,7 @@ async function sendWhatsAppMessagePayload(
       `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json"
@@ -161,6 +162,7 @@ export async function uploadWhatsAppMedia(
       `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/media`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: { Authorization: `Bearer ${accessToken}` },
         body: form
       }

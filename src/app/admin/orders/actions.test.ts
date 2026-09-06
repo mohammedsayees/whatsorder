@@ -3,14 +3,14 @@ import { submitStaffOrderAction, collectPaymentAndCompleteAction, changeOrderPay
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getMenu } from "@/lib/data";
-import { sendOrderStatusNotification } from "@/lib/order-notifications";
+import { scheduleOrderNotifications } from "@/lib/notification-jobs";
 import type { StaffOrderPayload } from "@/lib/staff-order-payload";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
 vi.mock("@/lib/super-admin-auth", () => ({ requireRestaurantAdmin: vi.fn() }));
 vi.mock("@/lib/data", () => ({ getMenu: vi.fn(), getMenuOffers: vi.fn(), getMenuOptionCatalog: vi.fn() }));
-vi.mock("@/lib/order-notifications", () => ({ sendOrderStatusNotification: vi.fn() }));
+vi.mock("@/lib/notification-jobs", () => ({ scheduleOrderNotifications: vi.fn() }));
 vi.mock("@/lib/web-push", () => ({ sendOrderStatusPushNotification: vi.fn() }));
 const rid = "23000000-0000-0000-0000-000000000001";
 const oid = "43000000-0000-0000-0000-000000000001";
@@ -65,24 +65,24 @@ describe("transactional payment actions", () => {
   it("collects and completes with one RPC", async () => {
     const { rpc, from, form } = setup({ order_id: oid, changed: true });
     await collectPaymentAndCompleteAction(form);
-    expect(rpc).toHaveBeenCalledWith("record_order_payment", {
+    expect(rpc).toHaveBeenCalledWith("record_order_payment_async", {
       target_restaurant_id: rid, target_order_id: oid, requested_payment_method: "Cash on Delivery",
       complete_order: true, event_actor_user_id: "actor"
     });
     expect(from).not.toHaveBeenCalled();
-    expect(sendOrderStatusNotification).toHaveBeenCalledOnce();
+    expect(scheduleOrderNotifications).toHaveBeenCalledOnce();
   });
 
   it("does not send another notification for a completed retry", async () => {
     const { form } = setup({ order_id: oid, changed: false });
     await collectPaymentAndCompleteAction(form);
-    expect(sendOrderStatusNotification).not.toHaveBeenCalled();
+    expect(scheduleOrderNotifications).not.toHaveBeenCalled();
   });
 
   it("does not notify when the payment transaction fails", async () => {
     const { form } = setup(null, { message: "audit insert failed" });
     await expect(collectPaymentAndCompleteAction(form)).rejects.toThrow("could not be saved");
-    expect(sendOrderStatusNotification).not.toHaveBeenCalled();
+    expect(scheduleOrderNotifications).not.toHaveBeenCalled();
   });
 
   it("delegates corrections and audit to the transaction", async () => {
