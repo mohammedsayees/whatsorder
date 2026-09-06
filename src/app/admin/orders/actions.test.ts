@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { submitStaffOrderAction, collectPaymentAndCompleteAction, changeOrderPaymentMethodAction } from "./actions";
+import { submitStaffOrderAction, addItemsToOrderAction, collectPaymentAndCompleteAction, changeOrderPaymentMethodAction } from "./actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getMenu } from "@/lib/data";
@@ -24,6 +24,18 @@ beforeEach(() => {
 });
 
 describe("offline order replay", () => {
+  it("recovers an add-on before checking a changed menu", async () => {
+    const addition = { parent_order_id: oid, resulting_order_id: oid, mode: "amended", added_items: [{ name: "Old tea", price: 5, quantity: 1 }], added_subtotal: 5 };
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: addition, error: null }),
+      single: vi.fn().mockResolvedValue({ data: { id: oid }, error: null }) };
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from: vi.fn(() => query) } as never);
+    const result = await addItemsToOrderAction(oid, { clientOrderId: oid, items: [] });
+    expect(result.success).toBe("Items already added.");
+    expect(result.order?.items).toEqual(addition.added_items);
+    expect(getMenu).not.toHaveBeenCalled();
+    expect(query.eq).toHaveBeenCalledWith("restaurant_id", rid);
+  });
   it("returns the saved order after a lost response even when the menu is unavailable", async () => {
     const order = { id: oid, items: [{ name: "Discontinued tea" }] };
     const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),

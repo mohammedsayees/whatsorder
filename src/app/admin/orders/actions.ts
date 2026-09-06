@@ -75,7 +75,7 @@ export async function submitStaffOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   // A queued order from a device whose login has since switched restaurants
@@ -274,7 +274,7 @@ export async function addItemsToOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   if (!orderId || !isClientOrderId(payload?.clientOrderId)) {

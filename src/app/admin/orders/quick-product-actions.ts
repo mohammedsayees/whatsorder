@@ -8,8 +8,9 @@ import type { MenuItem } from "@/lib/types";
 export async function createQuickProduct(input: { id: string; name: string; price: number; categoryId: string }): Promise<{ item?: MenuItem; error?: string; retryUnchanged?: boolean }> {
   const session = await requireRestaurantAdmin();
   const db = getSupabaseAdmin();
+  if (!db) return { retryUnchanged: true, error: "Product service is unavailable. Retry shortly." };
   const name = input.name?.trim();
-  if (!db || !isClientOrderId(input.id) || !isClientOrderId(input.categoryId) || !name || name.length > 120 || !Number.isFinite(input.price) || input.price <= 0 || input.price > 100000 || Math.abs(input.price * 100 - Math.round(input.price * 100)) > .00001) {
+  if (!isClientOrderId(input.id) || !isClientOrderId(input.categoryId) || !name || name.length > 120 || !Number.isFinite(input.price) || input.price <= 0 || input.price > 100000 || Math.abs(input.price * 100 - Math.round(input.price * 100)) > .00001) {
     return { retryUnchanged: false, error: "Enter a name, category and positive price with up to two decimal places." };
   }
   const previous = await db.from("menu_items").select("*").eq("restaurant_id", session.restaurantId).eq("id", input.id).maybeSingle();
