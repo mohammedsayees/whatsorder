@@ -57,6 +57,7 @@ type CreateOrderResult =
   | {
       ok: true;
       orderId: string;
+      confirmationUrl: string | null;
       webPushPublicKey: string | null;
       whatsappUrl: string;
       whatsappAppUrl: string;
@@ -594,7 +595,7 @@ export async function createOrderAction(
   }
 
   const orderId = String(data);
-  await setOrderPushAuthorization({
+  const confirmationAuthorized = await setOrderPushAuthorization({
     orderId,
     restaurantId: restaurant.id
   });
@@ -614,6 +615,9 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
+    confirmationUrl: confirmationAuthorized
+      ? `/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(orderId)}`
+      : null,
     webPushPublicKey: getConfiguredWebPushPublicKey(),
     whatsappUrl: buildWhatsAppUrl(
       restaurant.whatsapp_number,

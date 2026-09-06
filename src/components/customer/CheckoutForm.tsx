@@ -43,14 +43,6 @@ type PendingWhatsAppOrder = {
   whatsappUrl: string;
 };
 
-function isMobileWhatsAppHandoff() {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
 export function CheckoutForm({
   initialTableNumber = "",
   prefill = null,
@@ -171,26 +163,19 @@ export function CheckoutForm({
         return;
       }
 
-      if (isMobileWhatsAppHandoff()) {
-        // iOS Safari and WhatsApp in-app browsers handle a direct customer tap more reliably
-        // than an automatic redirect after the async Supabase save.
-        setPendingWhatsAppOrder({
-          orderId: result.orderId,
-          webPushPublicKey: result.webPushPublicKey,
-          whatsappUrl: result.whatsappUrl
-        });
+      if (result.confirmationUrl) {
+        cart.clearCart();
+        router.push(`${result.confirmationUrl}&lang=${language}`);
         return;
       }
 
-      cart.clearCart();
-      const whatsappWindow = window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
-
-      if (!whatsappWindow) {
-        window.location.assign(result.whatsappUrl);
-        return;
-      }
-
-      router.push(`/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(result.orderId)}`);
+      // Without a signing secret, retain the direct-tap handoff in memory.
+      // Never replace the current page with an automatic WhatsApp redirect.
+      setPendingWhatsAppOrder({
+        orderId: result.orderId,
+        webPushPublicKey: result.webPushPublicKey,
+        whatsappUrl: result.whatsappUrl
+      });
     });
   }
 
