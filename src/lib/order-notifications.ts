@@ -105,6 +105,8 @@ export function buildOrderStatusMessage(input: StatusMessageInput): string | nul
   }
 }
 
+export type DeliveryResult = { status: "accepted" | "skipped" | "failed"; reason?: string };
+
 type NotifyInput = {
   supabase: SupabaseClient | null;
   restaurant: {
@@ -122,12 +124,12 @@ type NotifyInput = {
  * disabled notifications, the status has a message, the order has a phone,
  * and that phone's 24h service window is open. Never throws.
  */
-export async function sendOrderStatusNotification(input: NotifyInput): Promise<void> {
+export async function sendOrderStatusNotification(input: NotifyInput): Promise<DeliveryResult> {
   try {
     const { supabase, restaurant, orderId, status } = input;
 
     if (!supabase || restaurant.status_notifications_enabled === false) {
-      return;
+      return { status: "skipped" };
     }
 
     const reference = orderReference(orderId);
@@ -138,32 +140,34 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
     });
 
     if (!baseMessage) {
-      return;
+      return { status: "skipped" };
     }
 
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("customer_phone")
       .eq("id", orderId)
       .eq("restaurant_id", restaurant.id)
       .maybeSingle();
+    if (orderError) throw new Error("Order lookup failed");
     const rawPhone = String(order?.customer_phone ?? "").trim();
 
     if (!rawPhone) {
-      return; // walk-in / no phone
+      return { status: "skipped" }; // walk-in / no phone
     }
 
     const phone = normalizeCustomerPhone(
       rawPhone,
       restaurant.phone_country_code ?? undefined
     );
-    const { data: window } = await supabase
+    const { data: window, error: windowError } = await supabase
       .from("whatsapp_service_windows")
       .select("last_inbound_at")
       .eq("restaurant_id", restaurant.id)
       .eq("phone", phone)
       .maybeSingle();
 
+    if (windowError) throw new Error("Service window lookup failed");
     const integration = await getWhatsAppIntegration(restaurant.id);
     if (
       !integrationAllowsFreeForm(
@@ -171,7 +175,7 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
         isServiceWindowOpen(window?.last_inbound_at ?? null)
       )
     ) {
-      return; // outside the free window — phase 2 (templates) territory
+      return { status: "skipped" }; // outside the free window — phase 2 (templates) territory
     }
 
     let message = baseMessage;
@@ -200,6 +204,7 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
         status
       });
     }
+    return sent ? { status: "accepted" } : { status: "failed", reason: "Transport did not accept the message" };
   } catch (error) {
     // Notifications must never break a status change.
     console.error("WhatsOrder status notification failed", {
@@ -208,5 +213,6 @@ export async function sendOrderStatusNotification(input: NotifyInput): Promise<v
       status: input.status,
       message: error instanceof Error ? error.message : "unknown"
     });
+    return { status: "failed", reason: "Notification attempt failed" };
   }
 }

@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
-import { sendOrderStatusNotification } from "@/lib/order-notifications";
-import { sendOrderStatusPushNotification } from "@/lib/web-push";
+import { scheduleOrderNotifications } from "@/lib/notification-jobs";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import {
   verifyCartAgainstMenu,
@@ -425,7 +424,7 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     throw new Error("Choose a payment method available for this restaurant.");
   }
 
-  const { data, error } = await supabase.rpc("record_order_payment", {
+  const { data, error } = await supabase.rpc("record_order_payment_async", {
     target_restaurant_id: session.restaurantId,
     target_order_id: orderId,
     requested_payment_method: paymentMethod,
@@ -442,22 +441,7 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     return;
   }
 
-  // Free in-window WhatsApp "completed" update (includes the stamp-card line).
-  // Best-effort: never throws, never blocks payment collection.
-  await Promise.all([
-    sendOrderStatusNotification({
-      supabase,
-      restaurant: session.restaurant,
-      orderId,
-      status: "Completed"
-    }),
-    sendOrderStatusPushNotification({
-      supabase,
-      restaurant: session.restaurant,
-      orderId,
-      status: "Completed"
-    })
-  ]);
+  scheduleOrderNotifications(session.restaurantId);
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
@@ -490,7 +474,7 @@ export async function changeOrderPaymentMethodAction(
     return { error: "Choose a payment method available for this restaurant." };
   }
 
-  const { data, error } = await supabase.rpc("record_order_payment", {
+  const { data, error } = await supabase.rpc("record_order_payment_async", {
     target_restaurant_id: session.restaurantId,
     target_order_id: orderId,
     requested_payment_method: newMethod,

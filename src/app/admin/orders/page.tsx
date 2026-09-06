@@ -1,3 +1,4 @@
+import { NotificationDeliveryStatus } from "@/components/admin/NotificationDeliveryStatus";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -96,6 +97,7 @@ export default async function AdminOrdersPage({
           New order
         </Link>
       </div>
+      <NotificationDeliveryStatus restaurantId={restaurant.id} />
       <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">

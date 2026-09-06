@@ -1,5 +1,7 @@
 "use server";
 
+import { scheduleOrderNotifications } from "@/lib/notification-jobs";
+
 import { cookies } from "next/headers";
 import {
   accessTokenCookieName,
@@ -146,6 +148,7 @@ export async function getRealtimeAccessTokenAction(): Promise<RealtimeAccess | n
 
 export async function getNewOrderAlertStateAction(): Promise<NewOrderAlertState> {
   const session = await requireRestaurantAdmin();
+  scheduleOrderNotifications(session.restaurantId);
   return getNewOrderAlertState(session.restaurantId);
 }
 

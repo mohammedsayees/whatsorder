@@ -60,6 +60,7 @@ export async function callWhatsAppWebConnector(
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
+      signal: AbortSignal.timeout(10000),
       headers: {
         "content-type": "application/json",
         [CONNECTOR_TIMESTAMP_HEADER]: timestamp,
