@@ -59,7 +59,8 @@ export function DailySummaryCard({
             {summary.message_text?.trim() || "No recap available for this day yet."}
           </p>
           <p className="mt-2 text-xs text-stone-500">
-            {summary.delivery_status === "accepted" ? "WhatsApp message accepted by provider."
+            {summary.status === "failed" && !summary.message_text ? "The daily recap could not be generated."
+              : summary.delivery_status === "accepted" ? "WhatsApp message accepted by provider."
               : summary.delivery_status === "failed" || summary.status === "failed" ? "WhatsApp delivery failed. Your recap is available here."
               : "Recap available here. WhatsApp delivery is not confirmed."}
           </p>
