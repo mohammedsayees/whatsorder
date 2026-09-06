@@ -1,5 +1,7 @@
 "use server";
 
+import { updateOrderStatusAction as updateStatus, recordOrderPrintEventsAction as recordPrintEvents } from "@/app/admin/orders/status-actions";
+
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -619,7 +621,15 @@ export async function createOrderAction(
   };
 }
 
-export { updateOrderStatusAction, recordOrderPrintEventsAction } from "@/app/admin/orders/status-actions";
+export async function updateOrderStatusAction(formData: FormData) {
+  return updateStatus(formData);
+}
+
+export async function recordOrderPrintEventsAction(
+  orderId: string, events: Array<{ kind: "kot" | "receipt"; isReprint: boolean }>, deviceLabel: string
+) {
+  return recordPrintEvents(orderId, events, deviceLabel);
+}
 
 export async function withdrawCustomerMarketingConsentAction(formData: FormData) {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);

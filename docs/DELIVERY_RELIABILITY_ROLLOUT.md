@@ -18,10 +18,12 @@ migration-first deployment does not double-send during the transition.
 
 - Configure `CRON_SECRET`. `/api/cron/notifications` fails closed without it.
 - Normal staff actions wake a tenant-scoped worker using Next.js `after`.
-- The configured minute cron recovers due retries and expired leases. This
-  requires Vercel Pro/Enterprise. On Hobby use an authenticated external
-  scheduler and remove the minute entry before deployment. Do not expose the
-  cron secret in a browser. [Vercel limits](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+- The project uses Vercel Hobby. A daily cron provides recovery, and existing
+  authenticated dashboard alert polling wakes due retries during active use.
+  If all dashboards close during an outage, retries wait for another staff
+  action or the daily cron. For unattended retries every minute, configure an
+  authenticated external scheduler against the same endpoint, or use Vercel
+  Pro/Enterprise with a minute cron. [Vercel limits](https://vercel.com/docs/cron-jobs/usage-and-pricing).
 - Each invocation claims up to ten jobs within a bounded time budget. Watch
   queue age as traffic grows; increase worker capacity when backlog accumulates.
 - WhatsApp uses the existing restaurant transport. Cloud API free-form sends
