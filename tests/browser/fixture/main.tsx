@@ -5,6 +5,12 @@ import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
 import { useStaffOrderQueue } from "@/components/admin/StaffOrderQueue";
 import { demoRestaurant } from "@/lib/demo-data";
 import type { StaffOrderPayload } from "@/lib/staff-order-payload";
+import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
+import type { MenuWithCategories } from "@/lib/types";
+const billingMenu: MenuWithCategories = {
+ categories: [{ id: "43000000-0000-4000-8000-000000000002", restaurant_id: "restaurant-a", name: "Drinks", is_active: true, display_order: 0, created_at: "" }],
+ items: [{ id: "43000000-0000-4000-8000-000000000003", restaurant_id: "restaurant-a", category_id: "43000000-0000-4000-8000-000000000002", name: "Test tea", price: 5, description: null, image_url: null, is_available: true, is_featured: false, created_at: "" }]
+};
 
 function Queue({ restaurantId }: { restaurantId: string }) {
  const { queue, enqueue } = useStaffOrderQueue(restaurantId);
@@ -18,6 +24,7 @@ function Fixture() {
  useEffect(() => { const handler=()=>setCompleted(true); window.addEventListener("fixture-completed",handler); return ()=>window.removeEventListener("fixture-completed",handler); }, []);
  if (mode === "queue") return <><button onClick={()=>setRestaurantId(restaurantId === "restaurant-a" ? "restaurant-b" : "restaurant-a")}>Switch restaurant</button><Queue key={restaurantId} restaurantId={restaurantId} /></>;
  if (mode === "payment") return <OrderStatusActions fulfilmentType="takeaway" orderId="saved-order" paymentMethod={null} status={completed ? "Completed" : "Preparing"} />;
+ if (mode === "billing") return <><button onClick={()=>setRestaurantId(restaurantId === "restaurant-a" ? "restaurant-b" : "restaurant-a")}>Switch restaurant</button><StaffOrderEntry key={restaurantId} staffUserId="staff-a" restaurant={{ ...demoRestaurant, id: restaurantId }} menu={billingMenu} orderTypes={["takeaway", "delivery", "dine_in"]} deliveryFee={3} /></>;
  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "saved-order-12345678", status:"New", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Original saved order: 2 Tea, total 10" }} />;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

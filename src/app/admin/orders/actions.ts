@@ -30,6 +30,7 @@ import type {
 } from "@/lib/types";
 
 export type StaffOrderState = {
+  retryUnchanged?: boolean;
   error?: string;
   mode?: "amended" | "add_on";
   success?: string;
@@ -74,7 +75,7 @@ export async function submitStaffOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   // A queued order from a device whose login has since switched restaurants
@@ -97,7 +98,7 @@ export async function submitStaffOrderAction(
     .maybeSingle();
   const existing = await findSavedOrder();
   if (existing.error) {
-    return { error: "The previous order attempt could not be checked. Please retry." };
+    return { retryUnchanged: true, error: "The previous order attempt could not be checked. Please retry." };
   }
   if (existing.data) {
     return { success: "Order already synced.", order: existing.data as Order };
@@ -239,7 +240,7 @@ export async function submitStaffOrderAction(
     if (isDuplicateClientOrderError(error)) {
       const saved = await findSavedOrder();
       if (saved.error || !saved.data) {
-        return { error: "The saved order could not be loaded. Please retry." };
+        return { retryUnchanged: true, error: "The saved order could not be loaded. Please retry." };
       }
       return { success: "Order already synced.", order: saved.data as Order };
     }
@@ -249,7 +250,7 @@ export async function submitStaffOrderAction(
       message: error.message,
       restaurantId: session.restaurantId
     });
-    return { error: "The order could not be saved. Please try again." };
+    return { retryUnchanged: true, error: "The order could not be saved. Please try again." };
   }
 
   revalidatePath("/admin");
@@ -273,11 +274,28 @@ export async function addItemsToOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   if (!orderId || !isClientOrderId(payload?.clientOrderId)) {
     return { error: "The order addition could not be read. Please try again." };
+  }
+
+  // A restored add-on may already have landed. Resolve it before menu changes,
+  // order completion or offer caps can reject a successful earlier attempt.
+  const replay = await supabase.from("order_item_addition_events")
+    .select("*").eq("restaurant_id", session.restaurantId)
+    .eq("client_order_id", payload.clientOrderId).maybeSingle();
+  if (replay.error) return { retryUnchanged: true, error: "The previous addition could not be checked. Retry this bill." };
+  if (replay.data) {
+    if (replay.data.parent_order_id !== orderId) return { retryUnchanged: true, error: "This attempt belongs to another order." };
+    const saved = await supabase.from("orders").select("*").eq("restaurant_id", session.restaurantId).eq("id", replay.data.resulting_order_id).single();
+    if (saved.error) return { retryUnchanged: true, error: "The saved addition could not be loaded. Retry." };
+    revalidatePath("/admin/orders");
+    return { success: "Items already added.", mode: replay.data.mode, order: {
+      ...saved.data, items: replay.data.added_items, subtotal: Number(replay.data.added_subtotal), total: Number(replay.data.added_subtotal), delivery_fee: 0,
+      notes: `ADD-ON ITEMS · Original #${orderId.slice(-8).toUpperCase()}`, payment_method: null, status: "Preparing", loyalty_discount: 0, points_earned: 0, points_redeemed: 0
+    } as Order };
   }
 
   let items;
@@ -349,6 +367,7 @@ export async function addItemsToOrderAction(
       "Items cannot be added to a completed unpaid order"
     ];
     return {
+      retryUnchanged: !knownMessages.some(message => error.message.includes(message)),
       error:
         knownMessages.find((message) => error.message.includes(message)) ??
         "The items could not be added. Refresh and try again."
@@ -360,7 +379,7 @@ export async function addItemsToOrderAction(
   const mode = result?.mode;
 
   if (!savedOrder || (mode !== "amended" && mode !== "add_on")) {
-    return { error: "The items were saved, but the updated ticket could not be loaded." };
+    return { retryUnchanged: true, error: "The items were saved, but the updated ticket could not be loaded." };
   }
 
   const originalReference = orderId.slice(-8).toUpperCase();
