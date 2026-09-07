@@ -113,6 +113,15 @@ export async function saveWhatsAppChatbotSettingsAction(
 
   const languageMode = String(formData.get("language_mode") ?? "customer");
   const tone = String(formData.get("tone") ?? "friendly");
+  const pilotPhones = [...new Set(String(formData.get("chat_ordering_phones") ?? "")
+    .split(/[\s,;]+/).filter(Boolean).map(p => p.replace(/^\+/, "")))];
+  const pilotEnabled = formData.get("chat_ordering_enabled") === "on";
+  if (pilotPhones.length > 20 || pilotPhones.some(p => !/^[1-9]\d{7,14}$/.test(p))) {
+    return { error: "Enter up to 20 WhatsApp numbers with country code, one per line (no spaces within a number)." };
+  }
+  if (pilotEnabled && (!pilotPhones.length || formData.get("enabled") !== "on" || formData.get("answer_text") !== "on")) {
+    return { error: "The takeaway pilot needs approved phone numbers, automatic replies and text replies enabled." };
+  }
   const pauseMinutes = Math.min(
     10080,
     Math.max(0, Math.round(Number(formData.get("human_pause_minutes") ?? 480)))
@@ -128,6 +137,8 @@ export async function saveWhatsAppChatbotSettingsAction(
     {
       restaurant_id: session.restaurantId,
       enabled: formData.get("enabled") === "on",
+      chat_ordering_enabled: pilotEnabled,
+      chat_ordering_phones: pilotPhones,
       answer_text: formData.get("answer_text") === "on",
       answer_audio: formData.get("answer_audio") === "on",
       language_mode: languageMode,

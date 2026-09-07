@@ -14,6 +14,7 @@ import {
   shouldSendWhatsAppWelcome
 } from "@/lib/whatsapp-ai";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
+import { handleWhatsAppOrderMessage } from "@/lib/whatsapp-ordering";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   CONNECTOR_SIGNATURE_HEADER,
@@ -209,12 +210,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq("restaurant_id", event.restaurantId)
     .eq("wa_message_id", messageId)
     .maybeSingle();
-  if (existing) return NextResponse.json({ ok: true });
 
   const type = message.type === "audio" ? "audio" : "text";
   const body = (message.body ?? "").slice(0, 4096);
   await Promise.all([
-    recordInboundChatMessages(event.restaurantId, [
+    existing ? Promise.resolve() : recordInboundChatMessages(event.restaurantId, [
       {
         waMessageId: messageId,
         from: phone,
@@ -234,6 +234,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const audioBase64 = message.audioBase64?.slice(0, 3_500_000);
   const audioMime = message.audioMime?.slice(0, 100);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  // Persist a pilot command and its reply before acknowledging the connector.
+  // Retried inbound IDs may still need processing after a previous failed attempt.
+  if (type === "text") {
+    try {
+      if (await handleWhatsAppOrderMessage({ restaurantId: event.restaurantId, phone,
+        messageId, text: body, baseUrl })) return NextResponse.json({ ok: true });
+    } catch {
+      console.error("WhatsOrder chat ordering retry required");
+      return NextResponse.json({ ok: false }, { status: 503 });
+    }
+  }
+  if (existing) return NextResponse.json({ ok: true });
   after(() =>
     runReceptionist({
       restaurantId: event.restaurantId as string,
