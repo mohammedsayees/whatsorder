@@ -1,3 +1,4 @@
+import { connectorHttpError } from "@/lib/connector-error";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendWhatsAppText } from "@/lib/customer-auth/whatsapp-cloud";
 import {
@@ -70,8 +71,7 @@ export async function callWhatsAppWebConnector(
       cache: "no-store"
     });
     if (!response.ok) {
-      const message = (await response.text()).slice(0, 300);
-      return { ok: false, error: message || `Connector returned ${response.status}.` };
+      return { ok: false, error: connectorHttpError(response.status) };
     }
     return { ok: true };
   } catch (error) {

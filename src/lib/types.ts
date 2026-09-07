@@ -278,6 +278,10 @@ export type CartLine = {
 export type OrderItem = CartLine;
 
 export type Order = {
+  punched_at?: string | null;
+  order_started_at?: string | null;
+  late_shift_entry?: boolean;
+  origin_shift_id?: string | null;
   status_started_at?: string | null;
   closed_at?: string | null;
   id: string;

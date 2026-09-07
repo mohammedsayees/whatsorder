@@ -12,6 +12,7 @@ export type QueuedStaffOrder = {
   restaurantId: string;
   queuedAt: string;
   attempts: number;
+  nextAttemptAt?: number;
   // "queued" entries auto-sync; "failed" entries were rejected by the server
   // (e.g. an item went unavailable while offline) and wait for staff to retry
   // or discard them.
@@ -103,7 +104,7 @@ export async function removeQueuedOrder(clientOrderId: string): Promise<void> {
 
 export async function updateQueuedOrder(
   clientOrderId: string,
-  changes: Partial<Pick<QueuedStaffOrder, "status" | "lastError" | "attempts">>
+  changes: Partial<Pick<QueuedStaffOrder, "status" | "lastError" | "attempts" | "nextAttemptAt">>
 ): Promise<void> {
   const entry = await withStore<QueuedStaffOrder | undefined>(
     "readonly",
