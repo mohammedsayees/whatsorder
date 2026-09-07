@@ -1,5 +1,7 @@
 import { AlertTriangle, Banknote, CalendarCheck, CircleDollarSign, CreditCard, QrCode, ReceiptText, WalletCards } from "lucide-react";
 import Link from "next/link";
+import { LateShiftReceipts } from "@/components/admin/LateShiftReceipts";
+import { getLateShiftReceipts } from "@/lib/shift-data";
 import {
   AssignUnassignedOrdersButton,
   CloseShiftForm,
@@ -56,6 +58,8 @@ export default async function AdminShiftsPage() {
       getPreviousBusinessDays(session)
     ]);
 
+  const lateReceipts = await getLateShiftReceipts(session);
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div>
@@ -69,6 +73,7 @@ export default async function AdminShiftsPage() {
         </p>
       </div>
 
+      <LateShiftReceipts receipts={lateReceipts} restaurant={session.restaurant} />
       {openBusinessDay ? (
         <section className="mt-5 rounded-lg border border-sky-200 bg-sky-50 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

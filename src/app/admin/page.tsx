@@ -1,3 +1,4 @@
+import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
@@ -41,9 +42,10 @@ export default async function AdminDashboardPage({
   const range = parseRange(query.range);
   const metric = parseMetric(query.metric);
 
-  const [{ analytics, trend, dailySummary, commission }, onboarding] = await Promise.all([
+  const [{ analytics, trend, dailySummary, commission }, onboarding, integration] = await Promise.all([
     getAdminDashboardSnapshot(restaurant, range),
-    getOnboardingProgress(restaurant.id)
+    getOnboardingProgress(restaurant.id),
+    getWhatsAppIntegration(restaurant.id)
   ]);
 
   return (
@@ -61,6 +63,14 @@ export default async function AdminDashboardPage({
           <ArrowRight size={16} />
         </Link>
       </div>
+      {integration?.provider === "whatsapp_web" && integration.status !== "active" ? (
+        <section role="alert" className="my-5 rounded-lg border border-rose-300 bg-rose-50 p-4 text-rose-900">
+          <h2 className="font-black">WhatsApp needs attention</h2>
+          <p className="mt-1 text-sm">The restaurant&apos;s WhatsApp Web transport is not connected.
+            Automatic replies and updates through it are unavailable until connection is restored.</p>
+          <Link className="mt-2 inline-block font-bold underline" href="/admin/integrations/whatsapp">Check connection and reconnect</Link>
+        </section>
+      ) : null}
       {query.welcome ? (
         <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
           Your restaurant account is active. Welcome to WhatsOrder.

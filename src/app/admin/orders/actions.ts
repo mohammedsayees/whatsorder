@@ -183,15 +183,8 @@ export async function submitStaffOrderAction(
     fulfilmentType === "delivery" ? Number(session.restaurant.delivery_fee) || 0 : 0;
   const total = subtotal + deliveryFee;
 
-  // Attach the open shift if one exists. The shift cash summary only counts
-  // Completed orders, so an unpaid "send to kitchen" ticket will not affect
-  // cash until it is completed and paid.
-  const { data: openShift } = await supabase
-    .from("restaurant_shifts")
-    .select("id")
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "open")
-    .maybeSingle();
+  // The database resolves and locks the shift at punched_at during insertion.
+  // Looking up the current shift here races closure and misattributes replays.
 
   const ticketSummary = verified.items
     .map((item) => `${item.quantity}x ${formatOrderItemName(item)}`)
@@ -223,7 +216,7 @@ export async function submitStaffOrderAction(
       total,
       status: orderAction.status,
       source: "staff",
-      shift_id: openShift?.id ?? null,
+
       whatsapp_message: ticketSummary,
       consent_order_processing: true,
       consent_marketing: false,

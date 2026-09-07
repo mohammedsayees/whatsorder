@@ -56,6 +56,8 @@ export async function connectWhatsAppWebAction(
       .from("whatsapp_integrations")
       .update({ status: "error", last_error: result.error, updated_at: nowIso })
       .eq("restaurant_id", session.restaurantId);
+    revalidatePath("/admin/integrations/whatsapp");
+    revalidatePath("/admin");
     return { error: result.error ?? "Could not start the connector." };
   }
 
