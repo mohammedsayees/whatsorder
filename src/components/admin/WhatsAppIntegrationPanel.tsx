@@ -172,8 +172,7 @@ export function WhatsAppIntegrationPanel({
       >
         <h2 className="text-xl font-black text-ink">AI receptionist</h2>
         <p className="mt-1 text-sm leading-6 text-stone-500">
-          Answers only from the live menu and restaurant settings. Ordering always
-          continues through the structured WhatsOrder menu.
+          Answers from the live menu and restaurant settings. Approved pilot customers can order simple takeaway items by text.
         </p>
 
         <section className="mt-5 rounded-2xl border border-stone-200 p-4">
@@ -293,6 +292,20 @@ export function WhatsAppIntegrationPanel({
         </div>
         </section>
 
+        <section className="mt-4 rounded-2xl border border-stone-200 p-4">
+          <h3 className="text-sm font-black">Takeaway chat-ordering pilot</h3>
+          <p className="mt-2 text-sm text-stone-600">English text commands, simple items at standard menu prices and payment at collection. Custom options, offers, delivery and voice ordering need staff or the menu link. Customers review a total and confirm a unique code before an order reaches the kitchen. Carts resume for 24 hours. Staff replies pause automation.</p>
+          <label className="mt-3 flex gap-2 text-sm font-bold">
+            <input type="checkbox" name="chat_ordering_enabled" defaultChecked={settings.chat_ordering_enabled ?? false} />
+            Enable takeaway ordering for approved numbers
+          </label>
+          <label className="mt-3 block text-sm font-bold">Approved WhatsApp numbers
+            <textarea name="chat_ordering_phones" defaultValue={(settings.chat_ordering_phones ?? []).join("\n")}
+              rows={3} maxLength={400} placeholder="Country code and number, one per line"
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2" />
+          </label>
+          <p className="mt-2 text-xs text-stone-500">Up to 20 numbers. Everyone else keeps the existing menu-link flow. To test, send MENU, add an item, send NAME followed by your pickup name, then CHECKOUT. Confirming creates a real unpaid order. Disable this pilot here at any time.</p>
+        </section>
         {settingsState.error ? (
           <p className="mt-4 text-sm font-bold text-rose-600">{settingsState.error}</p>
         ) : null}
@@ -311,7 +324,7 @@ export function WhatsAppIntegrationPanel({
         <h2 className="text-xl font-black text-ink">Test chatbot</h2>
         <p className="mt-1 text-sm leading-6 text-stone-500">
           Preview a reply using the currently saved settings. Nothing is sent to
-          WhatsApp.
+          WhatsApp. This preview tests receptionist answers only; test saved carts from an approved WhatsApp phone.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input

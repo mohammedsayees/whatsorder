@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export type WhatsAppChatbotSettings = {
+  chat_ordering_enabled?: boolean;
+  chat_ordering_phones?: string[];
   enabled: boolean;
   answer_text: boolean;
   answer_audio: boolean;
@@ -53,7 +55,7 @@ export async function getWhatsAppChatbotSettings(
   const { data, error } = await admin
     .from("whatsapp_chatbot_settings")
     .select(
-      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes"
+      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes, chat_ordering_enabled, chat_ordering_phones"
     )
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
