@@ -120,6 +120,12 @@ export async function handleWhatsAppOrderMessage(input: {
       else { next.cart = edited.cart!; reply = `${cartSummary()}\n${next.name ? "Send CHECKOUT when ready." : "Send NAME followed by your pickup name, then CHECKOUT."}`; }
       next.token = ""; next.quotedAt = null;
     }
+    // The linked-device transport caps texts at 4096 characters. Never let it
+    // truncate a payable total or confirmation/consent instructions.
+    if (reply.length > 4000) {
+      confirm = false; next.token = ""; next.quotedAt = null;
+      reply = `This cart or menu is too long to review in one message. Your cart is saved. Send STAFF for help or use the full menu: ${menuLink}`;
+    }
     const { data: applied, error: applyError } = await admin.rpc("apply_whatsapp_order_command", {
       target_restaurant_id: input.restaurantId, target_conversation_id: conversation.id,
       target_message_id: input.messageId, expected_revision: row?.revision ?? 0,
