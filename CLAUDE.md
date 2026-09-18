@@ -31,3 +31,13 @@ Multi-tenant WhatsApp-ordering + restaurant dashboard SaaS (UAE). Pilot: Chai Xp
 - **Never query/write across tenants** — always scope by `restaurant_id` from the session.
 - Customer PII (name, phone, address) is **per-tenant** and gated by consent flags (`consent_order_processing` / `consent_marketing`). Do not reuse or share customer data across tenants (PDPL/consent).
 - Public order creation is locked to the service-role RPC; do not add anon/authenticated insert policies.
+
+
+## AI Behavior Rules (Caveman Mode)
+- Adhere to Caveman constraints: Zero conversational filler, no greetings, no pleasantries ("Sure, I can help with that").
+- Do not output repetitive code blocks or explain obvious logic. Give raw code diffs or explicit file overrides directly.
+- Maximize information density. Think deeply in `<thinking>` blocks, but keep terminal output hyper-concise.
+
+## Token Optimization (RTK Proxy)
+- All terminal operations run through the RTK (Rust Token Killer) proxy handler.
+- Do not print verbose success logs or passing test arrays. Only surface critical errors or actionable build exceptions.
