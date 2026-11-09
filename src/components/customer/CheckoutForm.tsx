@@ -17,7 +17,7 @@ import {
   Truck,
   Utensils
 } from "lucide-react";
-import { createOrderAction } from "@/app/actions";
+import { createOrderAction } from "@/app/r/[restaurantSlug]/checkout/actions";
 import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";

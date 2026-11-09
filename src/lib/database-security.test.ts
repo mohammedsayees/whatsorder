@@ -10,7 +10,9 @@ describe("public order database boundary", () => {
   const migration = readProjectFile(
     "supabase/20260620_lock_down_public_order_creation.sql"
   );
-  const orderActions = readProjectFile("src/app/actions.ts");
+  const orderActions = readProjectFile(
+    "src/app/r/[restaurantSlug]/checkout/actions.ts"
+  );
   const pilotOperationsMigration = readProjectFile(
     "supabase/20260620_p1_pilot_operations.sql"
   );

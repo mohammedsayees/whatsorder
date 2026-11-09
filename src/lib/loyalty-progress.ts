@@ -55,7 +55,7 @@ export async function loyaltyLineForOrder(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INTEGRATION — wired into createOrderAction in src/app/actions.ts, where the
+// INTEGRATION — wired into the customer checkout action, where the
 // order_whatsapp_message is built before calling create_order_with_customer_v4:
 //
 //   const loyaltyLine = await loyaltyLineForOrder(supabase, restaurant.id, customerPhone);

@@ -107,7 +107,7 @@ describe("restaurant operational reliability boundaries", () => {
   });
 
   it("fails closed when production order throttling is unavailable", () => {
-    const actions = source("src/app/actions.ts");
+    const actions = source("src/app/r/[restaurantSlug]/checkout/actions.ts");
     const limiter = actions.slice(
       actions.indexOf("async function checkOrderRateLimit"),
       actions.indexOf("export async function createOrderAction")
