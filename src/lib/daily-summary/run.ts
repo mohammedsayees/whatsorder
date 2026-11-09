@@ -12,7 +12,8 @@ import { sendOwnerMessage } from "./send";
 export type DailySummaryRunResult = {
   summary_date: string;
   processed: number;
-  sent: number; // summary produced + recorded
+  sent: number; // accepted by the transport
+  generated: number; // recap persisted, regardless of outbound delivery
   skipped_empty: number; // zero-order day (still produces an encouraging line)
   already_done: number; // a non-failed run already existed (idempotency)
   failed: number;
@@ -83,6 +84,7 @@ export async function runDailySummary(options?: {
     summary_date: defaultSummaryDate,
     processed: 0,
     sent: 0,
+    generated: 0,
     skipped_empty: 0,
     already_done: 0,
     failed: 0
@@ -93,68 +95,57 @@ export async function runDailySummary(options?: {
     const summaryDate =
       options?.targetDay ?? restaurantDateString(now, -1, restaurant);
 
+    let token: string | null = null;
+    let deliveryStarted = false;
     try {
-      const { data: existing } = await admin
-        .from("daily_summary_runs")
-        .select("status")
-        .eq("restaurant_id", restaurant.id)
-        .eq("summary_date", summaryDate)
-        .maybeSingle();
-
-      // Idempotency: a prior non-failed run for this day means we're done. A
-      // prior "failed" row is allowed to retry.
-      if (existing && existing.status !== "failed") {
-        result.already_done += 1;
-        continue;
-      }
-
+      const claim = await admin.rpc("claim_daily_summary", {
+        target_restaurant_id: restaurant.id, target_day: summaryDate
+      });
+      if (claim.error) throw new Error("Daily summary claim failed");
+      token = claim.data;
+      if (!token) { result.already_done++; continue; }
+      const save = async (values: Record<string, unknown>) => {
+        const saved = await admin.from("daily_summary_runs").update(values)
+          .eq("restaurant_id", restaurant.id).eq("summary_date", summaryDate)
+          .eq("lease_token", token).select("id");
+        if (saved.error || !saved.data?.length) throw new Error("Daily summary record could not be saved");
+      };
       const rawNumbers = await computeDailyNumbers(admin, restaurant.id, summaryDate);
       const numbers = withDailyCoach(rawNumbers, restaurant);
-      const status = numbers.order_count === 0 ? "skipped_empty" : "sent";
       const message = await narrate(numbers, restaurant.name, restaurant);
-      const phone = restaurant.daily_summary_phone ?? restaurant.owner_phone ?? null;
-
-      await sendOwnerMessage(phone, message);
-
-      await admin.from("daily_summary_runs").upsert(
-        {
-          restaurant_id: restaurant.id,
-          summary_date: summaryDate,
-          status,
-          numbers,
-          message_text: message,
-          error: null
-        },
-        { onConflict: "restaurant_id,summary_date" }
-      );
-
-      if (status === "skipped_empty") {
-        result.skipped_empty += 1;
-      } else {
-        result.sent += 1;
+      // Commit the generated recap before attempting an external side effect.
+      await save({ numbers, message_text: message, error: null });
+      result.generated++;
+      if (numbers.order_count === 0) {
+        await save({ status: "skipped_empty", delivery_status: "skipped", delivery_reason: "empty_day", lease_until: null });
+        result.skipped_empty++;
+        continue;
       }
-    } catch (caught) {
-      result.failed += 1;
-      const message = caught instanceof Error ? caught.message : String(caught);
-      console.error("WhatsOrder daily summary failed for restaurant", {
-        restaurantId: restaurant.id,
-        error: message
+      const phone = restaurant.daily_summary_phone ?? restaurant.owner_phone ?? null;
+      await save({ delivery_status: "sending" });
+      deliveryStarted = true;
+      const delivery = await sendOwnerMessage(restaurant.id, phone, message, restaurant.phone_country_code);
+      await save({
+        status: delivery.reason === "transport_failed" ? "failed" : "generated",
+        delivery_status: delivery.delivered ? "accepted" : delivery.reason === "transport_failed" ? "failed" : "skipped",
+        delivery_reason: delivery.reason, lease_until: null
       });
-      try {
-        await admin.from("daily_summary_runs").upsert(
-          {
-            restaurant_id: restaurant.id,
-            summary_date: summaryDate,
-            status: "failed",
-            error: message
-          },
-          { onConflict: "restaurant_id,summary_date" }
-        );
-      } catch {
-        // Logging the failure must never itself break the batch.
+      if (delivery.delivered) result.sent++;
+      if (delivery.reason === "transport_failed") result.failed++;
+    } catch (caught) {
+      result.failed++;
+      const message = caught instanceof Error ? caught.message : "Daily summary failed";
+      console.error("Daily summary failed", { restaurantId: restaurant.id, error: message });
+      if (token) {
+        try {
+        const logged = await admin.from("daily_summary_runs").update({ status: deliveryStarted ? "generated" : "failed", delivery_status: deliveryStarted ? "unknown" : "not_attempted", error: message, lease_until: null })
+          .eq("restaurant_id", restaurant.id).eq("summary_date", summaryDate).eq("lease_token", token);
+        if (logged.error) throw new Error("Log write failed");
+        } catch {
+          console.error("Daily summary failure could not be recorded", { restaurantId: restaurant.id });
+        }
       }
     }
   }
-
   return result;
 }

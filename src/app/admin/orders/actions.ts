@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
-import { sendOrderStatusNotification } from "@/lib/order-notifications";
-import { sendOrderStatusPushNotification } from "@/lib/web-push";
+import { scheduleOrderNotifications } from "@/lib/notification-jobs";
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import {
   verifyCartAgainstMenu,
@@ -31,11 +30,12 @@ import type {
 } from "@/lib/types";
 
 export type StaffOrderState = {
+  retryUnchanged?: boolean;
   error?: string;
   mode?: "amended" | "add_on";
   success?: string;
   // The saved order, returned so the punch screen can print its KOT/receipt
-  // without navigating away. Absent on errors and on idempotent replays.
+  // without navigating away. Absent on errors.
   order?: Order;
 };
 
@@ -75,7 +75,7 @@ export async function submitStaffOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   // A queued order from a device whose login has since switched restaurants
@@ -86,6 +86,22 @@ export async function submitStaffOrderAction(
 
   if (!isClientOrderId(payload.clientOrderId)) {
     return { error: "The order could not be read. Please rebuild the ticket." };
+  }
+
+  // Resolve a replay before mutable menu/fulfilment validation. A saved order
+  // remains successful even when its original response was lost and the menu changed.
+  const findSavedOrder = () => supabase
+    .from("orders")
+    .select("*")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("client_order_id", payload.clientOrderId)
+    .maybeSingle();
+  const existing = await findSavedOrder();
+  if (existing.error) {
+    return { retryUnchanged: true, error: "The previous order attempt could not be checked. Please retry." };
+  }
+  if (existing.data) {
+    return { success: "Order already synced.", order: existing.data as Order };
   }
 
   let items;
@@ -167,15 +183,8 @@ export async function submitStaffOrderAction(
     fulfilmentType === "delivery" ? Number(session.restaurant.delivery_fee) || 0 : 0;
   const total = subtotal + deliveryFee;
 
-  // Attach the open shift if one exists. The shift cash summary only counts
-  // Completed orders, so an unpaid "send to kitchen" ticket will not affect
-  // cash until it is completed and paid.
-  const { data: openShift } = await supabase
-    .from("restaurant_shifts")
-    .select("id")
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "open")
-    .maybeSingle();
+  // The database resolves and locks the shift at punched_at during insertion.
+  // Looking up the current shift here races closure and misattributes replays.
 
   const ticketSummary = verified.items
     .map((item) => `${item.quantity}x ${formatOrderItemName(item)}`)
@@ -207,7 +216,7 @@ export async function submitStaffOrderAction(
       total,
       status: orderAction.status,
       source: "staff",
-      shift_id: openShift?.id ?? null,
+
       whatsapp_message: ticketSummary,
       consent_order_processing: true,
       consent_marketing: false,
@@ -222,7 +231,11 @@ export async function submitStaffOrderAction(
     // out on slow internet after the insert succeeded) is a success, not a
     // failure — the outbox can safely drop it.
     if (isDuplicateClientOrderError(error)) {
-      return { success: "Order already synced." };
+      const saved = await findSavedOrder();
+      if (saved.error || !saved.data) {
+        return { retryUnchanged: true, error: "The saved order could not be loaded. Please retry." };
+      }
+      return { success: "Order already synced.", order: saved.data as Order };
     }
 
     console.error("WhatsOrder staff order creation failed", {
@@ -230,7 +243,7 @@ export async function submitStaffOrderAction(
       message: error.message,
       restaurantId: session.restaurantId
     });
-    return { error: "The order could not be saved. Please try again." };
+    return { retryUnchanged: true, error: "The order could not be saved. Please try again." };
   }
 
   revalidatePath("/admin");
@@ -254,11 +267,28 @@ export async function addItemsToOrderAction(
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return { error: "Order service is unavailable." };
+    return { retryUnchanged: true, error: "Order service is unavailable." };
   }
 
   if (!orderId || !isClientOrderId(payload?.clientOrderId)) {
     return { error: "The order addition could not be read. Please try again." };
+  }
+
+  // A restored add-on may already have landed. Resolve it before menu changes,
+  // order completion or offer caps can reject a successful earlier attempt.
+  const replay = await supabase.from("order_item_addition_events")
+    .select("*").eq("restaurant_id", session.restaurantId)
+    .eq("client_order_id", payload.clientOrderId).maybeSingle();
+  if (replay.error) return { retryUnchanged: true, error: "The previous addition could not be checked. Retry this bill." };
+  if (replay.data) {
+    if (replay.data.parent_order_id !== orderId) return { retryUnchanged: true, error: "This attempt belongs to another order." };
+    const saved = await supabase.from("orders").select("*").eq("restaurant_id", session.restaurantId).eq("id", replay.data.resulting_order_id).single();
+    if (saved.error) return { retryUnchanged: true, error: "The saved addition could not be loaded. Retry." };
+    revalidatePath("/admin/orders");
+    return { success: "Items already added.", mode: replay.data.mode, order: {
+      ...saved.data, items: replay.data.added_items, subtotal: Number(replay.data.added_subtotal), total: Number(replay.data.added_subtotal), delivery_fee: 0,
+      notes: `ADD-ON ITEMS · Original #${orderId.slice(-8).toUpperCase()}`, payment_method: null, status: "Preparing", loyalty_discount: 0, points_earned: 0, points_redeemed: 0
+    } as Order };
   }
 
   let items;
@@ -330,6 +360,7 @@ export async function addItemsToOrderAction(
       "Items cannot be added to a completed unpaid order"
     ];
     return {
+      retryUnchanged: !knownMessages.some(message => error.message.includes(message)),
       error:
         knownMessages.find((message) => error.message.includes(message)) ??
         "The items could not be added. Refresh and try again."
@@ -341,7 +372,7 @@ export async function addItemsToOrderAction(
   const mode = result?.mode;
 
   if (!savedOrder || (mode !== "amended" && mode !== "add_on")) {
-    return { error: "The items were saved, but the updated ticket could not be loaded." };
+    return { retryUnchanged: true, error: "The items were saved, but the updated ticket could not be loaded." };
   }
 
   const originalReference = orderId.slice(-8).toUpperCase();
@@ -390,9 +421,7 @@ function isPaymentMethodAvailable(
   );
 }
 
-// Completes an unpaid ticket by recording how the customer paid. The payment
-// method is set first, then the order transitions to Completed through the same
-// audited RPC the normal status flow uses.
+// Payment, status, loyalty and audit are committed by one database transaction.
 export async function collectPaymentAndCompleteAction(formData: FormData) {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
@@ -407,53 +436,24 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     throw new Error("Choose a payment method available for this restaurant.");
   }
 
-  const { error: paymentError } = await supabase
-    .from("orders")
-    .update({ payment_method: paymentMethod })
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId)
-    .is("payment_method", null);
+  const { data, error } = await supabase.rpc("record_order_payment_async", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: orderId,
+    requested_payment_method: paymentMethod,
+    complete_order: true,
+    event_actor_user_id: session.userId
+  });
 
-  if (paymentError) {
-    throw new Error("The payment could not be recorded. Try again.");
+  if (error || !data?.order_id) {
+    throw new Error("Payment and order completion could not be saved. Refresh and try again.");
+  }
+  // A retry must not re-send the completion notification.
+  if (!data.changed) {
+    revalidatePath("/admin/orders");
+    return;
   }
 
-  const { data: completedOrderId, error: statusError } = await supabase.rpc(
-    "transition_order_status_and_record_event",
-    {
-      event_actor_role: session.role,
-      event_actor_user_id: session.userId,
-      event_reason: null,
-      target_order_id: orderId,
-      target_restaurant_id: session.restaurantId,
-      target_status: "Completed"
-    }
-  );
-
-  if (statusError) {
-    throw new Error(`Order completion failed: ${statusError.message}`);
-  }
-
-  if (!completedOrderId) {
-    throw new Error("This order could not be completed. Refresh and try again.");
-  }
-
-  // Free in-window WhatsApp "completed" update (includes the stamp-card line).
-  // Best-effort: never throws, never blocks payment collection.
-  await Promise.all([
-    sendOrderStatusNotification({
-      supabase,
-      restaurant: session.restaurant,
-      orderId,
-      status: "Completed"
-    }),
-    sendOrderStatusPushNotification({
-      supabase,
-      restaurant: session.restaurant,
-      orderId,
-      status: "Completed"
-    })
-  ]);
+  scheduleOrderNotifications(session.restaurantId);
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
@@ -464,8 +464,6 @@ export type ChangePaymentState = {
   error?: string;
   success?: string;
 };
-
-const managementRoles = ["restaurant_admin", "owner", "manager"];
 
 // Lets staff correct a mis-punched Cash/Card. Changes are audited in
 // order_payment_events. Correcting an order in a CLOSED shift is restricted to
@@ -488,69 +486,23 @@ export async function changeOrderPaymentMethodAction(
     return { error: "Choose a payment method available for this restaurant." };
   }
 
-  const { data: order } = await supabase
-    .from("orders")
-    .select("payment_method, shift_id")
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId)
-    .maybeSingle();
-
-  if (!order) {
-    return { error: "Order not found." };
-  }
-
-  const currentMethod = (order.payment_method as PaymentMethod | null) ?? null;
-
-  if (!currentMethod) {
-    return { error: "This order hasn't been paid yet. Set payment when you complete it." };
-  }
-
-  if (currentMethod === newMethod) {
-    return { success: "Payment method unchanged." };
-  }
-
-  // Closed-shift corrections are manager/owner only.
-  if (order.shift_id) {
-    const { data: shift } = await supabase
-      .from("restaurant_shifts")
-      .select("status")
-      .eq("id", order.shift_id)
-      .eq("restaurant_id", session.restaurantId)
-      .maybeSingle();
-
-    if (shift?.status === "closed" && !managementRoles.includes(session.role)) {
-      return {
-        error: "That order is in a closed shift — only a manager or owner can change its payment."
-      };
-    }
-  }
-
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({ payment_method: newMethod })
-    .eq("id", orderId)
-    .eq("restaurant_id", session.restaurantId);
-
-  if (updateError) {
-    return { error: "The payment method could not be updated. Try again." };
-  }
-
-  const { error: auditError } = await supabase.from("order_payment_events").insert({
-    restaurant_id: session.restaurantId,
-    order_id: orderId,
-    from_method: currentMethod,
-    to_method: newMethod,
-    actor_user_id: session.userId,
-    actor_role: session.role
+  const { data, error } = await supabase.rpc("record_order_payment_async", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: orderId,
+    requested_payment_method: newMethod,
+    complete_order: false,
+    event_actor_user_id: session.userId
   });
-
-  if (auditError) {
-    console.error("WhatsOrder payment-change audit failed", {
-      code: auditError.code,
-      orderId,
-      restaurantId: session.restaurantId
-    });
+  if (error || !data?.order_id) {
+    const knownErrors = [
+      "Order not found",
+      "Set payment when completing the order",
+      "Only management can correct a closed shift payment"
+    ];
+    return { error: knownErrors.find((message) => error?.message.includes(message)) ??
+      "The payment method could not be updated. Try again." };
   }
+  if (!data.changed) return { success: "Payment method unchanged." };
 
   revalidatePath("/admin");
   revalidatePath("/admin/orders");

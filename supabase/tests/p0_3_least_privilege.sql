@@ -343,16 +343,17 @@ begin
     raise exception 'Realtime order SELECT privilege was removed';
   end if;
 
-  if not has_function_privilege(
+  -- Later hardening moved anon menu reads to policies that do not call these helpers.
+  if has_function_privilege(
     'anon',
     'public.is_restaurant_member(uuid,text[])',
     'EXECUTE'
-  ) or not has_function_privilege(
+  ) or has_function_privilege(
     'anon',
     'public.is_super_admin()',
     'EXECUTE'
   ) then
-    raise exception 'Anon cannot evaluate public menu policy helpers';
+    raise exception 'Anon regained private membership helper access';
   end if;
 
   if not has_function_privilege(

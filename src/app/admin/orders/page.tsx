@@ -1,3 +1,4 @@
+import { NotificationDeliveryStatus } from "@/components/admin/NotificationDeliveryStatus";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -36,7 +37,7 @@ function positivePage(value?: string) {
 export default async function AdminOrdersPage({
   searchParams
 }: {
-  searchParams: Promise<{ fulfilment?: string; page?: string; status?: string }>;
+  searchParams: Promise<{ fulfilment?: string; page?: string; status?: string; sort?: string }>;
 }) {
   const [session, query] = await Promise.all([
     requireRestaurantAdmin(),
@@ -49,11 +50,13 @@ export default async function AdminOrdersPage({
   const fulfilment = fulfilmentTabs.some((tab) => tab.value === query.fulfilment)
     ? (query.fulfilment as OrderFulfilmentView)
     : "all";
+  const sort = query.sort === "overdue" ? "overdue" : "oldest";
   const requestedPage = positivePage(query.page);
 
   const [ordersPage, currentShift] = await Promise.all([
     getAdminOrdersPage(restaurant.id, {
       fulfilment,
+      sort,
       page: requestedPage,
       pageSize: 25,
       status
@@ -64,7 +67,7 @@ export default async function AdminOrdersPage({
 
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
     redirect(
-      `/admin/orders?status=${status}&fulfilment=${fulfilment}&page=${ordersPage.totalPages}`
+      `/admin/orders?status=${status}&fulfilment=${fulfilment}&sort=${sort}&page=${ordersPage.totalPages}`
     );
   }
 
@@ -96,6 +99,7 @@ export default async function AdminOrdersPage({
           New order
         </Link>
       </div>
+      <NotificationDeliveryStatus restaurantId={restaurant.id} />
       <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -108,7 +112,7 @@ export default async function AdminOrdersPage({
                   ? "bg-ink text-white"
                   : "bg-stone-100 text-stone-600 hover:bg-stone-200"
               }`}
-              href={`/admin/orders?status=${tab.value}&fulfilment=${fulfilment}&page=1`}
+              href={`/admin/orders?status=${tab.value}&fulfilment=${fulfilment}&sort=${sort}&page=1`}
               key={tab.value}
             >
               {tab.label}
@@ -128,7 +132,7 @@ export default async function AdminOrdersPage({
                   ? "border-leaf bg-mint text-leaf"
                   : "border-stone-200 text-stone-600 hover:bg-stone-50"
               }`}
-              href={`/admin/orders?status=${status}&fulfilment=${tab.value}&page=1`}
+              href={`/admin/orders?status=${status}&fulfilment=${tab.value}&sort=${sort}&page=1`}
               key={tab.value}
             >
               {tab.label}
@@ -144,6 +148,7 @@ export default async function AdminOrdersPage({
         </div>
       </section>
 
+      {status === "active" ? <div className="mt-4 flex gap-3" aria-label="Order priority">{(["oldest", "overdue"] as const).map(value => <Link key={value} aria-current={sort === value ? "page" : undefined} className={`rounded-lg border px-3 py-2 font-bold ${sort === value ? "bg-mint text-leaf" : "bg-white"}`} href={`/admin/orders?status=${status}&fulfilment=${fulfilment}&sort=${value}&page=1`}>{value === "overdue" ? "Overdue first" : "Oldest first"}</Link>)}</div> : null}
       <div className="mt-5">
         {ordersPage.items.length > 0 ? (
           <OrderList
@@ -166,7 +171,7 @@ export default async function AdminOrdersPage({
         basePath="/admin/orders"
         page={ordersPage.page}
         pageSize={ordersPage.pageSize}
-        query={{ fulfilment, status }}
+        query={{ fulfilment, status, sort }}
         total={ordersPage.total}
         totalPages={ordersPage.totalPages}
       />

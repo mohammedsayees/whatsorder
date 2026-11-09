@@ -29,6 +29,7 @@ export function OrderStatusActions({
   paymentMethod: PaymentMethod | null;
   status: OrderStatus;
 }) {
+  const [error, setError] = useState<string | null>(null);
   const [submittingStatus, setSubmittingStatus] = useState<OrderStatus | null>(null);
   const [collecting, setCollecting] = useState<PaymentMethod | null>(null);
   const nextStatus = getNextOrderStatus(fulfilmentType, status);
@@ -42,6 +43,13 @@ export function OrderStatusActions({
       ? [...basePaymentOptions, { label: "Complete · UPI", value: "UPI" as const }]
       : basePaymentOptions;
 
+  async function runAction(action: (data: FormData) => Promise<void>, data: FormData) {
+    setError(null);
+    try { await action(data); }
+    catch { setError("The change could not be saved. Please retry."); }
+    finally { setCollecting(null); setSubmittingStatus(null); }
+  }
+
   if (!nextStatus && !cancellable) {
     return (
       <p className="mt-3 rounded-lg bg-stone-100 px-3 py-2 text-center text-sm font-bold text-stone-600">
@@ -52,6 +60,7 @@ export function OrderStatusActions({
 
   return (
     <div className="mt-3 space-y-2">
+      {error ? <p role="alert" className="text-sm text-rose-700">{error}</p> : null}
       {nextStatus && completingNeedsPayment ? (
         <div className="space-y-2">
           <p className="text-center text-xs font-bold text-stone-500">
@@ -60,7 +69,7 @@ export function OrderStatusActions({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {paymentOptions.map((option) => (
               <form
-                action={collectPaymentAndCompleteAction}
+                action={(data) => runAction(collectPaymentAndCompleteAction, data)}
                 key={option.value}
                 onSubmit={() => setCollecting(option.value)}
               >
@@ -84,7 +93,7 @@ export function OrderStatusActions({
         </div>
       ) : nextStatus ? (
         <form
-          action={updateOrderStatusAction}
+          action={(data) => runAction(updateOrderStatusAction, data)}
           onSubmit={() => setSubmittingStatus(nextStatus)}
         >
           <input name="order_id" type="hidden" value={orderId} />
@@ -106,7 +115,7 @@ export function OrderStatusActions({
 
       {cancellable ? (
         <form
-          action={updateOrderStatusAction}
+          action={(data) => runAction(updateOrderStatusAction, data)}
           onSubmit={(event) => {
             const reason = window.prompt(
               "Why is this order being cancelled? This will be saved in the order history."

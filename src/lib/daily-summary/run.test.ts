@@ -4,6 +4,8 @@ import type { DailyNumbers } from "./types";
 
 const hoisted = vi.hoisted(() => ({
   admin: null as unknown,
+  send: vi.fn(),
+  writeError: false,
   numbersById: {} as Record<string, DailyNumbers | "throw">
 }));
 
@@ -26,7 +28,7 @@ vi.mock("./narrate", () => ({
 }));
 
 vi.mock("./send", () => ({
-  sendOwnerMessage: () => Promise.resolve({ delivered: false, reason: "no_outbound_channel" })
+  sendOwnerMessage: (...args: unknown[]) => hoisted.send(...args)
 }));
 
 import { dubaiDateString, restaurantDateString, runDailySummary } from "./run";
@@ -66,7 +68,7 @@ function makeAdmin(store: Store) {
         state.single = true;
         return builder;
       },
-      upsert: (payload: Record<string, unknown>) => {
+      update: (payload: Record<string, unknown>) => {
         state.op = "upsert";
         state.payload = payload;
         return builder;
@@ -77,8 +79,8 @@ function makeAdmin(store: Store) {
 
     function resolveResult() {
       if (state.op === "upsert") {
-        store.upserts.push(state.payload as Record<string, unknown>);
-        return { error: null };
+        store.upserts.push({ ...state.payload, restaurant_id: state.filters.restaurant_id });
+        return { data: [{ id: "saved" }], error: hoisted.writeError ? { message: "write failed" } : null };
       }
       if (table === "restaurants") {
         return { data: store.restaurants, error: null };
@@ -93,7 +95,13 @@ function makeAdmin(store: Store) {
     return builder;
   }
 
-  return { from: (table: string) => build(table) };
+  return {
+    from: (table: string) => build(table),
+    rpc: async (_name: string, input: { target_restaurant_id: string; target_day: string }) => {
+      const existing = store.existing[`${input.target_restaurant_id}|${input.target_day}`];
+      return { data: existing && existing.status !== "failed" ? null : "lease-token", error: null };
+    }
+  };
 }
 
 function numbers(overrides: Partial<DailyNumbers> = {}): DailyNumbers {
@@ -156,6 +164,8 @@ describe("dubaiDateString", () => {
 describe("runDailySummary", () => {
   beforeEach(() => {
     hoisted.numbersById = {};
+    hoisted.writeError = false;
+    hoisted.send.mockReset().mockResolvedValue({ delivered: true, reason: "accepted" });
   });
 
   it("filters to active, opted-in restaurants", async () => {
@@ -181,8 +191,8 @@ describe("runDailySummary", () => {
     const result = await runDailySummary({ targetDay: "2026-06-25" });
 
     expect(result).toMatchObject({ processed: 2, already_done: 1, sent: 1, failed: 0 });
-    expect(store.upserts).toHaveLength(1);
-    expect(store.upserts[0]).toMatchObject({ restaurant_id: "r2", status: "sent" });
+    expect(store.upserts).toHaveLength(3);
+    expect(store.upserts[2]).toMatchObject({ restaurant_id: "r2", status: "generated", delivery_status: "accepted" });
   });
 
   it("records a zero-order day as skipped_empty (still produces a message)", async () => {
@@ -194,7 +204,9 @@ describe("runDailySummary", () => {
     const result = await runDailySummary({ targetDay: "2026-06-25" });
 
     expect(result).toMatchObject({ skipped_empty: 1, sent: 0 });
-    expect(store.upserts[0]).toMatchObject({ status: "skipped_empty", message_text: "MESSAGE" });
+    expect(store.upserts[0]).toMatchObject({ message_text: "MESSAGE" });
+    expect(store.upserts[1]).toMatchObject({ status: "skipped_empty" });
+    expect(hoisted.send).not.toHaveBeenCalled();
   });
 
   it("isolates a per-restaurant failure and continues the batch", async () => {
@@ -224,6 +236,26 @@ describe("runDailySummary", () => {
     const result = await runDailySummary({ targetDay: "2026-06-25" });
 
     expect(result).toMatchObject({ already_done: 0, sent: 1 });
-    expect(store.upserts[0]).toMatchObject({ restaurant_id: "r1", status: "sent" });
+    expect(store.upserts[2]).toMatchObject({ restaurant_id: "r1", status: "generated", delivery_status: "accepted" });
   });
+  it("does not report an undelivered recap as sent", async () => {
+    const store = emptyStore();
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    hoisted.numbersById = { r1: numbers() };
+    hoisted.admin = makeAdmin(store);
+    hoisted.send.mockResolvedValue({ delivered: false, reason: "no_open_service_window" });
+    expect(await runDailySummary()).toMatchObject({ generated: 1, sent: 0 });
+    expect(store.upserts[2]).toMatchObject({ status: "generated", delivery_status: "skipped" });
+  });
+
+  it("does not send if generation cannot be persisted", async () => {
+    const store = emptyStore();
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    hoisted.numbersById = { r1: numbers() };
+    hoisted.admin = makeAdmin(store);
+    hoisted.writeError = true;
+    expect(await runDailySummary()).toMatchObject({ failed: 1, sent: 0 });
+    expect(hoisted.send).not.toHaveBeenCalled();
+  });
+
 });

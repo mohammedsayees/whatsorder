@@ -1,3 +1,5 @@
+import { getLatestDailySummary, type DailySummaryCardData } from "@/lib/daily-summary/data";
+export { getLatestDailySummary, type DailySummaryCardData } from "@/lib/daily-summary/data";
 import { unstable_cache } from "next/cache";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import {
@@ -149,6 +151,7 @@ export type AdminOrdersPageResult = PaginatedResult<Order> & {
 };
 
 type OrdersPageOptions = {
+  sort?: "oldest" | "overdue";
   fulfilment?: OrderFulfilmentView;
   page?: number;
   pageSize?: number;
@@ -646,41 +649,6 @@ export async function getOrderForAdmin(
   return (data as unknown as Order | null) ?? null;
 }
 
-export type DailySummaryCardData = {
-  summary_date: string;
-  status: string;
-  message_text: string | null;
-  numbers: import("@/lib/daily-summary/types").DailyNumbers | null;
-};
-
-/**
- * The most recent daily insight recap for this restaurant, or null if none has
- * run yet / the table isn't reachable. Soft feature: absence simply hides the
- * dashboard card. Always tenant-scoped by restaurant id.
- */
-export async function getLatestDailySummary(
-  restaurantId: string
-): Promise<DailySummaryCardData | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("daily_summary_runs")
-    .select("summary_date, status, message_text, numbers")
-    .eq("restaurant_id", restaurantId)
-    .order("summary_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return data as DailySummaryCardData;
-}
-
 function dashboardAnalyticsFromPayload(data: unknown): Analytics {
   const metrics = data as Record<string, string | number>;
 
@@ -1093,7 +1061,8 @@ export async function getAdminOrdersPage(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const { data, error } = await supabase.rpc("get_admin_orders_page", {
+    const { data, error } = await supabase.rpc("get_admin_orders_page_v2", {
+      target_sort: options.sort ?? "oldest",
       target_restaurant_id: restaurantId,
       target_status_view: status,
       target_fulfilment: fulfilment,

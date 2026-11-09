@@ -2,7 +2,7 @@ import "server-only";
 
 import webPush from "web-push";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { orderReference } from "@/lib/order-notifications";
+import { type DeliveryResult, orderReference } from "@/lib/order-notifications";
 import type { OrderStatus } from "@/lib/types";
 
 type PushPayload = {
@@ -98,7 +98,7 @@ async function sendToSubscription(
   supabase: SupabaseClient,
   subscription: PushSubscriptionRow,
   payload: PushPayload
-): Promise<void> {
+): Promise<DeliveryResult> {
   try {
     await webPush.sendNotification(
       {
@@ -109,7 +109,7 @@ async function sendToSubscription(
         }
       },
       JSON.stringify(payload),
-      { TTL: 24 * 60 * 60, urgency: "high" }
+      { TTL: 24 * 60 * 60, urgency: "high", timeout: 10000 }
     );
 
     await supabase
@@ -121,6 +121,7 @@ async function sendToSubscription(
       })
       .eq("id", subscription.id)
       .eq("restaurant_id", subscription.restaurant_id);
+    return { status: "accepted" };
   } catch (error) {
     const statusCode = pushStatusCode(error);
     const expired = statusCode === 404 || statusCode === 410;
@@ -138,20 +139,21 @@ async function sendToSubscription(
       statusCode,
       subscriptionId: subscription.id
     });
+    return { status: expired ? "skipped" : "failed", reason: "Push transport failed" };
   }
 }
 
 /** Best-effort customer Web Push. It never throws or blocks status persistence. */
 export async function sendOrderStatusPushNotification(
   input: SendOrderPushInput
-): Promise<void> {
+): Promise<DeliveryResult> {
   try {
     if (
       !input.supabase ||
       input.restaurant.status_notifications_enabled === false ||
       !configureWebPush()
     ) {
-      return;
+      return { status: "skipped" };
     }
 
     const payload = buildOrderPushPayload({
@@ -160,9 +162,8 @@ export async function sendOrderStatusPushNotification(
       restaurantSlug: input.restaurant.slug,
       status: input.status
     });
-
     if (!payload) {
-      return;
+      return { status: "skipped" };
     }
 
     const { data, error } = await input.supabase
@@ -179,14 +180,15 @@ export async function sendOrderStatusPushNotification(
         orderId: input.orderId,
         restaurantId: input.restaurant.id
       });
-      return;
+      return { status: "failed", reason: "Subscription lookup failed" };
     }
 
-    await Promise.all(
+    const results = await Promise.all(
       ((data ?? []) as PushSubscriptionRow[]).map((subscription) =>
         sendToSubscription(input.supabase as SupabaseClient, subscription, payload)
       )
     );
+    return results.find(result => result.status === "failed") ?? results[0] ?? { status: "skipped" };
   } catch (error) {
     console.error("WhatsOrder Web Push failed", {
       message: error instanceof Error ? error.message : "unknown",
@@ -194,5 +196,6 @@ export async function sendOrderStatusPushNotification(
       restaurantId: input.restaurant.id,
       status: input.status
     });
+    return { status: "failed", reason: "Push attempt failed" };
   }
 }

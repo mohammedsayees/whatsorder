@@ -78,11 +78,14 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
 };
 
 export type Restaurant = PublicRestaurant & {
+  order_target_minutes?: Partial<Record<FulfilmentType, number>>;
   owner_name?: string | null;
   owner_email?: string | null;
   owner_phone?: string | null;
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
+  activated_at?: string | null;
+  activation_order_id?: string | null;
   internal_notes?: string | null;
   jobs_only?: boolean;
   // Aggregator commission percentage (e.g. 27) used to compute "commission
@@ -109,6 +112,7 @@ export type MenuCategory = {
 };
 
 export type MenuItem = {
+  staff_only?: boolean;
   id: string;
   restaurant_id: string;
   category_id: string;
@@ -274,6 +278,12 @@ export type CartLine = {
 export type OrderItem = CartLine;
 
 export type Order = {
+  punched_at?: string | null;
+  order_started_at?: string | null;
+  late_shift_entry?: boolean;
+  origin_shift_id?: string | null;
+  status_started_at?: string | null;
+  closed_at?: string | null;
   id: string;
   restaurant_id: string;
   parent_order_id?: string | null;
@@ -652,6 +662,14 @@ export type OnboardingTask = {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OnboardingProgress = {
+  tasks: OnboardingTask[];
+  completed: number;
+  total: number;
+  activatedAt: string | null;
+  activationOrderId: string | null;
 };
 
 export type SuperAdminRestaurant = Restaurant & {

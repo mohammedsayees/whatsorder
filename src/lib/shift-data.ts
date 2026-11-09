@@ -252,3 +252,21 @@ export async function getShiftCloseReportView(
     reports
   };
 }
+
+
+export type LateShiftReceipt = { id: string; shift_id: string; total: number;
+  payment_method: string; created_at: string; punched_at: string | null };
+
+export async function getLateShiftReceipts(session: RestaurantAdminSession, shiftId?: string): Promise<LateShiftReceipt[]> {
+  // Report callers have already checked ownership of the selected shift.
+  if (session.role === "staff" && !shiftId) return [];
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Late shift receipts could not be loaded.");
+  let query = db.from("orders").select("id,shift_id,total,payment_method,created_at,punched_at")
+    .eq("restaurant_id", session.restaurantId).eq("late_shift_entry", true)
+    .order("created_at", { ascending: false }).limit(100);
+  if (shiftId) query = query.eq("shift_id", shiftId);
+  const { data, error } = await query;
+  if (error) throw new Error("Late shift receipts could not be loaded.");
+  return (data ?? []) as LateShiftReceipt[];
+}

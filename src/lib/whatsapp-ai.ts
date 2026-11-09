@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export type WhatsAppChatbotSettings = {
+  chat_ordering_enabled?: boolean;
+  chat_ordering_phones?: string[];
   enabled: boolean;
   answer_text: boolean;
   answer_audio: boolean;
@@ -34,6 +36,16 @@ const MENU_REQUEST =
   /\b(menu|order|price|prices|food|drink|offer|promotion|buy)\b|قائمة|منيو|طلب|سعر|عرض|മെനു|ഓർഡർ|വില/i;
 const GREETING =
   /^(hi|hello|hey|good (morning|afternoon|evening)|salam|مرحبا|السلام عليكم|ഹായ്|ഹലോ)[!.\s]*$/i;
+export const WELCOME_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+export function shouldSendWhatsAppWelcome(
+  lastBotReplyAt: string | null,
+  now = Date.now()
+): boolean {
+  if (!lastBotReplyAt) return true;
+  const lastReply = Date.parse(lastBotReplyAt);
+  return !Number.isFinite(lastReply) || now - lastReply >= WELCOME_COOLDOWN_MS;
+}
 
 export async function getWhatsAppChatbotSettings(
   restaurantId: string
@@ -43,7 +55,7 @@ export async function getWhatsAppChatbotSettings(
   const { data, error } = await admin
     .from("whatsapp_chatbot_settings")
     .select(
-      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes"
+      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes, chat_ordering_enabled, chat_ordering_phones"
     )
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
@@ -145,6 +157,16 @@ function menuUrl(baseUrl: string, slug: string): string {
 }
 
 function safeFallback(
+  context: BusinessContext,
+  baseUrl: string
+): WhatsAppAiReply {
+  return {
+    reply: `I can help with our menu, prices, opening hours, location, and ordering. View our live menu here: ${menuUrl(baseUrl, context.restaurant.slug)}`,
+    handoff: false
+  };
+}
+
+function welcomeReply(
   settings: WhatsAppChatbotSettings,
   context: BusinessContext,
   baseUrl: string
@@ -153,6 +175,13 @@ function safeFallback(
     reply:
       settings.welcome_message?.trim() ||
       `Hello! 👋 Welcome to ${context.restaurant.name}. View our live menu and place your order here: ${menuUrl(baseUrl, context.restaurant.slug)}`,
+    handoff: false
+  };
+}
+
+function menuReply(context: BusinessContext, baseUrl: string): WhatsAppAiReply {
+  return {
+    reply: `Here is our live menu with current prices and availability: ${menuUrl(baseUrl, context.restaurant.slug)}\nYou can place your order directly from that link.`,
     handoff: false
   };
 }
@@ -173,6 +202,7 @@ export async function generateWhatsAppAiReply(input: {
   text: string;
   baseUrl: string;
   settings: WhatsAppChatbotSettings;
+  allowWelcome?: boolean;
   audio?: { base64: string; mimeType: string };
 }): Promise<WhatsAppAiReply | null> {
   const context = await loadBusinessContext(input.restaurantId);
@@ -183,12 +213,17 @@ export async function generateWhatsAppAiReply(input: {
   if (!input.audio && HUMAN_REQUEST.test(text)) {
     return { reply: input.settings.handoff_message, handoff: true };
   }
-  if (!input.audio && (GREETING.test(text) || MENU_REQUEST.test(text))) {
-    return safeFallback(input.settings, context, input.baseUrl);
+  if (!input.audio && MENU_REQUEST.test(text)) {
+    return menuReply(context, input.baseUrl);
+  }
+  if (!input.audio && GREETING.test(text)) {
+    return input.allowWelcome === false
+      ? safeFallback(context, input.baseUrl)
+      : welcomeReply(input.settings, context, input.baseUrl);
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return safeFallback(input.settings, context, input.baseUrl);
+  if (!apiKey) return safeFallback(context, input.baseUrl);
 
   const model =
     process.env.WHATSAPP_AI_MODEL ??
@@ -242,18 +277,17 @@ CUSTOMER_TEXT=${JSON.stringify(text || "[voice message]")}`;
     );
     if (!response.ok) {
       console.error("WhatsOrder chatbot AI failed", response.status);
-      return safeFallback(input.settings, context, input.baseUrl);
+      return safeFallback(context, input.baseUrl);
     }
     const payload = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
     const modelText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    return parseModelReply(modelText) ?? safeFallback(input.settings, context, input.baseUrl);
+    return parseModelReply(modelText) ?? safeFallback(context, input.baseUrl);
   } catch (error) {
     console.error("WhatsOrder chatbot AI request failed", {
       message: error instanceof Error ? error.name : "unknown"
     });
-    return safeFallback(input.settings, context, input.baseUrl);
+    return safeFallback(context, input.baseUrl);
   }
 }
-

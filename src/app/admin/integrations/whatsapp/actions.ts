@@ -7,6 +7,10 @@ import {
   callWhatsAppWebConnector,
   getWhatsAppIntegration
 } from "@/lib/whatsapp-integration";
+import {
+  generateWhatsAppAiReply,
+  getWhatsAppChatbotSettings
+} from "@/lib/whatsapp-ai";
 
 const CONNECTION_ROLES = ["restaurant_admin", "owner"] as const;
 
@@ -52,6 +56,8 @@ export async function connectWhatsAppWebAction(
       .from("whatsapp_integrations")
       .update({ status: "error", last_error: result.error, updated_at: nowIso })
       .eq("restaurant_id", session.restaurantId);
+    revalidatePath("/admin/integrations/whatsapp");
+    revalidatePath("/admin");
     return { error: result.error ?? "Could not start the connector." };
   }
 
@@ -107,9 +113,18 @@ export async function saveWhatsAppChatbotSettingsAction(
 
   const languageMode = String(formData.get("language_mode") ?? "customer");
   const tone = String(formData.get("tone") ?? "friendly");
+  const pilotPhones = [...new Set(String(formData.get("chat_ordering_phones") ?? "")
+    .split(/[\s,;]+/).filter(Boolean).map(p => p.replace(/^\+/, "")))];
+  const pilotEnabled = formData.get("chat_ordering_enabled") === "on";
+  if (pilotPhones.length > 20 || pilotPhones.some(p => !/^[1-9]\d{7,14}$/.test(p))) {
+    return { error: "Enter up to 20 WhatsApp numbers with country code, one per line (no spaces within a number)." };
+  }
+  if (pilotEnabled && (!pilotPhones.length || formData.get("enabled") !== "on" || formData.get("answer_text") !== "on")) {
+    return { error: "The takeaway pilot needs approved phone numbers, automatic replies and text replies enabled." };
+  }
   const pauseMinutes = Math.min(
     10080,
-    Math.max(15, Math.round(Number(formData.get("human_pause_minutes") ?? 480)))
+    Math.max(0, Math.round(Number(formData.get("human_pause_minutes") ?? 480)))
   );
   if (!["customer", "english", "arabic", "malayalam"].includes(languageMode)) {
     return { error: "Select a valid language mode." };
@@ -122,6 +137,8 @@ export async function saveWhatsAppChatbotSettingsAction(
     {
       restaurant_id: session.restaurantId,
       enabled: formData.get("enabled") === "on",
+      chat_ordering_enabled: pilotEnabled,
+      chat_ordering_phones: pilotPhones,
       answer_text: formData.get("answer_text") === "on",
       answer_audio: formData.get("answer_audio") === "on",
       language_mode: languageMode,
@@ -143,3 +160,26 @@ export async function saveWhatsAppChatbotSettingsAction(
   return { savedAt: Date.now() };
 }
 
+export type WhatsAppChatbotTestState = {
+  error?: string;
+  reply?: string;
+};
+
+export async function testWhatsAppChatbotAction(
+  _previous: WhatsAppChatbotTestState,
+  formData: FormData
+): Promise<WhatsAppChatbotTestState> {
+  const session = await requireRestaurantRole([...CONNECTION_ROLES]);
+  const text = String(formData.get("test_message") ?? "").trim().slice(0, 1000);
+  if (!text) return { error: "Enter a customer message to test." };
+  const settings = await getWhatsAppChatbotSettings(session.restaurantId);
+  const result = await generateWhatsAppAiReply({
+    restaurantId: session.restaurantId,
+    text,
+    settings,
+    allowWelcome: true,
+    baseUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://whatsorder.app"
+  });
+  if (!result) return { error: "A preview could not be generated." };
+  return { reply: result.reply };
+}

@@ -18,6 +18,7 @@ import makeWASocket, {
   useMultiFileAuthState as loadMultiFileAuthState
 } from "@whiskeysockets/baileys";
 import pino from "pino";
+import { connectionClosePolicy } from "./connection-policy.mjs";
 
 const port = Number(process.env.CONNECTOR_PORT ?? process.env.PORT ?? 8080);
 const appUrl = process.env.WHATSORDER_APP_URL?.replace(/\/$/, "");
@@ -125,10 +126,16 @@ function messageTimestamp(message) {
   return typeof value === "number" ? String(value) : value?.toString?.() ?? undefined;
 }
 
+function phoneJid(message) {
+  return [message.key?.remoteJidAlt, message.key?.remoteJid].find((jid) =>
+    jid?.endsWith("@s.whatsapp.net")
+  );
+}
+
 async function handleIncoming(session, envelope) {
   if (!envelope.key?.id || envelope.key.fromMe) return;
-  const jid = envelope.key.remoteJid ?? "";
-  if (!jid.endsWith("@s.whatsapp.net")) return;
+  const jid = phoneJid(envelope);
+  if (!jid) return;
   const from = jid.split("@")[0]?.replace(/\D/g, "");
   if (!from) return;
 
@@ -176,7 +183,7 @@ async function handleIncoming(session, envelope) {
   await postEvent(event);
 }
 
-async function startSession(sessionId, restaurantId) {
+async function startSession(sessionId, restaurantId, reconnectAttempts = 0) {
   const existing = sessions.get(sessionId);
   if (existing) {
     if (existing.restaurantId !== restaurantId) throw new Error("Session tenant mismatch");
@@ -187,7 +194,13 @@ async function startSession(sessionId, restaurantId) {
   const directory = sessionDirectory(sessionId);
   const { state, saveCreds } = await loadMultiFileAuthState(directory);
   const { version } = await fetchLatestBaileysVersion();
-  const session = { sessionId, restaurantId, socket: null, closing: false };
+  const session = {
+    sessionId,
+    restaurantId,
+    socket: null,
+    closing: false,
+    reconnectAttempts
+  };
   const socket = makeWASocket({
     version,
     auth: {
@@ -203,18 +216,28 @@ async function startSession(sessionId, restaurantId) {
   session.socket = socket;
   sessions.set(sessionId, session);
 
-  socket.ev.on("creds.update", saveCreds);
-  socket.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-    for (const message of messages.slice(0, 20)) {
-      await handleIncoming(session, message);
+  socket.ev.process(async (events) => {
+    // Pairing credentials and the 515 restart can arrive in the same event batch.
+    // Persist the credentials before creating the replacement socket.
+    if (events["creds.update"]) {
+      await saveCreds();
     }
-  });
-  socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
+
+    const messageUpdate = events["messages.upsert"];
+    if (messageUpdate?.type === "notify") {
+      for (const message of messageUpdate.messages.slice(0, 20)) {
+        await handleIncoming(session, message);
+      }
+    }
+
+    const connectionUpdate = events["connection.update"];
+    if (!connectionUpdate) return;
+    const { connection, lastDisconnect, qr } = connectionUpdate;
     if (qr) {
       await postEvent({ type: "qr", restaurantId, sessionId, qr });
     }
     if (connection === "open") {
+      session.reconnectAttempts = 0;
       const phone = socket.user?.id?.split(":")[0]?.replace(/\D/g, "");
       await postEvent({
         type: "connected",
@@ -225,25 +248,59 @@ async function startSession(sessionId, restaurantId) {
       });
     }
     if (connection === "close") {
+      // Ignore late close notifications from a socket already replaced by a retry.
+      if (sessions.get(sessionId) !== session) return;
       sessions.delete(sessionId);
       const code = disconnectCode(lastDisconnect);
-      const loggedOut = code === DisconnectReason.loggedOut || session.closing;
+      const policy = connectionClosePolicy({
+        code,
+        closing: session.closing,
+        reconnectAttempts: session.reconnectAttempts
+      });
+
+      if (policy.removeAuth) {
+        await rm(sessionDirectory(sessionId), { recursive: true, force: true });
+      }
+
+      if (policy.reconnect) {
+        logger.info(
+          {
+            code: code || "unknown",
+            delayMs: policy.delayMs,
+            reconnectAttempt: policy.nextAttempt,
+            sessionId
+          },
+          code === DisconnectReason.restartRequired
+            ? "restarting WhatsApp socket after pairing"
+            : "restoring WhatsApp socket"
+        );
+        setTimeout(() => {
+          startSession(
+            sessionId,
+            restaurantId,
+            policy.nextAttempt
+          ).catch(async (error) => {
+            logger.error(
+              { error: error?.message, sessionId },
+              "session reconnect failed"
+            );
+            await postEvent({
+              type: "disconnected",
+              restaurantId,
+              sessionId,
+              reason: "Could not restart the WhatsApp connection."
+            });
+          });
+        }, policy.delayMs);
+        return;
+      }
+
       await postEvent({
         type: "disconnected",
         restaurantId,
         sessionId,
-        reason: loggedOut ? "Disconnected by user" : `Connection closed (${code || "unknown"})`
+        reason: policy.reason
       });
-      if (code === DisconnectReason.loggedOut && !session.closing) {
-        await rm(sessionDirectory(sessionId), { recursive: true, force: true });
-      }
-      if (!loggedOut) {
-        setTimeout(() => {
-          startSession(sessionId, restaurantId).catch((error) =>
-            logger.error({ error: error?.message, sessionId }, "session reconnect failed")
-          );
-        }, 2_000);
-      }
     }
   });
 

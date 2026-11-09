@@ -18,10 +18,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Use Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -38,3 +38,41 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Connector tests
+        run: npm run test:connector
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser reliability tests
+        run: npm run test:browser
+
+      - name: Browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 7
+
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare disposable PostgreSQL with pgTAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-contrib postgresql-16-pgtap libtap-parser-sourcehandler-pgtap-perl
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'test-only-password';"
+          sudo -u postgres createdb whatsorder_test
+      - name: Apply every migration and run every SQL test
+        env:
+          DATABASE_URL: postgresql://postgres:test-only-password@localhost:5432/whatsorder_test
+          ALLOW_TEST_DATABASE_RESET: "true"
+        run: npm run test:database

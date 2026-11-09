@@ -2,6 +2,7 @@
 
 import { createHash } from "crypto";
 
+import { cookies } from "next/headers";
 import { headers } from "next/headers";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -17,6 +18,13 @@ import {
   validateDemoRestaurantName
 } from "@/lib/demo-store";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
+import {
+  createDemoClaimToken,
+  demoClaimCookieName,
+  demoClaimLifetimeSeconds,
+  hashDemoClaimToken,
+  serializeDemoClaimCookie
+} from "@/lib/demo-claim";
 
 // Instant demo store builder (self-serve funnel, PRD Phase 1). Public-facing:
 // no auth, so every input is validated here and writes go through the
@@ -29,7 +37,14 @@ const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BASE64_LENGTH = 10_000_000;
 
 export type DemoBuildResult =
-  | { ok: true; slug: string; url: string; itemCount: number; ownerWhatsApp: string | null }
+  | {
+      ok: true;
+      slug: string;
+      url: string;
+      claimUrl: string;
+      itemCount: number;
+      ownerWhatsApp: string | null;
+    }
   | { ok: false; error: string; rateLimited?: boolean };
 
 type DemoPage = { imageBase64: string; mimeType: string };
@@ -270,6 +285,31 @@ async function finishBuild(
     return { ok: false, error: "Could not save your demo menu. Try again in a moment." };
   }
 
+  const claimToken = createDemoClaimToken();
+  const { error: claimError } = await supabase.from("demo_restaurant_claims").insert({
+    restaurant_id: restaurant.id,
+    claim_token_hash: hashDemoClaimToken(claimToken),
+    expires_at: demoExpiryDate().toISOString()
+  });
+  if (claimError) {
+    await supabase.from("restaurants").delete().eq("id", restaurant.id).eq("is_demo", true);
+    console.error("WhatsOrder demo claim setup failed", { message: claimError.message });
+    return { ok: false, error: "Could not secure your demo store. Try again in a moment." };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(
+    demoClaimCookieName,
+    serializeDemoClaimCookie(restaurant.id, claimToken),
+    {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/try/claim",
+      maxAge: demoClaimLifetimeSeconds
+    }
+  );
+
   revalidatePublicRestaurantCache({ id: restaurant.id, slug: restaurant.slug });
 
   const url = `/r/${restaurant.slug}`;
@@ -279,6 +319,7 @@ async function finishBuild(
     ok: true,
     slug: restaurant.slug,
     url,
+    claimUrl: "/try/claim",
     itemCount: items.length,
     ownerWhatsApp: ownerPhone
   };

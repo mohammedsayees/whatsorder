@@ -117,6 +117,7 @@ describe("isChatConversationFilter", () => {
     expect(isChatConversationFilter("open")).toBe(true);
     expect(isChatConversationFilter("closed")).toBe(true);
     expect(isChatConversationFilter("unread")).toBe(true);
+    expect(isChatConversationFilter("handoff")).toBe(true);
   });
 
   it("rejects everything else", () => {

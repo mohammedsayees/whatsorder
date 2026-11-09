@@ -45,6 +45,8 @@ export default async function NewStaffOrderPage() {
       ) : (
         <div className="mt-6">
           <StaffOrderEntry
+          key={`${session.restaurantId}:${session.userId}`}
+          staffUserId={session.userId}
             deliveryFee={session.restaurant.delivery_fee}
             menu={menu}
             optionCatalog={optionCatalog}

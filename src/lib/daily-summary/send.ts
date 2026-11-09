@@ -1,29 +1,26 @@
 import "server-only";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { getWhatsAppIntegration, integrationAllowsFreeForm, sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
+import { isServiceWindowOpen } from "@/lib/order-notifications";
+import { normalizeCustomerPhone } from "@/lib/whatsapp";
 
 export type SendResult = { delivered: boolean; reason: string };
 
-/**
- * The single owner-message send seam.
- *
- * There is no programmatic WhatsApp outbound path in the product yet — every
- * existing WhatsApp flow is a wa.me click-link (see src/lib/whatsapp.ts). Until
- * the WhatsApp Cloud API migration lands, the daily summary is delivered by
- * surfacing it on the admin dashboard (pull). This function records the intent
- * so the run log reflects that delivery was attempted; swap this one
- * implementation for a real Cloud API send when it's available.
- *
- * Delivery target is resolved by the caller as daily_summary_phone ?? owner_phone.
- */
-export async function sendOwnerMessage(phone: string | null, text: string): Promise<SendResult> {
-  if (!phone) {
-    return { delivered: false, reason: "no_phone" };
+// `delivered` means transport accepted; read/delivery receipts are not inferred.
+export async function sendOwnerMessage(
+  restaurantId: string, phone: string | null, text: string, phoneCountryCode?: string
+): Promise<SendResult> {
+  if (!phone) return { delivered: false, reason: "no_phone" };
+  const admin = getSupabaseAdmin();
+  if (!admin) throw new Error("Summary delivery unavailable");
+  const to = normalizeCustomerPhone(phone, phoneCountryCode);
+  const integration = await getWhatsAppIntegration(restaurantId);
+  const window = await admin.from("whatsapp_service_windows").select("last_inbound_at")
+    .eq("restaurant_id", restaurantId).eq("phone", to).maybeSingle();
+  if (window.error) throw new Error("Summary service window lookup failed");
+  if (!integrationAllowsFreeForm(integration, isServiceWindowOpen(window.data?.last_inbound_at))) {
+    return { delivered: false, reason: "no_open_service_window" };
   }
-
-  console.info("WhatsOrder daily summary ready for owner", {
-    phone,
-    preview: text.slice(0, 120)
-  });
-
-  // No outbound channel yet — the dashboard card is the delivery surface.
-  return { delivered: false, reason: "no_outbound_channel" };
+  const messageId = await sendRestaurantWhatsAppText(restaurantId, to, text);
+  return { delivered: Boolean(messageId), reason: messageId ? "accepted" : "transport_failed" };
 }

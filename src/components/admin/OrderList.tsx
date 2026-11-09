@@ -1,3 +1,5 @@
+import { OrderTimer } from "./OrderTimer";
+import { orderTarget } from "@/lib/order-timing";
 import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
@@ -59,6 +61,7 @@ export function OrderList({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-black">{order.customer_name}</h3>
                   <StatusBadge status={order.status} />
+                  <OrderTimer order={order} target={orderTarget(restaurant, fulfilmentType)} />
                   {order.parent_order_id ? (
                     <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-black text-violet-800">
                       Add-on #{order.parent_order_id.slice(-8).toUpperCase()}

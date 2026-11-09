@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CloudOff, Printer, RefreshCw, Trash2 } from "lucide-react";
+import { outboxResultUpdate, queuedRetryUpdate } from "@/lib/outbox-retry";
 import { submitStaffOrderAction } from "@/app/admin/orders/actions";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
@@ -67,7 +68,7 @@ export function useStaffOrderQueue(restaurantId: string) {
 
     try {
       const pending = (await listQueuedOrders(restaurantId)).filter(
-        (entry) => entry.status === "queued"
+        (entry) => entry.status === "queued" && (entry.nextAttemptAt ?? 0) <= Date.now()
       );
 
       for (const entry of pending) {
@@ -79,22 +80,13 @@ export function useStaffOrderQueue(restaurantId: string) {
             SYNC_TIMEOUT_MS
           );
 
-          if (result.error) {
-            // The server rejected the order (menu changed, login switched…).
-            // Park it as failed for staff to retry or discard — do not drop it.
-            await updateQueuedOrder(entry.clientOrderId, {
-              status: "failed",
-              lastError: result.error,
-              attempts: entry.attempts + 1
-            });
-          } else {
-            await removeQueuedOrder(entry.clientOrderId);
-          }
+          const update = outboxResultUpdate(result, entry.attempts);
+          if (update) await updateQueuedOrder(entry.clientOrderId, update);
+          else await removeQueuedOrder(entry.clientOrderId);
         } catch {
           // Still unreachable — keep the entry queued and stop this round.
-          await updateQueuedOrder(entry.clientOrderId, {
-            attempts: entry.attempts + 1
-          });
+          await updateQueuedOrder(entry.clientOrderId,
+            queuedRetryUpdate(entry.attempts, "Connection interrupted. Retrying automatically."));
           break;
         }
       }
@@ -118,7 +110,7 @@ export function useStaffOrderQueue(restaurantId: string) {
 
   const retry = useCallback(
     async (clientOrderId: string) => {
-      await updateQueuedOrder(clientOrderId, { status: "queued", lastError: null });
+      await updateQueuedOrder(clientOrderId, { status: "queued", lastError: null, nextAttemptAt: 0 });
       await refresh();
       void flush();
     },
@@ -281,7 +273,7 @@ export function QueuedOrdersPanel({
               ) : (
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-amber-700">
-                    {syncing ? "Syncing…" : "Waiting for connection"}
+                    {syncing ? "Syncing…" : entry.lastError ? `${entry.lastError} Automatic retry scheduled.` : "Waiting for connection"}
                   </p>
                   <button
                     className="focus-ring inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs font-black text-amber-800 hover:bg-amber-100"

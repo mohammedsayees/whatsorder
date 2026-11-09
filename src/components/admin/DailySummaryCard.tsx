@@ -58,6 +58,12 @@ export function DailySummaryCard({
           <p className="mt-3 whitespace-pre-line text-sm font-medium leading-relaxed text-ink">
             {summary.message_text?.trim() || "No recap available for this day yet."}
           </p>
+          <p className="mt-2 text-xs text-stone-500">
+            {summary.status === "failed" && !summary.message_text ? "The daily recap could not be generated."
+              : summary.delivery_status === "accepted" ? "WhatsApp message accepted by provider."
+              : summary.delivery_status === "failed" || summary.status === "failed" ? "WhatsApp delivery failed. Your recap is available here."
+              : "Recap available here. WhatsApp delivery is not confirmed."}
+          </p>
           {periods.length > 0 ? (
             <details className="mt-4 border-t border-stone-100 pt-4">
               <summary className="focus-ring cursor-pointer rounded text-sm font-black text-leaf">

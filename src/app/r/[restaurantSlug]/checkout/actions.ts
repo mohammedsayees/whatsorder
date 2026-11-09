@@ -34,6 +34,7 @@ type CreateOrderResult =
   | {
       ok: true;
       orderId: string;
+      confirmationUrl: string | null;
       webPushPublicKey: string | null;
       whatsappUrl: string;
       whatsappAppUrl: string;
@@ -395,7 +396,7 @@ export async function createOrderAction(
   const orderId = String(data);
   // Signing the push cookie and reading an idempotently persisted message are
   // independent. Run them together to remove one sequential step from checkout.
-  const [, { data: persistedOrder }] = await Promise.all([
+  const [confirmationAuthorized, { data: persistedOrder }] = await Promise.all([
     setOrderPushAuthorization({
       orderId,
       restaurantId: restaurant.id
@@ -417,6 +418,9 @@ export async function createOrderAction(
     ok: true,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
+    confirmationUrl: confirmationAuthorized
+      ? `/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(orderId)}`
+      : null,
     webPushPublicKey: getConfiguredWebPushPublicKey(),
     whatsappUrl: buildWhatsAppUrl(
       restaurant.whatsapp_number,

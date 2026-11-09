@@ -54,6 +54,8 @@ export default async function AddOrderItemsPage({
 
       <div className="mt-6">
         <StaffOrderEntry
+          key={`${session.restaurantId}:${session.userId}`}
+          staffUserId={session.userId}
           addToOrder={order}
           deliveryFee={0}
           menu={menu}

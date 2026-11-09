@@ -1,3 +1,5 @@
+import { LateShiftReceipts } from "@/components/admin/LateShiftReceipts";
+import { getLateShiftReceipts } from "@/lib/shift-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
@@ -86,6 +88,8 @@ export default async function ShiftCloseReportPage({
     notFound();
   }
 
+  const lateReceipts = await getLateShiftReceipts(session, id);
+
   if (view.reports.length === 0) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -94,6 +98,7 @@ export default async function ShiftCloseReportPage({
         </Link>
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
           <h1 className="text-xl font-black">No immutable report for this shift</h1>
+          <LateShiftReceipts receipts={lateReceipts} restaurant={session.restaurant} />
           <p className="mt-2 text-sm leading-6">
             This shift was closed before automatic close reports were introduced.
           </p>
@@ -133,6 +138,7 @@ export default async function ShiftCloseReportPage({
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 print:max-w-none print:px-0 print:py-0">
+      <LateShiftReceipts receipts={lateReceipts} restaurant={session.restaurant} />
       <div className="flex flex-col gap-4 print:hidden sm:flex-row sm:items-center sm:justify-between">
         <Link className="focus-ring inline-flex items-center gap-2 text-sm font-black text-leaf" href="/admin/shifts">
           <ArrowLeft size={16} /> Back to shifts

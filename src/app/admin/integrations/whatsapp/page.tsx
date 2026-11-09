@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { WhatsAppIntegrationPanel } from "@/components/admin/WhatsAppIntegrationPanel";
+import { WhatsAppSectionNav } from "@/components/admin/WhatsAppSectionNav";
 import { getWhatsAppChatbotSettings } from "@/lib/whatsapp-ai";
 import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
@@ -26,11 +27,12 @@ export default async function WhatsAppIntegrationPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-black text-ink">WhatsApp chatbot</h1>
-      <p className="mt-2 max-w-3xl text-stone-600">
-        Connect the restaurant&apos;s current number and control AI replies from one place.
-      </p>
-      <div className="mt-6">
+      <WhatsAppSectionNav
+        active="automation"
+        canManageAutomation
+        integration={integration}
+      />
+      <div className="mt-4">
         <WhatsAppIntegrationPanel
           connectorConfigured={Boolean(
             process.env.WHATSAPP_WEB_CONNECTOR_URL &&
@@ -44,4 +46,3 @@ export default async function WhatsAppIntegrationPage() {
     </main>
   );
 }
-

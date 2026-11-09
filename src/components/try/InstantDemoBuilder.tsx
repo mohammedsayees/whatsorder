@@ -145,6 +145,7 @@ export default function InstantDemoBuilder() {
   const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
   const [result, setResult] = useState<{
     url: string;
+    claimUrl: string;
     itemCount: number;
     ownerWhatsApp: string | null;
   } | null>(null);
@@ -218,6 +219,7 @@ export default function InstantDemoBuilder() {
 
       setResult({
         url: response.url,
+        claimUrl: response.claimUrl,
         itemCount: response.itemCount,
         ownerWhatsApp: response.ownerWhatsApp
       });
@@ -242,18 +244,17 @@ export default function InstantDemoBuilder() {
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <a
-            href={result.url}
-            className="rounded-full bg-emerald-600 px-6 py-3 font-semibold text-white shadow hover:bg-emerald-500"
+            href={result.claimUrl}
+            className="rounded-full bg-emerald-950 px-6 py-3 font-semibold text-white shadow hover:bg-emerald-900"
           >
-            Open my demo store →
+            Claim this restaurant →
           </a>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${result.url}`)}
+          <a
+            href={result.url}
             className="rounded-full border border-emerald-600 px-6 py-3 font-semibold text-emerald-800 hover:bg-emerald-100"
           >
-            Copy link
-          </button>
+            Preview store
+          </a>
         </div>
         {result.ownerWhatsApp && (
           <a

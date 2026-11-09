@@ -1,5 +1,7 @@
 "use server";
 
+import { updateOrderStatusAction as updateStatus, recordOrderPrintEventsAction as recordPrintEvents } from "@/app/admin/orders/status-actions";
+
 import { revalidatePath } from "next/cache";
 import {
   getMenu,
@@ -12,8 +14,6 @@ import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
-import { sendOrderStatusNotification } from "@/lib/order-notifications";
-import { sendOrderStatusPushNotification } from "@/lib/web-push";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import {
@@ -23,19 +23,8 @@ import {
 } from "@/lib/super-admin-auth";
 import type {
   MenuCategory,
-  OrderStatus,
   PaymentMethod
 } from "@/lib/types";
-
-const statusValues: OrderStatus[] = [
-  "New",
-  "Accepted",
-  "Preparing",
-  "Ready to Serve",
-  "Out for Delivery",
-  "Completed",
-  "Cancelled"
-];
 
 type MenuImportRow = {
   category: string;
@@ -224,88 +213,13 @@ function slugify(value: string) {
 }
 
 export async function updateOrderStatusAction(formData: FormData) {
-  const session = await requireRestaurantAdmin();
-  const orderId = stringValue(formData, "order_id");
-  const status = stringValue(formData, "status") as OrderStatus;
-  const reason = limitedStringValue(formData, "reason", 300);
-  const restaurant = session.restaurant;
-  const supabase = getSupabaseAdmin();
-
-  if (!restaurant || !orderId || !statusValues.includes(status)) {
-    return;
-  }
-
-  if (supabase) {
-    const { data: updatedOrderId, error } = await supabase.rpc(
-      "transition_order_status_and_record_event",
-      {
-        event_actor_role: session.role,
-        event_actor_user_id: session.userId,
-        event_reason: reason || null,
-        target_order_id: orderId,
-        target_restaurant_id: restaurant.id,
-        target_status: status
-      }
-    );
-    databaseFailure("Order status update", error);
-
-    if (!updatedOrderId) {
-      throw new Error("This order could not be updated. Refresh and try again.");
-    }
-
-    // Free in-window WhatsApp update ("accepted", "ready", ...). Best-effort:
-    // never throws, never blocks the status change.
-    await Promise.all([
-      sendOrderStatusNotification({ supabase, restaurant, orderId, status }),
-      sendOrderStatusPushNotification({ supabase, restaurant, orderId, status })
-    ]);
-  }
-
-  revalidatePath("/admin");
-  revalidatePath("/admin/orders");
-  revalidatePath("/admin/shifts");
+  return updateStatus(formData);
 }
 
 export async function recordOrderPrintEventsAction(
-  orderId: string,
-  events: Array<{ kind: "kot" | "receipt"; isReprint: boolean }>,
-  deviceLabel: string
+  orderId: string, events: Array<{ kind: "kot" | "receipt"; isReprint: boolean }>, deviceLabel: string
 ) {
-  const session = await requireRestaurantAdmin();
-  const supabase = getSupabaseAdmin();
-  const safeEvents = events
-    .filter((event) => event.kind === "kot" || event.kind === "receipt")
-    .slice(0, 2);
-
-  if (!supabase || !orderId || safeEvents.length === 0) {
-    return { ok: false as const, error: "Print tracking is unavailable." };
-  }
-
-  for (const event of safeEvents) {
-    const { error } = await supabase.rpc("record_order_print_event", {
-      event_actor_role: session.role,
-      event_actor_user_id: session.userId,
-      event_device_label: deviceLabel.slice(0, 160),
-      event_is_reprint: event.isReprint,
-      target_order_id: orderId,
-      target_print_kind: event.kind,
-      target_restaurant_id: session.restaurantId
-    });
-
-    if (error) {
-      console.error("WhatsOrder print event persistence failed", {
-        code: error.code,
-        orderId,
-        restaurantId: session.restaurantId
-      });
-      return {
-        ok: false as const,
-        error: "The print opened, but tracking could not be saved."
-      };
-    }
-  }
-
-  return { ok: true as const };
+  return recordPrintEvents(orderId, events, deviceLabel);
 }
 
 export async function withdrawCustomerMarketingConsentAction(formData: FormData) {
@@ -387,6 +301,7 @@ export async function addMenuItemAction(formData: FormData) {
     .insert({
       restaurant_id: restaurant.id,
       category_id: categoryId,
+      ...(formData.has("staff_only") ? { staff_only: formData.get("staff_only") === "true" } : {}),
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
       description: stringValue(formData, "description") || null,
@@ -430,6 +345,7 @@ export async function updateMenuItemAction(formData: FormData) {
   const { error } = await supabase
     .from("menu_items")
     .update({
+      ...(formData.has("staff_only") ? { staff_only: formData.get("staff_only") === "true" } : {}),
       name: stringValue(formData, "name"),
       name_ar: stringValue(formData, "name_ar") || null,
       description: stringValue(formData, "description") || null,
@@ -937,6 +853,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       accepting_orders: formData.get("accepting_orders") === "on",
       status_notifications_enabled:
         formData.get("status_notifications_enabled") === "on",
+      order_target_minutes: orderTargetsFromForm(formData),
       shift_marketplace_channels: configuredMarketplaceChannels(
         formData.getAll("shift_marketplace_channels")
       ),
@@ -1495,4 +1412,12 @@ function storagePathFromPublicUrl(url: string, bucketName = "menu-images") {
   }
 
   return decodeURIComponent(url.slice(markerIndex + marker.length).split("?")[0]);
+}
+
+function orderTargetsFromForm(form: FormData) {
+  return Object.fromEntries(["delivery", "takeaway", "dine_in", "car_pickup"].map(type => {
+    const value = Number(form.get(`order_target_${type}`));
+    if (!Number.isInteger(value) || value < 1 || value > 1440) throw new Error("Order targets must be between 1 and 1440 minutes.");
+    return [type, value];
+  }));
 }

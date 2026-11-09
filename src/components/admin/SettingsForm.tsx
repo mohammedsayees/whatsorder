@@ -1,3 +1,4 @@
+import { defaultOrderTargets } from "@/lib/order-timing";
 import { updateRestaurantSettingsAction } from "@/app/actions";
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
@@ -23,6 +24,7 @@ export function SettingsForm({
 
   return (
     <form action={updateRestaurantSettingsAction} className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+      <fieldset className="mb-6 space-y-3"><legend className="font-black">Order time targets</legend><p className="text-sm text-stone-600">Minutes from submission to completion. Amber at 80% of target; red when the target is reached.</p>{Object.entries(defaultOrderTargets).map(([type, value]) => <label key={type} className="flex items-center justify-between gap-3"><span>{type.replaceAll("_", " ")}</span><input aria-label={`${type} target minutes`} name={`order_target_${type}`} type="number" min="1" max="1440" step="1" required disabled={!canWrite} defaultValue={restaurant.order_target_minutes?.[type as keyof typeof defaultOrderTargets] ?? value} className="w-24 rounded border p-2" /></label>)}</fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <h2 className="text-lg font-black">Brand images</h2>

@@ -12,6 +12,7 @@ export type QueuedStaffOrder = {
   restaurantId: string;
   queuedAt: string;
   attempts: number;
+  nextAttemptAt?: number;
   // "queued" entries auto-sync; "failed" entries were rejected by the server
   // (e.g. an item went unavailable while offline) and wait for staff to retry
   // or discard them.
@@ -52,9 +53,13 @@ async function withStore<T>(
 
   try {
     return await new Promise<T>((resolve, reject) => {
-      const request = run(db.transaction(STORE, mode).objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const transaction = db.transaction(STORE, mode);
+      const request = run(transaction.objectStore(STORE));
+      // A successful request can still be rolled back. Only clear its draft
+      // after the entire outbox transaction has committed.
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onerror = () => reject(transaction.error ?? request.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error("Offline save was aborted"));
     });
   } finally {
     db.close();
@@ -99,7 +104,7 @@ export async function removeQueuedOrder(clientOrderId: string): Promise<void> {
 
 export async function updateQueuedOrder(
   clientOrderId: string,
-  changes: Partial<Pick<QueuedStaffOrder, "status" | "lastError" | "attempts">>
+  changes: Partial<Pick<QueuedStaffOrder, "status" | "lastError" | "attempts" | "nextAttemptAt">>
 ): Promise<void> {
   const entry = await withStore<QueuedStaffOrder | undefined>(
     "readonly",

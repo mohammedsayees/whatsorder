@@ -174,7 +174,7 @@ npm run typecheck
 npm run build
 ```
 
-## V1 Scope
+## Current feature scope
 
 Included:
 
@@ -193,13 +193,17 @@ Included:
 - Loyalty points foundation for completed orders
 - Admin orders, menu, customers, settings, and analytics
 
-Not included in V1:
+- WhatsApp Cloud API and a separate QR-linked WhatsApp Web connector
+- AI receptionist and human handoff
+- Staff offline order queue, shifts, payment reconciliation, and printing
+- Saved-order confirmation and WhatsApp resend
+- Subscription administration, jobs, and demo onboarding
+- Background order notifications and owner daily recaps (transport configuration required)
+
+Not included:
 
 - Marketplace
 - Payment gateway
-- WhatsApp Business API
 - Delivery fleet
-- Subscription billing
 
-The code includes comments and structure for adding payments, WhatsApp Business API, campaigns,
-subscriptions, and multi-branch support later.
+Payment collection records cash/card/UPI; it does not process online payments. See [delivery rollout](docs/DELIVERY_RELIABILITY_ROLLOUT.md) for notification scheduling, delivery status, and release checks.
