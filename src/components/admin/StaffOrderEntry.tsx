@@ -102,6 +102,7 @@ export function StaffOrderEntry({
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
+  const [printCustomerBill, setPrintCustomerBill] = useState(false);
   const additionAttemptIdRef = useRef<string | null>(null);
 
   const { queue, syncingId, enqueue, retry, discard } = useStaffOrderQueue(restaurantId);
@@ -121,6 +122,7 @@ export function StaffOrderEntry({
   async function clearTicket() {
     await draftStore.finish();
     additionAttemptIdRef.current = null;
+    setPrintCustomerBill(false);
     setSearch("");
     setSelectedCategoryId("all");
   }
@@ -411,7 +413,10 @@ export function StaffOrderEntry({
         // stay for reprints and the customer bill. (Paid-now sales don't
         // auto-print; the counter decides whether a bill is needed.)
         if (action === "kitchen" && result.order) {
-          printSavedOrder(result.order, ["kot"]);
+          printSavedOrder(
+            result.order,
+            printCustomerBill ? ["receipt", "kot"] : ["kot"]
+          );
         }
       }
     } catch {
@@ -892,6 +897,21 @@ export function StaffOrderEntry({
             ) : null}
 
             {/* Primary flow: payment is collected later, at completion. */}
+            {!isAddingToOrder ? (
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm font-bold text-stone-700">
+                <input
+                  checked={printCustomerBill}
+                  className="h-5 w-5 shrink-0 accent-emerald-600"
+                  onChange={(event) => setPrintCustomerBill(event.target.checked)}
+                  type="checkbox"
+                />
+                <ReceiptText className="shrink-0 text-stone-500" size={18} />
+                <span>
+                  Print customer bill too
+                  <span className="block text-xs font-medium text-stone-500">Bill first, then KOT</span>
+                </span>
+              </label>
+            ) : null}
             <button
               className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
               disabled={pending || ticketLines.length === 0 || needsReview}
@@ -948,6 +968,17 @@ export function StaffOrderEntry({
                   {itemCount} item{itemCount === 1 ? "" : "s"}
                 </p>
                 <p className="text-lg font-black">{formatCurrency(total, restaurant)}</p>
+                {!isAddingToOrder ? (
+                  <label className="mt-1 flex cursor-pointer items-center gap-1.5 text-xs font-bold text-stone-600">
+                    <input
+                      checked={printCustomerBill}
+                      className="h-4 w-4 accent-emerald-600"
+                      onChange={(event) => setPrintCustomerBill(event.target.checked)}
+                      type="checkbox"
+                    />
+                    Print bill too
+                  </label>
+                ) : null}
               </div>
               <button
                 className="focus-ring rounded-lg bg-leaf px-5 py-3 font-black text-white disabled:opacity-60"
