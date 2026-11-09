@@ -9,6 +9,7 @@ import {
   shiftMarketplaceChannels,
   shiftMarketplaceLabels
 } from "@/lib/shift-reconciliation";
+import { resolveDailySummaryPhones } from "@/lib/daily-summary/recipients";
 
 export function SettingsForm({
   restaurant,
@@ -21,6 +22,7 @@ export function SettingsForm({
   const enabledMarketplaces = configuredMarketplaceChannels(
     restaurant.shift_marketplace_channels
   );
+  const dailySummaryPhones = resolveDailySummaryPhones(restaurant);
 
   return (
     <form action={updateRestaurantSettingsAction} className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
@@ -68,6 +70,38 @@ export function SettingsForm({
             Use country code format, for example {countryProfile.phoneExample}. Local {countryProfile.countryName} numbers are converted automatically.
           </span>
         </label>
+        <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <legend className="px-1 text-sm font-bold">Daily Coach WhatsApp report</legend>
+          <label className="mt-2 flex items-start gap-3">
+            <input
+              className="mt-1"
+              defaultChecked={restaurant.daily_summary_enabled !== false}
+              disabled={!canWrite}
+              name="daily_summary_enabled"
+              type="checkbox"
+            />
+            <span>
+              <span className="block text-sm font-black">Send the daily owner report</span>
+              <span className="mt-1 block text-xs leading-5 text-stone-500">
+                Generated each morning from the previous restaurant day.
+              </span>
+            </span>
+          </label>
+          <label className="mt-4 block">
+            <span className="text-sm font-bold">Owner WhatsApp recipients</span>
+            <textarea
+              className="focus-ring mt-1 min-h-28 w-full rounded-lg border border-stone-200 px-3 py-2"
+              defaultValue={dailySummaryPhones.join("\n")}
+              disabled={!canWrite}
+              name="daily_summary_phones"
+              placeholder={`${countryProfile.phoneExample}\n${countryProfile.phoneExample}`}
+            />
+            <span className="mt-1 block text-xs font-medium leading-5 text-stone-500">
+              Enter one number per line, up to five. Numbers are normalized and duplicates are removed.
+              Cloud API recipients must have an open 24-hour reply window; an active WhatsApp Web connection can send directly.
+            </span>
+          </label>
+        </fieldset>
         <fieldset className="rounded-lg border border-stone-200 p-4 sm:col-span-2">
           <legend className="px-1 text-sm font-bold">Available order types</legend>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">

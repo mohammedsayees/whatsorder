@@ -300,6 +300,75 @@ function comparisonLine(numbers: DailyNumbers) {
   } orders (${percentage > 0 ? "+" : ""}${percentage}%) than ${source}.`;
 }
 
+const fulfilmentLabels: Record<string, string> = {
+  delivery: "Delivery",
+  takeaway: "Takeaway",
+  dine_in: "Dine-in",
+  car_pickup: "Bring to My Car"
+};
+
+const paymentLabels: Record<string, string> = {
+  "Cash on Delivery": "Cash",
+  "Card on Delivery": "Card",
+  UPI: "UPI",
+  Unrecorded: "Unrecorded"
+};
+
+function dashboardUrl() {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (configured) {
+    return `${configured}/admin`;
+  }
+  const deployment =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  if (!deployment) {
+    return null;
+  }
+  return `https://${deployment.replace(/^https?:\/\//, "").replace(/\/$/, "")}/admin`;
+}
+
+function orderMixLine(numbers: DailyNumbers) {
+  const totals = new Map<string, number>();
+  for (const period of numbers.periods ?? []) {
+    for (const [type, value] of Object.entries(period.fulfilment_breakdown)) {
+      totals.set(type, (totals.get(type) ?? 0) + Number(value.orders || 0));
+    }
+  }
+  const mix = [...totals.entries()]
+    .filter(([, count]) => count > 0)
+    .toSorted((first, second) => second[1] - first[1])
+    .map(([type, count]) => `${fulfilmentLabels[type] ?? type}: ${count}`);
+  return mix.length > 0 ? `Order mix: ${mix.join(" • ")}.` : null;
+}
+
+function paymentMixLine(
+  numbers: DailyNumbers,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const mix = Object.entries(numbers.payment_breakdown ?? {})
+    .filter(([, value]) => Number(value.orders) > 0)
+    .toSorted((first, second) => second[1].orders - first[1].orders)
+    .map(
+      ([method, value]) =>
+        `${paymentLabels[method] ?? method}: ${value.orders} (${formatCurrency(
+          value.sales,
+          restaurant
+        )})`
+    );
+  return mix.length > 0 ? `Payment mix: ${mix.join(" • ")}.` : null;
+}
+
+function topItemsLine(numbers: DailyNumbers) {
+  const items = numbers.top_items?.length
+    ? numbers.top_items
+    : numbers.top_item
+      ? [numbers.top_item]
+      : [];
+  return items.length > 0
+    ? `Top sellers: ${items.map((item) => `${item.name} (${item.qty})`).join(" • ")}.`
+    : null;
+}
+
 function buildDailyCoachMessage(
   numbers: DailyNumbers,
   name: string,
@@ -311,9 +380,10 @@ function buildDailyCoachMessage(
   }
   const lines = [
     `Daily Coach — ${summaryDay(numbers.summary_date, restaurant)}`,
-    `${name}: ${numbers.order_count} completed order${
+    name,
+    `Performance: ${formatCurrency(numbers.gross_revenue, restaurant)} sales • ${numbers.order_count} completed order${
       numbers.order_count === 1 ? "" : "s"
-    } • ${formatCurrency(numbers.gross_revenue, restaurant)} sales • ${formatCurrency(
+    } • ${formatCurrency(
       numbers.avg_order_value,
       restaurant
     )} average order.`
@@ -325,24 +395,36 @@ function buildDailyCoachMessage(
 
   if (numbers.order_count === 0) {
     lines.push(
-      "No completed sales were recorded. Confirm ordering was enabled and feature one available item during the first open period today."
+      "Alert: no completed sales were recorded. Confirm ordering was enabled, opening hours were correct, and feature one available item during the first open period today."
     );
+    const link = dashboardUrl();
+    if (link) lines.push(`Open dashboard: ${link}`);
     return lines.join("\n");
   }
+
+  const orderMix = orderMixLine(numbers);
+  if (orderMix) lines.push(orderMix);
+  const paymentMix = paymentMixLine(numbers, restaurant);
+  if (paymentMix) lines.push(paymentMix);
+  const topItems = topItemsLine(numbers);
+  if (topItems) lines.push(topItems);
 
   const strongestPeriod = coach.periods
     .filter((period) => period.order_count > 0)
     .toSorted((first, second) => second.order_count - first.order_count)[0];
   const facts: string[] = strongestPeriod
-    ? [`${strongestPeriod.label} was strongest with ${strongestPeriod.order_count} orders`]
+    ? [`Peak: ${strongestPeriod.label} (${strongestPeriod.order_count} orders)`]
     : [];
-  if (strongestPeriod?.top_item) {
-    facts.push(
-      `${strongestPeriod.top_item.name} led there with ${strongestPeriod.top_item.qty} sold`
-    );
+  const totalAttempts = numbers.order_count + numbers.cancelled_count;
+  const cancellationRate = totalAttempts > 0
+    ? Math.round((numbers.cancelled_count / totalAttempts) * 100)
+    : 0;
+  facts.push(`Cancellations: ${numbers.cancelled_count} (${cancellationRate}%)`);
+  if ((numbers.repeat_customer_orders ?? 0) > 0) {
+    facts.push(`Returning-customer orders: ${numbers.repeat_customer_orders}`);
   }
   if (facts.length > 0) {
-    lines.push(`What stood out: ${facts.join(" • ")}.`);
+    lines.push(`Operations: ${facts.join(" • ")}.`);
   }
 
   if (coach.top_actions.length) {
@@ -355,6 +437,9 @@ function buildDailyCoachMessage(
   } else {
     lines.push("Today: no material period-level problem was detected; keep the current operation consistent.");
   }
+
+  const link = dashboardUrl();
+  if (link) lines.push(`Open dashboard: ${link}`);
 
   return lines.join("\n");
 }

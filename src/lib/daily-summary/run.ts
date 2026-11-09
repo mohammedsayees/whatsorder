@@ -7,14 +7,15 @@ import type { RestaurantLocalization } from "@/lib/types";
 import { computeDailyNumbers } from "./metrics";
 import { withDailyCoach } from "./coach";
 import { narrate } from "./narrate";
+import { resolveDailySummaryPhones } from "./recipients";
 import { sendOwnerMessage } from "./send";
 
 export type DailySummaryRunResult = {
   summary_date: string;
   processed: number;
-  sent: number; // accepted by the transport
+  sent: number; // recipient messages accepted by the transport
   generated: number; // recap persisted, regardless of outbound delivery
-  skipped_empty: number; // zero-order day (still produces an encouraging line)
+  skipped_empty: number; // retained for compatibility; zero-order alerts are now sent
   already_done: number; // a non-failed run already existed (idempotency)
   failed: number;
 };
@@ -71,7 +72,7 @@ export async function runDailySummary(options?: {
 
   const { data: restaurants, error } = await admin
     .from("restaurants")
-    .select("id, name, owner_phone, daily_summary_phone, country_code, currency_code, locale, phone_country_code, time_zone, opening_hours_enabled, opening_hours")
+    .select("id, name, owner_phone, daily_summary_phone, daily_summary_phones, country_code, currency_code, locale, phone_country_code, time_zone, opening_hours_enabled, opening_hours")
     .eq("is_active", true)
     .eq("is_demo", false)
     .eq("daily_summary_enabled", true);
@@ -116,22 +117,72 @@ export async function runDailySummary(options?: {
       // Commit the generated recap before attempting an external side effect.
       await save({ numbers, message_text: message, error: null });
       result.generated++;
-      if (numbers.order_count === 0) {
-        await save({ status: "skipped_empty", delivery_status: "skipped", delivery_reason: "empty_day", lease_until: null });
-        result.skipped_empty++;
-        continue;
-      }
-      const phone = restaurant.daily_summary_phone ?? restaurant.owner_phone ?? null;
+      const phones = resolveDailySummaryPhones(restaurant);
       await save({ delivery_status: "sending" });
       deliveryStarted = true;
-      const delivery = await sendOwnerMessage(restaurant.id, phone, message, restaurant.phone_country_code);
+      const deliveries: Array<{
+        phone: string | null;
+        delivered: boolean;
+        reason: string;
+      }> = [];
+
+      if (phones.length === 0) {
+        deliveries.push({ phone: null, delivered: false, reason: "no_phone" });
+      } else {
+        for (const phone of phones) {
+          try {
+            const delivery = await sendOwnerMessage(
+              restaurant.id,
+              phone,
+              message,
+              restaurant.phone_country_code
+            );
+            deliveries.push({ phone, ...delivery });
+          } catch (deliveryError) {
+            console.error("Daily summary recipient delivery failed", {
+              restaurantId: restaurant.id,
+              recipientLast4: phone.slice(-4),
+              error:
+                deliveryError instanceof Error
+                  ? deliveryError.message
+                  : "Recipient delivery failed"
+            });
+            deliveries.push({ phone, delivered: false, reason: "delivery_error" });
+          }
+        }
+      }
+
+      const deliveredCount = deliveries.filter((delivery) => delivery.delivered).length;
+      const hardFailure = deliveries.some((delivery) =>
+        ["transport_failed", "delivery_error"].includes(delivery.reason)
+      );
+      const allDelivered = phones.length > 0 && deliveredCount === phones.length;
+      const deliveryStatus = allDelivered
+        ? "accepted"
+        : deliveredCount > 0
+          ? "partial"
+          : hardFailure
+            ? "failed"
+            : "skipped";
+      let deliveryReason = "accepted";
+      if (!allDelivered && deliveries.length === 1) {
+        deliveryReason = deliveries[0].reason;
+      } else if (!allDelivered) {
+        deliveryReason = `${deliveredCount}/${phones.length} accepted; ${deliveries
+          .filter((delivery) => !delivery.delivered)
+          .map((delivery) => delivery.reason)
+          .join(", ")}`;
+      }
+
       await save({
-        status: delivery.reason === "transport_failed" ? "failed" : "generated",
-        delivery_status: delivery.delivered ? "accepted" : delivery.reason === "transport_failed" ? "failed" : "skipped",
-        delivery_reason: delivery.reason, lease_until: null
+        status: deliveredCount === 0 && hardFailure ? "failed" : "generated",
+        delivery_status: deliveryStatus,
+        delivery_reason: deliveryReason,
+        delivery_results: deliveries,
+        lease_until: null
       });
-      if (delivery.delivered) result.sent++;
-      if (delivery.reason === "transport_failed") result.failed++;
+      result.sent += deliveredCount;
+      if (hardFailure) result.failed++;
     } catch (caught) {
       result.failed++;
       const message = caught instanceof Error ? caught.message : "Daily summary failed";

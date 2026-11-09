@@ -39,6 +39,7 @@ type Store = {
     name: string;
     owner_phone: string | null;
     daily_summary_phone: string | null;
+    daily_summary_phones?: string[] | null;
   }>;
   existing: Record<string, { status: string } | null>;
   upserts: Array<Record<string, unknown>>;
@@ -181,8 +182,8 @@ describe("runDailySummary", () => {
   it("records a normal day and skips one already done (idempotency)", async () => {
     const store = emptyStore();
     store.restaurants = [
-      { id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null },
-      { id: "r2", name: "B", owner_phone: "222", daily_summary_phone: null }
+      { id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null },
+      { id: "r2", name: "B", owner_phone: "971500000002", daily_summary_phone: null }
     ];
     store.existing["r1|2026-06-25"] = { status: "sent" };
     hoisted.numbersById = { r2: numbers({ order_count: 5 }) };
@@ -195,25 +196,33 @@ describe("runDailySummary", () => {
     expect(store.upserts[2]).toMatchObject({ restaurant_id: "r2", status: "generated", delivery_status: "accepted" });
   });
 
-  it("records a zero-order day as skipped_empty (still produces a message)", async () => {
+  it("sends a zero-order alert instead of silently skipping the owner", async () => {
     const store = emptyStore();
-    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null }];
     hoisted.numbersById = { r1: numbers({ order_count: 0 }) };
     hoisted.admin = makeAdmin(store);
 
     const result = await runDailySummary({ targetDay: "2026-06-25" });
 
-    expect(result).toMatchObject({ skipped_empty: 1, sent: 0 });
+    expect(result).toMatchObject({ skipped_empty: 0, sent: 1 });
     expect(store.upserts[0]).toMatchObject({ message_text: "MESSAGE" });
-    expect(store.upserts[1]).toMatchObject({ status: "skipped_empty" });
-    expect(hoisted.send).not.toHaveBeenCalled();
+    expect(store.upserts[2]).toMatchObject({
+      status: "generated",
+      delivery_status: "accepted"
+    });
+    expect(hoisted.send).toHaveBeenCalledWith(
+      "r1",
+      "971500000001",
+      "MESSAGE",
+      undefined
+    );
   });
 
   it("isolates a per-restaurant failure and continues the batch", async () => {
     const store = emptyStore();
     store.restaurants = [
-      { id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null },
-      { id: "r2", name: "B", owner_phone: "222", daily_summary_phone: null }
+      { id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null },
+      { id: "r2", name: "B", owner_phone: "971500000002", daily_summary_phone: null }
     ];
     hoisted.numbersById = { r1: "throw", r2: numbers({ order_count: 5 }) };
     hoisted.admin = makeAdmin(store);
@@ -228,7 +237,7 @@ describe("runDailySummary", () => {
 
   it("retries a previously failed run", async () => {
     const store = emptyStore();
-    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null }];
     store.existing["r1|2026-06-25"] = { status: "failed" };
     hoisted.numbersById = { r1: numbers({ order_count: 5 }) };
     hoisted.admin = makeAdmin(store);
@@ -240,7 +249,7 @@ describe("runDailySummary", () => {
   });
   it("does not report an undelivered recap as sent", async () => {
     const store = emptyStore();
-    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null }];
     hoisted.numbersById = { r1: numbers() };
     hoisted.admin = makeAdmin(store);
     hoisted.send.mockResolvedValue({ delivered: false, reason: "no_open_service_window" });
@@ -250,12 +259,77 @@ describe("runDailySummary", () => {
 
   it("does not send if generation cannot be persisted", async () => {
     const store = emptyStore();
-    store.restaurants = [{ id: "r1", name: "A", owner_phone: "111", daily_summary_phone: null }];
+    store.restaurants = [{ id: "r1", name: "A", owner_phone: "971500000001", daily_summary_phone: null }];
     hoisted.numbersById = { r1: numbers() };
     hoisted.admin = makeAdmin(store);
     hoisted.writeError = true;
     expect(await runDailySummary()).toMatchObject({ failed: 1, sent: 0 });
     expect(hoisted.send).not.toHaveBeenCalled();
+  });
+
+  it("sends the same recap to every configured owner recipient", async () => {
+    const store = emptyStore();
+    store.restaurants = [{
+      id: "r1",
+      name: "A",
+      owner_phone: "971500000099",
+      daily_summary_phone: null,
+      daily_summary_phones: ["971500000001", "971500000002"]
+    }];
+    hoisted.numbersById = { r1: numbers() };
+    hoisted.admin = makeAdmin(store);
+
+    const result = await runDailySummary({ targetDay: "2026-06-25" });
+
+    expect(result).toMatchObject({ sent: 2, failed: 0 });
+    expect(hoisted.send).toHaveBeenNthCalledWith(
+      1,
+      "r1",
+      "971500000001",
+      "MESSAGE",
+      undefined
+    );
+    expect(hoisted.send).toHaveBeenNthCalledWith(
+      2,
+      "r1",
+      "971500000002",
+      "MESSAGE",
+      undefined
+    );
+    expect(store.upserts[2]).toMatchObject({
+      delivery_status: "accepted",
+      delivery_reason: "accepted",
+      delivery_results: [
+        { phone: "971500000001", delivered: true, reason: "accepted" },
+        { phone: "971500000002", delivered: true, reason: "accepted" }
+      ]
+    });
+  });
+
+  it("records partial delivery without retrying recipients that succeeded", async () => {
+    const store = emptyStore();
+    store.restaurants = [{
+      id: "r1",
+      name: "A",
+      owner_phone: null,
+      daily_summary_phone: null,
+      daily_summary_phones: ["971500000001", "971500000002"]
+    }];
+    hoisted.numbersById = { r1: numbers() };
+    hoisted.admin = makeAdmin(store);
+    hoisted.send
+      .mockResolvedValueOnce({ delivered: true, reason: "accepted" })
+      .mockResolvedValueOnce({ delivered: false, reason: "no_open_service_window" });
+
+    expect(await runDailySummary({ targetDay: "2026-06-25" })).toMatchObject({
+      sent: 1,
+      failed: 0
+    });
+    expect(store.upserts[2]).toMatchObject({
+      status: "generated",
+      delivery_status: "partial",
+      delivery_reason: "1/2 accepted; no_open_service_window"
+    });
   });
 
 });

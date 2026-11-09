@@ -6,6 +6,11 @@ export type DailySummaryCardData = {
   status: string;
   delivery_status?: string;
   delivery_reason?: string | null;
+  delivery_results?: Array<{
+    phone: string | null;
+    delivered: boolean;
+    reason: string;
+  }> | null;
   message_text: string | null;
   numbers: import("@/lib/daily-summary/types").DailyNumbers | null;
 };
@@ -25,7 +30,7 @@ export async function getLatestDailySummary(
 
   const { data, error } = await supabase
     .from("daily_summary_runs")
-    .select("summary_date, status, message_text, numbers, delivery_status, delivery_reason")
+    .select("summary_date, status, message_text, numbers, delivery_status, delivery_reason, delivery_results")
     .eq("restaurant_id", restaurantId)
     .order("summary_date", { ascending: false })
     .limit(1)

@@ -16,6 +16,7 @@ import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
+import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -838,6 +839,11 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       cover_image_url: stringValue(formData, "cover_image_url") || null,
       whatsapp_number: normalizeWhatsAppNumber(
         stringValue(formData, "whatsapp_number"),
+        restaurant.phone_country_code
+      ),
+      daily_summary_enabled: formData.get("daily_summary_enabled") === "on",
+      daily_summary_phones: parseDailySummaryPhones(
+        stringValue(formData, "daily_summary_phones"),
         restaurant.phone_country_code
       ),
       address: stringValue(formData, "address") || null,

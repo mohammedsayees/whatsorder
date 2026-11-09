@@ -20,7 +20,14 @@ export type DailyNumbers = {
   // any "message them" suggestion must be gated on marketable_count > 0.
   contact_capture_rate: number | null;
   marketable_count: number;
+  repeat_customer_orders?: number;
+  new_customer_orders?: number;
   top_item: { name: string; qty: number } | null;
+  top_items?: Array<{ name: string; qty: number }>;
+  payment_breakdown?: Record<
+    string,
+    { orders: number; sales: number }
+  >;
   top_combo: { a: string; b: string; count: number } | null;
   // Biggest week-over-week menu movers by quantity (this 7 days vs the prior 7).
   item_riser: { name: string; this_week: number; prev_week: number } | null;
@@ -117,4 +124,12 @@ export type DailyCoachRpcResult = {
   new_customer_orders: number;
   periods: DailyPeriodInsight[];
   location_insights: DailyLocationInsight[];
+};
+
+export type DailyOwnerReportRpcResult = {
+  top_items: Array<{ name: string; qty: number }>;
+  payment_breakdown: Record<
+    string,
+    { orders: number; sales: number }
+  >;
 };

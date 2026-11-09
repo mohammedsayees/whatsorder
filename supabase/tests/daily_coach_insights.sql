@@ -231,6 +231,7 @@ do $daily_coach_checks$
 declare
   insight jsonb;
   morning jsonb;
+  owner_report jsonb;
 begin
   insight := public.daily_coach_insights(
     '26000000-0000-0000-0000-000000000001',
@@ -261,6 +262,23 @@ begin
 
   if jsonb_array_length(insight->'location_insights') <> 1 then
     raise exception 'Location privacy threshold or aggregation is incorrect';
+  end if;
+
+  owner_report := public.daily_owner_report_insights(
+    '26000000-0000-0000-0000-000000000001',
+    '2026-07-13'::date
+  );
+
+  if jsonb_array_length(owner_report->'top_items') <> 3
+     or (owner_report->'top_items'->0->>'name') <> 'Karak Tea'
+     or (owner_report->'top_items'->0->>'qty')::numeric <> 3 then
+    raise exception 'Owner report top items are incorrect: %', owner_report;
+  end if;
+
+  if (owner_report->'payment_breakdown'->'Cash on Delivery'->>'orders')::integer <> 3
+     or (owner_report->'payment_breakdown'->'Cash on Delivery'->>'sales')::numeric <> 35
+     or (owner_report->'payment_breakdown'->'Card on Delivery'->>'orders')::integer <> 1 then
+    raise exception 'Owner report payment mix is incorrect: %', owner_report;
   end if;
 end;
 $daily_coach_checks$;

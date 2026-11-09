@@ -2,7 +2,11 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { DailyCoachRpcResult, DailyNumbers } from "./types";
+import type {
+  DailyCoachRpcResult,
+  DailyNumbers,
+  DailyOwnerReportRpcResult
+} from "./types";
 
 /**
  * Returns yesterday's deterministic numbers for one restaurant by delegating to
@@ -25,10 +29,14 @@ export async function computeDailyNumbers(
   }
 
   const summaryPromise = admin.rpc("daily_summary_numbers", params);
-  const [summaryResult, coachResult] = targetDay
+  const [summaryResult, coachResult, ownerReportResult] = targetDay
     ? await Promise.all([
         summaryPromise,
         admin.rpc("daily_coach_insights", {
+          rid: restaurantId,
+          target_day: targetDay
+        }),
+        admin.rpc("daily_owner_report_insights", {
           rid: restaurantId,
           target_day: targetDay
         })
@@ -38,13 +46,20 @@ export async function computeDailyNumbers(
         const summaryDate = (summary.data as { summary_date?: string } | null)
           ?.summary_date;
         if (!summaryDate) {
-          return [summary, { data: null, error: new Error("Missing summary date") }] as const;
+          const missing = { data: null, error: new Error("Missing summary date") };
+          return [summary, missing, missing] as const;
         }
-        const coach = await admin.rpc("daily_coach_insights", {
-          rid: restaurantId,
-          target_day: summaryDate
-        });
-        return [summary, coach] as const;
+        const [coach, ownerReport] = await Promise.all([
+          admin.rpc("daily_coach_insights", {
+            rid: restaurantId,
+            target_day: summaryDate
+          }),
+          admin.rpc("daily_owner_report_insights", {
+            rid: restaurantId,
+            target_day: summaryDate
+          })
+        ]);
+        return [summary, coach, ownerReport] as const;
       })();
 
   if (summaryResult.error) {
@@ -59,9 +74,18 @@ export async function computeDailyNumbers(
   if (!coachResult.data) {
     throw new Error("daily_coach_insights returned no data");
   }
+  if (ownerReportResult.error) {
+    throw new Error(
+      `daily_owner_report_insights failed: ${ownerReportResult.error.message}`
+    );
+  }
+  if (!ownerReportResult.data) {
+    throw new Error("daily_owner_report_insights returned no data");
+  }
 
   const legacy = summaryResult.data as DailyNumbers;
   const coach = coachResult.data as DailyCoachRpcResult;
+  const ownerReport = ownerReportResult.data as DailyOwnerReportRpcResult;
   const contactCaptureRate =
     coach.completed_order_count > 0
       ? coach.contact_count / coach.completed_order_count
@@ -81,6 +105,10 @@ export async function computeDailyNumbers(
     cancelled_count: coach.cancelled_count,
     contact_capture_rate: contactCaptureRate,
     marketable_count: coach.marketable_count,
+    repeat_customer_orders: coach.repeat_customer_orders,
+    new_customer_orders: coach.new_customer_orders,
+    top_items: ownerReport.top_items,
+    payment_breakdown: ownerReport.payment_breakdown,
     periods: coach.periods,
     location_insights: coach.location_insights
   };

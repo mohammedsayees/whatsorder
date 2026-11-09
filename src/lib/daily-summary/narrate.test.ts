@@ -111,7 +111,16 @@ describe("buildTemplateMessage", () => {
         gross_revenue: 80,
         avg_order_value: 20,
         last_week_count: 8,
-        delta_vs_last_week: -4
+        delta_vs_last_week: -4,
+        repeat_customer_orders: 2,
+        top_items: [
+          { name: "Karak Tea", qty: 4 },
+          { name: "Samosa", qty: 2 }
+        ],
+        payment_breakdown: {
+          "Cash on Delivery": { orders: 3, sales: 60 },
+          "Card on Delivery": { orders: 1, sales: 20 }
+        }
       }),
       periods: [
         {
@@ -130,7 +139,10 @@ describe("buildTemplateMessage", () => {
           repeat_customer_orders: 2,
           new_customer_orders: 0,
           delivery_order_count: 0,
-          fulfilment_breakdown: {},
+          fulfilment_breakdown: {
+            delivery: { orders: 3, sales: 60 },
+            takeaway: { orders: 1, sales: 20 }
+          },
           top_item: { name: "Karak Tea", qty: 4 },
           top_delivery_area: null
         }
@@ -139,9 +151,31 @@ describe("buildTemplateMessage", () => {
     const message = buildTemplateMessage(n, "Chai Xpress");
     expect(message).toContain("Daily Coach");
     expect(message).toContain("4 completed orders");
+    expect(message).toContain("Order mix: Delivery: 3 • Takeaway: 1");
+    expect(message).toContain("Payment mix: Cash: 3");
+    expect(message).toContain("Card: 1");
+    expect(message).toContain("Top sellers: Karak Tea (4) • Samosa (2)");
+    expect(message).toContain("Returning-customer orders: 2");
     expect(message).toContain("Morning:");
     expect(message).toContain("Today's priorities");
     expect(message).not.toContain("can't win back");
+  });
+
+  it("renders a zero-order alert with a dashboard link", () => {
+    const previousUrl = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = "https://example.com/";
+    try {
+      const n = withDailyCoach(numbers({ order_count: 0, gross_revenue: 0 }));
+      const message = buildTemplateMessage(n, "Chai Xpress");
+      expect(message).toContain("Alert: no completed sales");
+      expect(message).toContain("Open dashboard: https://example.com/admin");
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_APP_URL;
+      } else {
+        process.env.NEXT_PUBLIC_APP_URL = previousUrl;
+      }
+    }
   });
 });
 

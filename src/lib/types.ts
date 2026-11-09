@@ -82,6 +82,9 @@ export type Restaurant = PublicRestaurant & {
   owner_name?: string | null;
   owner_email?: string | null;
   owner_phone?: string | null;
+  daily_summary_enabled?: boolean;
+  daily_summary_phone?: string | null;
+  daily_summary_phones?: string[];
   status?: RestaurantStatus;
   plan?: RestaurantPlan;
   activated_at?: string | null;
