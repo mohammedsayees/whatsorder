@@ -25,8 +25,7 @@ import {
   Share2,
   ShoppingBag,
   Star,
-  Utensils,
-  X
+  Utensils
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { minimumOrderRemaining } from "@/lib/security";
@@ -46,7 +45,6 @@ import { cartLineKey } from "@/lib/cart-line";
 import { useCart } from "@/components/customer/CartProvider";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
-import { ReturningCustomerPanel } from "@/components/customer/ReturningCustomerPanel";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
@@ -81,6 +79,25 @@ const ItemOptionsSheet = dynamic(
       </div>
     )
   }
+);
+
+// Anonymous customers have no loyalty or reorder content. Keep that UI and its
+// icons out of the critical menu chunk; Next only loads it when the server
+// supplies returning-customer data.
+const ReturningCustomerPanel = dynamic(() =>
+  import("@/components/customer/ReturningCustomerPanel").then(
+    (module) => module.ReturningCustomerPanel
+  )
+);
+
+// The category drawer is interaction-only. Loading it on the first category
+// button tap keeps its markup and close icon out of the initial menu chunk.
+const CategorySheet = dynamic(
+  () =>
+    import("@/components/customer/CategorySheet").then(
+      (module) => module.CategorySheet
+    ),
+  { ssr: false }
 );
 
 type CategoryWithItems = {
@@ -142,6 +159,9 @@ export function RestaurantMenu({
   );
   const orderingAvailable =
     restaurant.accepting_orders !== false && scheduleOpen;
+  const hasReturningCustomerContent =
+    Boolean(loyalty?.enabled && (loyalty.stamps_required ?? 0) > 0) ||
+    recentOrders.length > 0;
   const weeklyHours = normalizeOpeningHours(restaurant.opening_hours);
   const hasBestSellers = items.some((item) => item.is_featured && item.is_available);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
@@ -584,12 +604,14 @@ export function RestaurantMenu({
           </div>
         </section>
 
-        <ReturningCustomerPanel
-          language={language}
-          loyalty={loyalty}
-          recentOrders={recentOrders}
-          restaurant={restaurant}
-        />
+        {hasReturningCustomerContent ? (
+          <ReturningCustomerPanel
+            language={language}
+            loyalty={loyalty}
+            recentOrders={recentOrders}
+            restaurant={restaurant}
+          />
+        ) : null}
 
         {isSearchOpen ? (
           <section className="px-4 pt-4">
@@ -922,60 +944,13 @@ export function RestaurantMenu({
       ) : null}
 
       {isCategorySheetOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40" role="dialog" aria-modal="true">
-          <button
-            aria-label={t.closeCategories}
-            className="absolute inset-0 cursor-default"
-            onClick={() => setIsCategorySheetOpen(false)}
-            type="button"
-          />
-
-          <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl">
-            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-stone-200" />
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-ink">{t.browseCategories}</h2>
-                <p className="text-sm text-stone-500">{t.jumpStraight}</p>
-              </div>
-              <button
-                aria-label={t.closeCategories}
-                className="focus-ring grid h-10 w-10 place-items-center rounded-full border border-stone-200 bg-white text-ink"
-                onClick={() => setIsCategorySheetOpen(false)}
-                type="button"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="grid gap-2">
-              {categoriesWithItems.map(({ category, availableItemCount }) => (
-                <button
-                  key={category.id}
-                  className={`focus-ring grid grid-cols-[1fr_auto] items-center gap-4 rounded-2xl border px-4 py-3 text-start ${
-                    visibleActiveCategoryId === category.id
-                      ? "border-leaf bg-mint/10"
-                      : "border-stone-200 bg-white"
-                  }`}
-                  onClick={() => scrollToCategory(category.id)}
-                  type="button"
-                >
-                  <div>
-                    <p className="font-bold text-ink">
-                      {language === "ar" && category.name_ar ? category.name_ar : category.name}
-                    </p>
-                    <p className="text-sm text-stone-500">{t.categoryDrawerHint}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="min-w-8 rounded-full bg-stone-100 px-2.5 py-1 text-center text-sm font-black text-ink">
-                      {availableItemCount}
-                    </span>
-                    <ChevronLeft className="rotate-180 text-stone-400" size={18} />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <CategorySheet
+          activeCategoryId={visibleActiveCategoryId}
+          categories={categoriesWithItems}
+          language={language}
+          onClose={() => setIsCategorySheetOpen(false)}
+          onSelect={scrollToCategory}
+        />
       ) : null}
 
       {optionsSheet ? (
