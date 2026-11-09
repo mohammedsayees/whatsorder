@@ -471,9 +471,9 @@ export function StaffOrderEntry({
         />
       ) : null}
 
-      <div className="grid gap-6 pb-24 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:pb-0">
+      <div className="grid min-w-0 gap-6 pb-24 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:pb-0">
       {/* Menu picker */}
-      <section className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
+      <section className="min-w-0 flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
         <label className="relative block">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -575,9 +575,9 @@ export function StaffOrderEntry({
       </section>
 
       {/* Ticket */}
-      <section className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
+      <section className="min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
         <form
-          className="flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
+          className="min-w-0 flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
           key={draft?.id}
           onSubmit={handleSubmit}
         >
@@ -606,17 +606,19 @@ export function StaffOrderEntry({
 
                 return (
                   <div
-                    className="flex items-center gap-2 rounded-lg border border-stone-100 px-3 py-2"
+                    className="flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-stone-100 px-3 py-2"
                     key={lineKey}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{line.name}</p>
+                      <p className="truncate text-sm font-bold" title={line.name}>
+                        {line.name}
+                      </p>
                       {optionsText ? (
                         <p className="truncate text-xs text-stone-500">{optionsText}</p>
                       ) : null}
                       <p className="text-xs text-stone-500">{formatCurrency(line.price, restaurant)}</p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <button
                         aria-label={`Reduce ${line.name}`}
                         className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
@@ -635,12 +637,12 @@ export function StaffOrderEntry({
                         <Plus size={15} />
                       </button>
                     </div>
-                    <span className="w-16 text-right text-sm font-black">
+                    <span className="w-16 shrink-0 whitespace-nowrap text-right text-sm font-black">
                       {formatCurrency(line.price * line.quantity, restaurant)}
                     </span>
                     <button
                       aria-label={`Remove ${line.name}`}
-                      className="focus-ring grid h-8 w-8 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
+                      className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
                       onClick={() => removeItem(lineKey)}
                       type="button"
                     >
