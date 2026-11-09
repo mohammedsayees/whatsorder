@@ -17,6 +17,7 @@ export function printHtmlDocument(
   iframe.style.border = "0";
 
   let cleanedUp = false;
+  let printStarted = false;
   const cleanup = () => {
     if (cleanedUp) {
       return;
@@ -29,6 +30,13 @@ export function printHtmlDocument(
   };
 
   iframe.onload = () => {
+    // Some browsers can dispatch more than one load event while preparing an
+    // iframe. Never allow that to create a duplicate (or blank) print job.
+    if (printStarted) {
+      return;
+    }
+    printStarted = true;
+
     const frameWindow = iframe.contentWindow;
     if (!frameWindow) {
       onError?.("Unable to render the print preview. Please try again.");
@@ -45,16 +53,10 @@ export function printHtmlDocument(
     window.setTimeout(cleanup, 60_000);
   };
 
+  // Set the complete document before attaching the iframe. Appending an empty
+  // iframe and then document.write()-ing into it can produce two load events:
+  // one for about:blank and one for the ticket. In kiosk-printing mode that can
+  // become a blank print followed by the real ticket.
+  iframe.srcdoc = html;
   document.body.appendChild(iframe);
-
-  const frameDocument = iframe.contentWindow?.document;
-  if (!frameDocument) {
-    onError?.("Unable to render the print preview. Please try again.");
-    iframe.remove();
-    return;
-  }
-
-  frameDocument.open();
-  frameDocument.write(html);
-  frameDocument.close();
 }
