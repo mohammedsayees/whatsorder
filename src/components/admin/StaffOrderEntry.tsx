@@ -606,48 +606,57 @@ export function StaffOrderEntry({
 
                 return (
                   <div
-                    className="flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-stone-100 px-3 py-2"
+                    className="min-w-0 rounded-lg border border-stone-100 px-3 py-2"
                     key={lineKey}
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold" title={line.name}>
-                        {line.name}
-                      </p>
-                      {optionsText ? (
-                        <p className="truncate text-xs text-stone-500">{optionsText}</p>
-                      ) : null}
-                      <p className="text-xs text-stone-500">{formatCurrency(line.price, restaurant)}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="line-clamp-2 break-words text-sm font-bold leading-tight"
+                          title={line.name}
+                        >
+                          {line.name}
+                        </p>
+                        {optionsText ? (
+                          <p className="truncate text-xs text-stone-500">{optionsText}</p>
+                        ) : null}
+                        <p className="mt-0.5 text-xs text-stone-500">
+                          {formatCurrency(line.price, restaurant)}
+                        </p>
+                      </div>
                       <button
-                        aria-label={`Reduce ${line.name}`}
-                        className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                        onClick={() => changeQuantity(lineKey, -1)}
+                        aria-label={`Remove ${line.name}`}
+                        className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
+                        onClick={() => removeItem(lineKey)}
                         type="button"
                       >
-                        <Minus size={15} />
-                      </button>
-                      <span className="w-6 text-center text-sm font-black">{line.quantity}</span>
-                      <button
-                        aria-label={`Add ${line.name}`}
-                        className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                        onClick={() => changeQuantity(lineKey, 1)}
-                        type="button"
-                      >
-                        <Plus size={15} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
-                    <span className="w-16 shrink-0 whitespace-nowrap text-right text-sm font-black">
-                      {formatCurrency(line.price * line.quantity, restaurant)}
-                    </span>
-                    <button
-                      aria-label={`Remove ${line.name}`}
-                      className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
-                      onClick={() => removeItem(lineKey)}
-                      type="button"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <div className="mt-2 flex items-center gap-2 border-t border-stone-100 pt-2">
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          aria-label={`Reduce ${line.name}`}
+                          className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
+                          onClick={() => changeQuantity(lineKey, -1)}
+                          type="button"
+                        >
+                          <Minus size={15} />
+                        </button>
+                        <span className="w-6 text-center text-sm font-black">{line.quantity}</span>
+                        <button
+                          aria-label={`Add ${line.name}`}
+                          className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
+                          onClick={() => changeQuantity(lineKey, 1)}
+                          type="button"
+                        >
+                          <Plus size={15} />
+                        </button>
+                      </div>
+                      <span className="ml-auto shrink-0 whitespace-nowrap text-right text-sm font-black">
+                        {formatCurrency(line.price * line.quantity, restaurant)}
+                      </span>
+                    </div>
                   </div>
                 );
               })
