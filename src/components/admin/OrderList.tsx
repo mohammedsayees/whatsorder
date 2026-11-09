@@ -4,7 +4,13 @@ import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDateTime } from "@/lib/date-time";
-import type { Customer, Order, Restaurant } from "@/lib/types";
+import type {
+  Customer,
+  DeliveryRider,
+  Order,
+  OrderRiderAssignment,
+  Restaurant
+} from "@/lib/types";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
 import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
@@ -13,15 +19,20 @@ import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton"
 import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
 import { CarFront, Gift, MapPin, PlusCircle, ShoppingBag, Truck, Utensils } from "lucide-react";
 import type { OrderPaymentChange } from "@/lib/data";
+import { RiderAssignmentControl } from "@/components/admin/RiderAssignmentControl";
 
 export function OrderList({
   orders,
   restaurant,
+  riders = [],
+  riderAssignments = {},
   customers = [],
   paymentChanges = {}
 }: {
   orders: Order[];
   restaurant: Restaurant;
+  riders?: DeliveryRider[];
+  riderAssignments?: Record<string, OrderRiderAssignment>;
   customers?: Customer[];
   paymentChanges?: Record<string, OrderPaymentChange>;
 }) {
@@ -181,6 +192,14 @@ export function OrderList({
                   paymentMethod={order.payment_method}
                   status={order.status}
                 />
+                {fulfilmentType === "delivery" &&
+                !["Completed", "Cancelled"].includes(order.status) ? (
+                  <RiderAssignmentControl
+                    assignment={riderAssignments[order.id]}
+                    orderId={order.id}
+                    riders={riders}
+                  />
+                ) : null}
                 {order.payment_method ? (
                   <PaymentMethodControl
                     change={paymentChanges[order.id] ?? null}

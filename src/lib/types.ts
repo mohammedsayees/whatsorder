@@ -324,6 +324,26 @@ export type Order = {
   updated_at: string;
 };
 
+export type DeliveryRider = {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  phone: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type OrderRiderAssignment = {
+  id: string;
+  restaurant_id: string;
+  order_id: string;
+  rider_id: string;
+  delivery_status: "sending" | "accepted" | "skipped" | "failed";
+  delivery_reason: string | null;
+  transport_message_id: string | null;
+  created_at: string;
+};
+
 export type ShiftStatus = "open" | "closed";
 
 export type ShiftFulfilmentSummary = Partial<

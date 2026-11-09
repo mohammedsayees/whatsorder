@@ -1,8 +1,11 @@
 import { LoyaltySettingsForm } from "@/components/admin/LoyaltySettingsForm";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
+import { RiderSettings } from "@/components/admin/RiderSettings";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
+import { getCountryProfile } from "@/lib/localization";
+import { getDeliveryRiders } from "@/lib/rider-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -10,7 +13,10 @@ export default async function AdminSettingsPage() {
   const session = await requireRestaurantAdmin();
   const restaurant = session.restaurant;
 
-  const access = await getTenantAccess(session.restaurantId);
+  const [access, riders] = await Promise.all([
+    getTenantAccess(session.restaurantId),
+    getDeliveryRiders(session.restaurantId)
+  ]);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Restaurant settings" />;
   }
@@ -32,6 +38,15 @@ export default async function AdminSettingsPage() {
       <div className="mt-6">
         <SettingsForm restaurant={restaurant} canWrite={canWrite} />
       </div>
+      {session.role !== "staff" ? (
+        <div className="mt-6">
+          <RiderSettings
+            canWrite={canWrite}
+            phoneExample={getCountryProfile(restaurant.country_code).phoneExample}
+            riders={riders}
+          />
+        </div>
+      ) : null}
       {canEditLoyalty ? (
         <div className="mt-6">
           <LoyaltySettingsForm restaurant={restaurant} canWrite={canWrite} />

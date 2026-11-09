@@ -14,6 +14,10 @@ import {
 } from "@/lib/data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getCurrentShiftView } from "@/lib/shift-data";
+import {
+  getDeliveryRiders,
+  getLatestOrderRiderAssignments
+} from "@/lib/rider-data";
 
 const statusTabs: { label: string; value: OrderStatusView }[] = [
   { label: "Active", value: "active" },
@@ -71,15 +75,18 @@ export default async function AdminOrdersPage({
     );
   }
 
-  const [customers, paymentChanges] = await Promise.all([
+  const orderIds = ordersPage.items.map((order) => order.id);
+  const [customers, paymentChanges, riders, riderAssignments] = await Promise.all([
     getCustomersByPhones(
       restaurant.id,
       ordersPage.items.map((order) => order.customer_phone)
     ),
     getOrderPaymentChanges(
       restaurant.id,
-      ordersPage.items.map((order) => order.id)
-    )
+      orderIds
+    ),
+    getDeliveryRiders(restaurant.id),
+    getLatestOrderRiderAssignments(restaurant.id, orderIds)
   ]);
 
   return (
@@ -156,6 +163,8 @@ export default async function AdminOrdersPage({
             orders={ordersPage.items}
             paymentChanges={paymentChanges}
             restaurant={restaurant}
+            riderAssignments={riderAssignments}
+            riders={riders}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
