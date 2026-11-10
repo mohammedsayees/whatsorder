@@ -9,7 +9,9 @@ import type {
   CustomerCreditPortfolio,
   CustomerCreditReminder,
   CustomerCreditSummary,
-  Restaurant
+  Order,
+  Restaurant,
+  StaffCreditCustomerOption
 } from "@/lib/types";
 
 function localDateString(timeZone: string, date = new Date()) {
@@ -125,6 +127,103 @@ export async function getCustomerCreditSummariesByPhones(
     restaurant,
     (data ?? []) as Pick<Customer, "id" | "phone">[]
   )).byPhone;
+}
+
+export async function getCustomerCreditSummariesForOrders(
+  restaurant: Restaurant,
+  orders: Pick<Order, "customer_id" | "customer_phone">[]
+): Promise<CustomerCreditMaps> {
+  const customerIds = [
+    ...new Set(orders.map((order) => order.customer_id).filter(Boolean) as string[])
+  ];
+  const fallbackPhones = [
+    ...new Set(
+      orders
+        .filter((order) => !order.customer_id)
+        .map((order) => order.customer_phone)
+        .filter(Boolean)
+    )
+  ];
+  if (customerIds.length === 0 && fallbackPhones.length === 0) {
+    return { byCustomerId: {}, byPhone: {} };
+  }
+  const admin = getSupabaseAdmin();
+  if (!admin) return { byCustomerId: {}, byPhone: {} };
+
+  const [byIdResult, byPhoneResult] = await Promise.all([
+    customerIds.length > 0
+      ? admin
+          .from("customers")
+          .select("id, phone")
+          .eq("restaurant_id", restaurant.id)
+          .in("id", customerIds)
+      : Promise.resolve({ data: [], error: null }),
+    fallbackPhones.length > 0
+      ? admin
+          .from("customers")
+          .select("id, phone")
+          .eq("restaurant_id", restaurant.id)
+          .in("phone", fallbackPhones)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+  if (byIdResult.error || byPhoneResult.error) {
+    throw new Error("Credit customers could not be loaded.");
+  }
+  const customers = [...(byIdResult.data ?? []), ...(byPhoneResult.data ?? [])]
+    .filter(
+      (customer, index, rows) =>
+        rows.findIndex((candidate) => candidate.id === customer.id) === index
+    ) as Pick<Customer, "id" | "phone">[];
+  return getCustomerCreditSummaries(restaurant, customers);
+}
+
+export async function getSelectableCreditCustomers(
+  restaurant: Restaurant
+): Promise<StaffCreditCustomerOption[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return [];
+  const accountsResult = await admin
+    .from("customer_credit_accounts")
+    .select("customer_id")
+    .eq("restaurant_id", restaurant.id)
+    .eq("is_enabled", true)
+    .order("updated_at", { ascending: false })
+    .limit(250);
+  if (accountsResult.error) {
+    throw new Error("Credit accounts could not be loaded.");
+  }
+  if (!accountsResult.data?.length) return [];
+
+  const customerIds = accountsResult.data.map((account) => account.customer_id);
+  const customersResult = await admin
+    .from("customers")
+    .select("id, name, phone")
+    .eq("restaurant_id", restaurant.id)
+    .in("id", customerIds)
+    .order("name");
+  if (customersResult.error) {
+    throw new Error("Credit customers could not be loaded.");
+  }
+  const customers = (customersResult.data ?? []) as Pick<
+    Customer,
+    "id" | "name" | "phone"
+  >[];
+  const summaries = await getCustomerCreditSummaries(restaurant, customers);
+
+  return customers.flatMap((customer) => {
+    const summary = summaries.byCustomerId[customer.id];
+    if (!summary?.account.is_enabled) return [];
+    return [{
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      balance: summary.balance,
+      overdue: summary.overdue,
+      available: summary.available,
+      credit_limit: Number(summary.account.credit_limit),
+      terms_days: summary.account.terms_days
+    }];
+  });
 }
 
 export async function getCustomerCreditPortfolio(restaurantId: string) {

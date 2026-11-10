@@ -231,6 +231,11 @@ export function QueuedOrdersPanel({
                 <span>{formatCurrency(entry.displayTotal, restaurant)}</span>
               </div>
               <p className="mt-1 text-sm font-bold">{itemsSummary}</p>
+              {entry.payload.customerId ? (
+                <p className="mt-1 text-xs font-bold text-blue-700">
+                  Credit customer: {entry.payload.customerName}
+                </p>
+              ) : null}
 
               {entry.status === "failed" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">

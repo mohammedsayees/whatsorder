@@ -18,7 +18,7 @@ import {
   getDeliveryRiders,
   getLatestOrderRiderAssignments
 } from "@/lib/rider-data";
-import { getCustomerCreditSummariesByPhones } from "@/lib/customer-credit-data";
+import { getCustomerCreditSummariesForOrders } from "@/lib/customer-credit-data";
 
 const statusTabs: { label: string; value: OrderStatusView }[] = [
   { label: "Active", value: "active" },
@@ -88,10 +88,7 @@ export default async function AdminOrdersPage({
     ),
     getDeliveryRiders(restaurant.id),
     getLatestOrderRiderAssignments(restaurant.id, orderIds),
-    getCustomerCreditSummariesByPhones(
-      restaurant,
-      ordersPage.items.map((order) => order.customer_phone)
-    )
+    getCustomerCreditSummariesForOrders(restaurant, ordersPage.items)
   ]);
 
   return (

@@ -33,6 +33,7 @@ export type StaffOrderPayload = {
   deliveryLandmark: string;
   carPlateNumber: string;
   carDescription: string;
+  customerId?: string;
   customerName: string;
   customerPhone: string;
   notes: string;
@@ -112,6 +113,7 @@ export function staffPayloadToPrintableOrder(payload: StaffOrderPayload): Order 
     // synced order share the same tail (orderReference = last 8 chars).
     id: payload.clientOrderId,
     restaurant_id: payload.restaurantId,
+    customer_id: payload.customerId || null,
     shift_id: null,
     customer_name: payload.customerName || "Walk-in customer",
     customer_phone: payload.customerPhone,

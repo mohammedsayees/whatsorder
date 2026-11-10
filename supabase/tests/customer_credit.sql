@@ -34,21 +34,37 @@ select public.configure_customer_credit_account(
 );
 
 insert into public.orders (
-  id, restaurant_id, customer_name, customer_phone, fulfilment_type,
+  id, restaurant_id, customer_id, customer_name, customer_phone, fulfilment_type,
   payment_method, items, subtotal, delivery_fee, total, status,
   whatsapp_message, consent_order_processing, consent_timestamp
 ) values (
   '49000000-0000-0000-0000-000000000001',
-  '29000000-0000-0000-0000-000000000001', 'Credit Customer',
-  '971500000092', 'takeaway', null,
+  '29000000-0000-0000-0000-000000000001',
+  '59000000-0000-0000-0000-000000000001', 'Credit Customer',
+  '971500009999', 'takeaway', null,
   '[{"item_id":"tea","name":"Tea","price":10,"quantity":1}]',
   10, 0, 10, 'Preparing', 'test', true, now()
 ), (
   '49000000-0000-0000-0000-000000000002',
-  '29000000-0000-0000-0000-000000000001', 'Credit Customer',
-  '971500000092', 'takeaway', null,
+  '29000000-0000-0000-0000-000000000001',
+  '59000000-0000-0000-0000-000000000001', 'Credit Customer',
+  '971500009999', 'takeaway', null,
   '[{"item_id":"tea","name":"Tea","price":100,"quantity":1}]',
   100, 0, 100, 'Preparing', 'test', true, now()
+);
+
+-- Paid add-on orders inherit the selected credit customer from their parent.
+insert into public.orders (
+  id, restaurant_id, parent_order_id, customer_name, customer_phone,
+  fulfilment_type, payment_method, items, subtotal, delivery_fee, total,
+  status, whatsapp_message, consent_order_processing, consent_timestamp
+) values (
+  '49000000-0000-0000-0000-000000000003',
+  '29000000-0000-0000-0000-000000000001',
+  '49000000-0000-0000-0000-000000000001', 'Credit Customer',
+  '971500009999', 'takeaway', null,
+  '[{"item_id":"tea","name":"Tea","price":1,"quantity":1}]',
+  1, 0, 1, 'Preparing', 'test add-on', true, now()
 );
 
 do $credit_checks$
@@ -58,6 +74,14 @@ declare
   saved_account_id uuid;
   payment_entry_id uuid;
 begin
+  if not exists (
+    select 1 from public.orders
+    where id = '49000000-0000-0000-0000-000000000003'
+      and customer_id = '59000000-0000-0000-0000-000000000001'
+  ) then
+    raise exception 'Add-on order did not inherit the selected customer';
+  end if;
+
   result := public.record_customer_credit_order(
     '29000000-0000-0000-0000-000000000001',
     '49000000-0000-0000-0000-000000000001',

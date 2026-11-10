@@ -1,6 +1,7 @@
 "use client";
 
 import { QuickProduct } from "./QuickProduct";
+import { StaffCreditCustomerSelector } from "./StaffCreditCustomerSelector";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useMemo, useRef, useState, type FormEvent } from "react";
@@ -36,7 +37,8 @@ import type {
   MenuOptionCatalog,
   MenuWithCategories,
   Order,
-  Restaurant
+  Restaurant,
+  StaffCreditCustomerOption
 } from "@/lib/types";
 
 // Ticket lines are keyed by cartLineKey (item + selected options) so the same
@@ -74,6 +76,8 @@ const LIVE_SUBMIT_TIMEOUT_MS = 8_000;
 export function StaffOrderEntry({
   staffUserId = "fixture",
   addToOrder,
+  canManageCredit = false,
+  creditCustomers = [],
   deliveryFee,
   menu,
   optionCatalog,
@@ -82,6 +86,8 @@ export function StaffOrderEntry({
 }: {
   staffUserId?: string;
   addToOrder?: Order;
+  canManageCredit?: boolean;
+  creditCustomers?: StaffCreditCustomerOption[];
   deliveryFee: number;
   menu: MenuWithCategories;
   optionCatalog?: MenuOptionCatalog;
@@ -98,6 +104,7 @@ export function StaffOrderEntry({
   const [search, setSearch] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
   const fulfilmentType = draft?.fulfilmentType ?? addToOrder?.fulfilment_type ?? orderTypes[0];
+  const selectedCreditCustomerId = draft?.fields.credit_customer_id ?? "";
   const setFulfilmentType = (type: FulfilmentType) => { void draftStore.patch({ fulfilmentType: type }).catch(() => {}); };
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pending, setPending] = useState(false);
@@ -359,6 +366,7 @@ export function StaffOrderEntry({
       carDescription: readField("car_description"),
       customerName: readField("customer_name"),
       customerPhone: readField("customer_phone"),
+      customerId: readField("credit_customer_id"),
       notes: readField("notes")
     };
 
@@ -779,6 +787,36 @@ export function StaffOrderEntry({
 
           {/* Optional customer + notes */}
           <div className="mt-4 space-y-3">
+            {!isAddingToOrder ? (
+              <StaffCreditCustomerSelector
+                canManageCredit={canManageCredit}
+                customers={creditCustomers}
+                disabled={Boolean(draft?.attempt)}
+                onClear={() => {
+                  void draftStore.patch({
+                    fields: {
+                      ...draft?.fields,
+                      credit_customer_id: "",
+                      customer_name: "",
+                      customer_phone: ""
+                    }
+                  }).catch(() => {});
+                }}
+                onSelect={(customer) => {
+                  void draftStore.patch({
+                    fields: {
+                      ...draft?.fields,
+                      credit_customer_id: customer.id,
+                      customer_name: customer.name,
+                      customer_phone: customer.phone
+                    }
+                  }).catch(() => {});
+                }}
+                restaurant={restaurant}
+                selectedCustomerId={selectedCreditCustomerId}
+                total={total}
+              />
+            ) : null}
             <label className="block text-sm font-bold text-stone-700">
               Customer name <span className="font-normal text-stone-400">(optional)</span>
               <input
@@ -788,7 +826,7 @@ export function StaffOrderEntry({
                 value={draft?.fields.customer_name ?? addToOrder?.customer_name ?? ""}
                 onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, customer_name: event.target.value } }).catch(() => {}); }}
                 placeholder="Walk-in customer"
-                readOnly={isAddingToOrder || !!draft?.attempt}
+                readOnly={isAddingToOrder || !!draft?.attempt || Boolean(selectedCreditCustomerId)}
                 type="text"
               />
             </label>
@@ -801,7 +839,7 @@ export function StaffOrderEntry({
                 name="customer_phone"
                 value={draft?.fields.customer_phone ?? addToOrder?.customer_phone ?? ""}
                 onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, customer_phone: event.target.value } }).catch(() => {}); }}
-                readOnly={isAddingToOrder || !!draft?.attempt}
+                readOnly={isAddingToOrder || !!draft?.attempt || Boolean(selectedCreditCustomerId)}
                 type="tel"
               />
             </label>

@@ -108,6 +108,7 @@ describe("staffPayloadToPrintableOrder", () => {
     carDescription: "",
     customerName: "",
     customerPhone: "",
+    customerId: "59000000-0000-0000-0000-000000000001",
     notes: "extra hot"
   };
 
@@ -118,6 +119,7 @@ describe("staffPayloadToPrintableOrder", () => {
     expect(order.payment_method).toBe("Cash on Delivery");
     expect(order.table_number).toBe("5");
     expect(order.customer_name).toBe("Walk-in customer");
+    expect(order.customer_id).toBe(basePayload.customerId);
     expect(order.notes).toBe("extra hot");
     // Indicative subtotal from client prices: 2×1 + 1×3 = 5.
     expect(order.subtotal).toBe(5);
