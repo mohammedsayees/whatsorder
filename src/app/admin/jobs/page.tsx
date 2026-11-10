@@ -4,6 +4,7 @@ import { CopyJobLinkButton } from "@/components/admin/CopyJobLinkButton";
 import { deleteDraftJobAction, transitionJobAction } from "@/app/admin/jobs/actions";
 import { formatJobSalary, type JobStatus } from "@/lib/jobs";
 import { getRestaurantJobs } from "@/lib/jobs-data";
+import { publicAppUrl } from "@/lib/public-app-url";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function AdminJobsPage({
     searchParams
   ]);
   const jobs = await getRestaurantJobs(session.restaurantId);
+  const appUrl = publicAppUrl();
   const tab = tabs.some((item) => item.key === query.tab) ? query.tab! : "active";
   const visibleJobs = jobs.filter((job) => {
     if (tab === "active") return ["published", "unpublished"].includes(job.status);
@@ -102,7 +104,7 @@ export default async function AdminJobsPage({
                 {["published", "unpublished"].includes(job.status) ? (
                   <form action={transitionJobAction}><input name="job_id" type="hidden" value={job.id} /><button className="focus-ring rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700" name="status" value="closed">Close</button></form>
                 ) : null}
-                {job.status === "published" ? <><CopyJobLinkButton jobId={job.id} /><Link className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-300 px-3 py-2 text-xs font-bold" href={`/jobs/${job.id}`} target="_blank">Open <ExternalLink size={13} /></Link></> : null}
+                {job.status === "published" ? <><CopyJobLinkButton city={job.city} emirate={job.emirate} jobId={job.id} jobUrl={`${appUrl}/jobs/${job.id}`} restaurantName={session.restaurant.name} title={job.title} /><Link className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-300 px-3 py-2 text-xs font-bold" href={`/jobs/${job.id}`} target="_blank">Open <ExternalLink size={13} /></Link></> : null}
                 {job.status === "draft" && ["restaurant_admin", "owner"].includes(session.role) ? (
                   <form action={deleteDraftJobAction}><input name="job_id" type="hidden" value={job.id} /><button className="focus-ring rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Delete draft</button></form>
                 ) : null}

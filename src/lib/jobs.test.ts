@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildJobPostingSchema,
+  buildJobShareText,
   buildWhatsAppApplicationUrl,
+  buildWhatsAppJobShareUrl,
   effectiveJobStatus,
   isValidJobStatusTransition,
   normalizeWhatsAppNumber,
@@ -80,5 +83,63 @@ describe("job lifecycle", () => {
     });
     expect(url).toMatch(/^https:\/\/wa\.me\/971501234567\?text=/);
     expect(decodeURIComponent(url)).toContain("Visa status:");
+  });
+
+  it("builds a candidate-friendly WhatsApp share with the public job URL", () => {
+    const job = {
+      title: "Tea Maker",
+      restaurant_name: "Chai Xpress",
+      city: "Ajman",
+      emirate: "Ajman" as const
+    };
+    const jobUrl = "https://example.com/jobs/job-id";
+    expect(buildJobShareText(job, jobUrl)).toContain("Tea Maker");
+    expect(buildJobShareText(job, jobUrl)).toContain("Ajman, Ajman");
+    expect(decodeURIComponent(buildWhatsAppJobShareUrl(job, jobUrl))).toContain(jobUrl);
+  });
+
+  it("builds Google JobPosting data without exposing the application number", () => {
+    const schema = buildJobPostingSchema(
+      {
+        id: "job-id",
+        title: "Barista",
+        category: "Barista",
+        employment_type: "Full-time",
+        description: "Prepare coffee and serve guests.",
+        responsibilities: null,
+        requirements: "One year preferred.",
+        emirate: "Dubai",
+        city: "Dubai",
+        location: "Al Barsha",
+        restaurant_name: "Example Café",
+        salary_type: "Range",
+        salary_min: 2500,
+        salary_max: 3200,
+        salary_currency: "AED",
+        number_of_vacancies: 2,
+        experience_required: "One year",
+        immediate_joining: true,
+        preferred_joining_date: null,
+        accommodation_provided: false,
+        food_provided: true,
+        visa_provided: true,
+        working_hours: null,
+        weekly_day_off: null,
+        preferred_languages: ["English"],
+        contact_whatsapp: "971501234567",
+        published_at: "2026-11-10T00:00:00.000Z",
+        expires_at: "2026-12-10T23:59:59.999Z",
+        total_count: 1
+      },
+      "https://example.com/jobs/job-id"
+    );
+    expect(schema["@type"]).toBe("JobPosting");
+    expect(schema).toMatchObject({
+      directApply: true,
+      employmentType: "FULL_TIME",
+      jobLocation: { address: { addressCountry: "AE" } },
+      baseSalary: { currency: "AED" }
+    });
+    expect(JSON.stringify(schema)).not.toContain("971501234567");
   });
 });

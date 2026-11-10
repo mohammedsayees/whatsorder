@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { publicAppUrl } from "@/lib/public-app-url";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(publicAppUrl()),
   title: "WhatsOrder",
   description: "Structured WhatsApp ordering for small UAE restaurants.",
   applicationName: "WhatsOrder",

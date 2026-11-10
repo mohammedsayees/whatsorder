@@ -77,6 +77,14 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export type JobReportReason = (typeof JOB_REPORT_REASONS)[number];
 export type Emirate = keyof typeof UAE_LOCATIONS;
 
+const GOOGLE_EMPLOYMENT_TYPES: Record<EmploymentType, string> = {
+  "Full-time": "FULL_TIME",
+  "Part-time": "PART_TIME",
+  Temporary: "TEMPORARY",
+  Trial: "OTHER",
+  Contract: "CONTRACTOR"
+};
+
 export type Job = {
   id: string;
   restaurant_id: string;
@@ -293,6 +301,78 @@ export function buildWhatsAppApplicationUrl(job: Pick<PublicJob, "title" | "rest
   const employer = job.restaurant_name ?? "the restaurant";
   const message = `Hello, I am interested in the ${job.title} position at ${employer} listed on WhatsOrder.\n\nName:\nCurrent location:\nExperience:\nVisa status:\nAvailability:`;
   return `https://wa.me/${job.contact_whatsapp}?text=${encodeURIComponent(message)}`;
+}
+
+export function buildJobShareText(
+  job: Pick<PublicJob, "title" | "restaurant_name" | "city" | "emirate">,
+  jobUrl: string
+) {
+  const employer = job.restaurant_name ?? "A restaurant";
+  return [
+    `Job opening: ${job.title}`,
+    `${employer} · ${job.city}, ${job.emirate}`,
+    "View details and apply on WhatsApp:",
+    jobUrl
+  ].join("\n");
+}
+
+export function buildWhatsAppJobShareUrl(
+  job: Pick<PublicJob, "title" | "restaurant_name" | "city" | "emirate">,
+  jobUrl: string
+) {
+  return `https://wa.me/?text=${encodeURIComponent(buildJobShareText(job, jobUrl))}`;
+}
+
+export function buildJobPostingSchema(job: PublicJob, jobUrl: string) {
+  const description = [job.description, job.responsibilities, job.requirements]
+    .filter(Boolean)
+    .join("\n\n") ||
+    `${job.employment_type} ${job.title} vacancy in ${job.city}, ${job.emirate}.`;
+  const salary =
+    job.salary_min !== null || job.salary_max !== null
+      ? {
+          "@type": "MonetaryAmount",
+          currency: job.salary_currency,
+          value: {
+            "@type": "QuantitativeValue",
+            ...(job.salary_min !== null ? { minValue: job.salary_min } : {}),
+            ...(job.salary_max !== null ? { maxValue: job.salary_max } : {}),
+            unitText: "MONTH"
+          }
+        }
+      : undefined;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description,
+    ...(job.published_at ? { datePosted: job.published_at } : {}),
+    ...(job.expires_at ? { validThrough: job.expires_at } : {}),
+    employmentType: GOOGLE_EMPLOYMENT_TYPES[job.employment_type],
+    directApply: true,
+    identifier: {
+      "@type": "PropertyValue",
+      name: "WhatsOrder Jobs",
+      value: job.id
+    },
+    hiringOrganization: {
+      "@type": "Organization",
+      name: job.restaurant_name ?? "Restaurant hiring via WhatsOrder"
+    },
+    jobLocation: {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        ...(job.location ? { streetAddress: job.location } : {}),
+        addressLocality: job.city,
+        addressRegion: job.emirate,
+        addressCountry: "AE"
+      }
+    },
+    ...(salary ? { baseSalary: salary } : {}),
+    url: jobUrl
+  };
 }
 
 export function defaultJobExpiryDate(now = new Date()) {
