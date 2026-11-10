@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
+  "regions": ["syd1"],
   "crons": [
     {
       "path": "/api/cron/billing",

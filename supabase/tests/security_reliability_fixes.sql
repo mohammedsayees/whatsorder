@@ -43,6 +43,7 @@ do $consent_replay_test$
 declare
   first_order_id uuid;
   replayed_order_id uuid;
+  replayed_result jsonb;
 begin
   first_order_id := public.create_order_with_customer_v4(
     '81000000-0000-0000-0000-000000000001',
@@ -73,7 +74,7 @@ begin
     'review-fix-idempotency-token'
   );
 
-  replayed_order_id := public.create_order_with_customer_v4(
+  replayed_result := public.create_order_with_customer_v5(
     '81000000-0000-0000-0000-000000000001',
     'Existing Customer',
     '971500000222',
@@ -101,9 +102,13 @@ begin
     now(),
     'review-fix-idempotency-token'
   );
+  replayed_order_id := (replayed_result->>'order_id')::uuid;
 
   if replayed_order_id <> first_order_id then
     raise exception 'Idempotent replay created a different order';
+  end if;
+  if replayed_result->>'whatsapp_message' <> 'original message' then
+    raise exception 'Idempotent replay did not return the persisted message';
   end if;
 
   if (

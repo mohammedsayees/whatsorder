@@ -9,14 +9,14 @@ import {
   activeRestaurantCookieName,
   refreshTokenCookieName
 } from "@/lib/auth-cookies";
-import {
-  classifyMembershipCount,
-  isRestaurantAdminAccessAllowed
-} from "@/lib/security";
+import { isRestaurantAdminAccessAllowed } from "@/lib/security";
 import type { Profile, Restaurant } from "@/lib/types";
 
 export const superAdminCookieName = accessTokenCookieName;
 export { refreshTokenCookieName };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type SuperAdminSession = {
   userId: string;
@@ -124,48 +124,45 @@ export const resolveRestaurantAdminSession = cache(async function resolveRestaur
     return { session: null, issue: "not_authenticated" };
   }
 
-  const { data: memberships, error: membershipError } = await admin
-    .from("restaurant_users")
-    .select("restaurant_id,role,email")
-    .eq("user_id", user.id)
-    .not("accepted_at", "is", null)
-    .in("role", ["restaurant_admin", "staff", "owner", "manager"]);
+  const selectedRestaurantCookie = (await cookies()).get(activeRestaurantCookieName)?.value;
+  const selectedRestaurantId =
+    selectedRestaurantCookie && UUID_PATTERN.test(selectedRestaurantCookie)
+      ? selectedRestaurantCookie
+      : null;
+  const { data, error } = await admin.rpc("get_restaurant_admin_session_snapshot", {
+    target_user_id: user.id,
+    selected_restaurant_id: selectedRestaurantId
+  });
 
-  if (membershipError || !memberships) {
+  if (error || !data) {
     return { session: null, issue: "no_membership" };
   }
-
-  const membershipState = classifyMembershipCount(memberships.length);
-  if (membershipState === "no_membership") {
+  const snapshot = data as {
+    membership_count?: number;
+    membership?: {
+      restaurant_id: string;
+      role: RestaurantAdminSession["role"];
+      email: string;
+    } | null;
+    restaurant?: Restaurant | null;
+  };
+  const membershipCount = Number(snapshot.membership_count ?? 0);
+  if (membershipCount === 0) {
     return { session: null, issue: "no_membership" };
   }
-
-  let membership = memberships[0];
 
   // A user assigned to several restaurants must choose which one they are
   // acting on. The choice is stored in a cookie and re-validated here against
   // live memberships on every request, so it can never select a restaurant the
   // user does not actually belong to.
-  if (membershipState === "multiple_memberships") {
-    const selectedRestaurantId = (await cookies()).get(activeRestaurantCookieName)?.value;
-    const selectedMembership = selectedRestaurantId
-      ? memberships.find((entry) => entry.restaurant_id === selectedRestaurantId)
-      : undefined;
-
-    if (!selectedMembership) {
-      return { session: null, issue: "restaurant_selection_required" };
-    }
-
-    membership = selectedMembership;
+  if (membershipCount > 1 && !snapshot.membership) {
+    return { session: null, issue: "restaurant_selection_required" };
   }
 
-  const { data: restaurant } = await admin
-    .from("restaurants")
-    .select("*")
-    .eq("id", membership.restaurant_id)
-    .maybeSingle();
-
+  const membership = snapshot.membership;
+  const restaurant = snapshot.restaurant;
   if (
+    !membership ||
     !restaurant ||
     !isRestaurantAdminAccessAllowed(restaurant.status as Restaurant["status"])
   ) {
@@ -177,9 +174,9 @@ export const resolveRestaurantAdminSession = cache(async function resolveRestaur
     session: {
       userId: user.id,
       email: user.email ?? membership.email,
-      role: membership.role as RestaurantAdminSession["role"],
-      restaurantId: membership.restaurant_id as string,
-      restaurant: restaurant as Restaurant
+      role: membership.role,
+      restaurantId: membership.restaurant_id,
+      restaurant
     }
   };
 });

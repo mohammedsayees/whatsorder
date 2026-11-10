@@ -15,8 +15,11 @@ import { loadCustomerContext } from "@/lib/customer-auth/context";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const privateResponseHeaders = { "Cache-Control": "private, no-store" };
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
+  const scope = req.nextUrl.searchParams.get("scope");
   if (!restaurantId) {
     return NextResponse.json({ error: "restaurantId required" }, { status: 400 });
   }
@@ -24,12 +27,35 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const ctx = await loadCustomerContext(restaurantId);
 
   if (!ctx.signedIn) {
-    return NextResponse.json({ signedIn: false }, { status: 200 });
+    return NextResponse.json(
+      { signedIn: false },
+      {
+        status: 200,
+        headers: privateResponseHeaders
+      }
+    );
   }
 
   if (ctx.error) {
     const status = ctx.error === "service_unavailable" ? 503 : 502;
-    return NextResponse.json({ signedIn: true, error: ctx.error }, { status });
+    return NextResponse.json(
+      { signedIn: true, error: ctx.error },
+      { status, headers: privateResponseHeaders }
+    );
+  }
+
+  if (scope === "menu") {
+    return NextResponse.json(
+      {
+        signedIn: true,
+        loyalty: ctx.loyalty,
+        recentOrders: ctx.recentOrders
+      },
+      {
+        status: 200,
+        headers: privateResponseHeaders
+      }
+    );
   }
 
   return NextResponse.json(
@@ -40,6 +66,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       loyalty: ctx.loyalty,
       recentOrders: ctx.recentOrders
     },
-    { status: 200 }
+    { status: 200, headers: privateResponseHeaders }
   );
 }

@@ -1,6 +1,7 @@
 import { getLatestDailySummary, type DailySummaryCardData } from "@/lib/daily-summary/data";
 export { getLatestDailySummary, type DailySummaryCardData } from "@/lib/daily-summary/data";
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
 import {
   getRestaurantDateKey,
@@ -309,6 +310,50 @@ type GetMenuOptions = {
   admin?: boolean;
 };
 
+type AdminMenuSnapshotPayload = {
+  categories?: MenuCategory[];
+  items?: MenuItem[];
+  offers?: Record<string, unknown>[];
+  option_groups?: Record<string, unknown>[];
+  options?: Record<string, unknown>[];
+  option_links?: Record<string, unknown>[];
+};
+
+// Staff order entry, menu management, and server-side price verification all
+// need the same menu graph. Request-scoped React caching ensures parallel
+// callers share one compact RPC instead of issuing six PostgREST requests.
+const getAdminMenuSnapshot = cache(async function getAdminMenuSnapshot(
+  restaurantId: string
+) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.rpc("get_admin_menu_snapshot", {
+    target_restaurant_id: restaurantId
+  });
+  if (error || !data) {
+    console.error("WhatsOrder admin menu snapshot failed", {
+      code: error?.code,
+      restaurantId
+    });
+    return null;
+  }
+
+  const snapshot = data as AdminMenuSnapshotPayload;
+  return {
+    menu: {
+      categories: snapshot.categories ?? [],
+      items: snapshot.items ?? []
+    } satisfies MenuWithCategories,
+    offers: normalizeMenuOffers(snapshot.offers ?? []),
+    optionCatalog: normalizeOptionCatalog(
+      snapshot.option_groups ?? [],
+      snapshot.options ?? [],
+      snapshot.option_links ?? []
+    )
+  };
+});
+
 async function readMenu(
   supabase: NonNullable<ReturnType<typeof getSupabase>>,
   restaurantId: string
@@ -366,8 +411,8 @@ export async function getMenu(
   options: GetMenuOptions = {}
 ): Promise<MenuWithCategories> {
   if (options.admin) {
-    const supabase = getSupabaseAdmin();
-    const menu = supabase ? await readMenu(supabase, restaurantId) : null;
+    const snapshot = await getAdminMenuSnapshot(restaurantId);
+    const menu = snapshot?.menu ?? null;
 
     if (menu) {
       return menu;
@@ -435,30 +480,13 @@ export async function getMenuOffers(
   options: GetMenuOptions = {}
 ): Promise<MenuOffer[]> {
   if (options.admin) {
-    const supabase = getSupabaseAdmin();
+    const snapshot = await getAdminMenuSnapshot(restaurantId);
 
-    if (!supabase) {
-      if (!demoDataEnabled) {
-        productionDataFailure("Menu offers");
-      }
-      return [];
+    if (snapshot) {
+      return snapshot.offers;
     }
 
-    const { data, error } = await supabase
-      .from("menu_offers")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("display_order")
-      .order("created_at");
-
-    if (!error && data) {
-      return normalizeMenuOffers(data);
-    }
-
-    if (!demoDataEnabled) {
-      productionDataFailure("Menu offers", error);
-    }
-
+    if (!demoDataEnabled) productionDataFailure("Menu offers");
     return [];
   }
 
@@ -483,6 +511,30 @@ const EMPTY_OPTION_CATALOG: MenuOptionCatalog = {
   options: [],
   links: []
 };
+
+function normalizeOptionCatalog(
+  groups: Record<string, unknown>[],
+  options: Record<string, unknown>[],
+  links: Record<string, unknown>[]
+): MenuOptionCatalog {
+  return {
+    groups: groups.map((group) => ({
+      ...group,
+      min_select: Number(group.min_select ?? 0),
+      max_select: group.max_select === null ? null : Number(group.max_select),
+      display_order: Number(group.display_order ?? 0)
+    })) as MenuOptionGroup[],
+    options: options.map((option) => ({
+      ...option,
+      price_delta: Number(option.price_delta ?? 0),
+      display_order: Number(option.display_order ?? 0)
+    })) as MenuOption[],
+    links: links.map((link) => ({
+      ...link,
+      display_order: Number(link.display_order ?? 0)
+    })) as MenuItemOptionGroupLink[]
+  };
+}
 
 async function readOptionCatalog(
   supabase: NonNullable<ReturnType<typeof getSupabase>>,
@@ -511,24 +563,8 @@ async function readOptionCatalog(
     return null;
   }
 
-  return {
-    // numeric/int columns arrive as strings from PostgREST — normalize once.
-    groups: groups.map((group) => ({
-      ...group,
-      min_select: Number(group.min_select ?? 0),
-      max_select: group.max_select === null ? null : Number(group.max_select),
-      display_order: Number(group.display_order ?? 0)
-    })) as MenuOptionGroup[],
-    options: options.map((option) => ({
-      ...option,
-      price_delta: Number(option.price_delta ?? 0),
-      display_order: Number(option.display_order ?? 0)
-    })) as MenuOption[],
-    links: links.map((link) => ({
-      ...link,
-      display_order: Number(link.display_order ?? 0)
-    })) as MenuItemOptionGroupLink[]
-  };
+  // numeric/int columns arrive as strings from PostgREST — normalize once.
+  return normalizeOptionCatalog(groups, options, links);
 }
 
 // Cached public option-catalog read for the customer path (menu sheet + order
@@ -560,10 +596,8 @@ export async function getMenuOptionCatalog(
   options: GetMenuOptions = {}
 ): Promise<MenuOptionCatalog> {
   if (options.admin) {
-    const supabase = getSupabaseAdmin();
-    const catalog = supabase
-      ? await readOptionCatalog(supabase, restaurantId)
-      : null;
+    const snapshot = await getAdminMenuSnapshot(restaurantId);
+    const catalog = snapshot?.optionCatalog ?? null;
 
     if (catalog) {
       return catalog;

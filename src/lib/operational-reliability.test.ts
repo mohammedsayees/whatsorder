@@ -29,6 +29,20 @@ describe("restaurant operational reliability boundaries", () => {
     expect(cartProvider).toContain('window.addEventListener("storage", handleStorage)');
   });
 
+  it("keeps the shared customer menu edge-cacheable and defers personalization", () => {
+    const page = source("src/app/r/[restaurantSlug]/page.tsx");
+    const menu = source("src/components/customer/RestaurantMenu.tsx");
+    const contextRoute = source("src/app/api/customer/context/route.ts");
+
+    expect(page).toContain('export const dynamic = "force-static"');
+    expect(page).toContain("export const revalidate = 300");
+    expect(page).not.toContain("loadCustomerContext");
+    expect(page).not.toContain("searchParams");
+    expect(menu).toContain('scope: "menu"');
+    expect(menu).toContain("new URLSearchParams(window.location.search)");
+    expect(contextRoute).toContain('"Cache-Control": "private, no-store"');
+  });
+
   it("serializes only the public feedback DTO", () => {
     const feedback = source("src/lib/feedback.ts");
     const types = source("src/lib/types.ts");
