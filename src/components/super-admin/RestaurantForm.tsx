@@ -1,19 +1,15 @@
 import { BrandImageUploader } from "@/components/shared/BrandImageUploader";
 import { WeeklyHoursFields } from "@/components/shared/WeeklyHoursFields";
-import type { Restaurant, RestaurantPlan, RestaurantStatus } from "@/lib/types";
+import type { Restaurant, RestaurantStatus } from "@/lib/types";
 import { countryProfiles, getCountryProfile } from "@/lib/localization";
 
 const statuses: RestaurantStatus[] = [
   "draft",
   "onboarding",
   "live",
-  "trial",
-  "paid",
   "paused",
   "cancelled"
 ];
-
-const plans: RestaurantPlan[] = ["trial", "starter", "pro", "multi_branch"];
 
 const inputClass =
   "focus-ring mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm";
@@ -218,23 +214,25 @@ export function RestaurantForm({
 
       <section>
         <h2 className="text-lg font-black">Lifecycle</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <p className="mt-1 text-sm text-stone-600">
+          This controls restaurant operations only. Plans, trials, and payment status are managed
+          from Billing.
+        </p>
+        <div className="mt-4 max-w-md">
           <label className="block">
             <span className="text-sm font-bold">Status</span>
-            <select className={inputClass} defaultValue={restaurant?.status ?? "draft"} name="status">
+            <select
+              className={inputClass}
+              defaultValue={
+                restaurant && ["trial", "paid"].includes(restaurant.status ?? "")
+                  ? "live"
+                  : restaurant?.status ?? "draft"
+              }
+              name="status"
+            >
               {statuses.map((status) => (
                 <option key={status} value={status}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold">Plan</span>
-            <select className={inputClass} defaultValue={restaurant?.plan ?? "trial"} name="plan">
-              {plans.map((plan) => (
-                <option key={plan} value={plan}>
-                  {plan.charAt(0).toUpperCase() + plan.slice(1)}
                 </option>
               ))}
             </select>

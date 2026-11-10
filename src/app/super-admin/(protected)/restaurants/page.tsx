@@ -5,7 +5,7 @@ import { formatUaeDate } from "@/lib/date-time";
 import { getSuperAdminRestaurants } from "@/lib/super-admin-data";
 import type { RestaurantStatus } from "@/lib/types";
 
-const filters = ["all", "draft", "onboarding", "live", "trial", "paid", "paused"] as const;
+const filters = ["all", "draft", "onboarding", "live", "paused", "cancelled"] as const;
 
 export default async function SuperAdminRestaurantsPage({
   searchParams
@@ -18,9 +18,7 @@ export default async function SuperAdminRestaurantsPage({
   const visibleRestaurants = restaurants.filter((restaurant) => {
     const matchesFilter =
       activeFilter === "all" ||
-      restaurant.status === activeFilter ||
-      (activeFilter === "trial" && restaurant.plan === "trial") ||
-      (activeFilter === "paid" && ["starter", "pro", "multi_branch"].includes(restaurant.plan ?? ""));
+      restaurant.status === activeFilter;
     const matchesSearch =
       !search ||
       restaurant.name.toLowerCase().includes(search) ||

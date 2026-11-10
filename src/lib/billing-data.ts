@@ -11,6 +11,7 @@ import {
   TRIAL_DAYS,
   addDays,
   billingCycleFor,
+  buildContractChangePatch,
   computeInvoiceTotals,
   computeLineTotal,
   deriveAccessLevel,
@@ -58,26 +59,35 @@ async function fetchSubscription(
   admin: Admin,
   restaurantId: string
 ): Promise<Subscription | null> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("subscriptions")
     .select("*")
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
+  if (error) {
+    throw new Error(`Subscription could not be loaded: ${error.message}`);
+  }
   return (data as Subscription | null) ?? null;
 }
 
 async function fetchPlan(admin: Admin, planId: string): Promise<Plan | null> {
-  const { data } = await admin.from("plans").select("*").eq("id", planId).maybeSingle();
+  const { data, error } = await admin.from("plans").select("*").eq("id", planId).maybeSingle();
+  if (error) {
+    throw new Error(`Plan could not be loaded: ${error.message}`);
+  }
   return (data as Plan | null) ?? null;
 }
 
 export async function listActivePlans(): Promise<Plan[]> {
   const admin = getAdmin();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("plans")
     .select("*")
     .eq("is_active", true)
     .order("monthly_price", { ascending: true });
+  if (error) {
+    throw new Error(`Billing plans could not be loaded: ${error.message}`);
+  }
   return (data as Plan[] | null) ?? [];
 }
 
@@ -95,7 +105,10 @@ export const getTenantAccess = cache(async function getTenantAccess(
   const { data, error } = await admin.rpc("get_tenant_access_snapshot", {
     target_restaurant_id: restaurantId
   });
-  if (error || !data) {
+  if (error) {
+    throw new Error(`Tenant billing access could not be loaded: ${error.message}`);
+  }
+  if (!data) {
     return NO_SUBSCRIPTION_ACCESS;
   }
   const snapshot = data as {
@@ -130,10 +143,13 @@ export type SubscriptionSummary = {
 
 export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary[]> {
   const admin = getAdmin();
-  const { data: subscriptions } = await admin
+  const { data: subscriptions, error: subscriptionsError } = await admin
     .from("subscriptions")
     .select("*")
     .order("updated_at", { ascending: false });
+  if (subscriptionsError) {
+    throw new Error(`Subscriptions could not be loaded: ${subscriptionsError.message}`);
+  }
 
   const subs = (subscriptions as Subscription[] | null) ?? [];
   if (subs.length === 0) {
@@ -143,7 +159,7 @@ export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary
   const restaurantIds = subs.map((sub) => sub.restaurant_id);
   const planIds = Array.from(new Set(subs.map((sub) => sub.plan_id)));
 
-  const [{ data: restaurants }, { data: plans }, { data: openInvoices }] = await Promise.all([
+  const [restaurantResult, planResult, invoiceResult] = await Promise.all([
     admin.from("restaurants").select("id,name,slug").in("id", restaurantIds),
     admin.from("plans").select("*").in("id", planIds),
     admin
@@ -152,6 +168,14 @@ export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary
       .in("restaurant_id", restaurantIds)
       .in("status", ["issued"])
   ]);
+  if (restaurantResult.error || planResult.error || invoiceResult.error) {
+    throw new Error(
+      `Billing overview could not be loaded: ${restaurantResult.error?.message ?? planResult.error?.message ?? invoiceResult.error?.message}`
+    );
+  }
+  const restaurants = restaurantResult.data;
+  const plans = planResult.data;
+  const openInvoices = invoiceResult.data;
 
   const restaurantsById = new Map(
     ((restaurants as Array<{ id: string; name: string; slug: string }> | null) ?? []).map((r) => [
@@ -164,10 +188,13 @@ export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary
   const openInvoiceRows = (openInvoices as Array<{ id: string; restaurant_id: string; total: number }> | null) ?? [];
   const paidByInvoice = new Map<string, number>();
   if (openInvoiceRows.length > 0) {
-    const { data: paymentRows } = await admin
+    const { data: paymentRows, error: paymentsError } = await admin
       .from("payments")
       .select("invoice_id,amount")
       .in("invoice_id", openInvoiceRows.map((invoice) => invoice.id));
+    if (paymentsError) {
+      throw new Error(`Billing payments could not be loaded: ${paymentsError.message}`);
+    }
     for (const payment of (paymentRows as Array<{ invoice_id: string; amount: number }> | null) ?? []) {
       paidByInvoice.set(
         payment.invoice_id,
@@ -226,11 +253,14 @@ export type PriceEvent = {
 
 export async function getBillingDetail(restaurantId: string): Promise<BillingDetail | null> {
   const admin = getAdmin();
-  const { data: restaurant } = await admin
+  const { data: restaurant, error: restaurantError } = await admin
     .from("restaurants")
     .select("id,name,slug")
     .eq("id", restaurantId)
     .maybeSingle();
+  if (restaurantError) {
+    throw new Error(`Restaurant billing profile could not be loaded: ${restaurantError.message}`);
+  }
 
   if (!restaurant) {
     return null;
@@ -239,13 +269,7 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
   const subscription = await fetchSubscription(admin, restaurantId);
   const plan = subscription ? await fetchPlan(admin, subscription.plan_id) : null;
 
-  const [
-    { data: invoices },
-    { data: lineItems },
-    { data: payments },
-    { data: statusEvents },
-    { data: priceEvents }
-  ] = await Promise.all([
+  const [invoiceResult, lineItemResult, paymentResult, statusEventResult, priceEventResult] = await Promise.all([
       admin
         .from("invoices")
         .select("*")
@@ -268,6 +292,20 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false })
     ]);
+  const detailError =
+    invoiceResult.error ??
+    lineItemResult.error ??
+    paymentResult.error ??
+    statusEventResult.error ??
+    priceEventResult.error;
+  if (detailError) {
+    throw new Error(`Billing history could not be loaded: ${detailError.message}`);
+  }
+  const invoices = invoiceResult.data;
+  const lineItems = lineItemResult.data;
+  const payments = paymentResult.data;
+  const statusEvents = statusEventResult.data;
+  const priceEvents = priceEventResult.data;
 
   const lineItemsByInvoice = new Map<string, InvoiceLineItem[]>();
   for (const item of (lineItems as InvoiceLineItem[] | null) ?? []) {
@@ -310,7 +348,7 @@ async function logStatusEvent(
   reason: string,
   actor: BillingActor
 ): Promise<void> {
-  await admin.from("subscription_status_events").insert({
+  const { error } = await admin.from("subscription_status_events").insert({
     restaurant_id: subscription.restaurant_id,
     subscription_id: subscription.id,
     from_status: subscription.status,
@@ -319,6 +357,9 @@ async function logStatusEvent(
     actor_user_id: actor.userId,
     actor_role: actor.role
   });
+  if (error) {
+    throw new Error(`Subscription status audit could not be recorded: ${error.message}`);
+  }
 }
 
 // Update a subscription's status (+ any side fields) and record the audit
@@ -372,11 +413,14 @@ export async function issueInvoiceForPeriod(
   const idempotencyKey = invoiceIdempotencyKey(args.subscription.id, args.periodStart);
 
   // Idempotency guard: a prior run (or the manual path) already issued it.
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from("invoices")
     .select("*")
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
+  if (existingError) {
+    throw new Error(`Existing invoice could not be checked: ${existingError.message}`);
+  }
   if (existing) {
     return existing as Invoice;
   }
@@ -429,8 +473,8 @@ function periodLabel(periodStart: string): string {
 // Super-admin operations
 // ---------------------------------------------------------------------------
 
-// Put a tenant on a plan. Non-trial → active + an invoice for the current
-// calendar period. Trial → trialing, no invoice (first cycle free, §13).
+// Put a new tenant on a plan, or update the commercial terms of an existing
+// contract. Existing contracts keep their status, cycle, and current invoice.
 export async function assignPlan(
   restaurantId: string,
   planId: string,
@@ -477,24 +521,17 @@ export async function assignPlan(
   if (existing) {
     const { data, error } = await admin
       .from("subscriptions")
-      .update({
-        plan_id: planId,
-        status,
-        billing_interval: billingInterval,
-        price_override: priceOverride,
-        price_override_reason: priceOverrideReason,
-        price_override_ends_at: priceOverrideEndsAt,
-        price_override_created_by: priceOverride !== null ? options.actor.userId : null,
-        price_override_updated_at: priceOverride !== null ? new Date().toISOString() : null,
-        billing_cycle_start: cycleStart,
-        billing_cycle_end: cycleEnd,
-        trial_ends_at: startTrial
-          ? new Date(`${addDays(todayStr, TRIAL_DAYS)}T00:00:00.000Z`).toISOString()
-          : null,
-        grace_until: null,
-        cancel_at_period_end: false,
-        cancelled_at: null
-      })
+      .update(
+        buildContractChangePatch({
+          planId,
+          billingInterval,
+          priceOverride,
+          priceOverrideReason,
+          priceOverrideEndsAt,
+          actorUserId: options.actor.userId,
+          changedAt: new Date().toISOString()
+        })
+      )
       .eq("id", existing.id)
       .eq("restaurant_id", restaurantId)
       .select("*")
@@ -503,9 +540,6 @@ export async function assignPlan(
       return { ok: false, error: error.message };
     }
     subscription = data as Subscription;
-    if (existing.status !== status) {
-      await logStatusEvent(admin, existing, status, `Plan changed to ${plan.code}`, options.actor);
-    }
     if (
       Number(existing.price_override ?? -1) !== Number(priceOverride ?? -1) ||
       existing.price_override_reason !== priceOverrideReason ||
@@ -551,7 +585,7 @@ export async function assignPlan(
       return { ok: false, error: error.message };
     }
     subscription = data as Subscription;
-    await admin.from("subscription_status_events").insert({
+    const { error: statusEventError } = await admin.from("subscription_status_events").insert({
       restaurant_id: restaurantId,
       subscription_id: subscription.id,
       from_status: null,
@@ -560,6 +594,9 @@ export async function assignPlan(
       actor_user_id: options.actor.userId,
       actor_role: options.actor.role
     });
+    if (statusEventError) {
+      return { ok: false, error: statusEventError.message };
+    }
     if (priceOverride !== null) {
       const { error: priceEventError } = await admin.from("subscription_price_events").insert({
         restaurant_id: restaurantId,
@@ -578,7 +615,7 @@ export async function assignPlan(
     }
   }
 
-  if (!startTrial) {
+  if (!existing && !startTrial) {
     await issueInvoiceForPeriod(admin, {
       subscription,
       plan,
@@ -616,6 +653,19 @@ export async function issueCurrentPeriodInvoice(
     return { ok: false, error: "Plan not found." };
   }
 
+  const description = options.description?.trim() || "";
+  const effectivePrice = priceForSubscription(plan, subscription, today());
+  if (
+    options.unitAmount !== undefined &&
+    Math.abs(options.unitAmount - effectivePrice) >= 0.005 &&
+    !description
+  ) {
+    return {
+      ok: false,
+      error: "Add a description when the invoice amount differs from the contract price."
+    };
+  }
+
   await issueInvoiceForPeriod(admin, {
     subscription,
     plan,
@@ -623,7 +673,7 @@ export async function issueCurrentPeriodInvoice(
     periodEnd: subscription.billing_cycle_end,
     issuedDate: today(),
     description:
-      options.description?.trim() ||
+      description ||
       (subscription.billing_interval === "yearly"
         ? `${plan.name} annual plan — ${subscription.billing_cycle_start} to ${subscription.billing_cycle_end}`
         : `${plan.name} plan — ${periodLabel(subscription.billing_cycle_start)}`),

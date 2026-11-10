@@ -203,7 +203,11 @@ export default async function BillingDetailPage({
 
               <form action={assignPlanAction} className="mt-4 border-t border-stone-100 pt-4">
                 <input name="restaurant_id" type="hidden" value={restaurant.id} />
-                <p className="text-sm font-bold text-stone-700">Change plan</p>
+                <p className="text-sm font-bold text-stone-700">Update contract</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">
+                  Entitlements update immediately. The current status, billing cycle, and issued
+                  invoices stay unchanged; new pricing applies to the next invoice.
+                </p>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <select
                     className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-sm"
@@ -228,7 +232,7 @@ export default async function BillingDetailPage({
                     className="focus-ring shrink-0 rounded-lg bg-ink px-4 py-2 text-sm font-black text-white"
                     type="submit"
                   >
-                    Apply
+                    Update
                   </button>
                 </div>
                 <ContractPriceFields

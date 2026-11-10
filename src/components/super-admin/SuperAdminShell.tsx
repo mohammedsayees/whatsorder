@@ -1,22 +1,12 @@
 import Link from "next/link";
 import {
-  Building2,
-  ClipboardCheck,
-  LayoutDashboard,
   LogOut,
   PlusCircle,
-  ReceiptText,
   ShieldCheck
 } from "lucide-react";
 import { logoutSuperAdminAction } from "@/app/super-admin/actions";
 import type { SuperAdminSession } from "@/lib/super-admin-auth";
-
-const navItems = [
-  { href: "/super-admin", label: "Overview", icon: LayoutDashboard },
-  { href: "/super-admin/restaurants", label: "Restaurants", icon: Building2 },
-  { href: "/super-admin/billing", label: "Billing", icon: ReceiptText },
-  { href: "/super-admin/onboarding", label: "Onboarding", icon: ClipboardCheck }
-];
+import { SuperAdminNavLinks } from "@/components/super-admin/SuperAdminNavLinks";
 
 export function SuperAdminShell({
   children,
@@ -40,20 +30,7 @@ export function SuperAdminShell({
           </Link>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                className="focus-ring flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold text-white/72 transition hover:bg-white/10 hover:text-white"
-                href={item.href}
-                key={item.href}
-              >
-                <Icon size={18} />
-                {item.label}
-              </Link>
-            );
-          })}
+          <SuperAdminNavLinks />
         </nav>
         <div className="border-t border-white/10 p-4">
           <p className="truncate text-sm font-bold">{session.profile.full_name || "Super Admin"}</p>
@@ -92,20 +69,7 @@ export function SuperAdminShell({
         <div className="pb-20 lg:pb-0">{children}</div>
 
         <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-stone-200 bg-white p-2 lg:hidden">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                className="focus-ring flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-bold text-stone-600 hover:bg-mint hover:text-leaf"
-                href={item.href}
-                key={item.href}
-              >
-                <Icon size={18} />
-                {item.label}
-              </Link>
-            );
-          })}
+          <SuperAdminNavLinks mobile />
         </nav>
       </div>
     </div>

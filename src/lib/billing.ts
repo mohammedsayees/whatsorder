@@ -165,6 +165,40 @@ export type TenantAccess = {
   limits: { max_branches: number | null; max_staff: number | null };
 };
 
+export type ContractChangePatch = Pick<
+  Subscription,
+  | "plan_id"
+  | "billing_interval"
+  | "price_override"
+  | "price_override_reason"
+  | "price_override_ends_at"
+  | "price_override_created_by"
+  | "price_override_updated_at"
+>;
+
+// Existing-contract edits deliberately exclude status and cycle fields. A plan
+// or discount change must never heal arrears, restart a trial, or replace the
+// invoice period already in progress.
+export function buildContractChangePatch(input: {
+  planId: string;
+  billingInterval: BillingInterval;
+  priceOverride: number | null;
+  priceOverrideReason: string | null;
+  priceOverrideEndsAt: string | null;
+  actorUserId: string | null;
+  changedAt: string;
+}): ContractChangePatch {
+  return {
+    plan_id: input.planId,
+    billing_interval: input.billingInterval,
+    price_override: input.priceOverride,
+    price_override_reason: input.priceOverrideReason,
+    price_override_ends_at: input.priceOverrideEndsAt,
+    price_override_created_by: input.priceOverride !== null ? input.actorUserId : null,
+    price_override_updated_at: input.priceOverride !== null ? input.changedAt : null
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Access mapping (Feature Brief §7).
 //   trialing / active → full

@@ -16,7 +16,8 @@ import {
   inviteRestaurantUser,
   type RestaurantInviteRole as InviteRole
 } from "@/lib/restaurant-invitations";
-import type { RestaurantPlan, RestaurantStatus } from "@/lib/types";
+import type { RestaurantStatus } from "@/lib/types";
+import { getTenantAccess } from "@/lib/billing-data";
 import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
 import {
   countryProfileFields,
@@ -41,13 +42,9 @@ const restaurantStatuses: RestaurantStatus[] = [
   "draft",
   "onboarding",
   "live",
-  "trial",
-  "paid",
   "paused",
   "cancelled"
 ];
-
-const restaurantPlans: RestaurantPlan[] = ["trial", "starter", "pro", "multi_branch"];
 
 function stringValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -142,7 +139,6 @@ export async function createRestaurantAction(formData: FormData) {
   );
   const ownerEmail = stringValue(formData, "owner_email").toLowerCase();
   const statusValue = stringValue(formData, "status") as RestaurantStatus;
-  const planValue = stringValue(formData, "plan") as RestaurantPlan;
 
   if (!name || !slug || !whatsappNumber) {
     redirect(
@@ -151,7 +147,6 @@ export async function createRestaurantAction(formData: FormData) {
   }
 
   const status = restaurantStatuses.includes(statusValue) ? statusValue : "draft";
-  const plan = restaurantPlans.includes(planValue) ? planValue : "trial";
 
   const { data: restaurant, error } = await supabase
     .from("restaurants")
@@ -173,8 +168,8 @@ export async function createRestaurantAction(formData: FormData) {
       delivery_fee: Number(stringValue(formData, "delivery_fee") || 0),
       minimum_order_amount: Number(stringValue(formData, "minimum_order_amount") || 0),
       status,
-      plan,
-      is_active: ["live", "trial", "paid"].includes(status)
+      plan: "trial",
+      is_active: status === "live"
     })
     .select("*")
     .single();
@@ -380,6 +375,29 @@ export async function inviteRestaurantUserAction(formData: FormData) {
     return;
   }
 
+  const access = await getTenantAccess(restaurantId);
+  if (access.plan_code && access.limits.max_staff !== null) {
+    const { data: memberships, error: countError } = await supabase
+      .from("restaurant_users")
+      .select("email")
+      .eq("restaurant_id", restaurantId);
+    if (countError) {
+      redirect(
+        `/super-admin/restaurants/${restaurantId}?invite_error=${queryError(countError.message)}`
+      );
+    }
+    const alreadyHasAccess = (memberships ?? []).some(
+      (membership) => String(membership.email).toLowerCase() === email
+    );
+    if (!alreadyHasAccess && (memberships?.length ?? 0) >= access.limits.max_staff) {
+      redirect(
+        `/super-admin/restaurants/${restaurantId}?invite_error=${queryError(
+          `${access.plan_name ?? "This plan"} allows up to ${access.limits.max_staff} staff accounts. Upgrade the contract before inviting another user.`
+        )}`
+      );
+    }
+  }
+
   const result = await inviteRestaurantUser(supabase, restaurantId, email, role);
 
   if (!result.ok) {
@@ -457,9 +475,7 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
   }
 
   const statusValue = stringValue(formData, "status") as RestaurantStatus;
-  const planValue = stringValue(formData, "plan") as RestaurantPlan;
   const status = restaurantStatuses.includes(statusValue) ? statusValue : "draft";
-  const plan = restaurantPlans.includes(planValue) ? planValue : "trial";
   const slug = slugify(stringValue(formData, "slug"));
   // The slug can change here — capture the current one so the old slug's
   // cached public entry is invalidated alongside the new one. Country is
@@ -474,6 +490,19 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
     ? existingRestaurant.country_code
     : "AE";
   const countryProfile = getCountryProfile(countryCode);
+  const scheduledOrdersEnabled = formData.get("scheduled_orders_enabled") === "on";
+  const access = await getTenantAccess(restaurantId);
+  if (
+    scheduledOrdersEnabled &&
+    access.plan_code &&
+    !access.plan_features.scheduled_orders
+  ) {
+    redirect(
+      `/super-admin/restaurants/${restaurantId}?tab=settings&error=${queryError(
+        `Scheduled orders are not included in the ${access.plan_name ?? access.plan_code} plan.`
+      )}`
+    );
+  }
 
   const { error } = await supabase
     .from("restaurants")
@@ -503,14 +532,13 @@ export async function updateSuperAdminRestaurantAction(formData: FormData) {
       car_pickup_enabled: formData.get("car_pickup_enabled") === "on",
       dine_in_enabled: formData.get("dine_in_enabled") === "on",
       delivery_enabled: formData.get("delivery_enabled") === "on",
-      scheduled_orders_enabled: formData.get("scheduled_orders_enabled") === "on",
+      scheduled_orders_enabled: scheduledOrdersEnabled,
       public_reviews_enabled: formData.get("public_reviews_enabled") === "on",
       accepting_orders: formData.get("accepting_orders") === "on",
       opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
       opening_hours: openingHoursFromFormData(formData),
       status,
-      plan,
-      is_active: ["live", "trial", "paid"].includes(status)
+      is_active: status === "live"
     })
     .eq("id", restaurantId);
 
