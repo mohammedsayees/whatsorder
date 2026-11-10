@@ -3,6 +3,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoyaltyRedeemButton } from "@/components/admin/LoyaltyRedeemButton";
 import { CustomerSearchForm } from "@/components/admin/CustomerSearchForm";
+import {
+  AddCreditCustomerForm,
+  CustomerCreditPanel
+} from "@/components/admin/CustomerCreditPanel";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -20,6 +24,10 @@ import { getCustomerSegments, getOrdersForCustomerPhones } from "@/lib/data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { getCountryProfile } from "@/lib/localization";
+import {
+  getCustomerCreditPortfolio,
+  getCustomerCreditSummaries
+} from "@/lib/customer-credit-data";
 
 function positivePage(value?: string) {
   const page = Number(value);
@@ -51,10 +59,11 @@ export default async function AdminCustomersPage({
 }: {
   searchParams: Promise<{ page?: string; segment?: string; q?: string }>;
 }) {
-  const [{ restaurant }, query] = await Promise.all([
+  const [session, query] = await Promise.all([
     requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
     searchParams
   ]);
+  const { restaurant } = session;
   const money = (value: number) => formatCurrency(value, restaurant);
   const countryProfile = getCountryProfile(restaurant.country_code);
   const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
@@ -90,10 +99,14 @@ export default async function AdminCustomersPage({
     );
   }
 
-  const orders = await getOrdersForCustomerPhones(
-    restaurant.id,
-    segmentPage.items.map((customer) => customer.phone)
-  );
+  const [orders, credit, creditPortfolio] = await Promise.all([
+    getOrdersForCustomerPhones(
+      restaurant.id,
+      segmentPage.items.map((customer) => customer.phone)
+    ),
+    getCustomerCreditSummaries(restaurant, segmentPage.items),
+    getCustomerCreditPortfolio(restaurant.id)
+  ]);
 
   const activeTab = visibleTabs.find((tab) => tab.value === activeSegment);
   const summaryCards = [
@@ -122,6 +135,29 @@ export default async function AdminCustomersPage({
           </div>
         ))}
       </section>
+
+      <section className="mt-4 grid gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 sm:grid-cols-3">
+        <div>
+          <p className="text-xs font-semibold text-blue-700">Credit customers</p>
+          <p className="mt-1 text-2xl font-black text-blue-950">
+            {creditPortfolio.enabled_customers}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-blue-700">Credit outstanding</p>
+          <p className="mt-1 text-2xl font-black text-blue-950">
+            {money(creditPortfolio.outstanding)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-blue-700">Overdue credit</p>
+          <p className="mt-1 text-2xl font-black text-rose-700">
+            {money(creditPortfolio.overdue)}
+          </p>
+        </div>
+      </section>
+
+      <AddCreditCustomerForm />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
         <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Customer segments">
@@ -390,7 +426,15 @@ export default async function AdminCustomersPage({
                 </div>
 
                 <div>
-                  <h3 className="font-black">Order history</h3>
+                  <CustomerCreditPanel
+                    canWriteOff={
+                      session.role === "owner" || session.role === "restaurant_admin"
+                    }
+                    customer={customer}
+                    restaurant={restaurant}
+                    summary={credit.byCustomerId[customer.id]}
+                  />
+                  <h3 className="mt-4 font-black">Order history</h3>
                   <div className="mt-3 space-y-3">
                     {history.length > 0 ? (
                       history.map((order) => (

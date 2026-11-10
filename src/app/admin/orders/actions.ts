@@ -408,7 +408,8 @@ export async function addItemsToOrderAction(
 const collectablePaymentMethods: PaymentMethod[] = [
   "Cash on Delivery",
   "Card on Delivery",
-  "UPI"
+  "UPI",
+  "Customer Credit"
 ];
 
 function isPaymentMethodAvailable(
@@ -436,13 +437,20 @@ export async function collectPaymentAndCompleteAction(formData: FormData) {
     throw new Error("Choose a payment method available for this restaurant.");
   }
 
-  const { data, error } = await supabase.rpc("record_order_payment_async", {
-    target_restaurant_id: session.restaurantId,
-    target_order_id: orderId,
-    requested_payment_method: paymentMethod,
-    complete_order: true,
-    event_actor_user_id: session.userId
-  });
+  const { data, error } =
+    paymentMethod === "Customer Credit"
+      ? await supabase.rpc("record_customer_credit_order", {
+          target_restaurant_id: session.restaurantId,
+          target_order_id: orderId,
+          event_actor_user_id: session.userId
+        })
+      : await supabase.rpc("record_order_payment_async", {
+          target_restaurant_id: session.restaurantId,
+          target_order_id: orderId,
+          requested_payment_method: paymentMethod,
+          complete_order: true,
+          event_actor_user_id: session.userId
+        });
 
   if (error || !data?.order_id) {
     throw new Error("Payment and order completion could not be saved. Refresh and try again.");
@@ -482,7 +490,10 @@ export async function changeOrderPaymentMethodAction(
     return { error: "Payment update is unavailable." };
   }
 
-  if (!isPaymentMethodAvailable(newMethod, session.restaurant.country_code)) {
+  if (
+    newMethod === "Customer Credit" ||
+    !isPaymentMethodAvailable(newMethod, session.restaurant.country_code)
+  ) {
     return { error: "Choose a payment method available for this restaurant." };
   }
 
@@ -497,7 +508,8 @@ export async function changeOrderPaymentMethodAction(
     const knownErrors = [
       "Order not found",
       "Set payment when completing the order",
-      "Only management can correct a closed shift payment"
+      "Only management can correct a closed shift payment",
+      "Customer Credit must be corrected from the credit ledger"
     ];
     return { error: knownErrors.find((message) => error?.message.includes(message)) ??
       "The payment method could not be updated. Try again." };

@@ -109,6 +109,7 @@ export async function computeDailyNumbers(
     new_customer_orders: coach.new_customer_orders,
     top_items: ownerReport.top_items,
     payment_breakdown: ownerReport.payment_breakdown,
+    credit: ownerReport.credit,
     periods: coach.periods,
     location_insights: coach.location_insights
   };

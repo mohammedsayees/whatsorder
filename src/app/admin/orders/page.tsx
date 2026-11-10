@@ -18,6 +18,7 @@ import {
   getDeliveryRiders,
   getLatestOrderRiderAssignments
 } from "@/lib/rider-data";
+import { getCustomerCreditSummariesByPhones } from "@/lib/customer-credit-data";
 
 const statusTabs: { label: string; value: OrderStatusView }[] = [
   { label: "Active", value: "active" },
@@ -76,7 +77,7 @@ export default async function AdminOrdersPage({
   }
 
   const orderIds = ordersPage.items.map((order) => order.id);
-  const [customers, paymentChanges, riders, riderAssignments] = await Promise.all([
+  const [customers, paymentChanges, riders, riderAssignments, customerCredit] = await Promise.all([
     getCustomersByPhones(
       restaurant.id,
       ordersPage.items.map((order) => order.customer_phone)
@@ -86,7 +87,11 @@ export default async function AdminOrdersPage({
       orderIds
     ),
     getDeliveryRiders(restaurant.id),
-    getLatestOrderRiderAssignments(restaurant.id, orderIds)
+    getLatestOrderRiderAssignments(restaurant.id, orderIds),
+    getCustomerCreditSummariesByPhones(
+      restaurant,
+      ordersPage.items.map((order) => order.customer_phone)
+    )
   ]);
 
   return (
@@ -160,6 +165,7 @@ export default async function AdminOrdersPage({
         {ordersPage.items.length > 0 ? (
           <OrderList
             customers={customers}
+            customerCredit={customerCredit}
             orders={ordersPage.items}
             paymentChanges={paymentChanges}
             restaurant={restaurant}

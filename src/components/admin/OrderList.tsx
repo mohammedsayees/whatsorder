@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDateTime } from "@/lib/date-time";
 import type {
   Customer,
+  CustomerCreditSummary,
   DeliveryRider,
   Order,
   OrderRiderAssignment,
@@ -27,6 +28,7 @@ export function OrderList({
   riders = [],
   riderAssignments = {},
   customers = [],
+  customerCredit = {},
   paymentChanges = {}
 }: {
   orders: Order[];
@@ -34,6 +36,7 @@ export function OrderList({
   riders?: DeliveryRider[];
   riderAssignments?: Record<string, OrderRiderAssignment>;
   customers?: Customer[];
+  customerCredit?: Record<string, CustomerCreditSummary>;
   paymentChanges?: Record<string, OrderPaymentChange>;
 }) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
@@ -185,10 +188,12 @@ export function OrderList({
                   </Link>
                 ) : null}
                 <OrderStatusActions
+                  credit={customerCredit[order.customer_phone]}
                   countryCode={restaurant.country_code}
                   fulfilmentType={fulfilmentType}
                   key={`${order.id}-${order.status}`}
                   orderId={order.id}
+                  orderTotal={Number(order.total)}
                   paymentMethod={order.payment_method}
                   status={order.status}
                 />

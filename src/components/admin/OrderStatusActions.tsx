@@ -9,7 +9,13 @@ import {
   getNextOrderActionLabel,
   getNextOrderStatus
 } from "@/lib/order-status";
-import type { CountryCode, FulfilmentType, OrderStatus, PaymentMethod } from "@/lib/types";
+import type {
+  CountryCode,
+  CustomerCreditSummary,
+  FulfilmentType,
+  OrderStatus,
+  PaymentMethod
+} from "@/lib/types";
 
 const basePaymentOptions: { label: string; value: PaymentMethod }[] = [
   { label: "Complete · Cash", value: "Cash on Delivery" },
@@ -18,14 +24,18 @@ const basePaymentOptions: { label: string; value: PaymentMethod }[] = [
 
 export function OrderStatusActions({
   fulfilmentType,
+  credit,
   countryCode,
   orderId,
+  orderTotal = 0,
   paymentMethod,
   status
 }: {
   fulfilmentType: FulfilmentType;
+  credit?: CustomerCreditSummary;
   countryCode?: CountryCode;
   orderId: string;
+  orderTotal?: number;
   paymentMethod: PaymentMethod | null;
   status: OrderStatus;
 }) {
@@ -38,10 +48,26 @@ export function OrderStatusActions({
   // completed, so the final step asks how the customer paid.
   const completingNeedsPayment = nextStatus === "Completed" && paymentMethod === null;
   const busy = submittingStatus !== null || collecting !== null;
-  const paymentOptions =
+  const standardPaymentOptions =
     countryCode === "IN"
       ? [...basePaymentOptions, { label: "Complete · UPI", value: "UPI" as const }]
       : basePaymentOptions;
+  const paymentOptions: Array<{
+    label: string;
+    value: PaymentMethod;
+    disabled?: boolean;
+  }> = [
+    ...standardPaymentOptions,
+    ...(credit?.account.is_enabled
+      ? [
+          {
+            label: "Complete · Credit",
+            value: "Customer Credit" as const,
+            disabled: credit.available < orderTotal
+          }
+        ]
+      : [])
+  ];
 
   async function runAction(action: (data: FormData) => Promise<void>, data: FormData) {
     setError(null);
@@ -77,7 +103,12 @@ export function OrderStatusActions({
                 <input name="payment_method" type="hidden" value={option.value} />
                 <button
                   className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-3 py-3 text-sm font-black text-white disabled:opacity-60"
-                  disabled={busy}
+                  disabled={busy || option.disabled}
+                  title={
+                    option.disabled
+                      ? "This order would exceed the customer's credit limit."
+                      : undefined
+                  }
                   type="submit"
                 >
                   {collecting === option.value ? (
@@ -90,6 +121,12 @@ export function OrderStatusActions({
               </form>
             ))}
           </div>
+          {credit?.account.is_enabled ? (
+            <p className="text-center text-xs font-semibold text-blue-700">
+              Credit available: {countryCode === "IN" ? "INR" : "AED"} {credit.available.toFixed(2)}
+              {credit.available < orderTotal ? " · Limit too low for this order" : ""}
+            </p>
+          ) : null}
         </div>
       ) : nextStatus ? (
         <form

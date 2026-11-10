@@ -325,7 +325,9 @@ export default async function AdminShiftsPage() {
                           {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
                           {entry.reference ? ` · ${entry.reference}` : ""}
                         </p>
-                        {currentShift.canManage ? <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} /> : null}
+                        {currentShift.canManage && entry.category !== "customer_credit_repayment" ? (
+                          <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} />
+                        ) : null}
                       </div>
                       <p className="shrink-0 font-black text-emerald-700">+{money(Number(entry.amount))}</p>
                     </div>

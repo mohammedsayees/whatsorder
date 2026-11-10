@@ -9,8 +9,18 @@ export const otherIncomeCategoryLabels: Record<OtherIncomeCategory, string> = {
   scrap_sale: "Scrap sale",
   supplier_rebate: "Supplier rebate",
   rental_income: "Rental income",
+  customer_credit_repayment: "Customer credit repayment",
   other: "Other income"
 };
+
+export const manualOtherIncomeCategoryLabels = Object.fromEntries(
+  Object.entries(otherIncomeCategoryLabels).filter(
+    ([category]) => category !== "customer_credit_repayment"
+  )
+) as Omit<
+  Record<OtherIncomeCategory, string>,
+  "customer_credit_repayment"
+>;
 
 export const otherIncomePaymentLabels: Record<OtherIncomePaymentMethod, string> = {
   cash: "Cash",
