@@ -63,6 +63,12 @@ describe("computeDailyNumbers", () => {
           payment_breakdown: {
             "Cash on Delivery": { orders: 3, sales: 60 },
             "Card on Delivery": { orders: 1, sales: 20 }
+          },
+          credit: {
+            outstanding: 125,
+            overdue: 25,
+            issued: 20,
+            collected: 10
           }
         },
         error: null
@@ -84,6 +90,12 @@ describe("computeDailyNumbers", () => {
       payment_breakdown: {
         "Cash on Delivery": { orders: 3, sales: 60 },
         "Card on Delivery": { orders: 1, sales: 20 }
+      },
+      credit: {
+        outstanding: 125,
+        overdue: 25,
+        issued: 20,
+        collected: 10
       }
     });
     expect(rpc).toHaveBeenCalledWith("daily_owner_report_insights", {

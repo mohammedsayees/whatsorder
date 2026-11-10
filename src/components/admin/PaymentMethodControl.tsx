@@ -11,7 +11,13 @@ import type { CountryCode, PaymentMethod } from "@/lib/types";
 const initialState: ChangePaymentState = {};
 
 function label(method: PaymentMethod | string | null) {
-  return method === "Cash on Delivery" ? "Cash" : method === "UPI" ? "UPI" : "Card";
+  return method === "Cash on Delivery"
+    ? "Cash"
+    : method === "UPI"
+      ? "UPI"
+      : method === "Customer Credit"
+        ? "Customer credit"
+        : "Card";
 }
 
 export function PaymentMethodControl({
@@ -34,6 +40,17 @@ export function PaymentMethodControl({
     "Card on Delivery",
     ...(countryCode === "IN" ? (["UPI"] as const) : [])
   ];
+
+  if (paymentMethod === "Customer Credit") {
+    return (
+      <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 p-2.5">
+        <p className="text-sm font-bold text-blue-800">Paid by customer credit</p>
+        <p className="mt-1 text-xs text-blue-700">
+          Payments and write-offs are managed from the customer credit ledger.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-2 rounded-lg border border-stone-100 p-2.5">

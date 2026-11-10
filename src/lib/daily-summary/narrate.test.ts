@@ -55,6 +55,13 @@ describe("aedAmountsGrounded", () => {
     const text = "Baskets softened from AED 5.20 to AED 4.90 this week.";
     expect(aedAmountsGrounded(text, numbers())).toBe(true);
   });
+
+  it("accepts customer-credit amounts included in the owner report", () => {
+    const n = numbers({
+      credit: { outstanding: 125, overdue: 25, issued: 20, collected: 10 }
+    });
+    expect(aedAmountsGrounded("Customer credit: AED 125 outstanding; AED 25 overdue.", n)).toBe(true);
+  });
 });
 
 describe("buildTemplateMessage", () => {
@@ -120,6 +127,12 @@ describe("buildTemplateMessage", () => {
         payment_breakdown: {
           "Cash on Delivery": { orders: 3, sales: 60 },
           "Card on Delivery": { orders: 1, sales: 20 }
+        },
+        credit: {
+          outstanding: 125,
+          overdue: 25,
+          issued: 20,
+          collected: 10
         }
       }),
       periods: [
@@ -154,6 +167,9 @@ describe("buildTemplateMessage", () => {
     expect(message).toContain("Order mix: Delivery: 3 • Takeaway: 1");
     expect(message).toContain("Payment mix: Cash: 3");
     expect(message).toContain("Card: 1");
+    expect(message).toContain("Customer credit:");
+    expect(message).toContain("125 outstanding");
+    expect(message).toContain("25 overdue");
     expect(message).toContain("Top sellers: Karak Tea (4) • Samosa (2)");
     expect(message).toContain("Returning-customer orders: 2");
     expect(message).toContain("Morning:");

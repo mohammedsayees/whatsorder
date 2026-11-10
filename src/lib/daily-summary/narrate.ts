@@ -145,8 +145,12 @@ export function currencyAmountsGrounded(
     numbers.gross_revenue,
     numbers.avg_order_value,
     numbers.aov_this_week,
-    numbers.aov_prev_week
-  ];
+    numbers.aov_prev_week,
+    numbers.credit?.outstanding,
+    numbers.credit?.overdue,
+    numbers.credit?.issued,
+    numbers.credit?.collected
+  ].filter((amount): amount is number => typeof amount === "number");
   const escapedCurrency = currencyCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const matches = text.matchAll(
     new RegExp(`${escapedCurrency}\\s*([\\d,]+(?:\\.\\d+)?)`, "gi")
@@ -218,6 +222,8 @@ export function buildTemplateMessage(
 
   // ...then ONE growth action, most important signal first.
   lines.push(managerAction(numbers));
+  const credit = creditLine(numbers, restaurant);
+  if (credit) lines.push(credit);
 
   return lines.join("\n");
 }
@@ -310,6 +316,7 @@ const fulfilmentLabels: Record<string, string> = {
 const paymentLabels: Record<string, string> = {
   "Cash on Delivery": "Cash",
   "Card on Delivery": "Card",
+  "Customer Credit": "Customer credit",
   UPI: "UPI",
   Unrecorded: "Unrecorded"
 };
@@ -358,6 +365,21 @@ function paymentMixLine(
   return mix.length > 0 ? `Payment mix: ${mix.join(" • ")}.` : null;
 }
 
+function creditLine(
+  numbers: DailyNumbers,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const credit = numbers.credit;
+  if (!credit) return null;
+  return `Customer credit: ${formatCurrency(
+    credit.outstanding,
+    restaurant
+  )} outstanding • ${formatCurrency(credit.overdue, restaurant)} overdue • ${formatCurrency(
+    credit.issued,
+    restaurant
+  )} issued yesterday • ${formatCurrency(credit.collected, restaurant)} collected yesterday.`;
+}
+
 function topItemsLine(numbers: DailyNumbers) {
   const items = numbers.top_items?.length
     ? numbers.top_items
@@ -397,6 +419,8 @@ function buildDailyCoachMessage(
     lines.push(
       "Alert: no completed sales were recorded. Confirm ordering was enabled, opening hours were correct, and feature one available item during the first open period today."
     );
+    const credit = creditLine(numbers, restaurant);
+    if (credit) lines.push(credit);
     const link = dashboardUrl();
     if (link) lines.push(`Open dashboard: ${link}`);
     return lines.join("\n");
@@ -406,6 +430,8 @@ function buildDailyCoachMessage(
   if (orderMix) lines.push(orderMix);
   const paymentMix = paymentMixLine(numbers, restaurant);
   if (paymentMix) lines.push(paymentMix);
+  const credit = creditLine(numbers, restaurant);
+  if (credit) lines.push(credit);
   const topItems = topItemsLine(numbers);
   if (topItems) lines.push(topItems);
 

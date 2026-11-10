@@ -13,7 +13,7 @@ import {
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
-import { otherIncomeCategoryLabels } from "@/lib/business-day";
+import { manualOtherIncomeCategoryLabels } from "@/lib/business-day";
 import { calculateCashDifference } from "@/lib/shift-calculations";
 import {
   reconciliationNeedsNote,
@@ -204,7 +204,7 @@ export function OtherIncomeForm({
         <label className="min-w-[160px] flex-1 text-sm font-bold text-stone-700">
           Category
           <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="category" required>
-            {Object.entries(otherIncomeCategoryLabels).map(([value, label]) => (
+            {Object.entries(manualOtherIncomeCategoryLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>

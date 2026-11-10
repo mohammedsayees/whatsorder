@@ -28,6 +28,12 @@ export type DailyNumbers = {
     string,
     { orders: number; sales: number }
   >;
+  credit?: {
+    outstanding: number;
+    overdue: number;
+    issued: number;
+    collected: number;
+  };
   top_combo: { a: string; b: string; count: number } | null;
   // Biggest week-over-week menu movers by quantity (this 7 days vs the prior 7).
   item_riser: { name: string; this_week: number; prev_week: number } | null;
@@ -132,4 +138,10 @@ export type DailyOwnerReportRpcResult = {
     string,
     { orders: number; sales: number }
   >;
+  credit?: {
+    outstanding: number;
+    overdue: number;
+    issued: number;
+    collected: number;
+  };
 };

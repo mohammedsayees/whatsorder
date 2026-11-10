@@ -1,6 +1,10 @@
 import type { OpeningHours } from "@/lib/opening-hours";
 
-export type PaymentMethod = "Cash on Delivery" | "Card on Delivery" | "UPI";
+export type PaymentMethod =
+  | "Cash on Delivery"
+  | "Card on Delivery"
+  | "UPI"
+  | "Customer Credit";
 export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
 export type CountryCode = "AE" | "IN";
 export type ShiftMarketplaceChannel =
@@ -494,6 +498,7 @@ export type OtherIncomeCategory =
   | "scrap_sale"
   | "supplier_rebate"
   | "rental_income"
+  | "customer_credit_repayment"
   | "other";
 
 export type OtherIncomePaymentMethod =
@@ -615,6 +620,79 @@ export type Customer = {
   lifetime_points_earned: number;
   created_at: string;
   updated_at: string;
+};
+
+export type CustomerCreditAccount = {
+  id: string;
+  restaurant_id: string;
+  customer_id: string;
+  is_enabled: boolean;
+  credit_limit: number;
+  terms_days: number;
+  reminders_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomerCreditEntryType =
+  | "charge"
+  | "payment"
+  | "adjustment"
+  | "write_off"
+  | "reversal";
+
+export type CustomerCreditPaymentMethod = OtherIncomePaymentMethod;
+
+export type CustomerCreditEntry = {
+  id: string;
+  restaurant_id: string;
+  account_id: string;
+  order_id: string | null;
+  entry_type: CustomerCreditEntryType;
+  amount: number;
+  due_date: string | null;
+  payment_method: CustomerCreditPaymentMethod | null;
+  note: string | null;
+  actor_user_id: string | null;
+  created_at: string;
+};
+
+export type CustomerCreditReminder = {
+  id: string;
+  restaurant_id: string;
+  account_id: string;
+  reminder_on: string;
+  reminder_kind:
+    | "due_tomorrow"
+    | "due_today"
+    | "overdue_3"
+    | "overdue_7"
+    | "overdue_weekly"
+    | "manual";
+  is_manual: boolean;
+  balance_snapshot: number;
+  overdue_snapshot: number;
+  delivery_status: "sending" | "accepted" | "skipped" | "failed";
+  delivery_reason: string | null;
+  transport_message_id: string | null;
+  sent_by_user_id: string | null;
+  created_at: string;
+};
+
+export type CustomerCreditSummary = {
+  account: CustomerCreditAccount;
+  balance: number;
+  overdue: number;
+  available: number;
+  oldestOutstandingDueDate: string | null;
+  entries: CustomerCreditEntry[];
+  lastReminder: CustomerCreditReminder | null;
+};
+
+export type CustomerCreditPortfolio = {
+  enabled_customers: number;
+  outstanding: number;
+  overdue: number;
 };
 
 export type LoyaltyTransaction = {
