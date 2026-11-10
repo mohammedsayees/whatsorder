@@ -1,6 +1,8 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  AlertTriangle,
+  Ban,
   Building2,
   CheckCircle2,
   ClipboardCheck,
@@ -9,6 +11,7 @@ import {
   Store,
   Users
 } from "lucide-react";
+import { formatAED } from "@/lib/currency";
 import { getSuperAdminDashboardData } from "@/lib/super-admin-data";
 import { RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 
@@ -17,8 +20,11 @@ export default async function SuperAdminDashboardPage() {
   const cards = [
     { label: "Total restaurants", value: metrics.totalRestaurants, icon: Building2 },
     { label: "Live restaurants", value: metrics.liveRestaurants, icon: Store },
-    { label: "Trial restaurants", value: metrics.trialRestaurants, icon: ClipboardCheck },
-    { label: "Paid restaurants", value: metrics.paidRestaurants, icon: CreditCard },
+    { label: "Active contracts", value: metrics.activeContracts, icon: CreditCard },
+    { label: "Trial contracts", value: metrics.trialContracts, icon: ClipboardCheck },
+    { label: "Past-due contracts", value: metrics.pastDueContracts, icon: AlertTriangle },
+    { label: "Suspended contracts", value: metrics.suspendedContracts, icon: Ban },
+    { label: "Outstanding balance", value: formatAED(metrics.outstandingBalance), icon: CreditCard },
     { label: "Orders this month", value: metrics.ordersThisMonth, icon: ReceiptText },
     { label: "Total customers", value: metrics.totalCustomers, icon: Users },
     { label: "Still onboarding", value: metrics.onboardingRestaurants, icon: CheckCircle2 }

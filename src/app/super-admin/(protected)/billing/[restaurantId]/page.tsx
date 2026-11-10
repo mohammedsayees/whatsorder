@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import {
@@ -7,7 +8,7 @@ import {
 } from "@/components/super-admin/BillingBadges";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate, formatUaeShortDateTime } from "@/lib/date-time";
-import { PAYMENT_METHODS } from "@/lib/billing";
+import { PAYMENT_METHODS, priceForBillingInterval, priceForSubscription } from "@/lib/billing";
 import { getBillingDetail, listActivePlans } from "@/lib/billing-data";
 import {
   assignPlanAction,
@@ -49,8 +50,15 @@ export default async function BillingDetailPage({
     notFound();
   }
 
-  const { restaurant, subscription, plan, invoices, payments, statusEvents } = detail;
+  const { restaurant, subscription, plan, invoices, payments, statusEvents, priceEvents } = detail;
   const openInvoices = invoices.filter((invoice) => invoice.status === "issued");
+  const today = new Date().toISOString().slice(0, 10);
+  const listPrice = plan && subscription
+    ? priceForBillingInterval(plan, subscription.billing_interval)
+    : 0;
+  const contractPrice = plan && subscription
+    ? priceForSubscription(plan, subscription, today)
+    : 0;
 
   return (
     <main className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
@@ -86,7 +94,7 @@ export default async function BillingDetailPage({
           <p className="mt-1 text-sm text-stone-600">
             This restaurant has no subscription yet.
           </p>
-          <form action={assignPlanAction} className="mt-4 grid gap-3 sm:grid-cols-3">
+          <form action={assignPlanAction} className="mt-4 grid gap-3 sm:grid-cols-4">
             <input name="restaurant_id" type="hidden" value={restaurant.id} />
             <label className="text-sm font-bold text-stone-700">
               Plan
@@ -97,9 +105,20 @@ export default async function BillingDetailPage({
               >
                 {plans.map((entry) => (
                   <option key={entry.id} value={entry.id}>
-                    {entry.name} — {formatAED(Number(entry.monthly_price))}/mo
+                    {entry.name} — {formatAED(Number(entry.monthly_price))}/mo · {formatAED(Number(entry.annual_price))}/yr
                   </option>
                 ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-stone-700">
+              Contract
+              <select
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue="monthly"
+                name="billing_interval"
+              >
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
               </select>
             </label>
             <label className="flex items-center gap-2 self-end text-sm font-bold text-stone-700">
@@ -112,6 +131,7 @@ export default async function BillingDetailPage({
             >
               Enrol
             </button>
+            <ContractPriceFields className="sm:col-span-4" />
           </form>
         </section>
       ) : (
@@ -125,9 +145,39 @@ export default async function BillingDetailPage({
                   <dd className="font-bold">{plan?.name ?? "—"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-stone-500">Monthly</dt>
-                  <dd className="font-bold">{formatAED(Number(plan?.monthly_price ?? 0))}</dd>
+                  <dt className="text-stone-500">Contract</dt>
+                  <dd className="font-bold capitalize">{subscription.billing_interval}</dd>
                 </div>
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">List price</dt>
+                  <dd className="font-bold">{formatAED(listPrice)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-stone-500">Contract price</dt>
+                  <dd className={contractPrice < listPrice ? "font-bold text-leaf" : "font-bold"}>
+                    {formatAED(contractPrice)}
+                  </dd>
+                </div>
+                {contractPrice < listPrice ? (
+                  <div className="flex justify-between">
+                    <dt className="text-stone-500">Contract saving</dt>
+                    <dd className="font-bold text-leaf">
+                      {formatAED(listPrice - contractPrice)} ({Math.round(((listPrice - contractPrice) / listPrice) * 100)}%)
+                    </dd>
+                  </div>
+                ) : null}
+                {subscription.price_override_reason ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-stone-500">Price reason</dt>
+                    <dd className="text-right font-bold">{subscription.price_override_reason}</dd>
+                  </div>
+                ) : null}
+                {subscription.price_override_ends_at ? (
+                  <div className="flex justify-between">
+                    <dt className="text-stone-500">Discount ends</dt>
+                    <dd className="font-bold">{formatUaeDate(subscription.price_override_ends_at)}</dd>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <dt className="text-stone-500">Current cycle</dt>
                   <dd className="font-bold">
@@ -162,9 +212,17 @@ export default async function BillingDetailPage({
                   >
                     {plans.map((entry) => (
                       <option key={entry.id} value={entry.id}>
-                        {entry.name} — {formatAED(Number(entry.monthly_price))}/mo
+                        {entry.name} — {formatAED(Number(entry.monthly_price))}/mo · {formatAED(Number(entry.annual_price))}/yr
                       </option>
                     ))}
+                  </select>
+                  <select
+                    className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-sm"
+                    defaultValue={subscription.billing_interval}
+                    name="billing_interval"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
                   </select>
                   <button
                     className="focus-ring shrink-0 rounded-lg bg-ink px-4 py-2 text-sm font-black text-white"
@@ -173,6 +231,12 @@ export default async function BillingDetailPage({
                     Apply
                   </button>
                 </div>
+                <ContractPriceFields
+                  className="mt-3"
+                  endsAt={subscription.price_override_ends_at}
+                  price={subscription.price_override}
+                  reason={subscription.price_override_reason}
+                />
               </form>
             </article>
 
@@ -226,7 +290,9 @@ export default async function BillingDetailPage({
                   className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
                   inputMode="decimal"
                   name="unit_amount"
-                  placeholder={String(plan?.monthly_price ?? "")}
+                  placeholder={String(
+                    plan ? contractPrice : ""
+                  )}
                   type="text"
                 />
               </label>
@@ -280,6 +346,11 @@ export default async function BillingDetailPage({
                         <td className="px-5 py-3 font-bold">{formatAED(Number(invoice.total))}</td>
                         <td className="px-5 py-3 text-stone-600">
                           {formatAED(Number(invoice.paid_to_date))}
+                          {Number(invoice.paid_to_date) > Number(invoice.total) ? (
+                            <span className="mt-1 block text-xs font-bold text-red-600">
+                              Overpaid by {formatAED(Number(invoice.paid_to_date) - Number(invoice.total))}
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-5 py-3 text-stone-600">
                           {invoice.due_at ? formatUaeDate(invoice.due_at) : "—"}
@@ -289,9 +360,16 @@ export default async function BillingDetailPage({
                         </td>
                         <td className="px-5 py-3 text-right">
                           {invoice.status === "issued" ? (
-                            <form action={voidInvoiceAction}>
+                            <form action={voidInvoiceAction} className="flex items-center justify-end gap-2">
                               <input name="restaurant_id" type="hidden" value={restaurant.id} />
                               <input name="invoice_id" type="hidden" value={invoice.id} />
+                              <input
+                                aria-label={`Reason for voiding ${invoice.invoice_number}`}
+                                className="focus-ring w-36 rounded-lg border border-stone-200 px-2 py-1 text-xs"
+                                name="reason"
+                                placeholder="Void reason"
+                                required
+                              />
                               <button
                                 className="focus-ring rounded-lg px-2 py-1 text-xs font-black text-red-600 hover:bg-red-50"
                                 type="submit"
@@ -316,6 +394,7 @@ export default async function BillingDetailPage({
             ) : (
               <form action={recordPaymentAction} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <input name="restaurant_id" type="hidden" value={restaurant.id} />
+                <input name="payment_idempotency_key" type="hidden" value={randomUUID()} />
                 <label className="text-sm font-bold text-stone-700 lg:col-span-2">
                   Invoice
                   <select
@@ -325,8 +404,7 @@ export default async function BillingDetailPage({
                   >
                     {openInvoices.map((invoice) => (
                       <option key={invoice.id} value={invoice.id}>
-                        {invoice.invoice_number} — {formatAED(Number(invoice.total))} (
-                        {formatAED(Number(invoice.paid_to_date))} paid)
+                        {invoice.invoice_number} — {formatAED(Math.max(0, Number(invoice.total) - Number(invoice.paid_to_date)))} remaining
                       </option>
                     ))}
                   </select>
@@ -414,8 +492,62 @@ export default async function BillingDetailPage({
               </ul>
             )}
           </section>
+
+          <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-black">Contract price history</h2>
+            {priceEvents.length === 0 ? (
+              <p className="mt-2 text-sm text-stone-500">No contract price changes recorded.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm">
+                {priceEvents.map((event) => (
+                  <li key={event.id} className="flex flex-wrap items-center gap-2 text-stone-600">
+                    <span className="text-xs text-stone-400">{formatUaeShortDateTime(event.created_at)}</span>
+                    <span className="font-bold">
+                      {event.previous_price === null ? "Plan price" : formatAED(Number(event.previous_price))}
+                      {" → "}
+                      {event.new_price === null ? "Plan price" : formatAED(Number(event.new_price))}
+                    </span>
+                    <span>· {event.reason}</span>
+                    {event.ends_at ? <span className="text-xs">until {formatUaeDate(event.ends_at)}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </>
       )}
     </main>
+  );
+}
+
+function ContractPriceFields({
+  className = "",
+  price,
+  reason,
+  endsAt
+}: {
+  className?: string;
+  price?: number | null;
+  reason?: string | null;
+  endsAt?: string | null;
+}) {
+  return (
+    <details className={`rounded-lg border border-stone-200 bg-stone-50 p-3 ${className}`} open={price !== null && price !== undefined}>
+      <summary className="cursor-pointer text-sm font-black text-stone-700">Custom contract price / discount</summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <label className="text-sm font-bold text-stone-700">
+          Contract price (AED)
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={price ?? ""} inputMode="decimal" min="0" name="price_override" placeholder="Leave blank for plan price" step="0.01" type="number" />
+        </label>
+        <label className="text-sm font-bold text-stone-700">
+          Reason
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={reason ?? ""} name="price_override_reason" placeholder="e.g. Founding customer" />
+        </label>
+        <label className="text-sm font-bold text-stone-700">
+          Ends on (optional)
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={endsAt?.slice(0, 10) ?? ""} name="price_override_ends_at" type="date" />
+        </label>
+      </div>
+    </details>
   );
 }

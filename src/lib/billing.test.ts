@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  annualCycleEnd,
+  billingCycleFor,
   computeInvoiceTotals,
   computeLineTotal,
   deriveAccessLevel,
@@ -9,6 +11,8 @@ import {
   invoiceIdempotencyKey,
   isInvoiceSettled,
   lastOfMonth,
+  priceForBillingInterval,
+  priceForSubscription,
   resolvePlanFeatures
 } from "@/lib/billing";
 
@@ -92,6 +96,36 @@ describe("calendar date helpers", () => {
 
   it("adds net terms days across a month boundary", () => {
     expect(addDays("2026-02-26", 7)).toBe("2026-03-05");
+  });
+
+  it("builds a twelve-month annual contract cycle", () => {
+    expect(annualCycleEnd("2026-11-10")).toBe("2027-11-09");
+    expect(billingCycleFor("yearly", "2026-11-10")).toEqual({
+      start: "2026-11-10",
+      end: "2027-11-09"
+    });
+  });
+
+  it("handles leap-day annual contracts", () => {
+    expect(annualCycleEnd("2024-02-29")).toBe("2025-02-28");
+  });
+
+  it("selects the price for the contract interval", () => {
+    const plan = { monthly_price: 249, annual_price: 2490 };
+    expect(priceForBillingInterval(plan, "monthly")).toBe(249);
+    expect(priceForBillingInterval(plan, "yearly")).toBe(2490);
+  });
+
+  it("uses an active contract price and returns to list price after it ends", () => {
+    const plan = { monthly_price: 249, annual_price: 2490 };
+    const subscription = {
+      billing_interval: "yearly" as const,
+      price_override: 1990,
+      price_override_ends_at: "2027-12-31"
+    };
+
+    expect(priceForSubscription(plan, subscription, "2027-12-31")).toBe(1990);
+    expect(priceForSubscription(plan, subscription, "2028-01-01")).toBe(2490);
   });
 
   it("builds a stable idempotency key", () => {

@@ -41,6 +41,7 @@ export default async function SuperAdminBillingPage() {
                 <tr>
                   <th className="px-5 py-3 font-black">Restaurant</th>
                   <th className="px-5 py-3 font-black">Plan</th>
+                  <th className="px-5 py-3 font-black">Contract price</th>
                   <th className="px-5 py-3 font-black">Status</th>
                   <th className="px-5 py-3 font-black">Cycle ends</th>
                   <th className="px-5 py-3 font-black">Outstanding</th>
@@ -51,7 +52,22 @@ export default async function SuperAdminBillingPage() {
                 {subscriptions.map(({ subscription, plan, restaurant, outstanding }) => (
                   <tr key={subscription.id} className="hover:bg-stone-50">
                     <td className="px-5 py-3 font-bold">{restaurant.name}</td>
-                    <td className="px-5 py-3">{plan?.name ?? "—"}</td>
+                    <td className="px-5 py-3">
+                      <span className="block">{plan?.name ?? "—"}</span>
+                      <span className="text-xs capitalize text-stone-500">
+                        {subscription.billing_interval}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 font-bold">
+                      {subscription.price_override !== null ? (
+                        <span className="text-leaf">
+                          {formatAED(Number(subscription.price_override))}
+                          <span className="ml-1 text-xs font-normal text-stone-500">custom</span>
+                        </span>
+                      ) : (
+                        <span>{formatAED(Number(subscription.billing_interval === "yearly" ? plan?.annual_price ?? 0 : plan?.monthly_price ?? 0))}</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       <SubscriptionStatusBadge status={subscription.status} />
                     </td>
@@ -87,13 +103,13 @@ export default async function SuperAdminBillingPage() {
           <h2 className="text-lg font-black">Start billing for a restaurant</h2>
         </div>
         <p className="mt-1 text-sm text-stone-600">
-          Enrol a restaurant on a plan. A non-trial enrolment issues the first invoice for the
-          current calendar month immediately.
+          Enrol a restaurant on a monthly or yearly contract. A non-trial enrolment issues the
+          first invoice for the selected contract period immediately.
         </p>
         {unsubscribed.length === 0 ? (
           <p className="mt-4 text-sm text-stone-500">Every restaurant already has a subscription.</p>
         ) : (
-          <form action={assignPlanAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <form action={assignPlanAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="text-sm font-bold text-stone-700">
               Restaurant
               <select
@@ -117,9 +133,20 @@ export default async function SuperAdminBillingPage() {
               >
                 {plans.map((plan) => (
                   <option key={plan.id} value={plan.id}>
-                    {plan.name} — {formatAED(Number(plan.monthly_price))}/mo
+                    {plan.name} — {formatAED(Number(plan.monthly_price))}/mo · {formatAED(Number(plan.annual_price))}/yr
                   </option>
                 ))}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-stone-700">
+              Contract
+              <select
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue="monthly"
+                name="billing_interval"
+              >
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
               </select>
             </label>
             <label className="flex items-center gap-2 self-end text-sm font-bold text-stone-700">
@@ -132,6 +159,25 @@ export default async function SuperAdminBillingPage() {
             >
               Enrol
             </button>
+            <details className="rounded-lg border border-stone-200 bg-stone-50 p-3 lg:col-span-5">
+              <summary className="cursor-pointer text-sm font-black text-stone-700">
+                Custom contract price / discount
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <label className="text-sm font-bold text-stone-700">
+                  Contract price (AED)
+                  <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" inputMode="decimal" min="0" name="price_override" placeholder="Leave blank for plan price" step="0.01" type="number" />
+                </label>
+                <label className="text-sm font-bold text-stone-700">
+                  Reason
+                  <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" name="price_override_reason" placeholder="e.g. Founding customer" />
+                </label>
+                <label className="text-sm font-bold text-stone-700">
+                  Ends on (optional)
+                  <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" name="price_override_ends_at" type="date" />
+                </label>
+              </div>
+            </details>
           </form>
         )}
       </section>

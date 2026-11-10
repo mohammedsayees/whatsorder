@@ -29,6 +29,8 @@ export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 
 export type PaymentMethod = "bank_transfer" | "cash" | "cheque" | "other";
 
+export type BillingInterval = "monthly" | "yearly";
+
 export const PAYMENT_METHODS: PaymentMethod[] = [
   "bank_transfer",
   "cash",
@@ -73,6 +75,7 @@ export type Plan = {
   name: string;
   name_ar: string | null;
   monthly_price: number;
+  annual_price: number;
   currency: string;
   max_branches: number | null;
   max_staff: number | null;
@@ -87,6 +90,12 @@ export type Subscription = {
   restaurant_id: string;
   plan_id: string;
   status: SubscriptionStatus;
+  billing_interval: BillingInterval;
+  price_override: number | null;
+  price_override_reason: string | null;
+  price_override_ends_at: string | null;
+  price_override_created_by: string | null;
+  price_override_updated_at: string | null;
   billing_cycle_start: string;
   billing_cycle_end: string;
   trial_ends_at: string | null;
@@ -125,6 +134,9 @@ export type Invoice = {
   issued_at: string | null;
   due_at: string | null;
   paid_at: string | null;
+  void_reason: string | null;
+  voided_at: string | null;
+  voided_by_user_id: string | null;
   idempotency_key: string;
   created_at: string;
   updated_at: string;
@@ -139,6 +151,7 @@ export type Payment = {
   reference: string | null;
   received_at: string;
   recorded_by_user_id: string | null;
+  idempotency_key: string;
   created_at: string;
 };
 
@@ -261,6 +274,51 @@ export function addDays(value: string, days: number): string {
   const date = parseDate(value);
   date.setUTCDate(date.getUTCDate() + days);
   return toDateString(date);
+}
+
+export function annualCycleEnd(value: string): string {
+  const date = parseDate(value);
+  date.setUTCFullYear(date.getUTCFullYear() + 1);
+  return addDays(toDateString(date), -1);
+}
+
+export function billingCycleFor(
+  interval: BillingInterval,
+  referenceDate: string
+): { start: string; end: string } {
+  if (interval === "yearly") {
+    return { start: referenceDate, end: annualCycleEnd(referenceDate) };
+  }
+
+  return {
+    start: firstOfMonth(referenceDate),
+    end: lastOfMonth(referenceDate)
+  };
+}
+
+export function priceForBillingInterval(
+  plan: Pick<Plan, "monthly_price" | "annual_price">,
+  interval: BillingInterval
+): number {
+  return Number(interval === "yearly" ? plan.annual_price : plan.monthly_price);
+}
+
+export function priceForSubscription(
+  plan: Pick<Plan, "monthly_price" | "annual_price">,
+  subscription: Pick<
+    Subscription,
+    "billing_interval" | "price_override" | "price_override_ends_at"
+  >,
+  referenceDate: string
+): number {
+  const overrideIsActive =
+    subscription.price_override !== null &&
+    (!subscription.price_override_ends_at ||
+      subscription.price_override_ends_at >= referenceDate);
+
+  return overrideIsActive
+    ? Number(subscription.price_override)
+    : priceForBillingInterval(plan, subscription.billing_interval);
 }
 
 export function firstOfMonth(value: string): string {
