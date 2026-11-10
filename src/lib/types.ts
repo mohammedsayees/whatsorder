@@ -294,6 +294,7 @@ export type Order = {
   id: string;
   restaurant_id: string;
   parent_order_id?: string | null;
+  customer_id?: string | null;
   shift_id: string | null;
   customer_name: string;
   customer_phone: string;
@@ -693,6 +694,17 @@ export type CustomerCreditPortfolio = {
   enabled_customers: number;
   outstanding: number;
   overdue: number;
+};
+
+export type StaffCreditCustomerOption = {
+  id: string;
+  name: string;
+  phone: string;
+  balance: number;
+  overdue: number;
+  available: number;
+  credit_limit: number;
+  terms_days: number;
 };
 
 export type LoyaltyTransaction = {

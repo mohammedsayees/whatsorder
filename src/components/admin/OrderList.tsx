@@ -6,7 +6,6 @@ import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDateTime } from "@/lib/date-time";
 import type {
   Customer,
-  CustomerCreditSummary,
   DeliveryRider,
   Order,
   OrderRiderAssignment,
@@ -21,6 +20,7 @@ import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
 import { CarFront, Gift, MapPin, PlusCircle, ShoppingBag, Truck, Utensils } from "lucide-react";
 import type { OrderPaymentChange } from "@/lib/data";
 import { RiderAssignmentControl } from "@/components/admin/RiderAssignmentControl";
+import type { CustomerCreditMaps } from "@/lib/customer-credit-data";
 
 export function OrderList({
   orders,
@@ -28,7 +28,7 @@ export function OrderList({
   riders = [],
   riderAssignments = {},
   customers = [],
-  customerCredit = {},
+  customerCredit = { byCustomerId: {}, byPhone: {} },
   paymentChanges = {}
 }: {
   orders: Order[];
@@ -36,7 +36,7 @@ export function OrderList({
   riders?: DeliveryRider[];
   riderAssignments?: Record<string, OrderRiderAssignment>;
   customers?: Customer[];
-  customerCredit?: Record<string, CustomerCreditSummary>;
+  customerCredit?: CustomerCreditMaps;
   paymentChanges?: Record<string, OrderPaymentChange>;
 }) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
@@ -188,7 +188,11 @@ export function OrderList({
                   </Link>
                 ) : null}
                 <OrderStatusActions
-                  credit={customerCredit[order.customer_phone]}
+                  credit={
+                    (order.customer_id
+                      ? customerCredit.byCustomerId[order.customer_id]
+                      : undefined) ?? customerCredit.byPhone[order.customer_phone]
+                  }
                   countryCode={restaurant.country_code}
                   fulfilmentType={fulfilmentType}
                   key={`${order.id}-${order.status}`}

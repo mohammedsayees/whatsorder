@@ -104,6 +104,41 @@ export async function submitStaffOrderAction(
     return { success: "Order already synced.", order: existing.data as Order };
   }
 
+  const selectedCustomerId = payloadField(payload.customerId, 80);
+  let selectedCustomer: { id: string; name: string; phone: string } | null = null;
+  if (selectedCustomerId) {
+    if (!isClientOrderId(selectedCustomerId)) {
+      return { error: "The selected credit customer could not be read. Select the customer again." };
+    }
+    const [customerResult, accountResult] = await Promise.all([
+      supabase
+        .from("customers")
+        .select("id, name, phone")
+        .eq("restaurant_id", session.restaurantId)
+        .eq("id", selectedCustomerId)
+        .maybeSingle(),
+      supabase
+        .from("customer_credit_accounts")
+        .select("customer_id")
+        .eq("restaurant_id", session.restaurantId)
+        .eq("customer_id", selectedCustomerId)
+        .maybeSingle()
+    ]);
+    if (customerResult.error || accountResult.error) {
+      return {
+        retryUnchanged: true,
+        error: "The selected credit customer could not be verified. Please retry."
+      };
+    }
+    if (!customerResult.data || !accountResult.data) {
+      return {
+        error:
+          "The selected credit customer is no longer available. Clear the customer and select again."
+      };
+    }
+    selectedCustomer = customerResult.data;
+  }
+
   let items;
 
   try {
@@ -166,14 +201,18 @@ export async function submitStaffOrderAction(
   }
 
   const orderAction = staffOrderActions[payload.action];
-  const customerName = payloadField(payload.customerName, 120) || "Walk-in customer";
+  const customerName =
+    selectedCustomer?.name ??
+    (payloadField(payload.customerName, 120) || "Walk-in customer");
   const submittedCustomerPhone = payloadField(payload.customerPhone, 24);
-  const customerPhone = normalizeCustomerPhone(
-    submittedCustomerPhone,
-    session.restaurant.phone_country_code
-  );
+  const customerPhone =
+    selectedCustomer?.phone ??
+    normalizeCustomerPhone(
+      submittedCustomerPhone,
+      session.restaurant.phone_country_code
+    );
 
-  if (submittedCustomerPhone && !isValidCustomerPhone(customerPhone)) {
+  if (!selectedCustomer && submittedCustomerPhone && !isValidCustomerPhone(customerPhone)) {
     return { error: "Enter a valid phone number, or leave it blank." };
   }
 
@@ -197,6 +236,7 @@ export async function submitStaffOrderAction(
       restaurant_id: session.restaurantId,
       client_order_id: payload.clientOrderId,
       punched_at: clampPunchedAt(payload.punchedAt),
+      customer_id: selectedCustomer?.id ?? null,
       customer_name: customerName,
       customer_phone: customerPhone,
       fulfilment_type: fulfilmentType,

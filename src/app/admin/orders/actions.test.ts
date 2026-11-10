@@ -61,6 +61,36 @@ describe("offline order replay", () => {
     expect((await submitStaffOrderAction(payload)).error).toContain("could not be checked");
     expect(getMenu).not.toHaveBeenCalled();
   });
+
+  it("tenant-scopes the selected credit customer before reading the menu", async () => {
+    const queries = new Map<string, { eq: ReturnType<typeof vi.fn> }>();
+    const from = vi.fn((table: string) => {
+      const query = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
+      };
+      queries.set(table, query);
+      return query;
+    });
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
+
+    const result = await submitStaffOrderAction({
+      ...payload,
+      customerId: "59000000-0000-0000-0000-000000000001"
+    });
+
+    expect(result.error).toContain("no longer available");
+    expect(queries.get("customers")?.eq).toHaveBeenCalledWith(
+      "restaurant_id",
+      rid
+    );
+    expect(queries.get("customer_credit_accounts")?.eq).toHaveBeenCalledWith(
+      "restaurant_id",
+      rid
+    );
+    expect(getMenu).not.toHaveBeenCalled();
+  });
 });
 
 describe("transactional payment actions", () => {

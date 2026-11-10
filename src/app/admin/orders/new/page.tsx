@@ -5,13 +5,15 @@ import { getMenu, getMenuOptionCatalog } from "@/lib/data";
 import { enabledFulfilmentTypes } from "@/lib/fulfilment";
 import { getCurrentShiftView } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { getSelectableCreditCustomers } from "@/lib/customer-credit-data";
 
 export default async function NewStaffOrderPage() {
   const session = await requireRestaurantAdmin();
-  const [menu, optionCatalog, currentShift] = await Promise.all([
+  const [menu, optionCatalog, currentShift, creditCustomers] = await Promise.all([
     getMenu(session.restaurantId, { admin: true }),
     getMenuOptionCatalog(session.restaurantId, { admin: true }),
-    getCurrentShiftView(session)
+    getCurrentShiftView(session),
+    getSelectableCreditCustomers(session.restaurant)
   ]);
   const orderTypes = enabledFulfilmentTypes(session.restaurant);
 
@@ -45,13 +47,15 @@ export default async function NewStaffOrderPage() {
       ) : (
         <div className="mt-6">
           <StaffOrderEntry
-          key={`${session.restaurantId}:${session.userId}`}
-          staffUserId={session.userId}
+            canManageCredit={session.role !== "staff"}
+            creditCustomers={creditCustomers}
             deliveryFee={session.restaurant.delivery_fee}
+            key={`${session.restaurantId}:${session.userId}`}
             menu={menu}
             optionCatalog={optionCatalog}
             orderTypes={orderTypes}
             restaurant={session.restaurant}
+            staffUserId={session.userId}
           />
         </div>
       )}
