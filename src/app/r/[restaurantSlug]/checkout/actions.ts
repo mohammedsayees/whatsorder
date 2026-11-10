@@ -331,7 +331,7 @@ export async function createOrderAction(
   const loyaltyLine = await loyaltyLineForOrder(supabase, restaurant.id, customerPhone);
   const whatsappMessage = loyaltyLine ? `${message}\n\n${loyaltyLine}` : message;
 
-  const { data, error } = await supabase.rpc("create_order_with_customer_v4", {
+  const { data, error } = await supabase.rpc("create_order_with_customer_v5", {
     target_restaurant_id: restaurant.id,
     order_customer_name: customerName,
     order_customer_phone: customerPhone,
@@ -393,22 +393,24 @@ export async function createOrderAction(
     };
   }
 
-  const orderId = String(data);
-  // Signing the push cookie and reading an idempotently persisted message are
-  // independent. Run them together to remove one sequential step from checkout.
-  const [confirmationAuthorized, { data: persistedOrder }] = await Promise.all([
-    setOrderPushAuthorization({
-      orderId,
-      restaurantId: restaurant.id
-    }),
-    supabase
-      .from("orders")
-      .select("whatsapp_message")
-      .eq("id", orderId)
-      .eq("restaurant_id", restaurant.id)
-      .maybeSingle()
-  ]);
-  const persistedMessage = String(persistedOrder?.whatsapp_message ?? message);
+  const persistedOrder = data as {
+    order_id?: string;
+    whatsapp_message?: string | null;
+  } | null;
+  const orderId = String(persistedOrder?.order_id ?? "");
+  if (!orderId) {
+    return {
+      ok: false,
+      error: "This order was saved, but its confirmation could not be loaded. Please contact the restaurant."
+    };
+  }
+  const confirmationAuthorized = await setOrderPushAuthorization({
+    orderId,
+    restaurantId: restaurant.id
+  });
+  const persistedMessage = String(
+    persistedOrder?.whatsapp_message ?? whatsappMessage
+  );
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePath("/admin");
   revalidatePath("/admin/orders");

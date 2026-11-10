@@ -31,6 +31,69 @@ export type CustomerCreditMaps = {
   byPhone: Record<string, CustomerCreditSummary>;
 };
 
+type CustomerCreditSnapshotRow = {
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string;
+  account: CustomerCreditAccount;
+  balance: number | string;
+  overdue: number | string;
+  available: number | string;
+  oldest_outstanding_due_date: string | null;
+  last_reminder: CustomerCreditReminder | null;
+};
+
+async function getCustomerCreditSnapshotRows(
+  restaurantId: string,
+  options: {
+    customerIds?: string[];
+    phones?: string[];
+    enabledOnly?: boolean;
+    limit?: number;
+  } = {}
+): Promise<CustomerCreditSnapshotRow[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return [];
+
+  const { data, error } = await admin.rpc("get_customer_credit_snapshots", {
+    target_restaurant_id: restaurantId,
+    requested_customer_ids: options.customerIds ?? [],
+    requested_customer_phones: options.phones ?? [],
+    requested_enabled_only: options.enabledOnly ?? false,
+    requested_limit: options.limit ?? 250
+  });
+  if (error) {
+    throw new Error("Customer credit summaries could not be loaded.");
+  }
+  return Array.isArray(data) ? (data as CustomerCreditSnapshotRow[]) : [];
+}
+
+function snapshotSummary(row: CustomerCreditSnapshotRow): CustomerCreditSummary {
+  return {
+    account: {
+      ...row.account,
+      credit_limit: Number(row.account.credit_limit),
+      terms_days: Number(row.account.terms_days)
+    },
+    balance: Number(row.balance),
+    overdue: Number(row.overdue),
+    available: Number(row.available),
+    oldestOutstandingDueDate: row.oldest_outstanding_due_date,
+    entries: [],
+    lastReminder: row.last_reminder
+  };
+}
+
+function snapshotMaps(rows: CustomerCreditSnapshotRow[]): CustomerCreditMaps {
+  const maps: CustomerCreditMaps = { byCustomerId: {}, byPhone: {} };
+  for (const row of rows) {
+    const summary = snapshotSummary(row);
+    maps.byCustomerId[row.customer_id] = summary;
+    maps.byPhone[row.customer_phone] = summary;
+  }
+  return maps;
+}
+
 export async function getCustomerCreditSummaries(
   restaurant: Restaurant,
   customers: Pick<Customer, "id" | "phone">[]
@@ -90,11 +153,17 @@ export async function getCustomerCreditSummaries(
   }
 
   const today = localDateString(restaurant.time_zone ?? "Asia/Dubai");
+  const entriesByAccount = new Map<string, CustomerCreditEntry[]>();
+  for (const entry of entries) {
+    const accountEntries = entriesByAccount.get(entry.account_id) ?? [];
+    accountEntries.push(entry);
+    entriesByAccount.set(entry.account_id, accountEntries);
+  }
   const byCustomerId: Record<string, CustomerCreditSummary> = {};
   for (const account of accounts) {
     byCustomerId[account.customer_id] = calculateCustomerCreditSummary(
       account,
-      entries.filter((entry) => entry.account_id === account.id),
+      entriesByAccount.get(account.id) ?? [],
       today,
       firstReminderByAccount.get(account.id) ?? null
     );
@@ -115,18 +184,12 @@ export async function getCustomerCreditSummariesByPhones(
 ) {
   const uniquePhones = [...new Set(phones.filter(Boolean))];
   if (uniquePhones.length === 0) return {};
-  const admin = getSupabaseAdmin();
-  if (!admin) return {};
-  const { data, error } = await admin
-    .from("customers")
-    .select("id, phone")
-    .eq("restaurant_id", restaurant.id)
-    .in("phone", uniquePhones);
-  if (error) throw new Error("Credit customers could not be loaded.");
-  return (await getCustomerCreditSummaries(
-    restaurant,
-    (data ?? []) as Pick<Customer, "id" | "phone">[]
-  )).byPhone;
+  return snapshotMaps(
+    await getCustomerCreditSnapshotRows(restaurant.id, {
+      phones: uniquePhones,
+      limit: uniquePhones.length
+    })
+  ).byPhone;
 }
 
 export async function getCustomerCreditSummariesForOrders(
@@ -147,83 +210,32 @@ export async function getCustomerCreditSummariesForOrders(
   if (customerIds.length === 0 && fallbackPhones.length === 0) {
     return { byCustomerId: {}, byPhone: {} };
   }
-  const admin = getSupabaseAdmin();
-  if (!admin) return { byCustomerId: {}, byPhone: {} };
-
-  const [byIdResult, byPhoneResult] = await Promise.all([
-    customerIds.length > 0
-      ? admin
-          .from("customers")
-          .select("id, phone")
-          .eq("restaurant_id", restaurant.id)
-          .in("id", customerIds)
-      : Promise.resolve({ data: [], error: null }),
-    fallbackPhones.length > 0
-      ? admin
-          .from("customers")
-          .select("id, phone")
-          .eq("restaurant_id", restaurant.id)
-          .in("phone", fallbackPhones)
-      : Promise.resolve({ data: [], error: null })
-  ]);
-  if (byIdResult.error || byPhoneResult.error) {
-    throw new Error("Credit customers could not be loaded.");
-  }
-  const customers = [...(byIdResult.data ?? []), ...(byPhoneResult.data ?? [])]
-    .filter(
-      (customer, index, rows) =>
-        rows.findIndex((candidate) => candidate.id === customer.id) === index
-    ) as Pick<Customer, "id" | "phone">[];
-  return getCustomerCreditSummaries(restaurant, customers);
+  return snapshotMaps(
+    await getCustomerCreditSnapshotRows(restaurant.id, {
+      customerIds,
+      phones: fallbackPhones,
+      limit: customerIds.length + fallbackPhones.length
+    })
+  );
 }
 
 export async function getSelectableCreditCustomers(
   restaurant: Restaurant
 ): Promise<StaffCreditCustomerOption[]> {
-  const admin = getSupabaseAdmin();
-  if (!admin) return [];
-  const accountsResult = await admin
-    .from("customer_credit_accounts")
-    .select("customer_id")
-    .eq("restaurant_id", restaurant.id)
-    .eq("is_enabled", true)
-    .order("updated_at", { ascending: false })
-    .limit(250);
-  if (accountsResult.error) {
-    throw new Error("Credit accounts could not be loaded.");
-  }
-  if (!accountsResult.data?.length) return [];
-
-  const customerIds = accountsResult.data.map((account) => account.customer_id);
-  const customersResult = await admin
-    .from("customers")
-    .select("id, name, phone")
-    .eq("restaurant_id", restaurant.id)
-    .in("id", customerIds)
-    .order("name");
-  if (customersResult.error) {
-    throw new Error("Credit customers could not be loaded.");
-  }
-  const customers = (customersResult.data ?? []) as Pick<
-    Customer,
-    "id" | "name" | "phone"
-  >[];
-  const summaries = await getCustomerCreditSummaries(restaurant, customers);
-
-  return customers.flatMap((customer) => {
-    const summary = summaries.byCustomerId[customer.id];
-    if (!summary?.account.is_enabled) return [];
-    return [{
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      balance: summary.balance,
-      overdue: summary.overdue,
-      available: summary.available,
-      credit_limit: Number(summary.account.credit_limit),
-      terms_days: summary.account.terms_days
-    }];
+  const rows = await getCustomerCreditSnapshotRows(restaurant.id, {
+    enabledOnly: true,
+    limit: 250
   });
+  return rows.map((row) => ({
+    id: row.customer_id,
+    name: row.customer_name,
+    phone: row.customer_phone,
+    balance: Number(row.balance),
+    overdue: Number(row.overdue),
+    available: Number(row.available),
+    credit_limit: Number(row.account.credit_limit),
+    terms_days: Number(row.account.terms_days)
+  }));
 }
 
 export async function getCustomerCreditPortfolio(restaurantId: string) {

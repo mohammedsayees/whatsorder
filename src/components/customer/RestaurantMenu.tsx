@@ -119,20 +119,14 @@ export function RestaurantMenu({
   feedback,
   items,
   offers,
-  loyalty = null,
-  optionCatalog,
-  recentOrders = [],
-  tableNumber
+  optionCatalog
 }: {
   restaurant: PublicRestaurant;
   categories: CustomerMenuCategory[];
   feedback: PublicFeedbackSummary;
   items: CustomerMenuItem[];
   offers: CustomerMenuOffer[];
-  loyalty?: CustomerLoyalty | null;
   optionCatalog?: CustomerMenuOptionCatalog;
-  recentOrders?: CustomerRecentOrder[];
-  tableNumber?: string;
 }) {
   const cart = useCart();
   const amountRemaining = minimumOrderRemaining(
@@ -143,17 +137,29 @@ export function RestaurantMenu({
   const { language, setLanguage } = useCustomerLanguage();
   const t = customerTranslations[language];
   const direction = getTextDirection(language);
-  const scheduleOpen = isRestaurantOpen(
-    restaurant.opening_hours_enabled,
-    restaurant.opening_hours,
-    new Date(),
-    restaurant.time_zone
-  );
+  // The shared menu HTML may be edge-cached. Start from a deterministic value
+  // for SSR/hydration, then evaluate opening hours on the customer's clock.
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const scheduleOpen =
+    currentTime === null ||
+    isRestaurantOpen(
+      restaurant.opening_hours_enabled,
+      restaurant.opening_hours,
+      currentTime,
+      restaurant.time_zone
+    );
   const orderingAvailable =
     restaurant.accepting_orders !== false && scheduleOpen;
+  const [personalization, setPersonalization] = useState<{
+    loyalty: CustomerLoyalty | null;
+    recentOrders: CustomerRecentOrder[];
+  }>({ loyalty: null, recentOrders: [] });
+  const [tableNumber, setTableNumber] = useState("");
   const hasReturningCustomerContent =
-    Boolean(loyalty?.enabled && (loyalty.stamps_required ?? 0) > 0) ||
-    recentOrders.length > 0;
+    Boolean(
+      personalization.loyalty?.enabled &&
+        (personalization.loyalty.stamps_required ?? 0) > 0
+    ) || personalization.recentOrders.length > 0;
   const weeklyHours = normalizeOpeningHours(restaurant.opening_hours);
   const hasBestSellers = items.some((item) => item.is_featured && item.is_available);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
@@ -167,6 +173,53 @@ export function RestaurantMenu({
     offer: CustomerMenuOffer | null;
   } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const clock = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    const queryTableNumber = new URLSearchParams(window.location.search)
+      .get("table")
+      ?.trim()
+      .slice(0, 40);
+    setTableNumber(queryTableNumber ?? "");
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      restaurantId: restaurant.id,
+      scope: "menu"
+    });
+
+    void fetch(`/api/customer/context?${params.toString()}`, {
+      credentials: "same-origin",
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as {
+          loyalty?: CustomerLoyalty | null;
+          recentOrders?: CustomerRecentOrder[];
+        };
+      })
+      .then((customer) => {
+        if (!customer) return;
+        setPersonalization({
+          loyalty: customer.loyalty ?? null,
+          recentOrders: Array.isArray(customer.recentOrders)
+            ? customer.recentOrders
+            : []
+        });
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          // Personalization is optional; the public menu remains usable.
+        }
+      });
+
+    return () => {
+      window.clearInterval(clock);
+      controller.abort();
+    };
+  }, [restaurant.id]);
 
   // Option groups attached to each item, in link order, with only available
   // options. Items with an entry here open the options sheet instead of the
@@ -599,8 +652,8 @@ export function RestaurantMenu({
         {hasReturningCustomerContent ? (
           <ReturningCustomerPanel
             language={language}
-            loyalty={loyalty}
-            recentOrders={recentOrders}
+            loyalty={personalization.loyalty}
+            recentOrders={personalization.recentOrders}
             restaurant={restaurant}
           />
         ) : null}

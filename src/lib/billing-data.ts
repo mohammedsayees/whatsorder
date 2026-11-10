@@ -91,12 +91,21 @@ export const getTenantAccess = cache(async function getTenantAccess(
     return NO_SUBSCRIPTION_ACCESS;
   }
 
-  const subscription = await fetchSubscription(admin, restaurantId);
+  const { data, error } = await admin.rpc("get_tenant_access_snapshot", {
+    target_restaurant_id: restaurantId
+  });
+  if (error || !data) {
+    return NO_SUBSCRIPTION_ACCESS;
+  }
+  const snapshot = data as {
+    subscription?: Subscription | null;
+    plan?: Plan | null;
+  };
+  const subscription = snapshot.subscription ?? null;
   if (!subscription) {
     return NO_SUBSCRIPTION_ACCESS;
   }
-
-  const plan = await fetchPlan(admin, subscription.plan_id);
+  const plan = snapshot.plan ?? null;
 
   return {
     access: deriveAccessLevel(subscription.status),

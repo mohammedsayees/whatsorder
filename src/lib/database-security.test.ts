@@ -49,6 +49,9 @@ describe("public order database boundary", () => {
   const reviewFixMigration = readProjectFile(
     "supabase/migrations/20260713000000_security_and_reliability_fixes.sql"
   );
+  const performanceSnapshotsMigration = readProjectFile(
+    "supabase/migrations/20261110091000_performance_query_snapshots.sql"
+  );
   const orderAdditionsMigration = readProjectFile(
     "supabase/migrations/20260714130000_order_additions.sql"
   );
@@ -108,7 +111,16 @@ describe("public order database boundary", () => {
 
   it("creates customer orders through the hardened RPC instead of a table insert", () => {
     expect(orderActions).toContain(
-      'supabase.rpc("create_order_with_customer_v4"'
+      'supabase.rpc("create_order_with_customer_v5"'
+    );
+    expect(performanceSnapshotsMigration).toContain(
+      "saved_order_id := public.create_order_with_customer_v4("
+    );
+    expect(performanceSnapshotsMigration).toMatch(
+      /revoke all on function public\.create_order_with_customer_v5\([\s\S]*?\) from public, anon, authenticated;/
+    );
+    expect(performanceSnapshotsMigration).toMatch(
+      /grant execute on function public\.create_order_with_customer_v5\([\s\S]*?\) to service_role;/
     );
     expect(orderActions).not.toMatch(
       /\.from\(["']orders["']\)\s*\.insert\(/
