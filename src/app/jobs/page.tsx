@@ -1,13 +1,27 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BriefcaseBusiness, MapPin } from "lucide-react";
+import { FOUNDER_WHATSAPP_NUMBER } from "@/lib/demo-store";
 import { formatJobSalary, JOB_CATEGORIES, UAE_LOCATIONS } from "@/lib/jobs";
 import { getPublicJobs } from "@/lib/jobs-data";
 
 export const dynamic = "force-dynamic";
-export const metadata = {
+export const metadata: Metadata = {
   title: "Hospitality jobs in the UAE | WhatsOrder Jobs",
-  description: "Find current café and restaurant jobs across the UAE and apply directly through WhatsApp."
+  description: "Find current café and restaurant jobs across the UAE and apply directly through WhatsApp.",
+  alternates: { canonical: "/jobs" },
+  openGraph: {
+    title: "Hospitality jobs across the UAE | WhatsOrder Jobs",
+    description: "Find current café and restaurant vacancies and apply directly through WhatsApp.",
+    url: "/jobs",
+    type: "website"
+  },
+  twitter: { card: "summary_large_image" }
 };
+
+const jobAlertsUrl = `https://wa.me/${FOUNDER_WHATSAPP_NUMBER}?text=${encodeURIComponent(
+  "Hi WhatsOrder, I would like to request UAE restaurant job alerts.\n\nPreferred role:\nPreferred emirate/city:"
+)}`;
 
 function queryUrl(query: Record<string, string | undefined>, page: number) {
   const params = new URLSearchParams();
@@ -48,6 +62,8 @@ export default async function JobsPage({
           <p className="text-sm font-black uppercase tracking-wider text-saffron">WhatsOrder Jobs</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-black sm:text-5xl">Hospitality jobs across the UAE</h1>
           <p className="mt-3 max-w-xl text-stone-300">Current café and restaurant vacancies. No candidate account—apply directly through WhatsApp.</p>
+          <a className="focus-ring mt-5 inline-flex rounded-full bg-[#25D366] px-5 py-3 text-sm font-black text-[#073b24]" href={jobAlertsUrl} rel="noopener noreferrer" target="_blank">Request matching job alerts</a>
+          <p className="mt-2 text-xs text-stone-400">Opt in by WhatsApp and tell us your preferred role and location.</p>
         </div>
       </section>
 

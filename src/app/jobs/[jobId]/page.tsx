@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { JobActions } from "@/components/jobs/JobActions";
-import { formatJobSalary } from "@/lib/jobs";
+import { buildJobPostingSchema, formatJobSalary } from "@/lib/jobs";
 import { getPublicJob } from "@/lib/jobs-data";
+import { publicAppUrl } from "@/lib/public-app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,25 @@ export async function generateMetadata({ params }: { params: Promise<{ jobId: st
   const { jobId } = await params;
   const job = await getPublicJob(jobId);
   if (!job) return { title: "Job not found | WhatsOrder Jobs" };
+  const description = `${job.employment_type} ${job.title} vacancy in ${job.city}, ${job.emirate}. Apply through WhatsApp.`;
+  const url = `${publicAppUrl()}/jobs/${job.id}`;
   return {
     title: `${job.title} in ${job.city} | WhatsOrder Jobs`,
-    description: `${job.employment_type} ${job.title} vacancy in ${job.city}, ${job.emirate}. Apply through WhatsApp.`
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title: `${job.title} in ${job.city}`,
+      description,
+      type: "website",
+      url,
+      images: [{ url: `${url}/opengraph-image`, width: 1200, height: 630 }]
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${job.title} in ${job.city}`,
+      description,
+      images: [`${url}/opengraph-image`]
+    }
   };
 }
 
@@ -27,6 +44,8 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ job
   const { jobId } = await params;
   const job = await getPublicJob(jobId);
   if (!job) notFound();
+  const jobUrl = `${publicAppUrl()}/jobs/${job.id}`;
+  const structuredData = buildJobPostingSchema(job, jobUrl);
   const benefits = [
     job.accommodation_provided ? "Accommodation provided" : null,
     job.food_provided ? "Food provided" : null,
@@ -37,6 +56,12 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ job
 
   return (
     <main className="min-h-screen bg-stone-50 text-ink">
+      <script
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replaceAll("<", "\\u003c")
+        }}
+        type="application/ld+json"
+      />
       <header className="border-b border-stone-200 bg-white"><div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4"><Link className="text-xl font-black text-leaf" href="/">WhatsOrder</Link><Link className="text-sm font-bold text-stone-600" href="/jobs">Browse jobs</Link></div></header>
       <div className="mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <Link className="text-sm font-bold text-leaf" href="/jobs">← Back to all jobs</Link>

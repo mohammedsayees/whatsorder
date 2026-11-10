@@ -948,6 +948,17 @@ export function RestaurantMenu({
         </section>
       </main>
 
+      <footer className="mx-auto w-full max-w-3xl px-4 pb-28 pt-2 text-center">
+        <Link
+          className="focus-ring inline-flex rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-black text-leaf shadow-sm"
+          href="/jobs"
+        >
+          {language === "ar"
+            ? "وظائف المطاعم في الإمارات"
+            : "Restaurant jobs across the UAE"}
+        </Link>
+      </footer>
+
       {cart.count > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-white">

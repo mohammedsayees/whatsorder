@@ -505,6 +505,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     </a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#problem">Why</a>
+      <a href="/jobs">Jobs</a>
       <a href="#how">How it works</a>
       <a href="#growth">AI growth</a>
       <a href="#features">Features</a>
@@ -535,6 +536,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <div class="hero-cta">
         <a class="btn btn-primary" href="#contact">Request a demo</a>
         <a class="btn btn-ghost" href="/try">See your menu live in 2 minutes →</a>
+        <a class="btn btn-ghost" href="/jobs">Find restaurant jobs →</a>
       </div>
       <div class="trust">
         <span>Commission-free</span>
@@ -1080,6 +1082,8 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       </div>
       <div class="foot-links">
         <a href="https://whatsorder-taupe.vercel.app/r/chaixpress" target="_blank" rel="noopener">Live demo</a>
+        <a href="/jobs">Find jobs</a>
+        <a href="/jobs/post">Post a job</a>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
         <a href="#contact">Contact</a>

@@ -116,6 +116,7 @@ export async function saveJobAction(formData: FormData) {
 
   revalidatePath("/admin/jobs");
   revalidatePath("/jobs");
+  revalidatePath("/sitemap.xml");
   redirect(`/admin/jobs?success=${encodeURIComponent(jobId ? "Job updated." : "Job created.")}`);
 }
 
@@ -159,6 +160,7 @@ export async function transitionJobAction(formData: FormData) {
 
   revalidatePath("/admin/jobs");
   revalidatePath("/jobs");
+  revalidatePath("/sitemap.xml");
   redirect(`/admin/jobs?success=${encodeURIComponent(`Job ${nextStatus}.`)}`);
 }
 
@@ -177,5 +179,6 @@ export async function deleteDraftJobAction(formData: FormData) {
     .eq("status", "draft");
   if (error || count !== 1) formError("/admin/jobs", "Only your restaurant's draft jobs can be deleted.");
   revalidatePath("/admin/jobs");
+  revalidatePath("/sitemap.xml");
   redirect(`/admin/jobs?success=${encodeURIComponent("Draft deleted.")}`);
 }
