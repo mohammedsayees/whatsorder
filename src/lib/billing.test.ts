@@ -3,6 +3,7 @@ import {
   addDays,
   annualCycleEnd,
   billingCycleFor,
+  buildContractChangePatch,
   computeInvoiceTotals,
   computeLineTotal,
   deriveAccessLevel,
@@ -15,6 +16,35 @@ import {
   priceForSubscription,
   resolvePlanFeatures
 } from "@/lib/billing";
+
+describe("contract changes", () => {
+  it("cannot reset lifecycle or billing-cycle state", () => {
+    const patch = buildContractChangePatch({
+      planId: "pro-plan",
+      billingInterval: "yearly",
+      priceOverride: 1990,
+      priceOverrideReason: "Founding customer",
+      priceOverrideEndsAt: "2027-12-31",
+      actorUserId: "admin-1",
+      changedAt: "2026-11-11T00:00:00.000Z"
+    });
+
+    expect(patch).toEqual({
+      plan_id: "pro-plan",
+      billing_interval: "yearly",
+      price_override: 1990,
+      price_override_reason: "Founding customer",
+      price_override_ends_at: "2027-12-31",
+      price_override_created_by: "admin-1",
+      price_override_updated_at: "2026-11-11T00:00:00.000Z"
+    });
+    expect(patch).not.toHaveProperty("status");
+    expect(patch).not.toHaveProperty("billing_cycle_start");
+    expect(patch).not.toHaveProperty("billing_cycle_end");
+    expect(patch).not.toHaveProperty("trial_ends_at");
+    expect(patch).not.toHaveProperty("grace_until");
+  });
+});
 
 describe("deriveAccessLevel", () => {
   it("keeps trialing and active tenants on full access", () => {

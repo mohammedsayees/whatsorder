@@ -18,16 +18,16 @@ import { RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge"
 export default async function SuperAdminDashboardPage() {
   const { metrics, restaurants } = await getSuperAdminDashboardData();
   const cards = [
-    { label: "Total restaurants", value: metrics.totalRestaurants, icon: Building2 },
-    { label: "Live restaurants", value: metrics.liveRestaurants, icon: Store },
-    { label: "Active contracts", value: metrics.activeContracts, icon: CreditCard },
-    { label: "Trial contracts", value: metrics.trialContracts, icon: ClipboardCheck },
-    { label: "Past-due contracts", value: metrics.pastDueContracts, icon: AlertTriangle },
-    { label: "Suspended contracts", value: metrics.suspendedContracts, icon: Ban },
-    { label: "Outstanding balance", value: formatAED(metrics.outstandingBalance), icon: CreditCard },
-    { label: "Orders this month", value: metrics.ordersThisMonth, icon: ReceiptText },
-    { label: "Total customers", value: metrics.totalCustomers, icon: Users },
-    { label: "Still onboarding", value: metrics.onboardingRestaurants, icon: CheckCircle2 }
+    { label: "Total restaurants", value: metrics.totalRestaurants, icon: Building2, href: "/super-admin/restaurants" },
+    { label: "Live restaurants", value: metrics.liveRestaurants, icon: Store, href: "/super-admin/restaurants?filter=live" },
+    { label: "Active contracts", value: metrics.activeContracts, icon: CreditCard, href: "/super-admin/billing?status=active" },
+    { label: "Trial contracts", value: metrics.trialContracts, icon: ClipboardCheck, href: "/super-admin/billing?status=trialing" },
+    { label: "Past-due contracts", value: metrics.pastDueContracts, icon: AlertTriangle, href: "/super-admin/billing?status=past_due", urgent: metrics.pastDueContracts > 0 },
+    { label: "Suspended contracts", value: metrics.suspendedContracts, icon: Ban, href: "/super-admin/billing?status=suspended", urgent: metrics.suspendedContracts > 0 },
+    { label: "Outstanding balance", value: formatAED(metrics.outstandingBalance), icon: CreditCard, href: "/super-admin/billing?outstanding=1", urgent: metrics.outstandingBalance > 0 },
+    { label: "Orders this month", value: metrics.ordersThisMonth, icon: ReceiptText, href: "/super-admin/restaurants" },
+    { label: "Total customers", value: metrics.totalCustomers, icon: Users, href: "/super-admin/restaurants" },
+    { label: "Still onboarding", value: metrics.onboardingRestaurants, icon: CheckCircle2, href: "/super-admin/onboarding" }
   ];
 
   return (
@@ -43,13 +43,19 @@ export default async function SuperAdminDashboardPage() {
           const Icon = card.icon;
 
           return (
-            <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm" key={card.label}>
+            <Link
+              className={`focus-ring rounded-lg border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                card.urgent ? "border-amber-300" : "border-stone-200"
+              }`}
+              href={card.href}
+              key={card.label}
+            >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-bold text-stone-500">{card.label}</p>
-                <Icon className="text-leaf" size={19} />
+                <Icon className={card.urgent ? "text-amber-700" : "text-leaf"} size={19} />
               </div>
               <p className="mt-3 text-3xl font-black">{card.value}</p>
-            </article>
+            </Link>
           );
         })}
       </section>

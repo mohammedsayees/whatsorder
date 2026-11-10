@@ -211,7 +211,9 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     orders: restaurantOrders,
     customers: (customers ?? []) as Customer[],
     ownerMembership,
-    teamMemberships: normalizedTeamMemberships
+    teamMemberships: normalizedTeamMemberships.filter(
+      (membership) => membership.id !== ownerMembership?.id
+    )
   };
 }
 
@@ -226,12 +228,7 @@ export async function getSuperAdminDashboardData() {
   let outstandingBalance = 0;
 
   if (supabase) {
-    const [
-      { count: orderCount },
-      { count: customerCount },
-      { data: subscriptionRows },
-      { data: openInvoices }
-    ] = await Promise.all([
+    const [orderResult, customerResult, subscriptionResult, invoiceResult] = await Promise.all([
       supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
@@ -240,17 +237,28 @@ export async function getSuperAdminDashboardData() {
       supabase.from("subscriptions").select("status"),
       supabase.from("invoices").select("id,total").eq("status", "issued")
     ]);
+    const dashboardError =
+      orderResult.error ??
+      customerResult.error ??
+      subscriptionResult.error ??
+      invoiceResult.error;
+    if (dashboardError) {
+      throw new Error(`Super Admin dashboard metrics could not be loaded: ${dashboardError.message}`);
+    }
 
-    ordersThisMonth = orderCount ?? 0;
-    totalCustomers = customerCount ?? totalCustomers;
-    subscriptions = (subscriptionRows ?? []) as Array<{ status: string }>;
-    const invoiceRows = (openInvoices ?? []) as Array<{ id: string; total: number }>;
+    ordersThisMonth = orderResult.count ?? 0;
+    totalCustomers = customerResult.count ?? totalCustomers;
+    subscriptions = (subscriptionResult.data ?? []) as Array<{ status: string }>;
+    const invoiceRows = (invoiceResult.data ?? []) as Array<{ id: string; total: number }>;
     if (invoiceRows.length > 0) {
       const invoiceIds = invoiceRows.map((invoice) => invoice.id);
-      const { data: paymentRows } = await supabase
+      const { data: paymentRows, error: paymentsError } = await supabase
         .from("payments")
         .select("invoice_id,amount")
         .in("invoice_id", invoiceIds);
+      if (paymentsError) {
+        throw new Error(`Super Admin outstanding balance could not be loaded: ${paymentsError.message}`);
+      }
       const paidByInvoice = new Map<string, number>();
       for (const payment of (paymentRows ?? []) as Array<{ invoice_id: string; amount: number }>) {
         paidByInvoice.set(
