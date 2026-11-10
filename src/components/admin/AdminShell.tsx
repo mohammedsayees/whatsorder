@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   ClipboardList,
   LogOut,
+  Landmark,
   Megaphone,
   MenuSquare,
   MessagesSquare,
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/admin/jobs", label: "Team · Jobs", icon: BriefcaseBusiness, staff: false },
   { href: "/admin/marketing", label: "Marketing", icon: Megaphone, staff: false },
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },
+  { href: "/admin/finance", label: "Finance", icon: Landmark, staff: true, finance: true },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquareText, staff: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }
 ];
@@ -38,6 +40,7 @@ const navItems = [
 export function AdminShell({
   children,
   billingStatus,
+  financeVisible,
   initialUnreadChatConversationIds,
   initialNewOrderAlertState,
   realtimeAccessToken,
@@ -45,6 +48,7 @@ export function AdminShell({
 }: {
   children: React.ReactNode;
   billingStatus?: SubscriptionStatus | null;
+  financeVisible: boolean;
   initialUnreadChatConversationIds: string[];
   initialNewOrderAlertState: NewOrderAlertState;
   realtimeAccessToken: string | null;
@@ -53,6 +57,7 @@ export function AdminShell({
   const jobsOnly = session.restaurant.jobs_only === true;
   const visibleNavItems = navItems.filter((item) => {
     if (jobsOnly) return item.href === "/admin/jobs";
+    if (item.finance && !financeVisible) return false;
     return session.role !== "staff" || item.staff;
   });
 
