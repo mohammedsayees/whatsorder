@@ -22,6 +22,7 @@ const contentSecurityPolicy = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
+  `frame-src 'self' ${supabaseHttpsOrigin}`.trim(),
   scriptPolicy,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
@@ -39,6 +40,11 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: process.cwd(),
   // Native Rust addon — must load via require at runtime, not be bundled.
   serverExternalPackages: ["@resvg/resvg-js"],
+  experimental: {
+    // Finance scanner accepts a validated 10 MB file plus multipart overhead.
+    // Every receiving action still enforces magic bytes, type, pages and size.
+    serverActions: { bodySizeLimit: "11mb" }
+  },
   // Poster Studio reads its font files (assets/fonts/*.woff) at runtime; the
   // tracer can't see fs reads, so include them for the render route.
   outputFileTracingIncludes: {

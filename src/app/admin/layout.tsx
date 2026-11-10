@@ -5,6 +5,8 @@ import { accessTokenCookieName } from "@/lib/auth-cookies";
 import { getTenantAccess } from "@/lib/billing-data";
 import { getUnreadChatConversationIds } from "@/lib/chat-inbox";
 import { getNewOrderAlertState } from "@/lib/data";
+import { getFinanceAccess } from "@/lib/finance-data";
+import { resolveFinanceAccess } from "@/lib/finance";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -21,7 +23,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     cookieStore,
     initialNewOrderAlertState,
     initialUnreadChatConversationIds,
-    access
+    access,
+    financeAccess
   ] = await Promise.all([
     cookies(),
     jobsOnly
@@ -30,13 +33,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     jobsOnly || session.role === "staff"
       ? Promise.resolve([])
       : getUnreadChatConversationIds(session.restaurantId),
-    jobsOnly ? Promise.resolve({ status: null }) : getTenantAccess(session.restaurantId)
+    jobsOnly ? Promise.resolve({ status: null }) : getTenantAccess(session.restaurantId),
+    jobsOnly
+      ? Promise.resolve(resolveFinanceAccess(false, session.role))
+      : getFinanceAccess(session)
   ]);
   const realtimeAccessToken = cookieStore.get(accessTokenCookieName)?.value ?? null;
 
   return (
     <AdminShell
       billingStatus={access.status}
+      financeVisible={financeAccess.view || financeAccess.create}
       initialNewOrderAlertState={initialNewOrderAlertState}
       initialUnreadChatConversationIds={initialUnreadChatConversationIds}
       realtimeAccessToken={realtimeAccessToken}

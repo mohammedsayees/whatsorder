@@ -95,6 +95,7 @@ export type Restaurant = PublicRestaurant & {
   activation_order_id?: string | null;
   internal_notes?: string | null;
   jobs_only?: boolean;
+  finance_enabled?: boolean;
   // Aggregator commission percentage (e.g. 27) used to compute "commission
   // kept". NULL/undefined → the app's labelled default applies.
   commission_rate?: number | null;
