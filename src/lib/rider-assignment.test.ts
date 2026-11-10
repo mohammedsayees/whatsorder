@@ -61,17 +61,19 @@ describe("buildRiderAssignmentMessage", () => {
       rider: { name: "Ahmed" }
     });
 
-    expect(message).toContain("Delivery assignment — Chai Xpress");
-    expect(message).toContain("Order #567890AB");
-    expect(message).toContain("Pickup: Shop 7, Al Tallah Mall, Ajman");
-    expect(message).toContain("Restaurant contact: 971501111111");
+    expect(message).toContain("🚴 NEW DELIVERY — CHAI XPRESS");
+    expect(message).toContain("Order: #567890AB");
+    expect(message).toContain("📍 PICKUP\nChai Xpress\nShop 7, Al Tallah Mall, Ajman");
+    expect(message).toContain("Restaurant: +971 50 111 1111");
+    expect(message).toContain("🏠 DELIVERY");
     expect(message).toContain("Customer: Test Customer");
-    expect(message).toContain("Phone: 971501234567");
+    expect(message).toContain("Phone: +971 50 123 4567");
     expect(message).toContain("Area: Al Rawda 3");
     expect(message).toContain("Address: Villa 12, Street 4");
     expect(message).toContain("Landmark: Near the mosque");
     expect(message).toContain("Map: https://maps.google.com/?q=25,55");
-    expect(message).toContain("collect AED");
+    expect(message).toContain("💵 PAYMENT\nAmount: AED 12\nMethod: Cash on delivery");
+    expect(message).toContain("Collect cash from the customer.");
     expect(message).not.toContain("Karak Tea");
     expect(message).not.toContain("Kitchen-only note");
   });
@@ -82,6 +84,19 @@ describe("buildRiderAssignmentMessage", () => {
       restaurant,
       rider: { name: "Ahmed" }
     });
-    expect(message).toContain("Payment: not recorded");
+    expect(message).toContain("Amount: AED 12");
+    expect(message).toContain("Payment method not recorded");
+    expect(message).toContain("confirm with the restaurant before collecting payment");
+  });
+
+  it("does not repeat the city when the saved pickup address already contains it", () => {
+    const message = buildRiderAssignmentMessage({
+      order: order(),
+      restaurant: { ...restaurant, address: "Rawdha 3, Ajman" },
+      rider: { name: "Ahmed" }
+    });
+
+    expect(message).toContain("📍 PICKUP\nChai Xpress\nRawdha 3, Ajman\n");
+    expect(message).not.toContain("Rawdha 3, Ajman, Ajman");
   });
 });
