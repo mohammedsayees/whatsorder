@@ -222,18 +222,47 @@ export async function getSuperAdminDashboardData() {
 
   let ordersThisMonth = 0;
   let totalCustomers = restaurants.reduce((sum, restaurant) => sum + restaurant.customers_count, 0);
+  let subscriptions: Array<{ status: string }> = [];
+  let outstandingBalance = 0;
 
   if (supabase) {
-    const [{ count: orderCount }, { count: customerCount }] = await Promise.all([
+    const [
+      { count: orderCount },
+      { count: customerCount },
+      { data: subscriptionRows },
+      { data: openInvoices }
+    ] = await Promise.all([
       supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
         .gte("created_at", monthStartIso),
-      supabase.from("customers").select("id", { count: "exact", head: true })
+      supabase.from("customers").select("id", { count: "exact", head: true }),
+      supabase.from("subscriptions").select("status"),
+      supabase.from("invoices").select("id,total").eq("status", "issued")
     ]);
 
     ordersThisMonth = orderCount ?? 0;
     totalCustomers = customerCount ?? totalCustomers;
+    subscriptions = (subscriptionRows ?? []) as Array<{ status: string }>;
+    const invoiceRows = (openInvoices ?? []) as Array<{ id: string; total: number }>;
+    if (invoiceRows.length > 0) {
+      const invoiceIds = invoiceRows.map((invoice) => invoice.id);
+      const { data: paymentRows } = await supabase
+        .from("payments")
+        .select("invoice_id,amount")
+        .in("invoice_id", invoiceIds);
+      const paidByInvoice = new Map<string, number>();
+      for (const payment of (paymentRows ?? []) as Array<{ invoice_id: string; amount: number }>) {
+        paidByInvoice.set(
+          payment.invoice_id,
+          (paidByInvoice.get(payment.invoice_id) ?? 0) + Number(payment.amount)
+        );
+      }
+      outstandingBalance = invoiceRows.reduce(
+        (sum, invoice) => sum + Math.max(0, Number(invoice.total) - (paidByInvoice.get(invoice.id) ?? 0)),
+        0
+      );
+    }
   }
 
   return {
@@ -241,14 +270,11 @@ export async function getSuperAdminDashboardData() {
     metrics: {
       totalRestaurants: restaurants.length,
       liveRestaurants: restaurants.filter((restaurant) => restaurant.status === "live").length,
-      trialRestaurants: restaurants.filter(
-        (restaurant) => restaurant.status === "trial" || restaurant.plan === "trial"
-      ).length,
-      paidRestaurants: restaurants.filter(
-        (restaurant) =>
-          restaurant.status === "paid" ||
-          ["starter", "pro", "multi_branch"].includes(restaurant.plan ?? "")
-      ).length,
+      trialContracts: subscriptions.filter((subscription) => subscription.status === "trialing").length,
+      activeContracts: subscriptions.filter((subscription) => subscription.status === "active").length,
+      pastDueContracts: subscriptions.filter((subscription) => subscription.status === "past_due").length,
+      suspendedContracts: subscriptions.filter((subscription) => subscription.status === "suspended").length,
+      outstandingBalance,
       ordersThisMonth,
       totalCustomers,
       onboardingRestaurants: restaurants.filter(

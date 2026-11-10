@@ -10,13 +10,13 @@ import {
   NO_SUBSCRIPTION_ACCESS,
   TRIAL_DAYS,
   addDays,
+  billingCycleFor,
   computeInvoiceTotals,
   computeLineTotal,
   deriveAccessLevel,
-  firstOfMonth,
   invoiceIdempotencyKey,
-  isInvoiceSettled,
-  lastOfMonth,
+  priceForBillingInterval,
+  priceForSubscription,
   resolvePlanFeatures,
   toDateString
 } from "@/lib/billing";
@@ -27,6 +27,7 @@ import type {
   Plan,
   Subscription,
   SubscriptionStatus,
+  BillingInterval,
   TenantAccess
 } from "@/lib/billing";
 
@@ -147,7 +148,7 @@ export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary
     admin.from("plans").select("*").in("id", planIds),
     admin
       .from("invoices")
-      .select("restaurant_id,total")
+      .select("id,restaurant_id,total")
       .in("restaurant_id", restaurantIds)
       .in("status", ["issued"])
   ]);
@@ -160,11 +161,25 @@ export async function listSubscriptionsForBilling(): Promise<SubscriptionSummary
   );
   const plansById = new Map(((plans as Plan[] | null) ?? []).map((p) => [p.id, p]));
   const outstandingByRestaurant = new Map<string, number>();
-  for (const invoice of (openInvoices as Array<{ restaurant_id: string; total: number }> | null) ??
-    []) {
+  const openInvoiceRows = (openInvoices as Array<{ id: string; restaurant_id: string; total: number }> | null) ?? [];
+  const paidByInvoice = new Map<string, number>();
+  if (openInvoiceRows.length > 0) {
+    const { data: paymentRows } = await admin
+      .from("payments")
+      .select("invoice_id,amount")
+      .in("invoice_id", openInvoiceRows.map((invoice) => invoice.id));
+    for (const payment of (paymentRows as Array<{ invoice_id: string; amount: number }> | null) ?? []) {
+      paidByInvoice.set(
+        payment.invoice_id,
+        (paidByInvoice.get(payment.invoice_id) ?? 0) + Number(payment.amount)
+      );
+    }
+  }
+  for (const invoice of openInvoiceRows) {
     outstandingByRestaurant.set(
       invoice.restaurant_id,
-      (outstandingByRestaurant.get(invoice.restaurant_id) ?? 0) + Number(invoice.total)
+      (outstandingByRestaurant.get(invoice.restaurant_id) ?? 0) +
+        Math.max(0, Number(invoice.total) - (paidByInvoice.get(invoice.id) ?? 0))
     );
   }
 
@@ -196,6 +211,17 @@ export type BillingDetail = {
   invoices: Array<Invoice & { line_items: InvoiceLineItem[]; paid_to_date: number }>;
   payments: Payment[];
   statusEvents: StatusEvent[];
+  priceEvents: PriceEvent[];
+};
+
+export type PriceEvent = {
+  id: string;
+  previous_price: number | null;
+  new_price: number | null;
+  reason: string;
+  ends_at: string | null;
+  actor_role: string | null;
+  created_at: string;
 };
 
 export async function getBillingDetail(restaurantId: string): Promise<BillingDetail | null> {
@@ -213,8 +239,13 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
   const subscription = await fetchSubscription(admin, restaurantId);
   const plan = subscription ? await fetchPlan(admin, subscription.plan_id) : null;
 
-  const [{ data: invoices }, { data: lineItems }, { data: payments }, { data: statusEvents }] =
-    await Promise.all([
+  const [
+    { data: invoices },
+    { data: lineItems },
+    { data: payments },
+    { data: statusEvents },
+    { data: priceEvents }
+  ] = await Promise.all([
       admin
         .from("invoices")
         .select("*")
@@ -229,6 +260,11 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
       admin
         .from("subscription_status_events")
         .select("id,from_status,to_status,reason,actor_role,created_at")
+        .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false }),
+      admin
+        .from("subscription_price_events")
+        .select("id,previous_price,new_price,reason,ends_at,actor_role,created_at")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false })
     ]);
@@ -259,7 +295,8 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
       paid_to_date: paidByInvoice.get(invoice.id) ?? 0
     })),
     payments: paymentRows,
-    statusEvents: (statusEvents as StatusEvent[] | null) ?? []
+    statusEvents: (statusEvents as StatusEvent[] | null) ?? [],
+    priceEvents: (priceEvents as PriceEvent[] | null) ?? []
   };
 }
 
@@ -316,14 +353,6 @@ async function transitionStatus(
 // ---------------------------------------------------------------------------
 // Invoice issuance — idempotent on {subscription_id}:{period_start} (§5/§9).
 // ---------------------------------------------------------------------------
-async function allocateInvoiceNumber(admin: Admin, year: number): Promise<string> {
-  const { data, error } = await admin.rpc("next_invoice_number", { p_year: year });
-  if (error || !data) {
-    throw new Error(error?.message ?? "Could not allocate an invoice number.");
-  }
-  return data as string;
-}
-
 type IssueInvoiceArgs = {
   subscription: Subscription;
   plan: Plan;
@@ -332,7 +361,7 @@ type IssueInvoiceArgs = {
   issuedDate: string;
   description: string;
   descriptionAr?: string | null;
-  unitAmount?: number; // defaults to plan.monthly_price (multi-branch overrides)
+  unitAmount?: number; // defaults to the plan price for the subscription interval
   quantity?: number;
 };
 
@@ -352,64 +381,39 @@ export async function issueInvoiceForPeriod(
     return existing as Invoice;
   }
 
-  const unitAmount = args.unitAmount ?? Number(args.plan.monthly_price);
+  const unitAmount =
+    args.unitAmount ??
+    priceForSubscription(args.plan, args.subscription, args.issuedDate);
   const quantity = args.quantity ?? 1;
   const lineTotal = computeLineTotal(quantity, unitAmount);
   const totals = computeInvoiceTotals([{ line_total: lineTotal }], DEFAULT_VAT_RATE);
 
-  const year = Number(args.issuedDate.slice(0, 4));
-  const invoiceNumber = await allocateInvoiceNumber(admin, year);
-  const issuedAtIso = new Date(`${args.issuedDate}T00:00:00.000Z`).toISOString();
   const dueAtIso = new Date(
     `${addDays(args.issuedDate, NET_TERMS_DAYS)}T00:00:00.000Z`
   ).toISOString();
 
-  const { data: invoice, error } = await admin
-    .from("invoices")
-    .insert({
-      restaurant_id: args.subscription.restaurant_id,
-      subscription_id: args.subscription.id,
-      invoice_number: invoiceNumber,
-      period_start: args.periodStart,
-      period_end: args.periodEnd,
-      subtotal: totals.subtotal,
-      vat_rate: DEFAULT_VAT_RATE,
-      vat_amount: totals.vat_amount,
-      total: totals.total,
-      currency: args.plan.currency ?? DEFAULT_CURRENCY,
-      status: "issued",
-      issued_at: issuedAtIso,
-      due_at: dueAtIso,
-      idempotency_key: idempotencyKey
-    })
-    .select("*")
-    .single();
-
+  const { data: invoice, error } = await admin.rpc("issue_billing_invoice", {
+    p_restaurant_id: args.subscription.restaurant_id,
+    p_subscription_id: args.subscription.id,
+    p_period_start: args.periodStart,
+    p_period_end: args.periodEnd,
+    p_issued_date: args.issuedDate,
+    p_due_at: dueAtIso,
+    p_subtotal: totals.subtotal,
+    p_vat_rate: DEFAULT_VAT_RATE,
+    p_vat_amount: totals.vat_amount,
+    p_total: totals.total,
+    p_currency: args.plan.currency ?? DEFAULT_CURRENCY,
+    p_idempotency_key: idempotencyKey,
+    p_description: args.description,
+    p_description_ar: args.descriptionAr ?? null,
+    p_quantity: quantity,
+    p_unit_amount: unitAmount,
+    p_line_total: lineTotal
+  });
   if (error) {
-    // Concurrent run won the race on the unique idempotency_key — re-read it.
-    if (error.code === "23505") {
-      const { data: raced } = await admin
-        .from("invoices")
-        .select("*")
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
-      if (raced) {
-        return raced as Invoice;
-      }
-    }
     throw new Error(error.message);
   }
-
-  await admin.from("invoice_line_items").insert({
-    restaurant_id: args.subscription.restaurant_id,
-    invoice_id: (invoice as Invoice).id,
-    description: args.description,
-    description_ar: args.descriptionAr ?? null,
-    quantity,
-    unit_amount: unitAmount,
-    line_total: lineTotal
-  });
-
   return invoice as Invoice;
 }
 
@@ -430,7 +434,14 @@ function periodLabel(periodStart: string): string {
 export async function assignPlan(
   restaurantId: string,
   planId: string,
-  options: { startTrial?: boolean; actor: BillingActor }
+  options: {
+    startTrial?: boolean;
+    billingInterval?: BillingInterval;
+    priceOverride?: number | null;
+    priceOverrideReason?: string | null;
+    priceOverrideEndsAt?: string | null;
+    actor: BillingActor;
+  }
 ): Promise<BillingResult<{ subscriptionId: string }>> {
   const admin = getAdmin();
   const plan = await fetchPlan(admin, planId);
@@ -439,10 +450,26 @@ export async function assignPlan(
   }
 
   const todayStr = today();
-  const cycleStart = firstOfMonth(todayStr);
-  const cycleEnd = lastOfMonth(todayStr);
+  const billingInterval = options.billingInterval ?? "monthly";
+  const cycle = billingCycleFor(billingInterval, todayStr);
+  const cycleStart = cycle.start;
+  const cycleEnd = cycle.end;
   const startTrial = options.startTrial ?? false;
   const status: SubscriptionStatus = startTrial ? "trialing" : "active";
+  const listPrice = priceForBillingInterval(plan, billingInterval);
+  const priceOverride = options.priceOverride ?? null;
+  const priceOverrideReason = options.priceOverrideReason?.trim() || null;
+  const priceOverrideEndsAt = options.priceOverrideEndsAt || null;
+
+  if (priceOverride !== null && (!Number.isFinite(priceOverride) || priceOverride < 0)) {
+    return { ok: false, error: "Contract price must be zero or greater." };
+  }
+  if (priceOverride !== null && priceOverride > listPrice) {
+    return { ok: false, error: "Contract price cannot exceed the selected plan price." };
+  }
+  if (priceOverride !== null && !priceOverrideReason) {
+    return { ok: false, error: "Add a reason for the discounted contract price." };
+  }
 
   const existing = await fetchSubscription(admin, restaurantId);
 
@@ -453,11 +480,17 @@ export async function assignPlan(
       .update({
         plan_id: planId,
         status,
+        billing_interval: billingInterval,
+        price_override: priceOverride,
+        price_override_reason: priceOverrideReason,
+        price_override_ends_at: priceOverrideEndsAt,
+        price_override_created_by: priceOverride !== null ? options.actor.userId : null,
+        price_override_updated_at: priceOverride !== null ? new Date().toISOString() : null,
         billing_cycle_start: cycleStart,
         billing_cycle_end: cycleEnd,
         trial_ends_at: startTrial
           ? new Date(`${addDays(todayStr, TRIAL_DAYS)}T00:00:00.000Z`).toISOString()
-          : existing.trial_ends_at,
+          : null,
         grace_until: null,
         cancel_at_period_end: false,
         cancelled_at: null
@@ -473,6 +506,26 @@ export async function assignPlan(
     if (existing.status !== status) {
       await logStatusEvent(admin, existing, status, `Plan changed to ${plan.code}`, options.actor);
     }
+    if (
+      Number(existing.price_override ?? -1) !== Number(priceOverride ?? -1) ||
+      existing.price_override_reason !== priceOverrideReason ||
+      existing.price_override_ends_at !== priceOverrideEndsAt
+    ) {
+      const { error: priceEventError } = await admin.from("subscription_price_events").insert({
+        restaurant_id: restaurantId,
+        subscription_id: subscription.id,
+        previous_price: existing.price_override,
+        new_price: priceOverride,
+        billing_interval: billingInterval,
+        reason: priceOverrideReason || "Contract price returned to plan price",
+        ends_at: priceOverrideEndsAt,
+        actor_user_id: options.actor.userId,
+        actor_role: options.actor.role
+      });
+      if (priceEventError) {
+        return { ok: false, error: priceEventError.message };
+      }
+    }
   } else {
     const { data, error } = await admin
       .from("subscriptions")
@@ -480,6 +533,12 @@ export async function assignPlan(
         restaurant_id: restaurantId,
         plan_id: planId,
         status,
+        billing_interval: billingInterval,
+        price_override: priceOverride,
+        price_override_reason: priceOverrideReason,
+        price_override_ends_at: priceOverrideEndsAt,
+        price_override_created_by: priceOverride !== null ? options.actor.userId : null,
+        price_override_updated_at: priceOverride !== null ? new Date().toISOString() : null,
         billing_cycle_start: cycleStart,
         billing_cycle_end: cycleEnd,
         trial_ends_at: startTrial
@@ -497,10 +556,26 @@ export async function assignPlan(
       subscription_id: subscription.id,
       from_status: null,
       to_status: status,
-      reason: `Enrolled on ${plan.code}${startTrial ? " (trial)" : ""}`,
+      reason: `Enrolled on ${plan.code} (${billingInterval})${startTrial ? " (trial)" : ""}`,
       actor_user_id: options.actor.userId,
       actor_role: options.actor.role
     });
+    if (priceOverride !== null) {
+      const { error: priceEventError } = await admin.from("subscription_price_events").insert({
+        restaurant_id: restaurantId,
+        subscription_id: subscription.id,
+        previous_price: null,
+        new_price: priceOverride,
+        billing_interval: billingInterval,
+        reason: priceOverrideReason,
+        ends_at: priceOverrideEndsAt,
+        actor_user_id: options.actor.userId,
+        actor_role: options.actor.role
+      });
+      if (priceEventError) {
+        return { ok: false, error: priceEventError.message };
+      }
+    }
   }
 
   if (!startTrial) {
@@ -510,8 +585,15 @@ export async function assignPlan(
       periodStart: cycleStart,
       periodEnd: cycleEnd,
       issuedDate: todayStr,
-      description: `${plan.name} plan — ${periodLabel(cycleStart)}`,
-      descriptionAr: plan.name_ar ? `${plan.name_ar} — ${periodLabel(cycleStart)}` : null
+      description:
+        billingInterval === "yearly"
+          ? `${plan.name} annual plan — ${cycleStart} to ${cycleEnd}`
+          : `${plan.name} plan — ${periodLabel(cycleStart)}`,
+      descriptionAr: plan.name_ar
+        ? billingInterval === "yearly"
+          ? `${plan.name_ar} — ${cycleStart} to ${cycleEnd}`
+          : `${plan.name_ar} — ${periodLabel(cycleStart)}`
+        : null
     });
   }
 
@@ -542,7 +624,9 @@ export async function issueCurrentPeriodInvoice(
     issuedDate: today(),
     description:
       options.description?.trim() ||
-      `${plan.name} plan — ${periodLabel(subscription.billing_cycle_start)}`,
+      (subscription.billing_interval === "yearly"
+        ? `${plan.name} annual plan — ${subscription.billing_cycle_start} to ${subscription.billing_cycle_end}`
+        : `${plan.name} plan — ${periodLabel(subscription.billing_cycle_start)}`),
     unitAmount: options.unitAmount
   });
 
@@ -551,15 +635,17 @@ export async function issueCurrentPeriodInvoice(
 
 export async function voidInvoice(
   restaurantId: string,
-  invoiceId: string
+  invoiceId: string,
+  reason: string,
+  actor: BillingActor
 ): Promise<BillingResult> {
   const admin = getAdmin();
-  const { error } = await admin
-    .from("invoices")
-    .update({ status: "void" })
-    .eq("id", invoiceId)
-    .eq("restaurant_id", restaurantId)
-    .neq("status", "paid");
+  const { error } = await admin.rpc("void_billing_invoice", {
+    p_restaurant_id: restaurantId,
+    p_invoice_id: invoiceId,
+    p_reason: reason,
+    p_actor_user_id: actor.userId
+  });
   if (error) {
     return { ok: false, error: error.message };
   }
@@ -576,6 +662,7 @@ export async function recordPayment(
     method: Payment["method"];
     reference?: string | null;
     receivedAt?: string;
+    idempotencyKey: string;
     actor: BillingActor;
   }
 ): Promise<BillingResult> {
@@ -584,66 +671,23 @@ export async function recordPayment(
     return { ok: false, error: "Payment amount must be greater than zero." };
   }
 
-  const { data: invoice } = await admin
-    .from("invoices")
-    .select("*")
-    .eq("id", invoiceId)
-    .eq("restaurant_id", restaurantId)
-    .maybeSingle();
-  if (!invoice) {
-    return { ok: false, error: "Invoice not found." };
+  if (!input.idempotencyKey) {
+    return { ok: false, error: "Payment request key is missing. Refresh and try again." };
   }
-
-  const { error: paymentError } = await admin.from("payments").insert({
-    restaurant_id: restaurantId,
-    invoice_id: invoiceId,
-    amount: input.amount,
-    method: input.method,
-    reference: input.reference?.trim() || null,
-    received_at: input.receivedAt
+  const { error } = await admin.rpc("record_billing_payment", {
+    p_restaurant_id: restaurantId,
+    p_invoice_id: invoiceId,
+    p_amount: input.amount,
+    p_method: input.method,
+    p_reference: input.reference?.trim() || null,
+    p_received_at: input.receivedAt
       ? new Date(input.receivedAt).toISOString()
       : new Date().toISOString(),
-    recorded_by_user_id: input.actor.userId
+    p_actor_user_id: input.actor.userId,
+    p_idempotency_key: input.idempotencyKey
   });
-  if (paymentError) {
-    return { ok: false, error: paymentError.message };
-  }
-
-  // Recompute settlement from all recorded payments.
-  const { data: payments } = await admin
-    .from("payments")
-    .select("amount")
-    .eq("invoice_id", invoiceId)
-    .eq("restaurant_id", restaurantId);
-  const paidToDate = ((payments as Array<{ amount: number }> | null) ?? []).reduce(
-    (sum, row) => sum + Number(row.amount),
-    0
-  );
-
-  const settled = isInvoiceSettled(Number((invoice as Invoice).total), paidToDate);
-  if (settled && (invoice as Invoice).status === "issued") {
-    await admin
-      .from("invoices")
-      .update({ status: "paid", paid_at: new Date().toISOString() })
-      .eq("id", invoiceId)
-      .eq("restaurant_id", restaurantId);
-
-    // A settled invoice heals the subscription (§6: payment is the only thing
-    // that recovers past_due / suspended; first paid invoice converts trial).
-    const subscription = await fetchSubscription(admin, restaurantId);
-    if (
-      subscription &&
-      ["past_due", "suspended", "trialing"].includes(subscription.status)
-    ) {
-      await transitionStatus(
-        admin,
-        subscription,
-        "active",
-        `Invoice ${(invoice as Invoice).invoice_number} settled`,
-        input.actor,
-        { grace_until: null }
-      );
-    }
+  if (error) {
+    return { ok: false, error: error.message };
   }
 
   return { ok: true };
@@ -661,6 +705,24 @@ export async function changeStatusManually(
   const subscription = await fetchSubscription(admin, restaurantId);
   if (!subscription) {
     return { ok: false, error: "This restaurant has no subscription yet." };
+  }
+
+  if (toStatus === "active") {
+    const { count, error } = await admin
+      .from("invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "issued")
+      .lt("due_at", new Date().toISOString());
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    if ((count ?? 0) > 0) {
+      return {
+        ok: false,
+        error: "Settle or void overdue invoices before changing this subscription to active."
+      };
+    }
   }
 
   const patch: Partial<Subscription> = {};
@@ -728,9 +790,11 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
     .not("trial_ends_at", "is", null)
     .lte("trial_ends_at", nowIso);
   for (const subscription of (trialing as Subscription[] | null) ?? []) {
+    const cycle = billingCycleFor(subscription.billing_interval, todayStr);
     await transitionStatus(admin, subscription, "active", "Trial ended", CRON_ACTOR, {
-      billing_cycle_start: firstOfMonth(todayStr),
-      billing_cycle_end: lastOfMonth(todayStr)
+      billing_cycle_start: cycle.start,
+      billing_cycle_end: cycle.end,
+      trial_ends_at: null
     });
     summary.trialConverted += 1;
   }
@@ -748,8 +812,9 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
     if (!plan) {
       continue;
     }
-    const periodStart = firstOfMonth(todayStr);
-    const periodEnd = lastOfMonth(todayStr);
+    const cycle = billingCycleFor(subscription.billing_interval, todayStr);
+    const periodStart = cycle.start;
+    const periodEnd = cycle.end;
 
     const { data: rolled } = await admin
       .from("subscriptions")
@@ -772,8 +837,15 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
       periodStart,
       periodEnd,
       issuedDate: todayStr,
-      description: `${plan.name} plan — ${periodLabel(periodStart)}`,
-      descriptionAr: plan.name_ar ? `${plan.name_ar} — ${periodLabel(periodStart)}` : null
+      description:
+        subscription.billing_interval === "yearly"
+          ? `${plan.name} annual plan — ${periodStart} to ${periodEnd}`
+          : `${plan.name} plan — ${periodLabel(periodStart)}`,
+      descriptionAr: plan.name_ar
+        ? subscription.billing_interval === "yearly"
+          ? `${plan.name_ar} — ${periodStart} to ${periodEnd}`
+          : `${plan.name_ar} — ${periodLabel(periodStart)}`
+        : null
     });
     if (!priorInvoice) {
       summary.invoicesIssued += 1;

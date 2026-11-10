@@ -11,7 +11,12 @@ import {
   voidInvoice,
   type BillingActor
 } from "@/lib/billing-data";
-import { PAYMENT_METHODS, type PaymentMethod, type SubscriptionStatus } from "@/lib/billing";
+import {
+  PAYMENT_METHODS,
+  type BillingInterval,
+  type PaymentMethod,
+  type SubscriptionStatus
+} from "@/lib/billing";
 
 const SUBSCRIPTION_STATUSES: SubscriptionStatus[] = [
   "trialing",
@@ -20,6 +25,7 @@ const SUBSCRIPTION_STATUSES: SubscriptionStatus[] = [
   "suspended",
   "cancelled"
 ];
+const BILLING_INTERVALS: BillingInterval[] = ["monthly", "yearly"];
 
 function field(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -53,13 +59,33 @@ export async function assignPlanAction(formData: FormData) {
   const actor = await actorFromSession();
   const restaurantId = field(formData, "restaurant_id");
   const planId = field(formData, "plan_id");
+  const intervalValue = field(formData, "billing_interval") as BillingInterval;
+  const billingInterval = BILLING_INTERVALS.includes(intervalValue)
+    ? intervalValue
+    : "monthly";
   const startTrial = formData.get("start_trial") === "on";
+  const priceOverrideRaw = field(formData, "price_override");
+  const priceOverride = priceOverrideRaw ? Number(priceOverrideRaw) : null;
+  const priceOverrideReason = field(formData, "price_override_reason");
+  const priceOverrideEndsAt = field(formData, "price_override_ends_at");
 
   if (!restaurantId || !planId) {
     redirect(`/super-admin/billing?error=${queryError("Restaurant and plan are required.")}`);
   }
+  if (priceOverrideRaw && (!Number.isFinite(priceOverride) || (priceOverride as number) < 0)) {
+    redirect(
+      `/super-admin/billing/${restaurantId}?error=${queryError("Enter a valid contract price.")}`
+    );
+  }
 
-  const result = await assignPlan(restaurantId, planId, { startTrial, actor });
+  const result = await assignPlan(restaurantId, planId, {
+    startTrial,
+    billingInterval,
+    priceOverride,
+    priceOverrideReason,
+    priceOverrideEndsAt,
+    actor
+  });
   finish(restaurantId, result, "plan");
 }
 
@@ -97,6 +123,7 @@ export async function recordPaymentAction(formData: FormData) {
   const method = PAYMENT_METHODS.includes(methodRaw) ? methodRaw : "bank_transfer";
   const reference = field(formData, "reference");
   const receivedAt = field(formData, "received_at");
+  const idempotencyKey = field(formData, "payment_idempotency_key");
 
   if (!restaurantId || !invoiceId) {
     return;
@@ -113,21 +140,29 @@ export async function recordPaymentAction(formData: FormData) {
     method,
     reference,
     receivedAt: receivedAt || undefined,
+    idempotencyKey,
     actor
   });
   finish(restaurantId, result, "payment");
 }
 
 export async function voidInvoiceAction(formData: FormData) {
-  await actorFromSession();
+  const actor = await actorFromSession();
   const restaurantId = field(formData, "restaurant_id");
   const invoiceId = field(formData, "invoice_id");
+  const reason = field(formData, "reason");
 
   if (!restaurantId || !invoiceId) {
     return;
   }
 
-  const result = await voidInvoice(restaurantId, invoiceId);
+  if (!reason) {
+    redirect(
+      `/super-admin/billing/${restaurantId}?error=${queryError("A reason is required to void an invoice.")}`
+    );
+  }
+
+  const result = await voidInvoice(restaurantId, invoiceId, reason, actor);
   finish(restaurantId, result, "void");
 }
 
