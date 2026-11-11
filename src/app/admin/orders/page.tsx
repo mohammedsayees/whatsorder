@@ -20,14 +20,18 @@ import {
 } from "@/lib/rider-data";
 import { getCustomerCreditSummariesForOrders } from "@/lib/customer-credit-data";
 
-const statusTabs: { label: string; value: AdminOrderStatusView }[] = [
-  { label: "All active", value: "active" },
+const primaryStatusTabs: { label: string; value: "active" | "completed" | "cancelled" }[] = [
+  { label: "Active", value: "active" },
+  { label: "Completed", value: "completed" },
+  { label: "Cancelled", value: "cancelled" }
+];
+
+const operationalStatusOptions: { label: string; value: AdminOrderStatusView }[] = [
+  { label: "All statuses", value: "active" },
   { label: "New", value: "new" },
   { label: "Preparing", value: "preparing" },
   { label: "Ready", value: "ready" },
-  { label: "Out for delivery", value: "out_for_delivery" },
-  { label: "Completed", value: "completed" },
-  { label: "Cancelled", value: "cancelled" }
+  { label: "Out for delivery", value: "out_for_delivery" }
 ];
 
 const fulfilmentTabs: { label: string; value: OrderFulfilmentView }[] = [
@@ -77,7 +81,8 @@ export default async function AdminOrdersPage({
     searchParams
   ]);
   const { restaurant } = session;
-  const status = statusTabs.some((tab) => tab.value === query.status)
+  const allStatusOptions = [...primaryStatusTabs, ...operationalStatusOptions];
+  const status = allStatusOptions.some((tab) => tab.value === query.status)
     ? (query.status as AdminOrderStatusView)
     : "active";
   const fulfilment = fulfilmentTabs.some((tab) => tab.value === query.fulfilment)
@@ -87,6 +92,7 @@ export default async function AdminOrdersPage({
   const q = query.q?.trim().slice(0, 80) ?? "";
   const requestedPage = positivePage(query.page);
   const isOperational = status !== "completed" && status !== "cancelled";
+  const primaryStatus = isOperational ? "active" : status;
 
   const [ordersPage, currentShift] = await Promise.all([
     getAdminOrdersPage(restaurant.id, {
@@ -99,8 +105,6 @@ export default async function AdminOrdersPage({
     }),
     getCurrentShiftView(session)
   ]);
-  const fulfilmentCounts = ordersPage.fulfilmentCounts;
-
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
     redirect(
       ordersHref({ fulfilment, page: ordersPage.totalPages, q, sort, status })
@@ -143,12 +147,12 @@ export default async function AdminOrdersPage({
       <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
 
       <section className="sticky top-0 z-20 mt-4 rounded-xl border border-stone-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Order status">
-          {statusTabs.map((tab) => (
+        <div className="flex gap-2" aria-label="Order status">
+          {primaryStatusTabs.map((tab) => (
             <Link
-              aria-current={status === tab.value ? "page" : undefined}
+              aria-current={primaryStatus === tab.value ? "page" : undefined}
               className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-black ${
-                status === tab.value
+                primaryStatus === tab.value
                 ? "bg-ink text-white shadow-sm"
                 : "bg-stone-100 text-stone-600 hover:bg-stone-200"
               }`}
@@ -158,7 +162,7 @@ export default async function AdminOrdersPage({
               {tab.label}
               <span
                 className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-                  status === tab.value ? "bg-white/20" : "bg-white"
+                  primaryStatus === tab.value ? "bg-white/20" : "bg-white"
                 }`}
               >
                 {ordersPage.statusCounts[tab.value]}
@@ -167,12 +171,14 @@ export default async function AdminOrdersPage({
           ))}
         </div>
 
-        <div className="mt-3 grid gap-3 border-t border-stone-100 pt-3 lg:grid-cols-[minmax(16rem,1fr)_auto] lg:items-center">
-          <form action="/admin/orders" className="flex min-w-0 gap-2" method="get" role="search">
-            <input name="status" type="hidden" value={status} />
-            <input name="fulfilment" type="hidden" value={fulfilment} />
-            <input name="sort" type="hidden" value={sort} />
-            <label className="relative min-w-0 flex-1">
+        <form
+          action="/admin/orders"
+          className="mt-3 grid gap-2 border-t border-stone-100 pt-3 sm:grid-cols-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto_auto_auto]"
+          method="get"
+          role="search"
+        >
+          {!isOperational ? <input name="status" type="hidden" value={status} /> : null}
+          <label className="relative min-w-0 flex-1">
               <span className="sr-only">Search orders</span>
               <Search
                 aria-hidden="true"
@@ -187,63 +193,66 @@ export default async function AdminOrdersPage({
                 placeholder="Order #, customer or phone"
                 type="search"
               />
+          </label>
+          {isOperational ? (
+            <label>
+                <span className="sr-only">Order status</span>
+                <select
+                  className="focus-ring h-full w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm font-black text-stone-700"
+                  defaultValue={status}
+                  name="status"
+                >
+                  {operationalStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
             </label>
-            <button
-              className="focus-ring rounded-lg bg-ink px-4 py-2 text-sm font-black text-white"
-              type="submit"
-            >
-              Search
-            </button>
-            {q ? (
-              <Link
-                aria-label="Clear order search"
-                className="focus-ring inline-flex items-center justify-center rounded-lg border border-stone-200 px-3 text-stone-500 hover:bg-stone-50"
-                href={ordersHref({ fulfilment, q: "", sort, status })}
+          ) : null}
+          <label>
+              <span className="sr-only">Order type</span>
+              <select
+                className="focus-ring h-full w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm font-black text-stone-700"
+                defaultValue={fulfilment}
+                name="fulfilment"
               >
-                <X size={17} />
-              </Link>
-            ) : null}
-          </form>
-
-          <div aria-label="Order fulfilment type" className="flex gap-2 overflow-x-auto">
-            {fulfilmentTabs.map((tab) => (
-              <Link
-                aria-current={fulfilment === tab.value ? "page" : undefined}
-                className={`inline-flex whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-black ${
-                  fulfilment === tab.value
-                    ? "border-leaf bg-mint text-leaf"
-                    : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                }`}
-                href={ordersHref({ fulfilment: tab.value, q, sort, status })}
-                key={tab.value}
+                {fulfilmentTabs.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+          </label>
+          {isOperational ? (
+            <label>
+                <span className="sr-only">Order sorting</span>
+                <select
+                  className="focus-ring h-full w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm font-black text-stone-700"
+                  defaultValue={sort}
+                  name="sort"
+                >
+                  <option value="oldest">Oldest first</option>
+                  <option value="overdue">Overdue first</option>
+                </select>
+            </label>
+          ) : <input name="sort" type="hidden" value={sort} />}
+          <div className="flex gap-2">
+              <button
+                className="focus-ring flex-1 rounded-lg bg-ink px-4 py-2 text-sm font-black text-white"
+                type="submit"
               >
-                {tab.label}
-                <span className="ml-1.5 text-[11px] opacity-70">
-                  {fulfilmentCounts[tab.value]}
-                </span>
-              </Link>
-            ))}
+                Apply
+              </button>
+              {q ? (
+                <Link
+                  aria-label="Clear order search"
+                  className="focus-ring inline-flex items-center justify-center rounded-lg border border-stone-200 px-3 text-stone-500 hover:bg-stone-50"
+                  href={ordersHref({ fulfilment, q: "", sort, status })}
+                >
+                  <X size={17} />
+                </Link>
+              ) : null}
           </div>
-        </div>
+        </form>
       </section>
-
-      {isOperational ? (
-        <div className="mt-3 flex gap-2" aria-label="Order priority">
-          {(["oldest", "overdue"] as const).map((value) => (
-            <Link
-              aria-current={sort === value ? "page" : undefined}
-              className={`rounded-lg border px-3 py-2 text-sm font-bold ${
-                sort === value ? "border-leaf bg-mint text-leaf" : "bg-white text-stone-600"
-              }`}
-              href={ordersHref({ fulfilment, q, sort: value, status })}
-              key={value}
-            >
-              {value === "overdue" ? "Overdue first" : "Oldest first"}
-            </Link>
-          ))}
-        </div>
-      ) : null}
-      <div className="mt-5">
+      <div className="mt-3">
         {ordersPage.items.length > 0 ? (
           <OrderList
             customers={customers}

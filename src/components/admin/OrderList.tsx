@@ -3,7 +3,7 @@ import { orderTarget, orderTiming } from "@/lib/order-timing";
 import Link from "next/link";
 import { formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
-import { formatRestaurantDateTime } from "@/lib/date-time";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import type {
   Customer,
   DeliveryRider,
@@ -96,7 +96,7 @@ export function OrderList({
             orderId={order.id}
             urgent={timing.tone === "red"}
           >
-            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+            <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-black text-stone-500">#{shortOrderId}</span>
@@ -114,19 +114,19 @@ export function OrderList({
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h3 className="text-lg font-black">{order.customer_name}</h3>
+                <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3 className="font-black">{order.customer_name}</h3>
                   <span className="text-sm font-bold text-stone-500">
                     {fulfilmentType === "dine_in" && order.table_number
                       ? `Table ${order.table_number}`
                       : order.delivery_area || order.customer_phone}
                   </span>
                   <span className="text-xs font-semibold text-stone-400">
-                    {formatRestaurantDateTime(order.created_at, restaurant)}
+                    {formatRestaurantShortDateTime(order.created_at, restaurant)}
                   </span>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-stone-700">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-stone-700">
                   {order.items.slice(0, 3).map((item, index) => (
                     <span key={`${order.id}-summary-${index}-${item.item_id}`}>
                       {item.quantity}× {item.name}
@@ -147,7 +147,7 @@ export function OrderList({
                   <span className={`text-xs font-black ${order.payment_method ? "text-emerald-700" : "text-amber-700"}`}>
                     {order.payment_method ? `Paid · ${order.payment_method.replace(" on Delivery", "")}` : "Unpaid"}
                   </span>
-                  <p className="text-xl font-black">{formatCurrency(order.total, restaurant)}</p>
+                  <p className="text-lg font-black">{formatCurrency(order.total, restaurant)}</p>
                 </div>
                 {order.status === "Completed" && Number(order.points_earned ?? 0) > 0 ? (
                   <p className="mt-1 flex items-center justify-end gap-1 text-sm font-bold text-leaf">
@@ -155,61 +155,33 @@ export function OrderList({
                     {order.points_earned} points earned
                   </p>
                 ) : null}
-                <OrderStatusActions
-                  credit={
-                    (order.customer_id
-                      ? customerCredit.byCustomerId[order.customer_id]
-                      : undefined) ?? customerCredit.byPhone[order.customer_phone]
-                  }
-                  countryCode={restaurant.country_code}
-                  fulfilmentType={fulfilmentType}
-                  key={`${order.id}-${order.status}`}
-                  orderId={order.id}
-                  orderTotal={Number(order.total)}
-                  paymentMethod={order.payment_method}
-                  showCancel={false}
-                  status={order.status}
-                />
-                {canAddItems ? (
-                  <Link
-                    className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-leaf px-4 py-2 text-sm font-black text-leaf hover:bg-mint"
-                    href={`/admin/orders/${order.id}/add-items`}
-                  >
-                    <PlusCircle size={16} />
-                    Add items
-                  </Link>
+                {isOperational ? (
+                  <OrderStatusActions
+                    credit={
+                      (order.customer_id
+                        ? customerCredit.byCustomerId[order.customer_id]
+                        : undefined) ?? customerCredit.byPhone[order.customer_phone]
+                    }
+                    countryCode={restaurant.country_code}
+                    fulfilmentType={fulfilmentType}
+                    key={`${order.id}-${order.status}`}
+                    orderId={order.id}
+                    orderTotal={Number(order.total)}
+                    paymentMethod={order.payment_method}
+                    showCancel={false}
+                    status={order.status}
+                  />
                 ) : null}
-
-                <details className="mt-2 rounded-lg border border-stone-200 bg-stone-50">
-                  <summary className="focus-ring flex cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-stone-600 [&::-webkit-details-marker]:hidden">
-                    <MoreHorizontal size={17} />
-                    More actions
-                  </summary>
-                  <div className="border-t border-stone-200 bg-white p-2">
-                    {order.payment_method ? (
-                      <PaymentMethodControl
-                        change={paymentChanges[order.id] ?? null}
-                        countryCode={restaurant.country_code}
-                        orderId={order.id}
-                        paymentMethod={order.payment_method}
-                      />
-                    ) : null}
-                    <OrderPrintActions order={order} restaurant={restaurant} />
-                    {order.status === "Completed" ? (
-                      <RequestFeedbackButton orderId={order.id} />
-                    ) : null}
-                    {isOperational ? <CancelOrderAction orderId={order.id} /> : null}
-                  </div>
-                </details>
               </div>
             </div>
 
             <details className="group border-t border-stone-100 bg-stone-50/70">
-              <summary className="focus-ring flex cursor-pointer list-none items-center justify-center gap-2 px-4 py-2 text-xs font-black text-stone-500 hover:bg-stone-100 [&::-webkit-details-marker]:hidden">
-                Order details
-                <ChevronDown className="transition-transform group-open:rotate-180" size={15} />
+              <summary className="focus-ring flex cursor-pointer list-none items-center justify-end gap-1.5 px-3 py-1.5 text-xs font-black text-stone-500 hover:bg-stone-100 [&::-webkit-details-marker]:hidden">
+                <MoreHorizontal size={15} />
+                More
+                <ChevronDown className="transition-transform group-open:rotate-180" size={14} />
               </summary>
-              <div className="grid gap-4 border-t border-stone-100 bg-white p-4 lg:grid-cols-2">
+              <div className="grid gap-4 border-t border-stone-100 bg-white p-4 lg:grid-cols-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-wide text-stone-400">Items</p>
                   <div className="mt-2 space-y-1 text-sm">
@@ -226,7 +198,8 @@ export function OrderList({
                 </div>
 
                 <div className="text-sm text-stone-600">
-                  <p><strong className="text-stone-800">Phone:</strong> {order.customer_phone}</p>
+                  <p className="text-xs font-black uppercase tracking-wide text-stone-400">Customer</p>
+                  <p className="mt-2"><strong className="text-stone-800">Phone:</strong> {order.customer_phone}</p>
                   {fulfilmentType === "delivery" ? (
                     <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
                       <p><strong className="text-stone-800">Area:</strong> {order.delivery_area}</p>
@@ -253,6 +226,31 @@ export function OrderList({
                       riders={riders}
                     />
                   ) : null}
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-stone-400">Actions</p>
+                  {canAddItems ? (
+                    <Link
+                      className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-leaf px-4 py-2 text-sm font-black text-leaf hover:bg-mint"
+                      href={`/admin/orders/${order.id}/add-items`}
+                    >
+                      <PlusCircle size={16} />
+                      Add items
+                    </Link>
+                  ) : null}
+                  {order.payment_method ? (
+                    <PaymentMethodControl
+                      change={paymentChanges[order.id] ?? null}
+                      countryCode={restaurant.country_code}
+                      orderId={order.id}
+                      paymentMethod={order.payment_method}
+                    />
+                  ) : null}
+                  <OrderPrintActions order={order} restaurant={restaurant} />
+                  {order.status === "Completed" ? (
+                    <RequestFeedbackButton orderId={order.id} />
+                  ) : null}
+                  {isOperational ? <CancelOrderAction orderId={order.id} /> : null}
                 </div>
               </div>
             </details>

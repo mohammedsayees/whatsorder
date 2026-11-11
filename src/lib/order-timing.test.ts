@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orderTiming } from "./order-timing";
+import { orderTimerLabel, orderTiming } from "./order-timing";
 import type { Order } from "./types";
 const start = Date.parse("2026-09-07T10:00:00Z");
 const order = { status: "Preparing", created_at: new Date(start).toISOString(), status_started_at: new Date(start + 5 * 60000).toISOString() } as Order;
@@ -18,6 +18,10 @@ describe("order timers", () => {
   });
   it("clamps future timestamps and tolerates missing stage history", () => {
     expect(orderTiming({ ...order, status_started_at: null }, 20, start - 60000)).toMatchObject({ minutes: 0, stageMinutes: null });
+  });
+  it("labels very old active tickets as stale instead of showing huge minute counts", () => {
+    const timer = orderTiming(order, 20, start + 13 * 60 * 60000);
+    expect(orderTimerLabel(timer)).toBe("Stale · 13h open");
   });
 });
 

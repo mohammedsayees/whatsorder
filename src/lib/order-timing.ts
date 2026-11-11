@@ -27,3 +27,14 @@ export function orderTiming(order: Order, target: number, now: number) {
   return { stopped, minutes, stageMinutes, overdue: !stopped && minutes !== null ? Math.max(0, minutes - target) : 0,
     tone: stopped || minutes === null ? "neutral" as const : minutes >= target ? "red" as const : minutes >= target * .8 ? "amber" as const : "green" as const };
 }
+
+export function orderTimerLabel(timer: ReturnType<typeof orderTiming>) {
+  if (timer.overdue >= 12 * 60) {
+    return `Stale · ${Math.floor((timer.minutes ?? 0) / 60)}h open`;
+  }
+  if (timer.overdue > 0) return `${timer.overdue} min overdue`;
+  if (timer.stopped) return `${timer.minutes ?? 0} min total`;
+  if (timer.minutes === null) return "Timing unavailable";
+  if (timer.tone === "amber") return `${timer.minutes} min · Due soon`;
+  return `${timer.minutes} min`;
+}

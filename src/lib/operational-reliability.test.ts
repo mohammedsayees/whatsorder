@@ -213,8 +213,11 @@ describe("restaurant operational reliability boundaries", () => {
     expect(page).toContain('placeholder="Order #, customer or phone"');
     expect(page).toContain('{ label: "Preparing", value: "preparing" }');
     expect(page).toContain("ordersPage.statusCounts[tab.value]");
-    expect(list).toContain("Order details");
-    expect(list).toContain("More actions");
+    expect(page).toContain('{ label: "Active", value: "active" }');
+    expect(page).toContain('name="fulfilment"');
+    expect(page).toContain('name="sort"');
+    expect(list).not.toContain("Order details");
+    expect(list).toContain("More");
     expect(list).toContain("urgent={timing.tone === \"red\"}");
     expect(actions).toContain("Complete & collect payment");
     expect(list).toContain("showCancel={false}");
