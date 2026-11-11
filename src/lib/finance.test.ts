@@ -54,7 +54,9 @@ describe("finance permissions", () => {
     can_create: true,
     can_approve: false,
     can_manage_categories: false,
-    can_manage_recurring: false
+    can_manage_recurring: false,
+    can_manage_costing: true,
+    can_view_reports: true
   };
 
   it("gives owner/admin full access only when the tenant flag is enabled", () => {
@@ -81,11 +83,15 @@ describe("finance permissions", () => {
       can_view: false,
       can_approve: true,
       can_manage_categories: true,
-      can_manage_recurring: true
+      can_manage_recurring: true,
+      can_manage_costing: true,
+      can_view_reports: true
     })).toMatchObject({
       approve: false,
       manage_categories: false,
-      manage_recurring: false
+      manage_recurring: false,
+      manage_costing: false,
+      view_reports: false
     });
   });
 });

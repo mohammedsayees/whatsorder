@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus, Repeat2, Settings2, WalletCards } from "lucide-react";
+import { ChartNoAxesCombined, CookingPot, Plus, Repeat2, Settings2, WalletCards, Wheat } from "lucide-react";
 import {
   createFinanceCategoryAction,
   transitionFinanceExpenseAction
@@ -99,6 +99,9 @@ export default async function AdminFinancePage({
         <div className="flex flex-wrap gap-2">
           {access.manage_permissions ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/settings"><Settings2 size={17} /> Access</Link> : null}
           {access.manage_recurring ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/recurring"><Repeat2 size={17} /> Recurring</Link> : null}
+          {access.manage_costing ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/ingredients"><Wheat size={17} /> Ingredients</Link> : null}
+          {access.manage_costing ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/recipes"><CookingPot size={17} /> Recipes</Link> : null}
+          {access.view_reports ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/overview"><ChartNoAxesCombined size={17} /> Insights</Link> : null}
           {access.create ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" href="/admin/finance/new"><Plus size={17} /> Add expense</Link> : null}
         </div>
       </div>
