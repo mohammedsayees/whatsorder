@@ -12,7 +12,7 @@ export function ItemGrid({
   restaurant: Restaurant;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
       {items.map((item) => (
         <button
           className="focus-ring flex min-h-24 flex-col justify-between gap-2 rounded-lg border border-stone-200 bg-white p-3 text-left shadow-sm hover:border-leaf hover:bg-mint active:scale-[0.98]"
@@ -20,7 +20,7 @@ export function ItemGrid({
           onClick={() => onAdd(item.id)}
           type="button"
         >
-          <span className="text-sm font-bold leading-tight">{item.name}</span>
+          <span className="break-words text-sm font-bold leading-tight">{item.name}</span>
           <span className="flex items-center gap-2 text-sm font-black text-leaf">
             {formatCurrency(item.price, restaurant)}
             {item.hasOptions ? (
