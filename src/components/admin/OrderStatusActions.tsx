@@ -87,11 +87,11 @@ export function OrderStatusActions({
   }
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-2 space-y-2">
       {error ? <p role="alert" className="text-sm text-rose-700">{error}</p> : null}
       {nextStatus && completingNeedsPayment ? (
         <details className="group rounded-lg bg-ink text-white">
-          <summary className="focus-ring flex cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-black [&::-webkit-details-marker]:hidden">
+          <summary className="focus-ring flex cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-black [&::-webkit-details-marker]:hidden">
             <CheckCircle2 size={17} />
             Complete & collect payment
           </summary>
@@ -139,7 +139,7 @@ export function OrderStatusActions({
           <input name="order_id" type="hidden" value={orderId} />
           <input name="status" type="hidden" value={nextStatus} />
           <button
-            className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-black text-white disabled:opacity-60"
+            className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-black text-white disabled:opacity-60"
             disabled={busy}
             type="submit"
           >
