@@ -135,6 +135,12 @@ const adminOrderListColumns = [
 ].join(", ");
 
 export type OrderStatusView = "active" | "completed" | "cancelled";
+export type AdminOrderStatusView =
+  | OrderStatusView
+  | "new"
+  | "preparing"
+  | "ready"
+  | "out_for_delivery";
 export type OrderFulfilmentView = "all" | FulfilmentType;
 
 export type PaginatedResult<T> = {
@@ -146,9 +152,11 @@ export type PaginatedResult<T> = {
 };
 
 export type OrderFulfilmentCounts = Record<OrderFulfilmentView, number>;
+export type AdminOrderStatusCounts = Record<AdminOrderStatusView, number>;
 
 export type AdminOrdersPageResult = PaginatedResult<Order> & {
   fulfilmentCounts: OrderFulfilmentCounts;
+  statusCounts: AdminOrderStatusCounts;
 };
 
 type OrdersPageOptions = {
@@ -157,6 +165,11 @@ type OrdersPageOptions = {
   page?: number;
   pageSize?: number;
   status?: OrderStatusView;
+};
+
+type AdminOrdersPageOptions = Omit<OrdersPageOptions, "status"> & {
+  search?: string;
+  status?: AdminOrderStatusView;
 };
 
 type CustomersPageOptions = {
@@ -1085,7 +1098,7 @@ export async function getOrdersPage(
 
 export async function getAdminOrdersPage(
   restaurantId: string,
-  options: OrdersPageOptions = {}
+  options: AdminOrdersPageOptions = {}
 ): Promise<AdminOrdersPageResult> {
   const {
     fulfilment = "all",
@@ -1095,13 +1108,14 @@ export async function getAdminOrdersPage(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const { data, error } = await supabase.rpc("get_admin_orders_page_v2", {
+    const { data, error } = await supabase.rpc("get_admin_orders_page_v3", {
       target_sort: options.sort ?? "oldest",
       target_restaurant_id: restaurantId,
       target_status_view: status,
       target_fulfilment: fulfilment,
       target_page: page,
-      target_page_size: pageSize
+      target_page_size: pageSize,
+      target_search: options.search?.trim() || null
     });
 
     if (!error && data) {
@@ -1109,6 +1123,7 @@ export async function getAdminOrdersPage(
         items?: Order[];
         total?: number;
         fulfilment_counts?: Partial<OrderFulfilmentCounts>;
+        status_counts?: Partial<AdminOrderStatusCounts>;
       };
       const total = Number(payload.total ?? 0);
 
@@ -1124,6 +1139,15 @@ export async function getAdminOrdersPage(
           takeaway: Number(payload.fulfilment_counts?.takeaway ?? 0),
           dine_in: Number(payload.fulfilment_counts?.dine_in ?? 0),
           car_pickup: Number(payload.fulfilment_counts?.car_pickup ?? 0)
+        },
+        statusCounts: {
+          active: Number(payload.status_counts?.active ?? 0),
+          new: Number(payload.status_counts?.new ?? 0),
+          preparing: Number(payload.status_counts?.preparing ?? 0),
+          ready: Number(payload.status_counts?.ready ?? 0),
+          out_for_delivery: Number(payload.status_counts?.out_for_delivery ?? 0),
+          completed: Number(payload.status_counts?.completed ?? 0),
+          cancelled: Number(payload.status_counts?.cancelled ?? 0)
         }
       };
     }
@@ -1135,12 +1159,68 @@ export async function getAdminOrdersPage(
     productionDataFailure("Admin orders page");
   }
 
-  const [ordersPage, fulfilmentCounts] = await Promise.all([
-    getOrdersPage(restaurantId, { fulfilment, page, pageSize, status }),
-    getOrderFulfilmentCounts(restaurantId, status)
+  // Demo-mode fallback remains useful for local development. Production uses
+  // the v3 RPC so search, status counts and pagination are calculated together.
+  const broadStatus: OrderStatusView =
+    status === "completed" || status === "cancelled" ? status : "active";
+  const search = options.search?.trim().toLocaleLowerCase() ?? "";
+  const matchesWorkflow = (order: Order) => {
+    if (status === "new") return order.status === "New";
+    if (status === "preparing") return ["Accepted", "Preparing"].includes(order.status);
+    if (status === "ready") return order.status === "Ready to Serve";
+    if (status === "out_for_delivery") return order.status === "Out for Delivery";
+    return orderMatchesStatusView(order, status);
+  };
+  const matchesSearch = (order: Order) =>
+    !search ||
+    order.id.toLocaleLowerCase().includes(search.replace(/^#/, "")) ||
+    order.customer_name.toLocaleLowerCase().includes(search) ||
+    order.customer_phone.toLocaleLowerCase().includes(search);
+  const matchingDemoOrders = demoOrders
+    .filter((order) => order.restaurant_id === restaurantId)
+    .filter(matchesWorkflow)
+    .filter(matchesSearch)
+    .filter((order) => fulfilment === "all" || order.fulfilment_type === fulfilment);
+  const demoPage = matchingDemoOrders.slice((page - 1) * pageSize, page * pageSize);
+  const [fallbackPage, fulfilmentCounts] = await Promise.all([
+    getOrdersPage(restaurantId, { fulfilment, page, pageSize, status: broadStatus }),
+    getOrderFulfilmentCounts(restaurantId, broadStatus)
   ]);
+  const ordersPage = demoDataEnabled
+    ? {
+        items: demoPage,
+        page,
+        pageSize,
+        total: matchingDemoOrders.length,
+        totalPages: Math.ceil(matchingDemoOrders.length / pageSize)
+      }
+    : fallbackPage;
 
-  return { ...ordersPage, fulfilmentCounts };
+  const countStatus = (view: AdminOrderStatusView) =>
+    demoOrders
+      .filter((order) => order.restaurant_id === restaurantId)
+      .filter(matchesSearch)
+      .filter((order) => {
+        if (view === "new") return order.status === "New";
+        if (view === "preparing") return ["Accepted", "Preparing"].includes(order.status);
+        if (view === "ready") return order.status === "Ready to Serve";
+        if (view === "out_for_delivery") return order.status === "Out for Delivery";
+        return orderMatchesStatusView(order, view);
+      }).length;
+
+  return {
+    ...ordersPage,
+    fulfilmentCounts,
+    statusCounts: {
+      active: countStatus("active"),
+      new: countStatus("new"),
+      preparing: countStatus("preparing"),
+      ready: countStatus("ready"),
+      out_for_delivery: countStatus("out_for_delivery"),
+      completed: countStatus("completed"),
+      cancelled: countStatus("cancelled")
+    }
+  };
 }
 
 export async function getOrderFulfilmentCounts(

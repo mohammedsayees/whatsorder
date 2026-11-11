@@ -29,7 +29,8 @@ export function OrderStatusActions({
   orderId,
   orderTotal = 0,
   paymentMethod,
-  status
+  status,
+  showCancel = true
 }: {
   fulfilmentType: FulfilmentType;
   credit?: CustomerCreditSummary;
@@ -38,6 +39,7 @@ export function OrderStatusActions({
   orderTotal?: number;
   paymentMethod: PaymentMethod | null;
   status: OrderStatus;
+  showCancel?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [submittingStatus, setSubmittingStatus] = useState<OrderStatus | null>(null);
@@ -88,11 +90,12 @@ export function OrderStatusActions({
     <div className="mt-3 space-y-2">
       {error ? <p role="alert" className="text-sm text-rose-700">{error}</p> : null}
       {nextStatus && completingNeedsPayment ? (
-        <div className="space-y-2">
-          <p className="text-center text-xs font-bold text-stone-500">
-            Collect payment to complete
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <details className="group rounded-lg bg-ink text-white">
+          <summary className="focus-ring flex cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-black [&::-webkit-details-marker]:hidden">
+            <CheckCircle2 size={17} />
+            Complete & collect payment
+          </summary>
+          <div className="grid grid-cols-2 gap-2 border-t border-white/15 p-2 sm:grid-cols-3">
             {paymentOptions.map((option) => (
               <form
                 action={(data) => runAction(collectPaymentAndCompleteAction, data)}
@@ -102,7 +105,7 @@ export function OrderStatusActions({
                 <input name="order_id" type="hidden" value={orderId} />
                 <input name="payment_method" type="hidden" value={option.value} />
                 <button
-                  className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-3 py-3 text-sm font-black text-white disabled:opacity-60"
+                  className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-3 text-sm font-black text-ink disabled:opacity-60"
                   disabled={busy || option.disabled}
                   title={
                     option.disabled
@@ -122,12 +125,12 @@ export function OrderStatusActions({
             ))}
           </div>
           {credit?.account.is_enabled ? (
-            <p className="text-center text-xs font-semibold text-blue-700">
+            <p className="px-3 pb-3 text-center text-xs font-semibold text-blue-100">
               Credit available: {countryCode === "IN" ? "INR" : "AED"} {credit.available.toFixed(2)}
               {credit.available < orderTotal ? " · Limit too low for this order" : ""}
             </p>
           ) : null}
-        </div>
+        </details>
       ) : nextStatus ? (
         <form
           action={(data) => runAction(updateOrderStatusAction, data)}
@@ -150,43 +153,55 @@ export function OrderStatusActions({
         </form>
       ) : null}
 
-      {cancellable ? (
-        <form
-          action={(data) => runAction(updateOrderStatusAction, data)}
-          onSubmit={(event) => {
-            const reason = window.prompt(
-              "Why is this order being cancelled? This will be saved in the order history."
-            );
-
-            if (!reason?.trim()) {
-              event.preventDefault();
-              return;
-            }
-
-            const reasonInput = event.currentTarget.elements.namedItem("reason");
-            if (reasonInput instanceof HTMLInputElement) {
-              reasonInput.value = reason.trim();
-            }
-            setSubmittingStatus("Cancelled");
-          }}
-        >
-          <input name="order_id" type="hidden" value={orderId} />
-          <input name="status" type="hidden" value="Cancelled" />
-          <input name="reason" type="hidden" />
-          <button
-            className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-            disabled={busy}
-            type="submit"
-          >
-            {submittingStatus === "Cancelled" ? (
-              <Loader2 className="animate-spin" size={16} />
-            ) : (
-              <XCircle size={16} />
-            )}
-            Cancel order
-          </button>
-        </form>
-      ) : null}
+      {showCancel && cancellable ? <CancelOrderAction orderId={orderId} /> : null}
     </div>
+  );
+}
+
+export function CancelOrderAction({ orderId }: { orderId: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  return (
+    <form
+      className="mt-2"
+      action={async (data) => {
+        setError(null);
+        try {
+          await updateOrderStatusAction(data);
+        } catch {
+          setError("The order could not be cancelled. Please retry.");
+        } finally {
+          setSubmitting(false);
+        }
+      }}
+      onSubmit={(event) => {
+        const reason = window.prompt(
+          "Why is this order being cancelled? This will be saved in the order history."
+        );
+
+        if (!reason?.trim()) {
+          event.preventDefault();
+          return;
+        }
+
+        const reasonInput = event.currentTarget.elements.namedItem("reason");
+        if (reasonInput instanceof HTMLInputElement) reasonInput.value = reason.trim();
+        setSubmitting(true);
+      }}
+    >
+      <input name="order_id" type="hidden" value={orderId} />
+      <input name="status" type="hidden" value="Cancelled" />
+      <input name="reason" type="hidden" />
+      <button
+        className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+        disabled={submitting}
+        type="submit"
+      >
+        {submitting ? <Loader2 className="animate-spin" size={16} /> : <XCircle size={16} />}
+        Cancel order
+      </button>
+      {error ? <p className="mt-2 text-xs font-bold text-rose-700">{error}</p> : null}
+    </form>
   );
 }
