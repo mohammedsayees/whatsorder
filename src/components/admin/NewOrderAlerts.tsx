@@ -628,20 +628,24 @@ export function NewOrderAlertsProvider({
 
 export function NewOrderAlertCard({
   children,
-  orderId
+  orderId,
+  urgent = false
 }: {
   children: React.ReactNode;
   orderId: string;
+  urgent?: boolean;
 }) {
   const { highlightedOrderIds } = useContext(NewOrderAlertsContext);
   const highlighted = highlightedOrderIds.has(orderId);
 
   return (
     <article
-      className={`rounded-lg border bg-white p-4 shadow-sm transition-all duration-500 ${
+      className={`overflow-hidden rounded-xl border border-l-4 bg-white shadow-sm transition-all duration-500 ${
         highlighted
           ? "animate-pulse border-leaf ring-4 ring-mint"
-          : "border-stone-200"
+          : urgent
+            ? "border-rose-200 border-l-rose-500"
+            : "border-stone-200 border-l-stone-300"
       }`}
       data-new-order-highlight={highlighted ? "true" : undefined}
     >

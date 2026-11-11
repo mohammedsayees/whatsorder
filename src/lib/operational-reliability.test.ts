@@ -205,6 +205,21 @@ describe("restaurant operational reliability boundaries", () => {
     expect(route).toContain("getOrderForAdmin(session.restaurantId, id)");
   });
 
+  it("keeps the staff order queue compact and action-focused", () => {
+    const page = source("src/app/admin/orders/page.tsx");
+    const list = source("src/components/admin/OrderList.tsx");
+    const actions = source("src/components/admin/OrderStatusActions.tsx");
+
+    expect(page).toContain('placeholder="Order #, customer or phone"');
+    expect(page).toContain('{ label: "Preparing", value: "preparing" }');
+    expect(page).toContain("ordersPage.statusCounts[tab.value]");
+    expect(list).toContain("Order details");
+    expect(list).toContain("More actions");
+    expect(list).toContain("urgent={timing.tone === \"red\"}");
+    expect(actions).toContain("Complete & collect payment");
+    expect(list).toContain("showCancel={false}");
+  });
+
   it("keeps the staff order route in a focused POS workspace", () => {
     const shell = source("src/components/admin/AdminShell.tsx");
     const frame = source("src/components/admin/AdminShellFrame.tsx");
