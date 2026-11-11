@@ -206,13 +206,14 @@ describe("restaurant operational reliability boundaries", () => {
   });
 
   it("keeps the staff order route in a focused POS workspace", () => {
-    const layout = source("src/app/admin/layout.tsx");
     const shell = source("src/components/admin/AdminShell.tsx");
+    const frame = source("src/components/admin/AdminShellFrame.tsx");
     const entry = source("src/components/admin/StaffOrderEntry.tsx");
 
-    expect(layout).toContain('pathname === "/admin/orders/new"');
-    expect(layout).toContain("posMode={posMode}");
-    expect(shell).toContain("compact={posMode}");
+    expect(shell).toContain("<AdminShellFrame");
+    expect(frame).toContain('import { usePathname } from "next/navigation"');
+    expect(frame).toContain("isAdminPosPathname(pathname)");
+    expect(frame).toContain("compact={posMode}");
     expect(entry).toContain("Open bills");
     expect(entry).toContain("New bill");
     expect(entry).toContain('aria-current={draft?.id === row.id ? "page" : undefined}');
