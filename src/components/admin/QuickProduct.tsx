@@ -10,8 +10,8 @@ export function QuickProduct({ menu, search, categoryId, disabled, onAdd }: { me
   const [error, setError] = useState("");
   const attempt = useRef<Parameters<typeof createQuickProduct>[0] | null>(null);
   const matches = name.trim() ? menu.items.filter(i => i.name.toLowerCase().includes(name.trim().toLowerCase())).slice(0, 5) : [];
-  return <div className="mt-3">
-    <button type="button" disabled={disabled} className="focus-ring rounded-lg border border-leaf px-3 py-2 font-bold text-leaf disabled:opacity-50" onClick={() => { setName(attempt.current?.name ?? search); setOpen(true); setError(""); }}>+ New product{search ? `: ${search}` : ""}</button>
+  return <div className="mb-3">
+    <button type="button" disabled={disabled} className="focus-ring rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-bold text-stone-500 hover:border-leaf hover:text-leaf disabled:opacity-50" onClick={() => { setName(attempt.current?.name ?? search); setOpen(true); setError(""); }}>+ Add unlisted item{search ? `: ${search}` : ""}</button>
     {open ? <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="New product">
       <form className="w-full max-w-md space-y-3 rounded-lg bg-white p-5" onSubmit={async event => {
         event.preventDefault(); if (busy) return;

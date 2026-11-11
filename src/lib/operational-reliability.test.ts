@@ -204,4 +204,28 @@ describe("restaurant operational reliability boundaries", () => {
     expect(list).toContain("Add items");
     expect(route).toContain("getOrderForAdmin(session.restaurantId, id)");
   });
+
+  it("keeps the staff order route in a focused POS workspace", () => {
+    const layout = source("src/app/admin/layout.tsx");
+    const shell = source("src/components/admin/AdminShell.tsx");
+    const entry = source("src/components/admin/StaffOrderEntry.tsx");
+
+    expect(layout).toContain('pathname === "/admin/orders/new"');
+    expect(layout).toContain("posMode={posMode}");
+    expect(shell).toContain("compact={posMode}");
+    expect(entry).toContain("Open bills");
+    expect(entry).toContain("New bill");
+    expect(entry).toContain('aria-current={draft?.id === row.id ? "page" : undefined}');
+    expect(entry).toContain("Collect payment");
+    expect(entry).toContain("Send KOT");
+  });
+
+  it("prints an optional receipt after an immediate staff payment", () => {
+    const entry = source("src/components/admin/StaffOrderEntry.tsx");
+
+    expect(entry).toContain(
+      'action !== "kitchen" && result.order && printCustomerBill'
+    );
+    expect(entry).toContain('printSavedOrder(result.order, ["receipt"])');
+  });
 });

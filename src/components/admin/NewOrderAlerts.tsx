@@ -36,6 +36,7 @@ const NewOrderAlertsContext = createContext<NewOrderAlertsContextValue>({
 
 type NewOrderAlertsProviderProps = {
   children: React.ReactNode;
+  compact?: boolean;
   initialNewOrderAlertState: NewOrderAlertState;
   realtimeAccessToken: string | null;
   restaurantId: string;
@@ -149,6 +150,7 @@ async function playSynthesizedChime() {
 
 export function NewOrderAlertsProvider({
   children,
+  compact = false,
   initialNewOrderAlertState,
   realtimeAccessToken,
   restaurantId
@@ -545,8 +547,8 @@ export function NewOrderAlertsProvider({
 
   return (
     <NewOrderAlertsContext.Provider value={contextValue}>
-      <div className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur print:hidden sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 sm:gap-3">
+      <div className={`sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-3 backdrop-blur print:hidden ${compact ? "py-2" : "py-3 sm:px-6 lg:px-8"}`}>
+        <div className={`mx-auto flex flex-wrap items-center gap-2 sm:gap-3 ${compact ? "max-w-none" : "max-w-7xl"}`}>
           <span className="inline-flex items-center gap-2 rounded-full bg-mint px-3 py-2 text-sm font-black text-leaf">
             <BellRing size={16} />
             New Orders: {newOrderCount}
@@ -564,7 +566,7 @@ export function NewOrderAlertsProvider({
             {soundEnabled && !soundBlocked ? <Volume2 size={16} /> : <VolumeX size={16} />}
             {soundEnabled && !soundBlocked ? "Sound Alerts: ON" : "Enable Sound Alerts"}
           </button>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-stone-200 px-3 py-2 text-xs font-bold text-stone-600">
+          <label className={`${compact ? "hidden xl:inline-flex" : "inline-flex"} cursor-pointer items-center gap-2 rounded-full border border-stone-200 px-3 py-2 text-xs font-bold text-stone-600`}>
             <input
               checked={repeatEnabled}
               className="accent-leaf"
@@ -584,7 +586,7 @@ export function NewOrderAlertsProvider({
             {connectionState === "live" ? "Live" : connectionState === "offline" ? "Offline" : "Connecting"}
           </span>
           <span
-            className="text-xs font-semibold text-stone-400"
+            className={`${compact ? "hidden 2xl:inline" : ""} text-xs font-semibold text-stone-400`}
             title="The dashboard periodically checks Supabase for orders missed by Realtime."
           >
             {lastSyncedAt
