@@ -12,10 +12,10 @@ export function ItemGrid({
   restaurant: Restaurant;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => (
         <button
-          className="focus-ring flex h-full flex-col justify-between gap-2 rounded-lg border border-stone-200 p-3 text-left hover:border-leaf hover:bg-mint"
+          className="focus-ring flex min-h-24 flex-col justify-between gap-2 rounded-lg border border-stone-200 bg-white p-3 text-left shadow-sm hover:border-leaf hover:bg-mint active:scale-[0.98]"
           key={item.id}
           onClick={() => onAdd(item.id)}
           type="button"

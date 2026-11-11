@@ -5,7 +5,7 @@ import { StaffCreditCustomerSelector } from "./StaffCreditCustomerSelector";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
+import { Banknote, ChefHat, ChevronDown, CreditCard, Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import { recordOrderPrintEventsAction } from "@/app/actions";
 import {
   addItemsToOrderAction,
@@ -110,6 +110,7 @@ export function StaffOrderEntry({
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
   const [printCustomerBill, setPrintCustomerBill] = useState(false);
+  const [showPaymentPanel, setShowPaymentPanel] = useState(false);
   const additionAttemptIdRef = useRef<string | null>(null);
 
   const { queue, syncingId, enqueue, retry, discard } = useStaffOrderQueue(restaurantId);
@@ -121,7 +122,7 @@ export function StaffOrderEntry({
 
   async function runDraftOperation(operation: () => Promise<void>) {
     setPending(true);
-    try { await operation(); setFeedback(null); }
+    try { await operation(); setFeedback(null); setShowPaymentPanel(false); setPrintCustomerBill(false); }
     catch { setFeedback({ kind: "error", message: "Could not update the draft. Keep this page open and retry." }); }
     finally { setPending(false); }
   }
@@ -130,6 +131,7 @@ export function StaffOrderEntry({
     await draftStore.finish();
     additionAttemptIdRef.current = null;
     setPrintCustomerBill(false);
+    setShowPaymentPanel(false);
     setSearch("");
     setSelectedCategoryId("all");
   }
@@ -425,6 +427,8 @@ export function StaffOrderEntry({
             result.order,
             printCustomerBill ? ["receipt", "kot"] : ["kot"]
           );
+        } else if (action !== "kitchen" && result.order && printCustomerBill) {
+          printSavedOrder(result.order, ["receipt"]);
         }
       }
     } catch {
@@ -457,15 +461,42 @@ export function StaffOrderEntry({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-lg border bg-white p-3" aria-label="Billing drafts">
-        <p role="status" className={draftStore.error ? "font-bold text-rose-700" : "text-sm text-stone-600"}>{draftStore.error || draftStore.status}</p>
-        {draft?.attempt ? <p className="font-bold text-amber-800">A submission is being checked. Retry this unchanged bill to avoid a duplicate.</p> : null}
-        <div className="mt-2 flex flex-wrap gap-3">
-          <button type="button" disabled={!draft || pending || !!draft.attempt || !!draftStore.error} onClick={() => { void runDraftOperation(draftStore.hold); }}>Hold & new bill</button>
-          <button type="button" disabled={!draft || pending || !!draft.attempt || !!draftStore.error} onClick={() => { if (window.confirm("Discard this unfinished bill?")) void runDraftOperation(clearTicket); }}>Discard draft</button>
-          <details><summary className="cursor-pointer font-bold">Drafts ({draftStore.drafts.length})</summary>{draftStore.drafts.map(row => <button type="button" className="mt-2 block rounded border p-2 text-left" key={row.id} disabled={pending || !!draft?.attempt || !!draftStore.error} onClick={() => { void runDraftOperation(() => draftStore.resume(row.id)); }}>{row.fields.table_number ? `Table ${row.fields.table_number}` : row.fields.customer_name || "Walk-in"} · {Object.values(row.lines).reduce((sum, line) => sum + line.quantity, 0)} items · {formatCurrency(Object.values(row.lines).reduce((sum, line) => sum + line.quantity * line.price, 0), restaurant)} · Saved {new Date(row.updatedAt).toLocaleTimeString()}</button>)}</details>
+    <div className="space-y-3">
+      <section className="rounded-xl border border-stone-200 bg-white p-2 shadow-sm" aria-label="Open bills">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-lg bg-ink px-3 py-2 text-sm font-black text-white disabled:opacity-50"
+            type="button"
+            disabled={!draft || pending || !!draft.attempt || !!draftStore.error}
+            onClick={() => { void runDraftOperation(draftStore.hold); }}
+          >
+            <Plus size={16} />
+            New bill
+          </button>
+          {draftStore.drafts.map((row) => {
+            const count = Object.values(row.lines).reduce((sum, line) => sum + line.quantity, 0);
+            const amount = Object.values(row.lines).reduce((sum, line) => sum + line.quantity * line.price, 0);
+            const label = row.fields.table_number
+              ? `Table ${row.fields.table_number}`
+              : row.fields.customer_name || fulfilmentLabels[row.fulfilmentType];
+            return (
+              <button
+                aria-current={draft?.id === row.id ? "page" : undefined}
+                className={`focus-ring shrink-0 rounded-lg border px-3 py-1.5 text-left ${draft?.id === row.id ? "border-leaf bg-mint text-leaf" : "border-stone-200 bg-white text-stone-700 hover:border-stone-300"}`}
+                disabled={pending || !!draft?.attempt || !!draftStore.error}
+                key={row.id}
+                onClick={() => { void runDraftOperation(() => draftStore.resume(row.id)); }}
+                type="button"
+              >
+                <span className="block text-xs font-black">{label}</span>
+                <span className="block text-[11px] font-semibold opacity-75">{count} items · {formatCurrency(amount, restaurant)}</span>
+              </button>
+            );
+          })}
+          <p role="status" className={`ml-auto shrink-0 px-2 text-xs font-bold ${draftStore.error ? "text-rose-700" : "text-stone-500"}`}>{draftStore.error || draftStore.status}</p>
+          <button type="button" className="shrink-0 rounded-lg px-2 py-2 text-xs font-bold text-stone-500 hover:bg-rose-50 hover:text-rose-700" disabled={!draft || pending || !!draft.attempt || !!draftStore.error} onClick={() => { if (window.confirm("Discard this unfinished bill?")) void runDraftOperation(clearTicket); }}>Discard</button>
         </div>
+        {draft?.attempt ? <p className="font-bold text-amber-800">A submission is being checked. Retry this unchanged bill to avoid a duplicate.</p> : null}
       </section>
       <fieldset disabled={!draft || !!draftStore.error || pending} className="min-w-0">
       {/* Offline queue — orders punched while disconnected, waiting to sync. */}
@@ -479,9 +510,9 @@ export function StaffOrderEntry({
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-6 pb-24 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:pb-0">
+      <div className="grid min-w-0 gap-3 pb-24 lg:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] lg:items-start lg:pb-0">
       {/* Menu picker */}
-      <section className="min-w-0 flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
+      <section className="min-w-0 flex flex-col rounded-xl border border-stone-200 bg-white p-3 shadow-sm lg:h-[calc(100dvh-10.5rem)] lg:min-h-[36rem]">
         <label className="relative block">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"
@@ -496,46 +527,33 @@ export function StaffOrderEntry({
           />
         </label>
 
+        <div className="mt-2 flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-36 lg:flex-col lg:overflow-y-auto lg:pb-0 lg:pr-1" aria-label="Menu categories">
+          <button
+            className={`focus-ring whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-black ${selectedCategoryId === "all" ? "bg-ink text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}
+            onClick={() => setSelectedCategoryId("all")}
+            type="button"
+          >
+            All items
+          </button>
+          {categoriesWithItems.map((category) => (
+            <button
+              className={`focus-ring whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-black ${selectedCategoryId === category.id ? "bg-leaf text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}
+              key={category.id}
+              onClick={() => setSelectedCategoryId(category.id)}
+              type="button"
+            >
+              {category.name}
+            </button>
+          ))}
+        </div>
+        <div className="min-w-0 flex-1 overflow-y-auto pr-1">
         <QuickProduct menu={{ ...menu, items: [...menu.items, ...extraItems] }} search={search} categoryId={selectedCategoryId} disabled={!draft || !!draft?.attempt || pending} onAdd={(item, quantity) => {
           if (availableItems.some(existing => existing.id === item.id) && (resolvedGroupsByItemId.get(item.id) ?? []).length > 0) { handleAdd(item.id); return; }
           setExtraItems(current => [...current.filter(row => row.id !== item.id), item]);
           addTicketLine(item, [], quantity);
         }} />
-        {/* Quick category picker — hidden while searching (search spans all). */}
-        {!matchingItems && categoriesWithItems.length > 1 ? (
-          <div
-            aria-label="Menu categories"
-            className="mt-3 flex shrink-0 flex-wrap gap-2"
-          >
-            <button
-              className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-black ${
-                selectedCategoryId === "all"
-                  ? "bg-ink text-white"
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-              }`}
-              onClick={() => setSelectedCategoryId("all")}
-              type="button"
-            >
-              All
-            </button>
-            {categoriesWithItems.map((category) => (
-              <button
-                className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-black ${
-                  selectedCategoryId === category.id
-                    ? "bg-ink text-white"
-                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-                }`}
-                key={category.id}
-                onClick={() => setSelectedCategoryId(category.id)}
-                type="button"
-              >
-                {category.name}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mt-4 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+        <div className="mt-3 space-y-6">
           {matchingItems ? (
             <ItemGrid
               items={matchingItems.map((item) => ({
@@ -580,22 +598,48 @@ export function StaffOrderEntry({
             </p>
           ) : null}
         </div>
+        </div>
+        </div>
       </section>
 
       {/* Ticket */}
-      <section className="min-w-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)]">
+      <section className="min-w-0 lg:h-[calc(100dvh-10.5rem)] lg:min-h-[36rem]">
         <form
-          className="min-w-0 flex flex-col rounded-lg border border-stone-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-2rem)]"
+          className="min-w-0 flex h-full flex-col rounded-xl border border-stone-200 bg-white p-3 shadow-sm"
           key={draft?.id}
           onSubmit={handleSubmit}
         >
-          <h2 className="shrink-0 text-lg font-black">Ticket</h2>
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black">Current bill</h2>
+              <p className="text-xs font-semibold text-stone-500">{draft?.fields.customer_name || (draft?.fields.table_number ? `Table ${draft.fields.table_number}` : "Walk-in customer")}</p>
+            </div>
+            <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-600">{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+          </div>
           {needsReview ? <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             {menuReview.ok ? "Menu prices have changed since this bill was saved." : menuReview.error}
             {menuReview.ok ? <button type="button" className="mt-2 block font-bold underline" onClick={() => {
               setLines(current => Object.fromEntries(Object.entries(current).map(([key, line], index) => [key, { ...line, price: menuReview.items[index].price }])));
             }}>Use current menu prices</button> : <p>Remove and re-add the affected item before submitting.</p>}
           </div> : null}
+
+          {/* Order type stays visible while the item list scrolls. */}
+          <fieldset className="mt-3 shrink-0">
+            <legend className="sr-only">Order type</legend>
+            <div className="grid grid-cols-2 gap-1.5">
+              {orderTypes.map((type) => (
+                <button
+                  className={`focus-ring rounded-lg border px-2 py-2 text-xs font-black ${fulfilmentType === type ? "border-leaf bg-mint text-leaf" : "border-stone-200 text-stone-600 hover:bg-stone-50"}`}
+                  key={type}
+                  disabled={isAddingToOrder || !!draft?.attempt}
+                  onClick={() => setFulfilmentType(type)}
+                  type="button"
+                >
+                  {fulfilmentLabels[type]}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
           {/* Scrollable order body — totals and actions stay pinned below */}
           <div className="mt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
@@ -670,30 +714,6 @@ export function StaffOrderEntry({
               })
             )}
           </div>
-
-          {/* Order type — only the channels this restaurant offers */}
-          <fieldset className="mt-4">
-            <legend className="text-xs font-black uppercase tracking-wide text-stone-500">
-              Order type
-            </legend>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {orderTypes.map((type) => (
-                <button
-                  className={`focus-ring rounded-lg border px-3 py-2 text-sm font-black ${
-                    fulfilmentType === type
-                      ? "border-leaf bg-mint text-leaf"
-                      : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                  }`}
-                  key={type}
-                  disabled={isAddingToOrder || !!draft?.attempt}
-                  onClick={() => setFulfilmentType(type)}
-                  type="button"
-                >
-                  {fulfilmentLabels[type]}
-                </button>
-              ))}
-            </div>
-          </fieldset>
 
           {fulfilmentType === "delivery" ? (
             <div className="mt-3 space-y-3">
@@ -786,7 +806,12 @@ export function StaffOrderEntry({
           ) : null}
 
           {/* Optional customer + notes */}
-          <div className="mt-4 space-y-3">
+          <details className="mt-4 rounded-lg border border-stone-200 bg-stone-50">
+            <summary className="focus-ring flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-black text-stone-700">
+              <span>Customer & notes <span className="font-semibold text-stone-400">(optional)</span></span>
+              <ChevronDown size={15} />
+            </summary>
+          <div className="space-y-3 border-t border-stone-200 p-3">
             {!isAddingToOrder ? (
               <StaffCreditCustomerSelector
                 canManageCredit={canManageCredit}
@@ -857,6 +882,7 @@ export function StaffOrderEntry({
               />
             </label>
           </div>
+          </details>
 
           {/* Close scrollable order body */}
           </div>
@@ -945,92 +971,64 @@ export function StaffOrderEntry({
               </div>
             ) : null}
 
-            {/* Primary flow: payment is collected later, at completion. */}
-            {!isAddingToOrder ? (
-              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm font-bold text-stone-700">
-                <input
-                  checked={printCustomerBill}
-                  className="h-5 w-5 shrink-0 accent-emerald-600"
-                  onChange={(event) => setPrintCustomerBill(event.target.checked)}
-                  type="checkbox"
-                />
-                <ReceiptText className="shrink-0 text-stone-500" size={18} />
-                <span>
-                  Print customer bill too
-                  <span className="block text-xs font-medium text-stone-500">Bill first, then KOT</span>
-                </span>
-              </label>
-            ) : null}
-            <button
-              className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-              disabled={pending || ticketLines.length === 0 || needsReview}
-              name="action"
-              type="submit"
-              value="kitchen"
-            >
-              {pending
-                ? "Saving…"
-                : isAddingToOrder
-                  ? "Add items & print KOT"
-                  : "Send to kitchen"}
-            </button>
-
-            {/* Optional shortcut: customer pays up front. */}
-            {!isAddingToOrder ? <div className="grid grid-cols-2 gap-2">
+            {isAddingToOrder ? (
               <button
-                className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
-                disabled={pending || ticketLines.length === 0}
+                className="focus-ring w-full rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
+                disabled={pending || ticketLines.length === 0 || needsReview}
                 name="action"
                 type="submit"
-                value="paid_cash"
+                value="kitchen"
               >
-                Paid · Cash
+                {pending ? "Saving…" : "Add items & print KOT"}
               </button>
-              <button
-                className="focus-ring rounded-lg border border-leaf px-3 py-2 text-sm font-black text-leaf disabled:opacity-60"
-                disabled={pending || ticketLines.length === 0}
-                name="action"
-                type="submit"
-                value="paid_card"
-              >
-                Paid · Card
-              </button>
-              {restaurant.country_code === "IN" ? (
-                <button
-                  className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-3 text-sm font-black text-violet-800 disabled:opacity-50"
-                  disabled={pending || ticketLines.length === 0}
-                  type="submit"
-                  value="paid_upi"
-                >
-                  <ReceiptText size={16} />
-                  Paid · UPI
+            ) : showPaymentPanel ? (
+              <div className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-leaf/30 bg-white p-3 shadow-2xl lg:static lg:bg-mint/40 lg:shadow-none">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-black">Collect payment</p>
+                    <p className="text-xs font-semibold text-stone-500">Amount due {formatCurrency(total, restaurant)}</p>
+                  </div>
+                  <button className="rounded-lg px-2 py-1 text-xs font-bold text-stone-500 hover:bg-white" onClick={() => { setShowPaymentPanel(false); setPrintCustomerBill(false); }} type="button">Cancel</button>
+                </div>
+                <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-stone-600">
+                  <input checked={printCustomerBill} className="h-4 w-4 accent-emerald-600" onChange={(event) => setPrintCustomerBill(event.target.checked)} type="checkbox" />
+                  <ReceiptText size={15} /> Print customer bill
+                </label>
+                <div className={`grid gap-2 ${restaurant.country_code === "IN" ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-3 py-3 text-sm font-black text-white disabled:opacity-60" disabled={pending || ticketLines.length === 0 || needsReview} name="action" type="submit" value="paid_cash">
+                    <Banknote size={17} /> Cash
+                  </button>
+                  <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-3 py-3 text-sm font-black text-white disabled:opacity-60" disabled={pending || ticketLines.length === 0 || needsReview} name="action" type="submit" value="paid_card">
+                    <CreditCard size={17} /> Card
+                  </button>
+                  {restaurant.country_code === "IN" ? (
+                    <button className="focus-ring rounded-lg bg-violet-700 px-3 py-3 text-sm font-black text-white disabled:opacity-50" disabled={pending || ticketLines.length === 0 || needsReview} type="submit" value="paid_upi">UPI</button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-leaf px-3 py-3 text-sm font-black text-leaf disabled:opacity-60" disabled={pending || ticketLines.length === 0 || needsReview} name="action" type="submit" value="kitchen">
+                  <ChefHat size={17} /> {pending ? "Saving…" : "Send KOT"}
                 </button>
-              ) : null}
-            </div> : null}
+                <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-3 py-3 text-sm font-black text-white disabled:opacity-60" disabled={pending || ticketLines.length === 0 || needsReview} onClick={() => setShowPaymentPanel(true)} type="button">
+                  <CreditCard size={17} /> Pay {formatCurrency(total, restaurant)}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mobile: keep billing one tap away without scrolling to the ticket */}
-          {ticketLines.length > 0 ? (
+          {ticketLines.length > 0 && !showPaymentPanel ? (
             <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 border-t border-stone-200 bg-white p-3 shadow-lg lg:hidden">
               <div className="flex-1">
                 <p className="text-xs font-bold text-stone-500">
                   {itemCount} item{itemCount === 1 ? "" : "s"}
                 </p>
                 <p className="text-lg font-black">{formatCurrency(total, restaurant)}</p>
-                {!isAddingToOrder ? (
-                  <label className="mt-1 flex cursor-pointer items-center gap-1.5 text-xs font-bold text-stone-600">
-                    <input
-                      checked={printCustomerBill}
-                      className="h-4 w-4 accent-emerald-600"
-                      onChange={(event) => setPrintCustomerBill(event.target.checked)}
-                      type="checkbox"
-                    />
-                    Print bill too
-                  </label>
-                ) : null}
               </div>
               <button
-                className="focus-ring rounded-lg bg-leaf px-5 py-3 font-black text-white disabled:opacity-60"
+                className="focus-ring rounded-lg border border-leaf px-4 py-3 font-black text-leaf disabled:opacity-60"
                 disabled={pending}
                 name="action"
                 type="submit"
@@ -1040,8 +1038,13 @@ export function StaffOrderEntry({
                   ? "Saving…"
                   : isAddingToOrder
                     ? "Add items"
-                    : "Send to kitchen"}
+                    : "Send KOT"}
               </button>
+              {!isAddingToOrder ? (
+                <button className="focus-ring rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60" disabled={pending || needsReview} onClick={() => setShowPaymentPanel(true)} type="button">
+                  Pay
+                </button>
+              ) : null}
             </div>
           ) : null}
         </form>

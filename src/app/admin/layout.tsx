@@ -13,6 +13,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const session = await requireRestaurantAdmin({ allowJobsOnly: true });
   const jobsOnly = session.restaurant.jobs_only === true;
   const pathname = (await headers()).get("x-whatsorder-pathname") ?? "/admin";
+  const posMode =
+    pathname === "/admin/orders/new" ||
+    /^\/admin\/orders\/[^/]+\/add-items$/.test(pathname);
 
   const isJobsPath = pathname === "/admin/jobs" || pathname.startsWith("/admin/jobs/");
   if (jobsOnly && !isJobsPath) {
@@ -48,6 +51,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       initialUnreadChatConversationIds={initialUnreadChatConversationIds}
       realtimeAccessToken={realtimeAccessToken}
       session={session}
+      posMode={posMode}
     >
       {children}
     </AdminShell>
