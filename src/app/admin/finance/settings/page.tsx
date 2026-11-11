@@ -7,7 +7,9 @@ const permissionFields = [
   ["can_create", "Add manual expenses", "Create entries; users without approval access create drafts."],
   ["can_approve", "Approve or void", "Finalize drafts and void incorrect expenses."],
   ["can_manage_categories", "Manage categories", "Create expense classifications and allocation defaults."],
-  ["can_manage_recurring", "Manage recurring costs", "Create, pause and resume expected costs."]
+  ["can_manage_recurring", "Manage recurring costs", "Create, pause and resume expected costs."],
+  ["can_manage_costing", "Manage ingredients and recipes", "Confirm purchase costs and maintain effective-dated recipes."],
+  ["can_view_reports", "View finance reports", "Read contribution, cost coverage and estimated operating results."]
 ] as const;
 
 export default async function FinanceSettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {

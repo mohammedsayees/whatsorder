@@ -40,6 +40,14 @@ async function categoryBelongsToRestaurant(categoryId: string, restaurantId: str
   return Boolean(data);
 }
 
+async function recurringBelongsToRestaurant(recurringId: string, restaurantId: string) {
+  const admin = getSupabaseAdmin();
+  if (!admin) return false;
+  const { data } = await admin.from("finance_recurring_costs").select("id")
+    .eq("id", recurringId).eq("restaurant_id", restaurantId).eq("is_active", true).maybeSingle();
+  return Boolean(data);
+}
+
 export async function createFinanceExpenseAction(formData: FormData) {
   const { session, access } = await requireFinancePermission("create");
   const admin = getSupabaseAdmin();
@@ -56,6 +64,9 @@ export async function createFinanceExpenseAction(formData: FormData) {
   const paymentStatus = String(formData.get("payment_status") ?? "unpaid");
   const paymentMethod = String(formData.get("payment_method") ?? "");
   const paidOn = String(formData.get("paid_on") ?? "");
+  const servicePeriodStart = String(formData.get("service_period_start") ?? "");
+  const servicePeriodEnd = String(formData.get("service_period_end") ?? "");
+  const recurringCostId = String(formData.get("recurring_cost_id") ?? "");
 
   if (!description || !isIsoDate(incurredOn) || amountFils === null) {
     fail(path, "Enter a valid date, description, and positive AED amount.");
@@ -76,6 +87,13 @@ export async function createFinanceExpenseAction(formData: FormData) {
     fail(path, "Paid expenses require a valid paid date.");
   }
   if (paidOn && !isIsoDate(paidOn)) fail(path, "Enter a valid paid date.");
+  if ((servicePeriodStart || servicePeriodEnd) &&
+      (!isIsoDate(servicePeriodStart) || !isIsoDate(servicePeriodEnd) || servicePeriodEnd < servicePeriodStart)) {
+    fail(path, "Enter a valid service period, or leave both dates blank.");
+  }
+  if (recurringCostId && !(await recurringBelongsToRestaurant(recurringCostId, session.restaurantId))) {
+    fail(path, "Choose an active recurring schedule.");
+  }
 
   let subtotalFils: number;
   let inputVatFils: number;
@@ -109,6 +127,9 @@ export async function createFinanceExpenseAction(formData: FormData) {
     payment_status: paymentStatus,
     payment_method: paymentMethod || null,
     paid_on: paidOn || null,
+    service_period_start: servicePeriodStart || null,
+    service_period_end: servicePeriodEnd || null,
+    recurring_cost_id: recurringCostId || null,
     created_by: session.userId,
     updated_by: session.userId,
     approved_by: status === "approved" ? session.userId : null,
@@ -248,6 +269,8 @@ export async function updateFinancePermissionsAction(formData: FormData) {
     can_approve: canView && checked(formData, "can_approve"),
     can_manage_categories: canView && checked(formData, "can_manage_categories"),
     can_manage_recurring: canView && checked(formData, "can_manage_recurring"),
+    can_manage_costing: canView && checked(formData, "can_manage_costing"),
+    can_view_reports: canView && checked(formData, "can_view_reports"),
     updated_by: session.userId
   };
   const { error } = await admin

@@ -18,6 +18,8 @@ export type FinancePermission =
   | "approve"
   | "manage_categories"
   | "manage_recurring"
+  | "manage_costing"
+  | "view_reports"
   | "manage_permissions";
 
 export type FinanceAccess = Record<FinancePermission, boolean>;
@@ -29,6 +31,8 @@ export type FinanceRolePermissionRow = {
   can_approve: boolean;
   can_manage_categories: boolean;
   can_manage_recurring: boolean;
+  can_manage_costing: boolean;
+  can_view_reports: boolean;
 };
 
 export type FinanceCategory = {
@@ -80,6 +84,8 @@ const fullAccess: FinanceAccess = {
   approve: true,
   manage_categories: true,
   manage_recurring: true,
+  manage_costing: true,
+  view_reports: true,
   manage_permissions: true
 };
 
@@ -89,6 +95,8 @@ const noAccess: FinanceAccess = {
   approve: false,
   manage_categories: false,
   manage_recurring: false,
+  manage_costing: false,
+  view_reports: false,
   manage_permissions: false
 };
 
@@ -107,6 +115,8 @@ export function resolveFinanceAccess(
     approve: configured.can_view && configured.can_approve,
     manage_categories: configured.can_view && configured.can_manage_categories,
     manage_recurring: configured.can_view && configured.can_manage_recurring,
+    manage_costing: configured.can_view && configured.can_manage_costing,
+    view_reports: configured.can_view && configured.can_view_reports,
     manage_permissions: false
   };
 }

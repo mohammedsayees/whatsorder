@@ -26,7 +26,7 @@ export async function getFinanceAccess(session: RestaurantAdminSession): Promise
   if (!admin) return resolveFinanceAccess(featureEnabled, session.role);
   const { data } = await admin
     .from("finance_role_permissions")
-    .select("role,can_view,can_create,can_approve,can_manage_categories,can_manage_recurring")
+    .select("role,can_view,can_create,can_approve,can_manage_categories,can_manage_recurring,can_manage_costing,can_view_reports")
     .eq("restaurant_id", session.restaurantId)
     .eq("role", session.role)
     .maybeSingle();
@@ -90,7 +90,7 @@ export async function getFinanceRolePermissions(restaurantId: string) {
   if (!admin) return [];
   const { data } = await admin
     .from("finance_role_permissions")
-    .select("role,can_view,can_create,can_approve,can_manage_categories,can_manage_recurring")
+    .select("role,can_view,can_create,can_approve,can_manage_categories,can_manage_recurring,can_manage_costing,can_view_reports")
     .eq("restaurant_id", restaurantId)
     .order("role");
   return (data ?? []) as FinanceRolePermissionRow[];
