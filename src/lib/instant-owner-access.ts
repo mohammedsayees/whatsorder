@@ -1,9 +1,8 @@
 import "server-only";
 
-import { createEphemeralAuthClient } from "@/lib/ephemeral-auth-client";
 import { ownerEmailVerificationDueAt } from "@/lib/owner-email-verification";
 import { getPublicAppUrl } from "@/lib/super-admin-data";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { createEphemeralAuthClient, getSupabaseAdmin } from "@/lib/supabase";
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
