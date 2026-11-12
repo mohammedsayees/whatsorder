@@ -9,15 +9,42 @@ import { demoClaimCookieName, hashDemoClaimToken } from "@/lib/demo-claim";
 import { countryProfileFields, getCountryProfile } from "@/lib/localization";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { inviteRestaurantUser } from "@/lib/restaurant-invitations";
+import { parseGoLiveSettings } from "@/lib/go-live-settings";
+import { markOnboardingTasksComplete } from "@/lib/onboarding-progress";
 import { normalizeStoreSlug, storeSlugError } from "@/lib/store-slug";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { FOUNDER_WHATSAPP_NUMBER } from "@/lib/demo-store";
 
+// Everything the owner typed, echoed back on error so React's post-action
+// form reset restores it instead of wiping a long form. Multi-value fields
+// (closed days) are joined with commas.
+export type ClaimFormValues = Record<string, string>;
+
 export type ClaimFormState = {
   error: string | null;
-  values: { owner_email: string; whatsapp_number: string; slug: string };
+  values: ClaimFormValues;
 };
+
+const echoedFields = [
+  "owner_email",
+  "whatsapp_number",
+  "slug",
+  "delivery_enabled",
+  "pickup_enabled",
+  "car_pickup_enabled",
+  "dine_in_enabled",
+  "delivery_fee",
+  "minimum_order_amount",
+  "delivery_radius_km",
+  "latitude",
+  "longitude",
+  "location_text",
+  "address",
+  "hours_mode",
+  "open_time",
+  "close_time"
+];
 
 function field(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
@@ -43,11 +70,13 @@ export async function claimDemoRestaurantAction(
   _previous: ClaimFormState,
   formData: FormData
 ): Promise<ClaimFormState> {
-  const values = {
-    owner_email: field(formData, "owner_email").toLowerCase().slice(0, 254),
-    whatsapp_number: field(formData, "whatsapp_number").slice(0, 20),
-    slug: normalizeStoreSlug(field(formData, "slug"))
-  };
+  const values: ClaimFormValues = Object.fromEntries(
+    echoedFields.map((name) => [name, field(formData, name).slice(0, 300)])
+  );
+  values.owner_email = values.owner_email.toLowerCase().slice(0, 254);
+  values.whatsapp_number = values.whatsapp_number.slice(0, 20);
+  values.slug = normalizeStoreSlug(values.slug);
+  values.closed_days = formData.getAll("closed_days").map(String).join(",").slice(0, 100);
   const fail = (error: string): ClaimFormState => ({ error, values });
 
   const admin = getSupabaseAdmin();
@@ -74,6 +103,13 @@ export async function claimDemoRestaurantAction(
   const slugError = storeSlugError(values.slug);
   if (slugError) {
     return fail(slugError);
+  }
+
+  // Validate the go-live settings before claiming, so a typo never leaves a
+  // half-configured store behind.
+  const goLive = parseGoLiveSettings(formData);
+  if (!goLive.ok) {
+    return fail(goLive.error);
   }
 
   // Friendly early check; the RPC re-checks under its lock and the unique
@@ -115,6 +151,23 @@ export async function claimDemoRestaurantAction(
     maxAge: 0
   });
 
+  // The claim is committed; apply the go-live settings to the claimed tenant
+  // only. A failure here must not undo the claim — the owner can finish in
+  // Settings, and the success page says so.
+  const { error: settingsError } = await admin
+    .from("restaurants")
+    .update({ ...goLive.settings, updated_at: new Date().toISOString() })
+    .eq("id", String(restaurantId))
+    .eq("is_demo", false);
+  if (settingsError) {
+    console.error("WhatsOrder go-live settings save failed", {
+      restaurantId: String(restaurantId),
+      message: settingsError.message
+    });
+  } else {
+    await markOnboardingTasksComplete(String(restaurantId), ["fulfilment_settings"]);
+  }
+
   const invitation = await inviteRestaurantUser(
     admin,
     String(restaurantId),
@@ -129,7 +182,7 @@ export async function claimDemoRestaurantAction(
   revalidatePath(`/r/${values.slug}`);
   revalidatePath("/super-admin/restaurants");
 
-  const linkParam = `&link=${encodeURIComponent(values.slug)}`;
+  const linkParam = `&link=${encodeURIComponent(values.slug)}${settingsError ? "&settings=0" : ""}`;
   if (!invitation.ok) {
     redirect(
       `/try/claim?claimed=1${linkParam}&invite_error=${encodeURIComponent(

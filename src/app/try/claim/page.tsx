@@ -9,7 +9,7 @@ import { suggestStoreSlug } from "@/lib/store-slug";
 
 export const metadata: Metadata = {
   title: "Claim your restaurant — WhatsOrder",
-  description: "Keep your AI-built menu, choose your store link, then start a free 14-day trial."
+  description: "Set your store link, delivery and opening hours, then start a free 14-day trial."
 };
 
 async function siteOrigin() {
@@ -29,6 +29,7 @@ export default async function ClaimDemoRestaurantPage({
     claimed?: string;
     invite_error?: string;
     link?: string;
+    settings?: string;
   }>;
 }) {
   const query = await searchParams;
@@ -53,6 +54,12 @@ export default async function ClaimDemoRestaurantPage({
               <p className="mt-3 leading-7 text-amber-900/80">{query.invite_error}</p>
             </section>
           )}
+          {query.settings === "0" ? (
+            <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              We couldn&apos;t save your delivery and opening-hours details. Your store is claimed;
+              set them in Settings after you sign in.
+            </p>
+          ) : null}
           {storeLink ? (
             <p className="mt-5 text-center text-sm text-slate-600">
               Your store is live at{" "}
@@ -78,12 +85,11 @@ export default async function ClaimDemoRestaurantPage({
         {demo ? (
           <>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-emerald-950">
-              Make {demo.name} your real restaurant.
+              Put {demo.name} live.
             </h1>
             <p className="mt-3 text-slate-600">
-              Keep the same menu and test orders. Pick your store link, add your WhatsApp number,
-              and start a 14-day free trial with no card. We&apos;ll verify the owner email before
-              dashboard access.
+              Your menu is ready. Answer a few quick questions and real customers can order
+              straight away. Takes about two minutes, no card needed.
             </p>
             <ClaimDemoForm
               suggestedSlug={suggestStoreSlug(demo.name, demo.slug)}

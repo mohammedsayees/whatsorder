@@ -61,6 +61,17 @@ describe("self-serve claim store link contracts", () => {
     expect(demoAction).toContain("...countryProfileFields(countryCode)");
   });
 
+  it("validates go-live settings before claiming and saves them to the claimed tenant only", () => {
+    const parseAt = claimAction.indexOf("parseGoLiveSettings(formData)");
+    const rpcAt = claimAction.indexOf('admin.rpc("claim_demo_restaurant"');
+    const saveAt = claimAction.indexOf(".update({ ...goLive.settings");
+    expect(parseAt).toBeGreaterThan(-1);
+    expect(parseAt).toBeLessThan(rpcAt);
+    expect(saveAt).toBeGreaterThan(rpcAt);
+    expect(claimAction).toContain('.eq("id", String(restaurantId))\n    .eq("is_demo", false)');
+    expect(claimAction).toContain('markOnboardingTasksComplete(String(restaurantId), ["fulfilment_settings"])');
+  });
+
   it("limits store link changes to owners and admins of their own restaurant", () => {
     expect(slugAction).toContain('requireRestaurantRole(["owner", "restaurant_admin"])');
     expect(slugAction).toContain('.eq("id", restaurant.id)');
