@@ -63,6 +63,19 @@ describe("business day close snapshots", () => {
     });
   });
 
+  it("excludes credit repayments from receipts, including days closed before the fix", () => {
+    const legacy = {
+      ...structuredClone(snapshot),
+      other_income_total: 160,
+      total_operational_receipts: 1360,
+      other_income_breakdown: { used_oil_sale: 100, customer_credit_repayment: 60 }
+    };
+    expect(parseBusinessDayCloseReportSnapshot(legacy)).toMatchObject({
+      credit_repayment_total: 60,
+      total_operational_receipts: 1300
+    });
+  });
+
   it("rejects incomplete shift facts", () => {
     const invalid = structuredClone(snapshot);
     delete (invalid.shifts[0] as Partial<(typeof invalid.shifts)[number]>).cash_difference;

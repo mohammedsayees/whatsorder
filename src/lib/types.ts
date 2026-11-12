@@ -471,6 +471,8 @@ export type ShiftCloseReportSnapshot = {
   upi_other_income_total: number;
   bank_other_income_total: number;
   other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
+  /** Credit repayments: other income for drawer reconciliation, but the sale was already counted. */
+  credit_repayment_total: number;
   combined_operational_receipts: number;
   report_generated_at: string;
   correction_reason: string | null;
@@ -568,6 +570,7 @@ export type BusinessDayCloseReportSnapshot = RestaurantLocalization & {
   card_other_income_total: number;
   upi_other_income_total: number;
   bank_other_income_total: number;
+  credit_repayment_total: number;
   total_operational_receipts: number;
   cash_order_sales: number;
   card_order_sales: number;
