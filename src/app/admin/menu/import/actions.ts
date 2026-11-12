@@ -10,6 +10,8 @@ import {
   type DraftMenuItem,
   type ItemTranslation
 } from "@/lib/menu-extraction/extract";
+import { groupSizeVariants } from "@/lib/size-variants";
+import { attachSizeOptionGroups } from "@/lib/menu-size-groups";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -199,7 +201,7 @@ export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<Imp
     return { ok: false, message: "Menu import needs Supabase write access." };
   }
 
-  const validRows = (Array.isArray(rows) ? rows : [])
+  const validRows = groupSizeVariants((Array.isArray(rows) ? rows : [])
     .map((row) => ({
       category: String(row.category ?? "").trim() || "Menu",
       name: String(row.name ?? "").trim().slice(0, 120),
@@ -210,7 +212,7 @@ export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<Imp
       image_url: row.image_url ? String(row.image_url).trim() : null
     }))
     .filter((row) => row.name && Number.isFinite(row.price) && row.price >= 0)
-    .slice(0, 300);
+    .slice(0, 300));
 
   if (validRows.length === 0) {
     return { ok: false, message: "There are no valid items to import." };
@@ -272,20 +274,50 @@ export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<Imp
         price: row.price,
         image_url: row.image_url,
         is_available: true,
-        is_featured: row.is_featured
+        is_featured: row.is_featured,
+        sizes: row.sizes
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  const { error: insertError } = await supabase.from("menu_items").insert(itemsToInsert);
+  // Plain items go in one insert. Items with sizes are inserted one by one so
+  // each new id is known for certain before its Size group is linked.
+  const plainItems = itemsToInsert.filter((item) => !item.sizes).map(({ sizes: _sizes, ...item }) => {
+    void _sizes;
+    return item;
+  });
+  const sizedItems = itemsToInsert.filter((item) => item.sizes);
 
-  if (insertError) {
-    return { ok: false, message: "Some items could not be saved. Please try again." };
+  if (plainItems.length > 0) {
+    const { error: insertError } = await supabase.from("menu_items").insert(plainItems);
+    if (insertError) {
+      return { ok: false, message: "Some items could not be saved. Please try again." };
+    }
   }
+
+  const sizeEntries: { itemId: string; sizes: NonNullable<(typeof sizedItems)[number]["sizes"]> }[] = [];
+  for (const { sizes, ...item } of sizedItems) {
+    const { data: inserted, error: sizedError } = await supabase
+      .from("menu_items")
+      .insert(item)
+      .select("id")
+      .single();
+    if (sizedError || !inserted || !sizes) {
+      return { ok: false, message: "Some items could not be saved. Please try again." };
+    }
+    sizeEntries.push({ itemId: String(inserted.id), sizes });
+  }
+  const sizedCount = await attachSizeOptionGroups(supabase, session.restaurantId, sizeEntries);
 
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${session.restaurant.slug}`);
   revalidatePublicRestaurantCache(session.restaurant);
 
-  return { ok: true, message: `Imported ${itemsToInsert.length} items.` };
+  return {
+    ok: true,
+    message:
+      sizedCount > 0
+        ? `Imported ${itemsToInsert.length} items. ${sizedCount} now have a size choice instead of separate items.`
+        : `Imported ${itemsToInsert.length} items.`
+  };
 }

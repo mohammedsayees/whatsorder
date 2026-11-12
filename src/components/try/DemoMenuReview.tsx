@@ -167,6 +167,17 @@ export default function DemoMenuReview({
             {state.deleted ? <Undo2 size={16} /> : <Trash2 size={16} />}
           </button>
         </div>
+        {item.sizes && !state.deleted ? (
+          <p className="mt-1 pl-1 text-xs text-slate-500">
+            Sizes:{" "}
+            {item.sizes
+              .map((size) =>
+                size.priceDelta > 0 ? `${size.name} +${size.priceDelta}` : size.name
+              )
+              .join(" · ")}
+            <span className="text-slate-400"> (price above is the smallest size)</span>
+          </p>
+        ) : null}
       </li>
     );
   }

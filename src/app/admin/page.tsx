@@ -90,6 +90,9 @@ export default async function AdminDashboardPage({
             <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href={`/r/${restaurant.slug}`}>
               Place a test order
             </Link>
+            <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href="/admin/menu">
+              Add food photos
+            </Link>
           </div>
           {query.settings === "0" ? (
             <p className="mt-3 text-sm text-amber-900">

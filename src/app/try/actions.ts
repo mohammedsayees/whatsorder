@@ -6,7 +6,9 @@ import { cookies } from "next/headers";
 import { headers } from "next/headers";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { extractMenuPageItems } from "@/lib/menu-extraction/extract";
+import { extractMenuPageItems, type DraftMenuItem } from "@/lib/menu-extraction/extract";
+import { groupSizeVariants, type SizeChoice } from "@/lib/size-variants";
+import { attachSizeOptionGroups } from "@/lib/menu-size-groups";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { countryProfileFields, getCountryProfile, isCountryCode } from "@/lib/localization";
 import type { CountryCode } from "@/lib/types";
@@ -51,6 +53,7 @@ export type DemoReviewItem = {
   name: string;
   price: number;
   flags: ReviewFlag[];
+  sizes: SizeChoice[] | null;
 };
 
 export type DemoReviewData = {
@@ -194,7 +197,8 @@ export async function buildDemoStoreAction(input: {
     const perPage = await mapWithConcurrency(pages, DEMO_EXTRACTION_CONCURRENCY, (page) =>
       extractMenuPageItems(page.imageBase64, page.mimeType, country.currencyCode)
     );
-    drafts = dedupeDraftItems(perPage.flat());
+    // "Karak (Small)" + "Karak (Large)" become one item with a Size choice.
+    drafts = groupSizeVariants(dedupeDraftItems(perPage.flat()));
   } catch (error) {
     console.error("WhatsOrder demo extraction failed", {
       message: error instanceof Error ? error.message : String(error)
@@ -279,7 +283,7 @@ async function finishBuild(
   supabase: AdminClient,
   restaurant: { id: string; slug: string },
   name: string,
-  drafts: ReturnType<typeof dedupeDraftItems>,
+  drafts: (DraftMenuItem & { sizes: SizeChoice[] | null })[],
   ownerPhone: string | null,
   currencyCode: string
 ): Promise<DemoBuildResult> {
@@ -357,16 +361,28 @@ async function finishBuild(
   const url = `/r/${restaurant.slug}`;
   await notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone });
 
-  // Names are unique per demo (dedupeDraftItems), so confidence is matched by
-  // name rather than relying on RETURNING order.
-  const confidenceByName = new Map(drafts.map((row) => [row.name.slice(0, 120).toLowerCase(), row.confidence]));
-  const reviewRows = insertedItems.map((row) => ({
-    id: String(row.id),
-    categoryId: String(row.category_id),
-    name: String(row.name),
-    price: Number(row.price),
-    confidence: confidenceByName.get(String(row.name).toLowerCase())
-  }));
+  // Names are unique per demo (dedupeDraftItems, and size grouping only
+  // merges names that differed by their size suffix), so confidence and sizes
+  // are matched by name rather than relying on RETURNING order.
+  const draftByName = new Map(drafts.map((row) => [row.name.slice(0, 120).toLowerCase(), row]));
+  const reviewRows = insertedItems.map((row) => {
+    const draft = draftByName.get(String(row.name).toLowerCase());
+    return {
+      id: String(row.id),
+      categoryId: String(row.category_id),
+      name: String(row.name),
+      price: Number(row.price),
+      confidence: draft?.confidence,
+      sizes: draft?.sizes ?? null
+    };
+  });
+  await attachSizeOptionGroups(
+    supabase,
+    restaurant.id,
+    reviewRows
+      .filter((row) => row.sizes)
+      .map((row) => ({ itemId: row.id, sizes: row.sizes as SizeChoice[] }))
+  );
   const flags = reviewFlagsFor(reviewRows);
 
   return {
