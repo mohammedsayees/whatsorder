@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
+import { createEphemeralAuthClient } from "@/lib/supabase";
 import {
   getSuperAdminSession,
   refreshTokenCookieName,
@@ -42,7 +42,7 @@ async function clearAuthCookies() {
 export async function loginRestaurantAdminAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const supabase = getSupabase();
+  const supabase = createEphemeralAuthClient();
 
   if (!supabase) {
     redirect("/admin-login?error=Supabase%20is%20not%20configured.");
