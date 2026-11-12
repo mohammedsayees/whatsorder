@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Upload, X } from "lucide-react";
-import { buildDemoStoreAction } from "@/app/try/actions";
-import { FOUNDER_WHATSAPP_NUMBER, DEMO_MAX_PAGES } from "@/lib/demo-store";
+import { buildDemoStoreAction, type DemoReviewData } from "@/app/try/actions";
+import DemoMenuReview from "@/components/try/DemoMenuReview";
+import { FOUNDER_WHATSAPP_NUMBER, DEMO_MAX_PAGES, DEMO_MAX_TOTAL_BASE64 } from "@/lib/demo-store";
 
-type Phase = "idle" | "building" | "done";
+type Phase = "idle" | "building" | "review" | "done";
 
 type PagePreview = { dataUrl: string; mimeType: string };
 
@@ -51,6 +52,40 @@ async function fileToPage(file: File): Promise<PagePreview> {
 
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return { dataUrl: canvas.toDataURL("image/jpeg", 0.85), mimeType: "image/jpeg" };
+}
+
+// Keeps a multi-page upload under the server-action body limit: if the pages
+// are too big together, re-encode them smaller (menu text stays readable at
+// these sizes) before giving up.
+async function fitPagesToBudget(pages: PagePreview[]): Promise<PagePreview[] | null> {
+  const total = (list: PagePreview[]) =>
+    list.reduce((sum, page) => sum + dataUrlToBase64(page.dataUrl).length, 0);
+  if (total(pages) <= DEMO_MAX_TOTAL_BASE64) {
+    return pages;
+  }
+  for (const [maxEdge, quality] of [
+    [1300, 0.72],
+    [1100, 0.6]
+  ] as const) {
+    const smaller: PagePreview[] = [];
+    for (const page of pages) {
+      const image = await loadImage(page.dataUrl);
+      const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        return null;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      smaller.push({ dataUrl: canvas.toDataURL("image/jpeg", quality), mimeType: "image/jpeg" });
+    }
+    if (total(smaller) <= DEMO_MAX_TOTAL_BASE64) {
+      return smaller;
+    }
+  }
+  return null;
 }
 
 // PDF menus render to images in the browser (dynamic import keeps pdfjs out
@@ -140,6 +175,7 @@ export default function InstantDemoBuilder() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [name, setName] = useState("");
   const [whatsApp, setWhatsApp] = useState("");
+  const [countryCode, setCountryCode] = useState<"AE" | "IN">("AE");
   const [pages, setPages] = useState<PagePreview[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
@@ -148,6 +184,7 @@ export default function InstantDemoBuilder() {
     claimUrl: string;
     itemCount: number;
     ownerWhatsApp: string | null;
+    review: DemoReviewData;
   } | null>(null);
   const [preparing, setPreparing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -201,10 +238,17 @@ export default function InstantDemoBuilder() {
 
     setPhase("building");
     try {
+      const fitted = await fitPagesToBudget(pages);
+      if (!fitted) {
+        setPhase("idle");
+        setError("Those photos are too large together. Remove a page or two and try again.");
+        return;
+      }
       const response = await buildDemoStoreAction({
         restaurantName: name,
         ownerWhatsApp: whatsApp.trim() || undefined,
-        pages: pages.map((page) => ({
+        countryCode,
+        pages: fitted.map((page) => ({
           imageBase64: dataUrlToBase64(page.dataUrl),
           mimeType: page.mimeType
         }))
@@ -221,9 +265,10 @@ export default function InstantDemoBuilder() {
         url: response.url,
         claimUrl: response.claimUrl,
         itemCount: response.itemCount,
-        ownerWhatsApp: response.ownerWhatsApp
+        ownerWhatsApp: response.ownerWhatsApp,
+        review: response.review
       });
-      setPhase("done");
+      setPhase("review");
     } catch {
       setPhase("idle");
       setError("Something went wrong while building your store. Try again in a moment.");
@@ -231,16 +276,29 @@ export default function InstantDemoBuilder() {
     }
   }
 
+  if (phase === "review" && result) {
+    return (
+      <DemoMenuReview
+        review={result.review}
+        onDone={(itemCount) => {
+          setResult({ ...result, itemCount });
+          setPhase("done");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
+    );
+  }
+
   if (phase === "done" && result) {
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
         <div className="text-4xl">🎉</div>
         <h2 className="mt-3 text-xl font-bold text-emerald-950">
-          Your demo store is live — {result.itemCount} items imported
+          Your demo store is live with {result.itemCount} items
         </h2>
         <p className="mt-2 text-sm text-emerald-900/80">
-          Open it on your phone, place a test order, and share the link with your team. It stays
-          live for 7 days.
+          Open it on your phone and place a test order. This demo stays live for 7 days. Claim
+          it to keep your menu and start your 14-day free trial.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <a
@@ -289,6 +347,20 @@ export default function InstantDemoBuilder() {
         className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
         disabled={phase === "building"}
       />
+
+      <label className="mt-4 block text-sm font-semibold text-emerald-950" htmlFor="demo-country">
+        Country
+      </label>
+      <select
+        id="demo-country"
+        value={countryCode}
+        onChange={(event) => setCountryCode(event.target.value === "IN" ? "IN" : "AE")}
+        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
+        disabled={phase === "building"}
+      >
+        <option value="AE">United Arab Emirates (prices in AED)</option>
+        <option value="IN">India (prices in INR)</option>
+      </select>
 
       <div className="mt-4">
         <span className="block text-sm font-semibold text-emerald-950">
@@ -348,7 +420,7 @@ export default function InstantDemoBuilder() {
         type="tel"
         value={whatsApp}
         onChange={(event) => setWhatsApp(event.target.value)}
-        placeholder="05x xxx xxxx"
+        placeholder={countryCode === "IN" ? "98xxx xxxxx" : "05x xxx xxxx"}
         maxLength={20}
         className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
         disabled={phase === "building"}
@@ -380,7 +452,7 @@ export default function InstantDemoBuilder() {
         {phase === "building" ? (
           <>
             <Loader2 className="animate-spin" size={18} />
-            Building… (about a minute)
+            {pages.length > 2 ? "Reading every page… (1–2 minutes)" : "Building… (about a minute)"}
           </>
         ) : (
           "Build my demo store"

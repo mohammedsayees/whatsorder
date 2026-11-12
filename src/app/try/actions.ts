@@ -6,11 +6,21 @@ import { cookies } from "next/headers";
 import { headers } from "next/headers";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { extractMenuPageItems } from "@/lib/menu-extraction/extract";
+import { extractMenuPageItems, type DraftMenuItem } from "@/lib/menu-extraction/extract";
+import { groupSizeVariants, type SizeChoice } from "@/lib/size-variants";
+import { attachSizeOptionGroups } from "@/lib/menu-size-groups";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
+import { countryProfileFields, getCountryProfile, isCountryCode } from "@/lib/localization";
+import type { CountryCode } from "@/lib/types";
 import {
   DEMO_BUILDS_PER_DAY,
+  DEMO_EXTRACTION_CONCURRENCY,
   DEMO_MAX_PAGES,
+  DEMO_MAX_TOTAL_BASE64,
+  mapWithConcurrency,
+  reviewFlagsFor,
+  validateDemoMenuReview,
+  type ReviewFlag,
   FOUNDER_WHATSAPP_NUMBER,
   buildDemoSlug,
   dedupeDraftItems,
@@ -25,6 +35,7 @@ import {
   hashDemoClaimToken,
   serializeDemoClaimCookie
 } from "@/lib/demo-claim";
+import { getClaimableDemo } from "@/app/try/claim/claimable-demo";
 
 // Instant demo store builder (self-serve funnel, PRD Phase 1). Public-facing:
 // no auth, so every input is validated here and writes go through the
@@ -36,6 +47,21 @@ const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 // this, and it keeps the request under the server-action body limit.
 const MAX_IMAGE_BASE64_LENGTH = 10_000_000;
 
+export type DemoReviewItem = {
+  id: string;
+  categoryId: string;
+  name: string;
+  price: number;
+  flags: ReviewFlag[];
+  sizes: SizeChoice[] | null;
+};
+
+export type DemoReviewData = {
+  currencyCode: string;
+  categories: { id: string; name: string }[];
+  items: DemoReviewItem[];
+};
+
 export type DemoBuildResult =
   | {
       ok: true;
@@ -44,6 +70,7 @@ export type DemoBuildResult =
       claimUrl: string;
       itemCount: number;
       ownerWhatsApp: string | null;
+      review: DemoReviewData;
     }
   | { ok: false; error: string; rateLimited?: boolean };
 
@@ -97,6 +124,9 @@ export async function buildDemoStoreAction(input: {
   // Optional lead capture: the prospect's own WhatsApp number, so follow-up
   // has a channel even if they never tap a CTA.
   ownerWhatsApp?: string;
+  // Country decides the currency the AI reads prices in. It is fixed from
+  // here on: the claim keeps it, so prices never silently change currency.
+  countryCode?: string;
 }): Promise<DemoBuildResult> {
   const supabase = getSupabaseAdmin();
   if (!supabase || !process.env.GEMINI_API_KEY) {
@@ -111,14 +141,22 @@ export async function buildDemoStoreAction(input: {
     return { ok: false, error: "Enter your restaurant name (at least 2 characters)." };
   }
 
+  const countryCode: CountryCode = isCountryCode(input.countryCode) ? input.countryCode : "AE";
+  const country = getCountryProfile(countryCode);
+
   // Optional and best-effort: an unparseable number is dropped, never a blocker.
   const ownerPhone = input.ownerWhatsApp
-    ? normalizeWhatsAppNumber(String(input.ownerWhatsApp).slice(0, 20)) || null
+    ? normalizeWhatsAppNumber(String(input.ownerWhatsApp).slice(0, 20), country.phoneCountryCode) ||
+      null
     : null;
 
   const pages = (Array.isArray(input.pages) ? input.pages : []).slice(0, DEMO_MAX_PAGES);
   if (pages.length === 0) {
     return { ok: false, error: "Add a photo of your menu." };
+  }
+  const totalBase64 = pages.reduce((sum, page) => sum + String(page.imageBase64 ?? "").length, 0);
+  if (totalBase64 > DEMO_MAX_TOTAL_BASE64) {
+    return { ok: false, error: "Those photos are too large together. Remove a page or use smaller photos." };
   }
   for (const page of pages) {
     if (!allowedMimeTypes.has(page.mimeType)) {
@@ -156,10 +194,11 @@ export async function buildDemoStoreAction(input: {
   // orphan tenant behind.
   let drafts;
   try {
-    const perPage = await Promise.all(
-      pages.map((page) => extractMenuPageItems(page.imageBase64, page.mimeType, "AED"))
+    const perPage = await mapWithConcurrency(pages, DEMO_EXTRACTION_CONCURRENCY, (page) =>
+      extractMenuPageItems(page.imageBase64, page.mimeType, country.currencyCode)
     );
-    drafts = dedupeDraftItems(perPage.flat());
+    // "Karak (Small)" + "Karak (Large)" become one item with a Size choice.
+    drafts = groupSizeVariants(dedupeDraftItems(perPage.flat()));
   } catch (error) {
     console.error("WhatsOrder demo extraction failed", {
       message: error instanceof Error ? error.message : String(error)
@@ -194,6 +233,7 @@ export async function buildDemoStoreAction(input: {
       demo_expires_at: demoExpiryDate().toISOString(),
       demo_ip_hash: ipHash,
       owner_phone: ownerPhone,
+      ...countryProfileFields(countryCode),
       delivery_fee: 0,
       minimum_order_amount: 0
     })
@@ -217,6 +257,7 @@ export async function buildDemoStoreAction(input: {
         demo_expires_at: demoExpiryDate().toISOString(),
         demo_ip_hash: ipHash,
         owner_phone: ownerPhone,
+        ...countryProfileFields(countryCode),
         delivery_fee: 0,
         minimum_order_amount: 0
       })
@@ -230,10 +271,10 @@ export async function buildDemoStoreAction(input: {
       return { ok: false, error: "Could not create your demo store. Try again in a moment." };
     }
 
-    return finishBuild(supabase, retry, name, drafts, ownerPhone);
+    return finishBuild(supabase, retry, name, drafts, ownerPhone, country.currencyCode);
   }
 
-  return finishBuild(supabase, restaurant, name, drafts, ownerPhone);
+  return finishBuild(supabase, restaurant, name, drafts, ownerPhone, country.currencyCode);
 }
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -242,8 +283,9 @@ async function finishBuild(
   supabase: AdminClient,
   restaurant: { id: string; slug: string },
   name: string,
-  drafts: ReturnType<typeof dedupeDraftItems>,
-  ownerPhone: string | null
+  drafts: (DraftMenuItem & { sizes: SizeChoice[] | null })[],
+  ownerPhone: string | null,
+  currencyCode: string
 ): Promise<DemoBuildResult> {
   const categoryNames = [...new Set(drafts.map((row) => row.category.trim() || "Menu"))];
   const { data: categories, error: categoryError } = await supabase
@@ -279,8 +321,11 @@ async function finishBuild(
     is_featured: row.is_featured === true
   }));
 
-  const { error: itemsError } = await supabase.from("menu_items").insert(items);
-  if (itemsError) {
+  const { data: insertedItems, error: itemsError } = await supabase
+    .from("menu_items")
+    .insert(items)
+    .select("id, category_id, name, price");
+  if (itemsError || !insertedItems) {
     await supabase.from("restaurants").delete().eq("id", restaurant.id).eq("is_demo", true);
     return { ok: false, error: "Could not save your demo menu. Try again in a moment." };
   }
@@ -305,7 +350,8 @@ async function finishBuild(
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      path: "/try/claim",
+      // /try covers both the review step (server action on /try) and /try/claim.
+      path: "/try",
       maxAge: demoClaimLifetimeSeconds
     }
   );
@@ -315,12 +361,115 @@ async function finishBuild(
   const url = `/r/${restaurant.slug}`;
   await notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone });
 
+  // Names are unique per demo (dedupeDraftItems, and size grouping only
+  // merges names that differed by their size suffix), so confidence and sizes
+  // are matched by name rather than relying on RETURNING order.
+  const draftByName = new Map(drafts.map((row) => [row.name.slice(0, 120).toLowerCase(), row]));
+  const reviewRows = insertedItems.map((row) => {
+    const draft = draftByName.get(String(row.name).toLowerCase());
+    return {
+      id: String(row.id),
+      categoryId: String(row.category_id),
+      name: String(row.name),
+      price: Number(row.price),
+      confidence: draft?.confidence,
+      sizes: draft?.sizes ?? null
+    };
+  });
+  await attachSizeOptionGroups(
+    supabase,
+    restaurant.id,
+    reviewRows
+      .filter((row) => row.sizes)
+      .map((row) => ({ itemId: row.id, sizes: row.sizes as SizeChoice[] }))
+  );
+  const flags = reviewFlagsFor(reviewRows);
+
   return {
     ok: true,
     slug: restaurant.slug,
     url,
     claimUrl: "/try/claim",
     itemCount: items.length,
-    ownerWhatsApp: ownerPhone
+    ownerWhatsApp: ownerPhone,
+    review: {
+      currencyCode,
+      categories: categories.map((category) => ({ id: String(category.id), name: String(category.name) })),
+      items: reviewRows.map(({ confidence: _confidence, ...row }, index) => {
+        void _confidence;
+        return { ...row, flags: flags[index] };
+      })
+    }
   };
+}
+
+export type DemoReviewSaveResult = { ok: true } | { ok: false; error: string };
+
+// Review step: the owner fixes names/prices, deletes misreads and renames
+// categories before sharing the store. Authorised by the same private claim
+// proof as claiming (only the browser that built the demo can edit it), and
+// every write is scoped to that demo's restaurant_id.
+export async function saveDemoMenuReviewAction(input: unknown): Promise<DemoReviewSaveResult> {
+  const supabase = getSupabaseAdmin();
+  const demo = await getClaimableDemo();
+  if (!supabase || !demo) {
+    return { ok: false, error: "This demo session has expired. Build the demo again on this device." };
+  }
+
+  const parsed = validateDemoMenuReview(input);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const { items, deletedItemIds, categories } = parsed.edits;
+
+  if (deletedItemIds.length > 0) {
+    const { count } = await supabase
+      .from("menu_items")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", demo.id)
+      .not("id", "in", `(${deletedItemIds.join(",")})`);
+    if ((count ?? 0) === 0) {
+      return { ok: false, error: "Keep at least one item on your menu." };
+    }
+  }
+
+  const failures: string[] = [];
+  const record = (error: { message: string } | null) => {
+    if (error) failures.push(error.message);
+  };
+
+  await mapWithConcurrency(items, 8, async (item) => {
+    const { error } = await supabase
+      .from("menu_items")
+      .update({ name: item.name, price: item.price })
+      .eq("id", item.id)
+      .eq("restaurant_id", demo.id);
+    record(error);
+  });
+
+  await mapWithConcurrency(categories, 8, async (category) => {
+    const { error } = await supabase
+      .from("menu_categories")
+      .update({ name: category.name })
+      .eq("id", category.id)
+      .eq("restaurant_id", demo.id);
+    record(error);
+  });
+
+  if (deletedItemIds.length > 0) {
+    const { error } = await supabase
+      .from("menu_items")
+      .delete()
+      .in("id", deletedItemIds)
+      .eq("restaurant_id", demo.id);
+    record(error);
+  }
+
+  revalidatePublicRestaurantCache({ id: demo.id, slug: demo.slug });
+
+  if (failures.length > 0) {
+    console.error("WhatsOrder demo review save failed", { restaurantId: demo.id, failures: failures.slice(0, 3) });
+    return { ok: false, error: "Some changes didn't save. Try again, or fix them later in your dashboard." };
+  }
+  return { ok: true };
 }

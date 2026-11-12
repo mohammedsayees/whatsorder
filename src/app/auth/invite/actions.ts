@@ -1,6 +1,5 @@
 "use server";
 
-import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
@@ -10,13 +9,12 @@ import {
   superAdminCookieName
 } from "@/lib/super-admin-auth";
 import { hasValidInvitationMetadata } from "@/lib/security";
-
-const invitePasswordSetupCookieName = "whatsorder_invite_password_setup";
-const invitePasswordSetupLifetimeMs = 15 * 60 * 1000;
-
-function hashPasswordSetupToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
+import {
+  createPasswordSetupToken,
+  hashPasswordSetupToken,
+  passwordSetupCookieName as invitePasswordSetupCookieName,
+  passwordSetupLifetimeMs as invitePasswordSetupLifetimeMs
+} from "@/lib/password-setup";
 
 type InvitePayload = {
   accessToken?: string;
@@ -79,7 +77,7 @@ export async function completeRestaurantInviteAction(payload: InvitePayload) {
   }
 
   const now = new Date().toISOString();
-  const passwordSetupToken = randomBytes(32).toString("base64url");
+  const passwordSetupToken = createPasswordSetupToken();
   const passwordSetupExpiresAt = new Date(
     Date.now() + invitePasswordSetupLifetimeMs
   ).toISOString();

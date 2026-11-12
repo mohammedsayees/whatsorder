@@ -4,6 +4,7 @@ import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { OptionGroupsManager } from "@/components/admin/OptionGroupsManager";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
+import { BulkAiPhotos } from "@/components/admin/BulkAiPhotos";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
 import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
@@ -65,6 +66,15 @@ export default async function AdminMenuPage() {
         <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
           Staff accounts can view the menu but only managers and owners can change menu content.
         </p>
+      ) : null}
+      {canWrite ? (
+        <div className="mt-6">
+          <BulkAiPhotos
+            items={menu.items
+              .filter((item) => !item.image_url)
+              .map((item) => ({ id: item.id, name: item.name }))}
+          />
+        </div>
       ) : null}
       <div className="mt-6">
         <OffersManager

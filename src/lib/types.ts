@@ -85,6 +85,8 @@ export type Restaurant = PublicRestaurant & {
   order_target_minutes?: Partial<Record<FulfilmentType, number>>;
   owner_name?: string | null;
   owner_email?: string | null;
+  owner_email_verified_at?: string | null;
+  owner_email_verification_due_at?: string | null;
   owner_phone?: string | null;
   daily_summary_enabled?: boolean;
   daily_summary_phone?: string | null;

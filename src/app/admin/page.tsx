@@ -30,6 +30,8 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<{
     welcome?: string;
+    verified?: string;
+    settings?: string;
     error?: string;
     range?: string;
     metric?: string;
@@ -72,8 +74,40 @@ export default async function AdminDashboardPage({
         </section>
       ) : null}
       {query.welcome ? (
+        <section className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-900">
+          <h2 className="text-lg font-black">You&apos;re live. Welcome to WhatsOrder.</h2>
+          <p className="mt-1 text-sm">
+            Customers can order now at{" "}
+            <Link className="font-bold underline" href={`/r/${restaurant.slug}`}>
+              /r/{restaurant.slug}
+            </Link>
+            . Your 14-day free trial has started.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
+            <Link className="rounded-full bg-leaf px-4 py-2 text-white" href="/admin/menu/print">
+              Print your QR code
+            </Link>
+            <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href={`/r/${restaurant.slug}`}>
+              Place a test order
+            </Link>
+            <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href="/admin/menu">
+              Add food photos
+            </Link>
+          </div>
+          {query.settings === "0" ? (
+            <p className="mt-3 text-sm text-amber-900">
+              Your delivery and opening-hours details didn&apos;t save. Add them in{" "}
+              <Link className="font-bold underline" href="/admin/settings">
+                Settings
+              </Link>
+              .
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+      {query.verified ? (
         <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
-          Your restaurant account is active. Welcome to WhatsOrder.
+          Email confirmed. Thanks!
         </p>
       ) : null}
       {query.error ? (

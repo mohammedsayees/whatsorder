@@ -33,11 +33,11 @@ begin
 
   if has_function_privilege(
     'anon',
-    'public.claim_demo_restaurant(uuid,text,text,text,text,text,text,text,text)',
+    'public.claim_demo_restaurant(uuid,text,text,text,text,text,text,text,text,text)',
     'execute'
   ) or has_function_privilege(
     'authenticated',
-    'public.claim_demo_restaurant(uuid,text,text,text,text,text,text,text,text)',
+    'public.claim_demo_restaurant(uuid,text,text,text,text,text,text,text,text,text)',
     'execute'
   ) then
     raise exception 'Browser roles can execute the demo claim RPC';

@@ -874,6 +874,16 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
     .eq("id", restaurant.id);
   databaseFailure("Restaurant settings update", error);
 
+  const fulfilmentEnabled = [
+    "delivery_enabled",
+    "pickup_enabled",
+    "car_pickup_enabled",
+    "dine_in_enabled"
+  ].some((key) => formData.get(key) === "on");
+  if (fulfilmentEnabled) {
+    await completeOnboardingTasks(supabase, restaurant.id, ["fulfilment_settings"]);
+  }
+
   revalidatePath("/admin/settings");
   revalidatePath(`/r/${restaurant.slug}`);
   revalidatePublicRestaurantCache(restaurant);

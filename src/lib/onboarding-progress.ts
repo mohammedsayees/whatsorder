@@ -46,3 +46,32 @@ export async function getOnboardingProgress(
       : null
   };
 }
+
+// Marks onboarding tasks done for one tenant. Idempotent: only open tasks
+// are touched, so the original completion time is kept. Best-effort by
+// design — a checklist tick must never break the page or action calling it.
+export async function markOnboardingTasksComplete(
+  restaurantId: string,
+  taskKeys: string[]
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin || !restaurantId || taskKeys.length === 0) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from("onboarding_tasks")
+    .update({ is_completed: true, completed_at: now, updated_at: now })
+    .eq("restaurant_id", restaurantId)
+    .in("task_key", taskKeys)
+    .eq("is_completed", false);
+
+  if (error) {
+    console.error("WhatsOrder onboarding task update failed", {
+      restaurantId,
+      taskKeys,
+      message: error.message
+    });
+  }
+}
