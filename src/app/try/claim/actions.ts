@@ -143,11 +143,13 @@ export async function claimDemoRestaurantAction(
   }
 
   const cookieStore = await cookies();
+  // Cookies set before the review step used path "/try/claim"; those are
+  // left to expire. They're inert: the claim RPC already nulled the proof.
   cookieStore.set(demoClaimCookieName, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    path: "/try/claim",
+    path: "/try",
     maxAge: 0
   });
 
