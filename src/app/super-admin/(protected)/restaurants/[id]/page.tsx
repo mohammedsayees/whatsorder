@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { DeleteRestaurantPanel } from "@/components/super-admin/DeleteRestaurantPanel";
+import { getRestaurantDeletionPreview } from "@/lib/restaurant-deletion";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -66,6 +69,11 @@ export default async function SuperAdminRestaurantDetailPage({
   }
 
   const activeTab = tabs.includes(query.tab as DetailTab) ? (query.tab as DetailTab) : "overview";
+  const deletionAdmin = getSupabaseAdmin();
+  const deletionPreview =
+    activeTab === "settings" && detail.restaurant.status === "cancelled" && deletionAdmin
+      ? await getRestaurantDeletionPreview(deletionAdmin, detail.restaurant.id)
+      : null;
   const {
     restaurant,
     onboardingTasks,
@@ -411,6 +419,18 @@ export default async function SuperAdminRestaurantDetailPage({
           <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
             <RestaurantForm action={updateSuperAdminRestaurantAction} mode="edit" restaurant={restaurant} />
           </article>
+        ) : null}
+
+        {activeTab === "settings" ? (
+          <div className="mt-6">
+            <DeleteRestaurantPanel
+              cancelled={restaurant.status === "cancelled"}
+              name={restaurant.name}
+              preview={deletionPreview}
+              restaurantId={restaurant.id}
+              slug={restaurant.slug}
+            />
+          </div>
         ) : null}
 
         {activeTab === "onboarding" ? (
