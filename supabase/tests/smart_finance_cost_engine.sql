@@ -10,6 +10,10 @@ insert into public.restaurants (id, name, slug, whatsapp_number, status, is_acti
 insert into public.restaurant_users (restaurant_id, user_id, email, role, accepted_at) values
   ('2c000000-0000-0000-0000-000000000001', '1c000000-0000-0000-0000-000000000001', 'cost-owner@test.invalid', 'owner', now()),
   ('2c000000-0000-0000-0000-000000000001', '1c000000-0000-0000-0000-000000000002', 'cost-manager@test.invalid', 'manager', now());
+-- Dates below are restaurant business dates (restaurants.time_zone), matching the
+-- functions under test; the session's current_date can differ by a day.
+select (now() at time zone time_zone)::date as business_today
+from public.restaurants where id = '2c000000-0000-0000-0000-000000000001' \gset
 
 set local role service_role;
 update public.finance_role_permissions set can_manage_costing = true, can_view_reports = true
@@ -27,11 +31,11 @@ insert into public.finance_ingredients (
 );
 select public.confirm_finance_purchase_price(
   '2c000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', null,
-  'Supplier', current_date, 2, 1, 'kg', 3600, '1c000000-0000-0000-0000-000000000001'
+  'Supplier', :'business_today', 2, 1, 'kg', 3600, '1c000000-0000-0000-0000-000000000001'
 );
 select public.create_finance_recipe_revision(
   '2c000000-0000-0000-0000-000000000001', '4c000000-0000-0000-0000-000000000001', null,
-  current_date, '[{"ingredient_id":"5c000000-0000-0000-0000-000000000001","canonical_quantity":150,"waste_pct":10}]',
+  :'business_today', '[{"ingredient_id":"5c000000-0000-0000-0000-000000000001","canonical_quantity":150,"waste_pct":10}]',
   '1c000000-0000-0000-0000-000000000001'
 );
 insert into public.orders (
@@ -79,11 +83,11 @@ insert into public.menu_item_option_groups (restaurant_id, menu_item_id, group_i
    '7c000000-0000-0000-0000-000000000001');
 select public.confirm_finance_purchase_price(
   '2c000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001', null,
-  'Supplier two', current_date, 1, 1, 'kg', 900, '1c000000-0000-0000-0000-000000000001'
+  'Supplier two', :'business_today', 1, 1, 'kg', 900, '1c000000-0000-0000-0000-000000000001'
 );
 select public.create_finance_recipe_revision(
   '2c000000-0000-0000-0000-000000000001', '4c000000-0000-0000-0000-000000000001',
-  '8c000000-0000-0000-0000-000000000001', current_date,
+  '8c000000-0000-0000-0000-000000000001', :'business_today',
   '[{"ingredient_id":"5c000000-0000-0000-0000-000000000001","canonical_quantity":30,"waste_pct":0}]',
   '1c000000-0000-0000-0000-000000000001'
 );

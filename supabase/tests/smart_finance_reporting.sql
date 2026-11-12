@@ -28,10 +28,15 @@ insert into public.orders (
 );
 delete from public.finance_product_cost_snapshots where order_id = '5d000000-0000-0000-0000-000000000001';
 do $backfill_checks$
-declare result jsonb;
+declare result jsonb; business_today date;
 begin
+  -- The backfill range is in restaurant business dates (orders bucketed by
+  -- restaurants.time_zone), not the session's current_date: they differ for
+  -- part of every day (e.g. 20:00-24:00 UTC for Asia/Dubai).
+  select (now() at time zone time_zone)::date into strict business_today
+  from public.restaurants where id = '2d000000-0000-0000-0000-000000000001';
   result := public.backfill_finance_cost_snapshots(
-    '2d000000-0000-0000-0000-000000000001', current_date, current_date, 10
+    '2d000000-0000-0000-0000-000000000001', business_today, business_today, 10
   );
   if (result->>'snapshots_created')::integer <> 1 then raise exception 'Backfill did not create missing snapshot'; end if;
   if not exists (select 1 from public.finance_product_cost_snapshots
