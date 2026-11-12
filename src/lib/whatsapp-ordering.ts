@@ -8,10 +8,68 @@ import { getChatConversationByPhone, isChatAutomationActive, recordOutboundChatM
 import { getWhatsAppChatbotSettings, isChatOrderingAllowed } from "@/lib/whatsapp-ai";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { chatSentAtMs, emptyChatOrder, type ChatMenu, type ChatOrderDraft } from "@/lib/whatsapp-order-cart";
-import { deterministicChatParse, runChatOrderTurn, type ChatOrderParser } from "@/lib/whatsapp-order-flow";
+import { deterministicChatParse, runChatOrderTurn, type ChatOrderParser, type ChatParseResult } from "@/lib/whatsapp-order-flow";
+import { buildParserCatalog, callGeminiChatParser, validateParserOutput, type ValidatedParse } from "@/lib/whatsapp-order-parser";
 import type { Restaurant } from "@/lib/types";
 
 const DRAFT_TTL_MS = 24 * 60 * 60_000;
+/** Gemini parses per conversation per hour; beyond it only exact menu names are understood. */
+export const GEMINI_PARSES_PER_HOUR = 20;
+
+type Admin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+type ParseLog = { parser: "deterministic" | "gemini"; parsed: unknown; outcome: ValidatedParse["outcome"]; reason?: string; model?: string };
+
+/**
+ * Deterministic matching first; Gemini only when that cannot place every item.
+ * Every parse is logged for review. Logging failures never block ordering.
+ */
+function createChatOrderParser(admin: Admin, scope: { restaurantId: string; conversationId: string; messageId: string }, menu: ChatMenu): ChatOrderParser {
+  const log = async (text: string, entry: ParseLog) => {
+    const { error } = await admin.from("whatsapp_order_parse_logs").upsert({
+      restaurant_id: scope.restaurantId, conversation_id: scope.conversationId, message_id: scope.messageId,
+      parser: entry.parser, model: entry.model ?? null, input_text: text.slice(0, 2000), parsed: entry.parsed,
+      outcome: entry.outcome, reason: entry.reason?.slice(0, 500) ?? null
+    }, { onConflict: "restaurant_id,message_id,parser", ignoreDuplicates: true });
+    if (error) console.error("WhatsOrder chat parse log failed", error.code);
+  };
+  const capReached = async () => {
+    const { count, error } = await admin.from("whatsapp_order_parse_logs").select("id", { count: "exact", head: true })
+      .eq("restaurant_id", scope.restaurantId).eq("conversation_id", scope.conversationId).eq("parser", "gemini")
+      .gte("created_at", new Date(Date.now() - 60 * 60_000).toISOString());
+    return Boolean(error) || (count ?? 0) >= GEMINI_PARSES_PER_HOUR;
+  };
+
+  return async text => {
+    const fast = deterministicChatParse(text, menu);
+    if (fast.kind !== "unmatched") {
+      await log(text, { parser: "deterministic", parsed: fast, outcome: fast.kind === "error" ? "rejected"
+        : fast.kind === "add" && fast.lines.some(l => !l.item_id) ? "clarify" : "accepted" });
+      return fast;
+    }
+    const apiKey = process.env.GEMINI_API_KEY;
+    const skip = !apiKey ? "gemini not configured" : await capReached() ? "gemini hourly limit reached" : null;
+    await log(text, { parser: "deterministic", parsed: fast, outcome: "rejected", reason: skip ?? "unmatched; trying gemini" });
+    if (skip || !apiKey) return fast;
+
+    // A connector retry of this message reuses the earlier model result instead of calling Gemini again.
+    const { data: previous } = await admin.from("whatsapp_order_parse_logs").select("parsed,outcome")
+      .eq("restaurant_id", scope.restaurantId).eq("message_id", scope.messageId).eq("parser", "gemini").maybeSingle();
+    const reused = (previous?.parsed as { result?: ChatParseResult } | null)?.result;
+    if (previous && previous.outcome !== "error" && reused) return reused;
+
+    const model = process.env.WHATSAPP_ORDER_AI_MODEL ?? process.env.WHATSAPP_AI_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+    const { catalog, aliases } = buildParserCatalog(menu);
+    const call = await callGeminiChatParser(text, catalog, { apiKey, model });
+    const validated: ValidatedParse = call.raw === null
+      ? { result: fast, outcome: "error", reason: call.error ?? "no output" }
+      : validateParserOutput(call.raw, text, aliases);
+    const rawJson = JSON.stringify(call.raw ?? null);
+    await log(text, { parser: "gemini", model, outcome: validated.outcome, reason: validated.reason,
+      parsed: { raw: rawJson.length <= 20_000 ? call.raw : { truncated: true }, result: validated.result } });
+    // Malformed or failed model output never guesses: fall back to the deterministic answer.
+    return validated.outcome === "error" ? fast : validated.result;
+  };
+}
 
 /**
  * Only called from the authenticated connector webhook; never a public server action.
@@ -59,9 +117,11 @@ export async function handleWhatsAppOrderMessage(input: {
   const open = Boolean(restaurant.is_active && restaurant.accepting_orders && restaurant.pickup_enabled &&
     ["live", "trial", "paid"].includes(restaurant.status ?? "") &&
     isRestaurantOpen(restaurant.opening_hours_enabled, restaurant.opening_hours, new Date(now), restaurant.time_zone));
-  // A revision conflict re-runs the turn; never parse the same text twice.
+  // A revision conflict re-runs the turn; never parse (or log) the same text twice.
+  const parser = createChatOrderParser(admin, { restaurantId: input.restaurantId, conversationId: conversation.id,
+    messageId: input.messageId }, menu);
   let parsed: ReturnType<ChatOrderParser> | null = null;
-  const parse: ChatOrderParser = text => (parsed ??= Promise.resolve(deterministicChatParse(text, menu)));
+  const parse: ChatOrderParser = text => (parsed ??= parser(text));
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: row, error } = await admin.from("whatsapp_order_drafts").select("state,revision,updated_at")

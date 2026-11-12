@@ -3,7 +3,8 @@ const mock = vi.hoisted(() => ({
   state: null as null | { state: Record<string, unknown>; revision: number; updated_at: string },
   receipts: new Map<string, { reply: string; sent: boolean }>(),
   sent: [] as string[], failSend: false, mode: "approved" as "off" | "approved" | "everyone", paused: false,
-  creates: 0, price: 2, conflictsBeforeSave: 0, profileName: "Ali" as string | null, rpcCalls: 0
+  creates: 0, price: 2, conflictsBeforeSave: 0, profileName: "Ali" as string | null, rpcCalls: 0,
+  logs: [] as Array<Record<string, unknown>>
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/whatsapp-ai", async (importOriginal) => ({
@@ -33,8 +34,15 @@ vi.mock("@/lib/data", () => ({
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: () => ({
   from(table: string) {
     const filters: Record<string, string> = {};
+    let since = "";
+    let head = false;
     let update: Record<string, unknown> | undefined;
-    const result = () => {
+    const result = (): { data: unknown; error: null; count?: number } => {
+      if (table === "whatsapp_order_parse_logs") {
+        const rows = mock.logs.filter(l => Object.entries(filters).every(([k, v]) => l[k] === v) &&
+          (!since || String(l.created_at) >= since));
+        return head ? { data: null, count: rows.length, error: null } : { data: rows[0] ?? null, error: null };
+      }
       if (table === "restaurants") return { data: { name: "Cafe", slug: "cafe", is_active: true,
         accepting_orders: true, pickup_enabled: true, status: "live", opening_hours_enabled: false,
         minimum_order_amount: 0, currency_code: "AED" }, error: null };
@@ -43,7 +51,16 @@ vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: () => ({
       if (update && receipt) Object.assign(receipt, update);
       return { data: receipt ?? null, error: null };
     };
-    const query = { select: () => query, update: (value: Record<string, unknown>) => { update = value; return query; },
+    const query = {
+      select: (_columns?: string, options?: { head?: boolean }) => { head = Boolean(options?.head); return query; },
+      update: (value: Record<string, unknown>) => { update = value; return query; },
+      upsert: async (row: Record<string, unknown>) => {
+        if (!mock.logs.some(l => l.message_id === row.message_id && l.parser === row.parser)) {
+          mock.logs.push({ ...row, created_at: new Date().toISOString() });
+        }
+        return { error: null };
+      },
+      gte: (_key: string, value: string) => { since = value; return query; },
       eq: (key: string, value: string) => { filters[key] = value; return query; },
       maybeSingle: async () => result(), single: async () => result(),
       then: (resolve: (value: ReturnType<typeof result>) => unknown) => Promise.resolve(result()).then(resolve)
@@ -88,6 +105,84 @@ const send = (messageId: string, text: string, phone = "971500000077", sentAt?: 
 beforeEach(() => {
   mock.state = null; mock.receipts.clear(); mock.sent = []; mock.failSend = false; mock.mode = "approved";
   mock.paused = false; mock.creates = 0; mock.price = 2; mock.conflictsBeforeSave = 0; mock.profileName = "Ali"; mock.rpcCalls = 0;
+  mock.logs = [];
+  vi.unstubAllEnvs(); vi.unstubAllGlobals();
+  vi.stubEnv("GEMINI_API_KEY", "");
+});
+
+const gemini = (output: unknown) => {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(output) }] } }] })));
+  vi.stubEnv("GEMINI_API_KEY", "test-key");
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
+const order = (lines: Array<Record<string, unknown>>) => ({ intent: "order", lines: lines.map(l =>
+  ({ query: "karak", item_id: null, candidate_item_ids: [], quantity: 1, option_ids: [], note: "", ...l })) });
+
+describe("Gemini parsing in the webhook", () => {
+  it("logs the deterministic fast path and skips Gemini when it suffices", async () => {
+    const fetchMock = gemini(order([]));
+    await send("1", "2 karak");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mock.logs).toEqual([expect.objectContaining({ parser: "deterministic", outcome: "accepted", input_text: "2 karak",
+      restaurant_id: "restaurant", conversation_id: "conversation", message_id: "1" })]);
+  });
+
+  it("uses Gemini for free text, prices from the menu, and logs the result", async () => {
+    const fetchMock = gemini(order([{ query: "karaks", item_id: "i0", quantity: 2, note: "less sugar" }]));
+    await send("1", "2 karaks with less sugar pls");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)).not.toContain("Family platter");
+    expect(mock.sent.at(-1)).toContain("2 × Karak — AED");
+    expect(mock.sent.at(-1)).toContain("Notes: Karak: less sugar");
+    expect(mock.logs.map(l => [l.parser, l.outcome])).toEqual([["deterministic", "rejected"], ["gemini", "accepted"]]);
+    expect(mock.logs[1]).toMatchObject({ model: "gemini-2.5-flash", parsed: { raw: expect.any(Object), result: { kind: "add" } } });
+  });
+
+  it("reuses the logged Gemini result when the connector retries a message", async () => {
+    const fetchMock = gemini(order([{ query: "karaks", item_id: "i0", quantity: 2 }]));
+    mock.failSend = true;
+    await expect(send("1", "2 karaks")).rejects.toThrow();
+    mock.failSend = false;
+    await send("1", "2 karaks");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mock.logs.filter(l => l.parser === "gemini")).toHaveLength(1);
+  });
+
+  it("hands Gemini's not-an-order back to the receptionist, logged and unsaved", async () => {
+    gemini({ intent: "not_order", lines: [] });
+    expect(await send("1", "order status")).toBe(false);
+    expect(mock.state).toBeNull();
+    expect(mock.logs.at(-1)).toMatchObject({ parser: "gemini", outcome: "rejected", reason: "not an order" });
+  });
+
+  it("falls back without guessing when Gemini output is invalid", async () => {
+    gemini({ intent: "order", lines: [{ item_id: "i0", quantity: "lots" }] });
+    await send("1", "i want loads of karaks");
+    expect(mock.sent.at(-1)).toContain("could not find");
+    expect(mock.state!.state.cart).toEqual([]);
+    expect(mock.logs.at(-1)).toMatchObject({ parser: "gemini", outcome: "error", reason: "invalid line fields" });
+  });
+
+  it("stops calling Gemini after the hourly limit per conversation", async () => {
+    const fetchMock = gemini(order([{ item_id: "i0" }]));
+    const recent = new Date().toISOString();
+    for (let i = 0; i < 20; i++) {
+      mock.logs.push({ restaurant_id: "restaurant", conversation_id: "conversation", message_id: `old-${i}`, parser: "gemini", created_at: recent });
+    }
+    await send("1", "2 karaks");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mock.logs.at(-1)).toMatchObject({ parser: "deterministic", outcome: "rejected", reason: "gemini hourly limit reached" });
+    expect(mock.sent.at(-1)).toContain("could not find");
+  });
+
+  it("never calls Gemini without an API key", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await send("1", "2 karaks");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mock.logs.at(-1)).toMatchObject({ reason: "gemini not configured" });
+  });
 });
 
 describe("WhatsApp chat ordering webhook", () => {

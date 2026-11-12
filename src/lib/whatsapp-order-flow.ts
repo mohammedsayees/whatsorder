@@ -275,7 +275,8 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
   if (parsed.kind === "not_order") return { handled: false };
   if (parsed.kind === "error") return done(clearQuote(next), parsed.message);
   if (parsed.kind === "unmatched") {
-    return done(clearQuote(next), `I could not find ${parsed.queries.slice(0, 3).map(q => `“${q.slice(0, 60)}”`).join(", ")} on the menu. Send MENU for item names, or STAFF for help. Your order has not changed.\n${ctx.menuLink}`);
+    const what = parsed.queries.length ? parsed.queries.slice(0, 3).map(q => `“${q.slice(0, 60)}”`).join(", ") : "some of those items";
+    return done(clearQuote(next), `I could not find ${what} on the menu. Send MENU for item names, or STAFF for help. Your order has not changed.\n${ctx.menuLink}`);
   }
   if (parsed.kind === "remove") {
     const ids = new Set(parsed.item_ids);
