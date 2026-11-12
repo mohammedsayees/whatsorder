@@ -6,6 +6,7 @@ import type {
   RestaurantLocalization
 } from "@/lib/types";
 import { getRestaurantLocalization } from "@/lib/localization";
+import { orderSource, orderSourceLabel, type OrderSource } from "@/lib/order-source";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_REPORT_RANGE_DAYS = 366;
@@ -25,7 +26,8 @@ export type ReportTab =
   | "other_income"
   | "products"
   | "customers"
-  | "fulfilment";
+  | "fulfilment"
+  | "sources";
 
 export type ReportRange = {
   endDate: string;
@@ -72,6 +74,14 @@ export type FulfilmentReportRow = {
   salesShare: number;
 };
 
+export type SourceReportRow = {
+  averageOrderValue: number;
+  amount: number;
+  source: OrderSource;
+  orderCount: number;
+  salesShare: number;
+};
+
 export type CustomerReportRow = {
   completedOrders: number;
   marketingConsent: boolean;
@@ -95,6 +105,7 @@ export type RestaurantReport = {
   repeatCustomers: number;
   sales: number;
   salesRows: SalesReportRow[];
+  sourceRows: SourceReportRow[];
   uniqueCustomers: number;
 };
 
@@ -277,6 +288,7 @@ export function buildRestaurantReport(
     FulfilmentType,
     { amount: number; orderCount: number }
   >();
+  const sources = new Map<OrderSource, { amount: number; orderCount: number }>();
   const customerMap = new Map<
     string,
     Omit<CustomerReportRow, "marketingConsent">
@@ -316,6 +328,12 @@ export function buildRestaurantReport(
     fulfilment.amount += Number(order.total);
     fulfilment.orderCount += 1;
     fulfilments.set(order.fulfilment_type, fulfilment);
+
+    const sourceKey = orderSource(order);
+    const source = sources.get(sourceKey) ?? { amount: 0, orderCount: 0 };
+    source.amount += Number(order.total);
+    source.orderCount += 1;
+    sources.set(sourceKey, source);
 
     const customer = customerMap.get(order.customer_phone) ?? {
       completedOrders: 0,
@@ -396,6 +414,15 @@ export function buildRestaurantReport(
       (customer) => customer.marketingConsent
     ).length,
     newCustomers: customerRows.filter((customer) => customer.completedOrders === 1).length,
+    sourceRows: [...sources.entries()]
+      .map(([source, values]) => ({
+        amount: values.amount,
+        averageOrderValue: values.amount / values.orderCount,
+        source,
+        orderCount: values.orderCount,
+        salesShare: sales > 0 ? (values.amount / sales) * 100 : 0
+      }))
+      .toSorted((first, second) => second.amount - first.amount),
     paymentRows: [...payments.entries()]
       .map(([method, values]) => ({
         amount: values.amount,
@@ -488,6 +515,17 @@ export function reportToCsv(tab: ReportTab, report: RestaurantReport) {
         row.completedOrders,
         row.spend.toFixed(2),
         row.marketingConsent ? "Yes" : "No"
+      ])
+    );
+  } else if (tab === "sources") {
+    rows.push(["Order source", "Completed orders", "Sales", "Average order", "Sales share %"]);
+    report.sourceRows.forEach((row) =>
+      rows.push([
+        orderSourceLabel(row.source),
+        row.orderCount,
+        row.amount.toFixed(2),
+        row.averageOrderValue.toFixed(2),
+        row.salesShare.toFixed(2)
       ])
     );
   } else {

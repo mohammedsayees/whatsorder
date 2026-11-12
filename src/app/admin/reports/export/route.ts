@@ -17,7 +17,8 @@ const exportableTabs: ReportTab[] = [
   "other_income",
   "products",
   "customers",
-  "fulfilment"
+  "fulfilment",
+  "sources"
 ];
 
 export async function GET(request: Request) {

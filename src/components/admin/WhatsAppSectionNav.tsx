@@ -1,4 +1,4 @@
-import { BotMessageSquare, Inbox } from "lucide-react";
+import { BotMessageSquare, Inbox, ListChecks } from "lucide-react";
 import Link from "next/link";
 import type { WhatsAppIntegration } from "@/lib/whatsapp-integration";
 
@@ -7,7 +7,7 @@ export function WhatsAppSectionNav({
   canManageAutomation,
   integration
 }: {
-  active: "inbox" | "automation";
+  active: "inbox" | "automation" | "parsing";
   canManageAutomation: boolean;
   integration: WhatsAppIntegration | null;
 }) {
@@ -64,6 +64,17 @@ export function WhatsAppSectionNav({
             Automation & setup
           </Link>
         ) : null}
+        <Link
+          className={`focus-ring inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${
+            active === "parsing"
+              ? "bg-ink text-white"
+              : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+          }`}
+          href="/admin/integrations/whatsapp/parsing"
+        >
+          <ListChecks size={16} />
+          Order parsing
+        </Link>
       </nav>
     </div>
   );

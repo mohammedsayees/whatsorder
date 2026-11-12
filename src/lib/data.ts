@@ -9,6 +9,7 @@ import {
   isSameUaeCalendarDay
 } from "@/lib/date-time";
 import { isOfferOrderable } from "@/lib/order-pricing";
+import { orderSource, type OrderSourceView } from "@/lib/order-source";
 import {
   PUBLIC_CACHE_TTL_SECONDS,
   publicMenuTag,
@@ -169,6 +170,7 @@ type OrdersPageOptions = {
 
 type AdminOrdersPageOptions = Omit<OrdersPageOptions, "status"> & {
   search?: string;
+  source?: OrderSourceView;
   status?: AdminOrderStatusView;
 };
 
@@ -1108,7 +1110,8 @@ export async function getAdminOrdersPage(
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    const { data, error } = await supabase.rpc("get_admin_orders_page_v3", {
+    const { data, error } = await supabase.rpc("get_admin_orders_page_v4", {
+      target_source: options.source ?? "all",
       target_sort: options.sort ?? "oldest",
       target_restaurant_id: restaurantId,
       target_status_view: status,
@@ -1160,7 +1163,7 @@ export async function getAdminOrdersPage(
   }
 
   // Demo-mode fallback remains useful for local development. Production uses
-  // the v3 RPC so search, status counts and pagination are calculated together.
+  // the v4 RPC so search, source, status counts and pagination are calculated together.
   const broadStatus: OrderStatusView =
     status === "completed" || status === "cancelled" ? status : "active";
   const search = options.search?.trim().toLocaleLowerCase() ?? "";
@@ -1171,11 +1174,14 @@ export async function getAdminOrdersPage(
     if (status === "out_for_delivery") return order.status === "Out for Delivery";
     return orderMatchesStatusView(order, status);
   };
+  const sourceView = options.source ?? "all";
   const matchesSearch = (order: Order) =>
-    !search ||
-    order.id.toLocaleLowerCase().includes(search.replace(/^#/, "")) ||
-    order.customer_name.toLocaleLowerCase().includes(search) ||
-    order.customer_phone.toLocaleLowerCase().includes(search);
+    (sourceView === "all" || orderSource(order) === sourceView) && (
+      !search ||
+      order.id.toLocaleLowerCase().includes(search.replace(/^#/, "")) ||
+      order.customer_name.toLocaleLowerCase().includes(search) ||
+      order.customer_phone.toLocaleLowerCase().includes(search)
+    );
   const matchingDemoOrders = demoOrders
     .filter((order) => order.restaurant_id === restaurantId)
     .filter(matchesWorkflow)
