@@ -20,6 +20,12 @@ import type { RestaurantStatus } from "@/lib/types";
 import { getTenantAccess } from "@/lib/billing-data";
 import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
 import {
+  executeStorageCleanup,
+  memberUserIds,
+  planRestaurantStorageCleanup,
+  removeOrphanedMemberAccounts
+} from "@/lib/restaurant-deletion";
+import {
   countryProfileFields,
   getCountryProfile,
   isCountryCode
@@ -611,4 +617,80 @@ export async function updateRestaurantNotesAction(formData: FormData) {
 
   revalidatePath(`/super-admin/restaurants/${restaurantId}`);
   redirect(`/super-admin/restaurants/${restaurantId}?tab=notes&saved=1`);
+}
+
+// Permanent, irreversible deletion of a restaurant and everything it owns:
+// database rows (via delete_restaurant_permanently, which also refuses unless
+// the restaurant is already Cancelled and the typed store link matches),
+// stored files, and team sign-ins that belonged to no other restaurant.
+// WhatsOrder's billing records are kept in the deletion audit.
+export async function deleteRestaurantPermanentlyAction(formData: FormData) {
+  const session = await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const confirmSlug = stringValue(formData, "confirm_slug");
+  const dangerUrl = `/super-admin/restaurants/${restaurantId}?tab=settings`;
+
+  if (!supabase) {
+    redirect(`${dangerUrl}&error=${queryError("Supabase is not configured.")}`);
+  }
+
+  const { data: restaurant } = await supabase
+    .from("restaurants")
+    .select("id, name, slug, status, logo_url, cover_image_url")
+    .eq("id", restaurantId)
+    .maybeSingle();
+
+  if (!restaurant) {
+    redirect(`/super-admin/restaurants?error=${queryError("That restaurant no longer exists.")}`);
+  }
+  if (restaurant.status !== "cancelled") {
+    redirect(`${dangerUrl}&error=${queryError("Set the status to Cancelled and save before deleting.")}`);
+  }
+  if (confirmSlug !== restaurant.slug) {
+    redirect(`${dangerUrl}&error=${queryError("Type the store link exactly to confirm deletion.")}`);
+  }
+
+  // Read what lives outside the database before the rows that map it vanish.
+  const [storagePlan, userIds] = await Promise.all([
+    planRestaurantStorageCleanup(supabase, restaurant),
+    memberUserIds(supabase, restaurant.id)
+  ]);
+
+  const { error } = await supabase.rpc("delete_restaurant_permanently", {
+    target_restaurant_id: restaurant.id,
+    confirm_slug: confirmSlug,
+    actor_user_id: session.userId
+  });
+  if (error) {
+    console.error("WhatsOrder restaurant deletion failed", { restaurantId: restaurant.id, message: error.message });
+    redirect(`${dangerUrl}&error=${queryError(`Nothing was deleted: ${error.message}`)}`);
+  }
+
+  const [files, accounts] = await Promise.all([
+    executeStorageCleanup(supabase, storagePlan),
+    removeOrphanedMemberAccounts(supabase, userIds)
+  ]);
+  console.info("WhatsOrder restaurant permanently deleted", {
+    restaurantId: restaurant.id,
+    by: session.userId,
+    filesRemoved: files.removed,
+    filesFailed: files.failed,
+    accountsRemoved: accounts.removed
+  });
+
+  revalidatePublicRestaurantCache({ id: restaurant.id, slug: restaurant.slug });
+  revalidatePath(`/r/${restaurant.slug}`);
+  revalidatePath("/super-admin/restaurants");
+  revalidatePath("/super-admin");
+
+  const note =
+    files.failed > 0
+      ? ` ${files.failed} stored files couldn't be removed; clear them in Supabase Storage.`
+      : "";
+  redirect(
+    `/super-admin/restaurants?deleted=${encodeURIComponent(restaurant.name)}${
+      note ? `&note=${encodeURIComponent(note.trim())}` : ""
+    }`
+  );
 }

@@ -10,7 +10,7 @@ const filters = ["all", "draft", "onboarding", "live", "paused", "cancelled"] as
 export default async function SuperAdminRestaurantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ filter?: string; q?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; deleted?: string; note?: string; error?: string }>;
 }) {
   const [restaurants, query] = await Promise.all([getSuperAdminRestaurants(), searchParams]);
   const activeFilter = filters.includes(query.filter as (typeof filters)[number]) ? query.filter! : "all";
@@ -42,6 +42,18 @@ export default async function SuperAdminRestaurantsPage({
           Add restaurant
         </Link>
       </div>
+
+      {query.deleted ? (
+        <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          {String(query.deleted).slice(0, 120)} was permanently deleted.
+          {query.note ? <span className="block font-semibold text-amber-800">{String(query.note).slice(0, 200)}</span> : null}
+        </p>
+      ) : null}
+      {query.error ? (
+        <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          {String(query.error).slice(0, 200)}
+        </p>
+      ) : null}
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
         <form className="flex flex-col gap-3 sm:flex-row" method="get">
