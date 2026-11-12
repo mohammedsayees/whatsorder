@@ -15,6 +15,10 @@ values
 insert into public.restaurant_users (restaurant_id, user_id, email, role, accepted_at)
 values ('2a000000-0000-0000-0000-000000000001',
   '1a000000-0000-0000-0000-000000000001', 'snapshot@test.invalid', 'manager', now());
+-- Dates below are restaurant business dates (restaurants.time_zone), matching the
+-- functions under test; the session's current_date can differ by a day.
+select (now() at time zone time_zone)::date as business_today
+from public.restaurants where id = '2a000000-0000-0000-0000-000000000001' \gset
 
 insert into public.menu_categories (id, restaurant_id, name, is_active, display_order)
 values
@@ -55,10 +59,10 @@ insert into public.customer_credit_entries (
 ) values
   ('2a000000-0000-0000-0000-000000000001',
     '6a000000-0000-0000-0000-000000000001', 'adjustment', 20,
-    current_date - 1, null, 'Past due charge'),
+    :'business_today'::date - 1, null, 'Past due charge'),
   ('2a000000-0000-0000-0000-000000000001',
     '6a000000-0000-0000-0000-000000000001', 'adjustment', 10,
-    current_date + 1, null, 'Future charge'),
+    :'business_today'::date + 1, null, 'Future charge'),
   ('2a000000-0000-0000-0000-000000000001',
     '6a000000-0000-0000-0000-000000000001', 'payment', -5,
     null, 'cash', 'Part payment');
@@ -67,7 +71,7 @@ insert into public.subscriptions (
   restaurant_id, plan_id, status, billing_cycle_start, billing_cycle_end
 ) select
   '2a000000-0000-0000-0000-000000000001',
-  plan.id, 'active', current_date, current_date + 30
+  plan.id, 'active', :'business_today', :'business_today'::date + 30
 from public.plans plan
 where plan.code = 'starter'
 limit 1;
