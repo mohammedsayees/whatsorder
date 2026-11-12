@@ -13,6 +13,7 @@ import {
   type ReportPreset,
   type ReportTab
 } from "@/lib/reports";
+import { orderSourceLabel } from "@/lib/order-source";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getOtherIncomeForReport } from "@/lib/business-day-data";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
@@ -24,7 +25,8 @@ const reportTabs: Array<{ label: string; value: ReportTab }> = [
   { label: "Other income", value: "other_income" },
   { label: "Products", value: "products" },
   { label: "Customers", value: "customers" },
-  { label: "Fulfilment", value: "fulfilment" }
+  { label: "Fulfilment", value: "fulfilment" },
+  { label: "Order source", value: "sources" }
 ];
 
 const presets: Array<{ label: string; value: ReportPreset }> = [
@@ -322,6 +324,20 @@ export default async function AdminReportsPage({
                 </div>
               </section>
               <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+                <h2 className="font-black">Order source</h2>
+                <div className="mt-4 space-y-4">
+                  {report.sourceRows.map((row) => (
+                    <div key={row.source}>
+                      <div className="flex justify-between gap-3 text-sm">
+                        <span className="font-bold">{orderSourceLabel(row.source)}</span>
+                        <span className="font-black">{row.orderCount} · {money(row.amount)}</span>
+                      </div>
+                      <PercentageBar value={row.salesShare} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
                 <h2 className="font-black">Customer summary</h2>
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-stone-50 p-3">
@@ -483,6 +499,29 @@ export default async function AdminReportsPage({
                 <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm" key={row.fulfilment}>
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="font-black">{getFulfilmentReportLabel(row.fulfilment)}</h2>
+                    <TrendingUp className="text-leaf" size={18} />
+                  </div>
+                  <p className="mt-3 text-2xl font-black">{money(row.amount)}</p>
+                  <p className="mt-1 text-sm text-stone-500">
+                    {row.orderCount} orders · {money(row.averageOrderValue)} average
+                  </p>
+                  <PercentageBar value={row.salesShare} />
+                  <p className="mt-2 text-xs font-bold text-stone-500">{row.salesShare.toFixed(1)}% of completed sales</p>
+                </section>
+              ))}
+            </div>
+          )
+        ) : null}
+
+        {activeTab === "sources" ? (
+          report.sourceRows.length === 0 ? (
+            <EmptyReport />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {report.sourceRows.map((row) => (
+                <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm" key={row.source}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-black">{orderSourceLabel(row.source)}</h2>
                     <TrendingUp className="text-leaf" size={18} />
                   </div>
                   <p className="mt-3 text-2xl font-black">{money(row.amount)}</p>

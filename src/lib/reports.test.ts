@@ -106,3 +106,27 @@ describe("restaurant reporting", () => {
     expect(csv).toContain("Burger");
   });
 });
+
+describe("order source report", () => {
+  it("splits completed sales by source, treating legacy orders as menu-link orders", () => {
+    const report = buildRestaurantReport([
+      order({ id: "a", source: "whatsapp_chat", total: 30 }),
+      order({ id: "b", source: "whatsapp_chat", total: 10 }),
+      order({ id: "c", source: "staff", total: 20 }),
+      order({ id: "d", total: 40 }),
+      order({ id: "e", source: "whatsapp_chat", status: "Cancelled", total: 99 })
+    ]);
+    expect(report.sourceRows).toEqual([
+      { source: "whatsapp_chat", orderCount: 2, amount: 40, averageOrderValue: 20, salesShare: 40 },
+      { source: "customer", orderCount: 1, amount: 40, averageOrderValue: 40, salesShare: 40 },
+      { source: "staff", orderCount: 1, amount: 20, averageOrderValue: 20, salesShare: 20 }
+    ]);
+  });
+
+  it("exports the source breakdown as CSV", () => {
+    const report = buildRestaurantReport([order({ source: "whatsapp_chat", total: 30 })]);
+    expect(reportToCsv("sources", report)).toBe(
+      "Order source,Completed orders,Sales,Average order,Sales share %\nWhatsApp chat,1,30.00,30.00,100.00"
+    );
+  });
+});

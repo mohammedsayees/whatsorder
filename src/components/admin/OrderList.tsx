@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Gift,
   MapPin,
+  MessageCircle,
   MoreHorizontal,
   PlusCircle,
   ShoppingBag,
@@ -34,6 +35,7 @@ import {
 import type { OrderPaymentChange } from "@/lib/data";
 import { RiderAssignmentControl } from "@/components/admin/RiderAssignmentControl";
 import type { CustomerCreditMaps } from "@/lib/customer-credit-data";
+import { orderSource } from "@/lib/order-source";
 
 export function OrderList({
   orders,
@@ -111,6 +113,12 @@ export function OrderList({
                   {order.parent_order_id ? (
                     <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-black text-violet-800">
                       Add-on #{order.parent_order_id.slice(-8).toUpperCase()}
+                    </span>
+                  ) : null}
+                  {orderSource(order) === "whatsapp_chat" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800">
+                      <MessageCircle aria-hidden="true" size={13} />
+                      WhatsApp chat
                     </span>
                   ) : null}
                 </div>

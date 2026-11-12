@@ -19,6 +19,7 @@ import {
   getLatestOrderRiderAssignments
 } from "@/lib/rider-data";
 import { getCustomerCreditSummariesForOrders } from "@/lib/customer-credit-data";
+import { parseOrderSourceView, type OrderSourceView } from "@/lib/order-source";
 
 const primaryStatusTabs: { label: string; value: "active" | "completed" | "cancelled" }[] = [
   { label: "Active", value: "active" },
@@ -42,6 +43,13 @@ const fulfilmentTabs: { label: string; value: OrderFulfilmentView }[] = [
   { label: "Bring to My Car", value: "car_pickup" }
 ];
 
+const sourceOptions: { label: string; value: OrderSourceView }[] = [
+  { label: "All sources", value: "all" },
+  { label: "Menu link", value: "customer" },
+  { label: "Staff", value: "staff" },
+  { label: "WhatsApp chat", value: "whatsapp_chat" }
+];
+
 function positivePage(value?: string) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -52,16 +60,19 @@ function ordersHref({
   page = 1,
   q,
   sort,
+  source,
   status
 }: {
   fulfilment: OrderFulfilmentView;
   page?: number;
   q: string;
   sort: "oldest" | "overdue";
+  source: OrderSourceView;
   status: AdminOrderStatusView;
 }) {
   const params = new URLSearchParams({ fulfilment, page: String(page), sort, status });
   if (q) params.set("q", q);
+  if (source !== "all") params.set("source", source);
   return `/admin/orders?${params.toString()}`;
 }
 
@@ -74,6 +85,7 @@ export default async function AdminOrdersPage({
     q?: string;
     status?: string;
     sort?: string;
+    source?: string;
   }>;
 }) {
   const [session, query] = await Promise.all([
@@ -89,6 +101,7 @@ export default async function AdminOrdersPage({
     ? (query.fulfilment as OrderFulfilmentView)
     : "all";
   const sort = query.sort === "overdue" ? "overdue" : "oldest";
+  const source = parseOrderSourceView(query.source);
   const q = query.q?.trim().slice(0, 80) ?? "";
   const requestedPage = positivePage(query.page);
   const isOperational = status !== "completed" && status !== "cancelled";
@@ -99,6 +112,7 @@ export default async function AdminOrdersPage({
       fulfilment,
       search: q,
       sort,
+      source,
       page: requestedPage,
       pageSize: 25,
       status
@@ -107,7 +121,7 @@ export default async function AdminOrdersPage({
   ]);
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
     redirect(
-      ordersHref({ fulfilment, page: ordersPage.totalPages, q, sort, status })
+      ordersHref({ fulfilment, page: ordersPage.totalPages, q, sort, source, status })
     );
   }
 
@@ -156,7 +170,7 @@ export default async function AdminOrdersPage({
                 ? "bg-ink text-white shadow-sm"
                 : "bg-stone-100 text-stone-600 hover:bg-stone-200"
               }`}
-              href={ordersHref({ fulfilment, q, sort, status: tab.value })}
+              href={ordersHref({ fulfilment, q, sort, source, status: tab.value })}
               key={tab.value}
             >
               {tab.label}
@@ -173,7 +187,7 @@ export default async function AdminOrdersPage({
 
         <form
           action="/admin/orders"
-          className="mt-3 grid gap-2 border-t border-stone-100 pt-3 sm:grid-cols-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto_auto_auto]"
+          className="mt-3 grid gap-2 border-t border-stone-100 pt-3 sm:grid-cols-2 lg:grid-cols-[minmax(13rem,1fr)_auto_auto_auto_auto_auto]"
           method="get"
           role="search"
         >
@@ -220,6 +234,18 @@ export default async function AdminOrdersPage({
                 ))}
               </select>
           </label>
+          <label>
+              <span className="sr-only">Order source</span>
+              <select
+                className="focus-ring h-full w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm font-black text-stone-700"
+                defaultValue={source}
+                name="source"
+              >
+                {sourceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+          </label>
           {isOperational ? (
             <label>
                 <span className="sr-only">Order sorting</span>
@@ -244,7 +270,7 @@ export default async function AdminOrdersPage({
                 <Link
                   aria-label="Clear order search"
                   className="focus-ring inline-flex items-center justify-center rounded-lg border border-stone-200 px-3 text-stone-500 hover:bg-stone-50"
-                  href={ordersHref({ fulfilment, q: "", sort, status })}
+                  href={ordersHref({ fulfilment, q: "", sort, source, status })}
                 >
                   <X size={17} />
                 </Link>
@@ -267,7 +293,7 @@ export default async function AdminOrdersPage({
           <div className="rounded-lg border border-dashed border-stone-300 bg-white px-5 py-14 text-center">
             <p className="font-black">No orders in this view</p>
             <p className="mt-1 text-sm text-stone-500">
-              {q ? "Try a different order number, customer or phone." : "Try another status or fulfilment type."}
+              {q ? "Try a different order number, customer or phone." : "Try another status, order type or source."}
             </p>
           </div>
         )}
@@ -277,7 +303,7 @@ export default async function AdminOrdersPage({
         basePath="/admin/orders"
         page={ordersPage.page}
         pageSize={ordersPage.pageSize}
-        query={{ fulfilment, q, status, sort }}
+        query={{ fulfilment, q, status, sort, ...(source !== "all" ? { source } : {}) }}
         total={ordersPage.total}
         totalPages={ordersPage.totalPages}
       />
