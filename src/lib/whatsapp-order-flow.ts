@@ -7,11 +7,13 @@ import type { CartLine, MenuWithCategories } from "@/lib/types";
 import {
   answerPendingQuestion,
   applyOptionDefaults,
+  chatCommand,
   chatConfirmCode,
   checkChatConfirmation,
   describeQuestion,
   emptyChatOrder,
   isChatYes,
+  localName,
   looksLikeChatOrder,
   mergeIntoCart,
   normalizeChatText,
@@ -21,11 +23,20 @@ import {
   sanitizeCustomerName,
   syncNotes,
   validateOptionPicks,
+  withinCartLimits,
   MAX_LINES,
+  MAX_QUANTITY,
   type ChatMenu,
   type ChatOrderDraft,
   type PendingChatLine
 } from "@/lib/whatsapp-order-cart";
+import {
+  CHAT_COPY,
+  resolveChatLang,
+  type ChatError,
+  type ChatLang,
+  type ChatLanguageMode
+} from "@/lib/whatsapp-order-i18n";
 
 /** One requested line from a parser. Untrusted until resolveRequests checks it against the menu. */
 export type ChatItemRequest = {
@@ -37,28 +48,32 @@ export type ChatItemRequest = {
   note: string;
 };
 
+/** Set an item's quantity (0 removes it). Untrusted until checked against the menu and cart. */
+export type ChatSetRequest = { item_id: string; query: string; quantity: number };
+
 export type ChatParseResult =
   | { kind: "add"; lines: ChatItemRequest[] }
   | { kind: "remove"; item_ids: string[] }
+  | { kind: "set"; lines: ChatSetRequest[] }
   | { kind: "unmatched"; queries: string[] }
   /** Not an order after all (e.g. a question): the receptionist answers it. */
   | { kind: "not_order" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; error: ChatError };
 
 export type ChatOrderParser = (text: string) => Promise<ChatParseResult>;
 
-/** The deterministic fast path: exact or unique substring matches only. */
+/** The deterministic fast path: exact or word-prefix matches only. */
 export function deterministicChatParse(text: string, menu: ChatMenu): ChatParseResult {
   const parsed = parseChatOrderText(text, menu.items);
-  if ("error" in parsed) return { kind: "error", message: parsed.error };
+  if ("error" in parsed) return { kind: "error", error: parsed.error };
   const unmatched = parsed.segments.filter(s => !s.matches.length).map(s => s.query);
   if (unmatched.length) return { kind: "unmatched", queries: unmatched };
-  if (parsed.op === "remove") {
+  if (parsed.op === "remove" || parsed.op === "set") {
     const ambiguous = parsed.segments.find(s => s.matches.length > 1);
-    if (ambiguous) {
-      return { kind: "error", message: `Which item should I remove? ${ambiguous.matches.slice(0, 6).map(i => i.name).join(", ")}. Send REMOVE with the full item name. Your order has not changed.` };
-    }
-    return { kind: "remove", item_ids: parsed.segments.map(s => s.matches[0].id) };
+    if (ambiguous) return { kind: "error", error: { code: "remove_ambiguous", names: ambiguous.matches.slice(0, 6).map(i => i.name) } };
+    return parsed.op === "remove"
+      ? { kind: "remove", item_ids: parsed.segments.map(s => s.matches[0].id) }
+      : { kind: "set", lines: parsed.segments.map(s => ({ item_id: s.matches[0].id, query: s.query, quantity: s.quantity })) };
   }
   return { kind: "add", lines: parsed.segments.map(s => ({
     item_id: s.matches.length === 1 ? s.matches[0].id : null,
@@ -81,6 +96,8 @@ export type ChatTurnContext = {
   money: (amount: number) => string;
   menuLink: string;
   handoffMessage: string;
+  /** The chatbot's language setting; "customer" follows the customer's script. */
+  languageMode?: ChatLanguageMode;
   newToken: () => string;
   parse: ChatOrderParser;
 };
@@ -89,22 +106,22 @@ export type ChatTurn =
   | { handled: false }
   | { handled: true; next: ChatOrderDraft; reply: string; confirm: boolean; handoff: boolean };
 
-export const CHAT_ORDER_HELP = "Order takeaway here by text: send items and quantities, e.g. “2 karak, 1 sandwich”. I'll reply with the total, then reply YES to place the order. Payment is due at collection. CART shows your order, REMOVE <item> removes an item, CLEAR empties it, STAFF gets a person.";
-const HANDOFF = /\b(staff|human|agent|manager|person)\b|موظف|മനുഷ്യൻ/i;
+export const CHAT_ORDER_HELP = CHAT_COPY.en.help;
+const HANDOFF = /\b(staff|human|agent|manager|person)\b|موظف|شخص|مدير|മനുഷ്യൻ/i;
 const MAX_REPLY = 4000;
 
 const clearQuote = (draft: ChatOrderDraft): ChatOrderDraft => ({ ...draft, token: "", quotedAt: null });
 
-/** Validates parser output against the live menu. Returns pending lines, or a customer-facing error. */
+/** Validates parser output against the live menu. Returns pending lines, or an error for the customer. */
 export function resolveRequests(lines: ChatItemRequest[], menu: ChatMenu):
-  { pending: PendingChatLine[]; noteLines: { item_id: string; text: string }[]; error?: never } | { error: string } {
-  if (!lines.length || lines.length > MAX_LINES) return { error: "Send item names and quantities, for example: 2 karak, 1 sandwich." };
+  { pending: PendingChatLine[]; noteLines: { item_id: string; text: string }[]; error?: never } | { error: ChatError } {
+  if (!lines.length || lines.length > MAX_LINES) return { error: { code: "shape" } };
   const ids = new Set(menu.items.map(i => i.id));
   const pending: PendingChatLine[] = [];
   const noteLines: { item_id: string; text: string }[] = [];
   for (const line of lines) {
-    if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 25) {
-      return { error: "Choose a quantity from 1 to 25 per item. Your order has not changed." };
+    if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > MAX_QUANTITY) {
+      return { error: { code: "quantity_range" } };
     }
     const itemId = line.item_id && ids.has(line.item_id) ? line.item_id : null;
     const candidates = [...new Set(line.candidates.filter(id => ids.has(id)))].slice(0, 6);
@@ -113,7 +130,7 @@ export function resolveRequests(lines: ChatItemRequest[], menu: ChatMenu):
         pending.push(applyOptionDefaults({ item_id: candidates[0], candidates: [], quantity: line.quantity, picks: [] }, menu.catalog));
         continue;
       }
-      return { error: `I could not find “${line.query.slice(0, 60)}” on the menu. Send MENU for item names, or STAFF for help. Your order has not changed.` };
+      return { error: { code: "not_found", query: line.query.slice(0, 60) } };
     }
     const picks = itemId ? validateOptionPicks(itemId, line.option_ids, menu.catalog).picks : [];
     const note = sanitizeChatNote(line.note);
@@ -128,26 +145,30 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
   const raw = ctx.text.slice(0, 2000);
   const text = normalizeChatText(raw);
   const { draft, menu, money } = ctx;
+  const lang: ChatLang = resolveChatLang(ctx.languageMode, raw, draft.lang);
+  const copy = CHAT_COPY[lang];
   const profileName = sanitizeCustomerName(ctx.profileName);
   const active = Boolean(draft.cart.length || draft.pending?.length || draft.awaitingName || draft.token);
+  const command = chatCommand(raw);
 
   const summary = (cart: CartLine[]) => cart.length
-    ? cart.map(i => `${i.quantity} × ${formatOrderItemName(i)} — ${money(i.quantity * i.price)}`).join("\n") +
-      `\nTotal: ${money(cart.reduce((sum, i) => sum + i.quantity * i.price, 0))}`
-    : "Your order is empty.";
+    ? cart.map(i => `${i.quantity} × ${formatOrderItemName(i, lang)} — ${money(i.quantity * i.price)}`).join("\n") +
+      `\n${copy.total(money(cart.reduce((sum, i) => sum + i.quantity * i.price, 0)))}`
+    : copy.emptyOrder;
   const done = (next: ChatOrderDraft, reply: string, extra: { confirm?: boolean; handoff?: boolean } = {}): ChatTurn => {
     if (reply.length > MAX_REPLY) {
       // The linked-device transport caps texts at 4096 characters. Never truncate a total or the consent text.
-      return { handled: true, next: clearQuote(next), confirm: false, handoff: extra.handoff ?? false,
-        reply: `This order or menu is too long for one message. Your order is saved. Send STAFF for help or use the full menu: ${ctx.menuLink}` };
+      return { handled: true, next: clearQuote(next), confirm: false, handoff: extra.handoff ?? false, reply: copy.tooLong(ctx.menuLink) };
     }
     return { handled: true, next, reply, confirm: extra.confirm ?? false, handoff: extra.handoff ?? false };
   };
+  const fail = (next: ChatOrderDraft, error: ChatError) => done(clearQuote(next), copy.error(error));
+  const line = (prefix: string) => (prefix ? `${prefix}\n` : "");
   const ask = (next: ChatOrderDraft, prefix = ""): ChatTurn | null => {
-    for (const line of next.pending ?? []) {
-      const question = pendingQuestion(line, menu);
+    for (const pendingLine of next.pending ?? []) {
+      const question = pendingQuestion(pendingLine, menu);
       if (question?.kind === "item" && question.candidates.length < 2) continue;
-      if (question) return done(clearQuote(next), `${prefix}${describeQuestion(question, money)}`);
+      if (question) return done(clearQuote(next), `${line(prefix)}${describeQuestion(question, money, lang)}`);
     }
     return null;
   };
@@ -159,7 +180,7 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
       const asked = ask(next, prefix);
       if (asked) return asked;
       const merged = mergeIntoCart(next.cart, pending.filter(l => l.item_id), menu);
-      if (!merged.cart) return done(clearQuote({ ...next, pending: [] }), merged.error);
+      if (!merged.cart) return fail({ ...next, pending: [] }, merged.error);
       next = syncNotes({ ...next, cart: merged.cart, pending: [] });
     }
     return quote(next, prefix);
@@ -169,68 +190,62 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
   const quote = (next: ChatOrderDraft, prefix = ""): ChatTurn => {
     next = clearQuote(next);
     if (next.pending?.length) return settle(next, prefix);
-    if (!next.cart.length) return done(next, `${prefix}Your order is empty. ${CHAT_ORDER_HELP}`);
+    if (!next.cart.length) return done(next, `${line(prefix)}${copy.emptyOrder} ${copy.help}`);
     const verified = verifyCartAgainstMenu(next.cart, ctx.pricingMenu, [], menu.catalog);
-    if (!verified.ok) return done(next, `${prefix}${verified.error} Send REMOVE <item> to remove it, or STAFF for help.`);
+    if (!verified.ok) return done(next, `${line(prefix)}${copy.priceProblem(verified.error)}`);
     next = { ...next, cart: verified.items };
-    if (!ctx.restaurant.open) {
-      return done(next, `${prefix}${summary(next.cart)}\nTakeaway ordering is unavailable right now. Please try again during opening hours, or send STAFF.`);
-    }
+    if (!ctx.restaurant.open) return done(next, `${line(prefix)}${summary(next.cart)}\n${copy.unavailable}`);
     if (verified.subtotal < ctx.restaurant.minimumOrder) {
-      return done(next, `${prefix}${summary(next.cart)}\nMinimum order is ${money(ctx.restaurant.minimumOrder)}. Add more items to continue.`);
+      return done(next, `${line(prefix)}${summary(next.cart)}\n${copy.minimum(money(ctx.restaurant.minimumOrder))}`);
     }
-    if (!next.name) {
-      return done({ ...next, awaitingName: true }, `${prefix}${summary(next.cart)}\nWhat name should we use for pickup?`);
-    }
+    if (!next.name) return done({ ...next, awaitingName: true }, `${line(prefix)}${summary(next.cart)}\n${copy.askName}`);
     next = { ...next, awaitingName: false, token: ctx.newToken(), quotedAt: new Date(ctx.now).toISOString() };
-    return done(next, `${prefix}Takeaway order for ${next.name}\n${summary(next.cart)}${next.notes ? `\nNotes: ${next.notes}` : ""}\nPay at collection; no payment has been taken.\nReply YES within 10 minutes to place this order and allow ${ctx.restaurant.name} to use your name and WhatsApp number to process it. No marketing opt-in. To change it, send more items, REMOVE <item> or CLEAR.`);
+    return done(next, `${line(prefix)}${copy.quoteHeader(next.name)}\n${summary(next.cart)}${next.notes ? `\n${copy.notes(next.notes)}` : ""}\n${copy.quoteFooter(ctx.restaurant.name)}`);
   };
 
-  const menuReply = () => {
-    const page = Math.min(100, Math.max(1, Number(text.match(/\d+$/)?.[0] ?? 1)));
-    const list = menu.items.slice((page - 1) * 20, page * 20).map(i => `${i.name} — ${money(Number(i.price))}`).join("\n");
-    return `${CHAT_ORDER_HELP}\n\n${list || "No items on this page."}\n${page * 20 < menu.items.length ? `Send MENU ${page + 1} for more.\n` : ""}Full menu: ${ctx.menuLink}`;
+  const menuReply = (page = 1) => {
+    const list = menu.items.slice((page - 1) * 20, page * 20).map(i => `${localName(i, lang)} — ${money(Number(i.price))}`).join("\n");
+    return `${copy.help}\n\n${list || copy.noItemsOnPage}\n${page * 20 < menu.items.length ? `${copy.moreMenu(page + 1)}\n` : ""}${copy.fullMenu(ctx.menuLink)}`;
   };
 
-  let next: ChatOrderDraft = { ...draft, cart: draft.cart.map(i => ({ ...i })) };
+  let next: ChatOrderDraft = { ...draft, cart: draft.cart.map(i => ({ ...i })), lang };
   if (!next.name && profileName && !draft.orderId) next.name = profileName;
 
   if (HANDOFF.test(text)) {
-    return done(clearQuote(next), `${ctx.handoffMessage}\n${draft.orderId ? `Submitted order: ${draft.orderId}` : `Unsent order: ${summary(draft.cart)}`}`, { handoff: true });
+    return done(clearQuote(next), `${ctx.handoffMessage}\n${draft.orderId ? copy.handoffOrder(draft.orderId) : copy.handoffCart(summary(draft.cart))}`, { handoff: true });
   }
-  if (text === "new order") {
-    const fresh = emptyChatOrder();
+  if (command?.kind === "new_order") {
+    const fresh: ChatOrderDraft = { ...emptyChatOrder(), lang };
     if (profileName) fresh.name = profileName;
     return done(fresh, menuReply());
   }
   const yes = isChatYes(raw);
   const code = chatConfirmCode(raw);
   if (draft.orderId) {
-    if (yes || code) return done(draft, `Order ${draft.orderId} was already received; no second order was placed. Send STAFF for changes, or NEW ORDER to start another order.`);
-    if (looksLikeChatOrder(raw, menu.items) || ["cart", "checkout", "clear", "cancel"].includes(text)) {
-      return done(draft, `Order ${draft.orderId} was already received. Send NEW ORDER to start another order, or STAFF to change this one.`);
+    if (yes || code) return done(draft, copy.alreadyReceivedYes(draft.orderId));
+    if (looksLikeChatOrder(raw, menu.items) || command?.kind === "cart" || command?.kind === "clear") {
+      return done(draft, copy.alreadyReceived(draft.orderId));
     }
     return { handled: false };
   }
-  if (text === "clear" || text === "cancel") {
+  if (command?.kind === "clear") {
     if (!active) return { handled: false };
-    const fresh = emptyChatOrder();
+    const fresh: ChatOrderDraft = { ...emptyChatOrder(), lang };
     if (next.name) fresh.name = next.name;
-    return done(fresh, "Your order is cleared. No order was placed.");
+    return done(fresh, copy.cleared);
   }
-  if (/^menu(?: \d+)?$/.test(text) || (!active && /^(?:order|takeaway|take away)$/.test(text))) {
-    return done(next, menuReply());
-  }
-  if (text === "cart" || text === "checkout") return quote(next);
+  if (command?.kind === "menu") return done(next, menuReply(command.page));
+  if (command?.kind === "order" && !active) return done(next, menuReply());
+  if (command?.kind === "cart") return quote(next);
 
   if (yes || code) {
     const check = checkChatConfirmation(draft, { now: ctx.now, sentAtMs: ctx.sentAtMs, code });
     switch (check) {
-      case "pending": return settle(next, "Please answer this first — nothing has been ordered yet.\n");
-      case "no_quote": return next.cart.length ? quote(next, "Here is your order. Nothing has been placed yet.\n") : (active ? quote(next) : { handled: false });
-      case "expired": return quote(next, "That total has expired. Here is an updated one.\n");
+      case "pending": return settle(next, copy.answerFirst);
+      case "no_quote": return next.cart.length ? quote(next, copy.nothingPlacedYet) : (active ? quote(next) : { handled: false });
+      case "expired": return quote(next, copy.expired);
       case "wrong_code":
-      case "stale": return done(draft, `That confirmation was for an earlier version of your order, so nothing was placed. Your latest order:\n${summary(draft.cart)}\nReply YES to place it.`);
+      case "stale": return done(draft, copy.stale(summary(draft.cart)));
       case "ordered": break; // handled above
       case "ok": {
         const verified = verifyCartAgainstMenu(draft.cart, ctx.pricingMenu, [], menu.catalog);
@@ -238,11 +253,10 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
           (i.options ?? []).map(o => o.option_id).sort()]));
         if (!verified.ok || fingerprint(verified.items) !== fingerprint(draft.cart) || !ctx.restaurant.open ||
           verified.subtotal < ctx.restaurant.minimumOrder) {
-          return quote(next, verified.ok && fingerprint(verified.items) !== fingerprint(draft.cart)
-            ? "Prices or options have changed. Please review again.\n" : "");
+          return quote(next, verified.ok && fingerprint(verified.items) !== fingerprint(draft.cart) ? copy.pricesChanged : "");
         }
         // The draft is passed through unchanged: the database refuses a confirmation whose state differs.
-        return done(draft, `WhatsApp takeaway: ${draft.name}\n${summary(draft.cart)}${draft.notes ? `\nNotes: ${draft.notes}` : ""}\nPayment due at collection.`, { confirm: true });
+        return done(draft, copy.confirmed(draft.name, summary(draft.cart), draft.notes ?? ""), { confirm: true });
       }
     }
   }
@@ -254,7 +268,7 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
     });
     if (index >= 0) {
       const answered = answerPendingQuestion(raw, next.pending[index], menu);
-      if (!answered) return settle(next, "Sorry, I didn't catch that.\n");
+      if (!answered) return settle(next, copy.didNotCatch);
       const pending = [...next.pending];
       pending[index] = answered;
       const noteLines = answered.item_id && answered.note
@@ -266,24 +280,54 @@ export async function runChatOrderTurn(ctx: ChatTurnContext): Promise<ChatTurn> 
   const orderLike = looksLikeChatOrder(raw, menu.items);
   if (next.awaitingName && !orderLike) {
     const name = sanitizeCustomerName(raw);
-    if (!name) return done(clearQuote(next), "Please send the name for pickup.");
+    if (!name) return done(clearQuote(next), copy.sendName);
     return quote({ ...next, name, awaitingName: false });
   }
   if (!orderLike) return { handled: false };
 
   const parsed = await ctx.parse(raw);
   if (parsed.kind === "not_order") return { handled: false };
-  if (parsed.kind === "error") return done(clearQuote(next), parsed.message);
+  if (parsed.kind === "error") return fail(next, parsed.error);
   if (parsed.kind === "unmatched") {
-    const what = parsed.queries.length ? parsed.queries.slice(0, 3).map(q => `“${q.slice(0, 60)}”`).join(", ") : "some of those items";
-    return done(clearQuote(next), `I could not find ${what} on the menu. Send MENU for item names, or STAFF for help. Your order has not changed.\n${ctx.menuLink}`);
+    const quoteMarks = lang === "ar" ? ["«", "»"] : ["“", "”"];
+    const what = parsed.queries.length
+      ? parsed.queries.slice(0, 3).map(q => `${quoteMarks[0]}${q.slice(0, 60)}${quoteMarks[1]}`).join(lang === "ar" ? "، " : ", ")
+      : copy.someItems;
+    return done(clearQuote(next), copy.notFound(what, ctx.menuLink));
   }
   if (parsed.kind === "remove") {
     const ids = new Set(parsed.item_ids);
     return quote(syncNotes({ ...next, cart: next.cart.filter(i => !ids.has(i.item_id)) }));
   }
+  if (parsed.kind === "set") {
+    let cart = next.cart.map(i => ({ ...i }));
+    const additions: ChatItemRequest[] = [];
+    for (const request of parsed.lines) {
+      const item = menu.items.find(i => i.id === request.item_id);
+      if (!item) return fail(next, { code: "not_found", query: request.query.slice(0, 60) });
+      if (!Number.isInteger(request.quantity) || request.quantity < 0 || request.quantity > MAX_QUANTITY) {
+        return fail(next, { code: "quantity_range" });
+      }
+      const existing = cart.filter(i => i.item_id === item.id);
+      // Several configurations (Small and Large) cannot be set by one number without guessing.
+      if (existing.length > 1) return fail(next, { code: "set_ambiguous", name: localName(item, lang) });
+      if (existing.length === 1) {
+        cart = request.quantity === 0 ? cart.filter(i => i !== existing[0]) : cart.map(i => (i === existing[0] ? { ...i, quantity: request.quantity } : i));
+      } else if (request.quantity === 0) {
+        return done(clearQuote(next), copy.notInOrder(localName(item, lang)));
+      } else {
+        additions.push({ item_id: item.id, candidates: [], query: request.query, quantity: request.quantity, option_ids: [], note: "" });
+      }
+    }
+    if (!withinCartLimits(cart)) return fail(next, { code: "cart_limit" });
+    next = syncNotes({ ...next, cart });
+    if (!additions.length) return quote(next);
+    const resolvedAdds = resolveRequests(additions, menu);
+    if (resolvedAdds.error !== undefined) return fail(next, resolvedAdds.error);
+    return settle({ ...next, pending: resolvedAdds.pending });
+  }
   const resolved = resolveRequests(parsed.lines, menu);
-  if (resolved.error !== undefined) return done(clearQuote(next), resolved.error);
+  if (resolved.error !== undefined) return fail(next, resolved.error);
   return settle({ ...next, pending: resolved.pending,
     ...(resolved.noteLines.length ? { noteLines: [...(next.noteLines ?? []), ...resolved.noteLines] } : {}) });
 }
