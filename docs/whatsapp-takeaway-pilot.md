@@ -71,7 +71,23 @@ After an order is placed, every YES or confirmation code just repeats the order 
 - **Customer-facing text:** model text never reaches the customer. Clarifying questions are built from menu data, and an unknown phrase is quoted back only if the customer wrote it.
 - **Cost guard:** at most **20 Gemini parses per conversation per hour**. Beyond that, only matcher names are understood. A failed or invalid model response falls back to the matcher's "could not find" reply.
 
+## Finding chat orders
+
+- **Orders queue:** chat orders show a green **WhatsApp chat** badge. The **Source** filter (All sources / Menu link / Staff / WhatsApp chat) narrows the list, and the status tab counts follow it.
+- **Reports:** Overview has an **Order source** card, and the **Order source** tab shows completed orders and sales per source, with CSV export. Use it to judge adoption before switching to **Everyone**.
+
+The source filter uses `get_admin_orders_page_v4` from `20261113100000_admin_order_queue_source_filter.sql`, which must be applied before that app code deploys. `get_admin_orders_page_v3` is left in place.
+
 ## Reviewing parses
+
+Dashboard → WhatsApp → **Order parsing** lists each chat-ordering message from the last 24 hours, 7 days or 30 days, newest first. Owners, admins and managers can open it. For each message it shows:
+
+- what the bot understood, described with current menu names;
+- whether it was understood, needed a clarifying question, was not understood or not an order, or hit an AI error;
+- whether the exact matcher or the AI handled it;
+- a link to the conversation.
+
+**Problems only** shows just the "not understood" and AI-error rows. When the exact matcher misses and the AI then handles the message, only the AI's result is listed.
 
 Every parse is logged in `whatsapp_order_parse_logs`:
 
@@ -83,7 +99,7 @@ Every parse is logged in `whatsapp_order_parse_logs`:
 
 Restaurant owners, admins and managers can read their own rows, and super admins can read all. Only the service role writes. Rows older than 90 days are deleted automatically, because they contain customer message text.
 
-Useful checks during rollout (Supabase SQL editor; replace the restaurant ID):
+The same data can be queried directly (Supabase SQL editor; replace the restaurant ID):
 
 ```sql
 -- Outcome mix over the last 7 days
