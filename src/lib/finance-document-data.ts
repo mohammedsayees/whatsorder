@@ -8,7 +8,15 @@ export type FinanceDocumentReview = FinanceDocument & {
   signedUrl: string | null;
   attempts: number;
   possibleDuplicateExpenseIds: string[];
+  // When the current read started (job lease, else upload time), and whether it
+  // has evidently died: a lease past the claim RPC's 10-minute expiry, or a job
+  // that was never claimed because the post-upload read did not run.
+  readingStartedAt: string;
+  readingStalled: boolean;
 };
+
+const STALE_LEASE_MS = 10 * 60 * 1000;
+const UNCLAIMED_GRACE_MS = 2 * 60 * 1000;
 
 export async function getFinanceDocuments(restaurantId: string) {
   const admin = getSupabaseAdmin();
@@ -39,7 +47,7 @@ export async function getFinanceDocumentReview(
       .maybeSingle(),
     admin
       .from("finance_extraction_jobs")
-      .select("attempts")
+      .select("attempts,status,locked_at")
       .eq("restaurant_id", restaurantId)
       .eq("document_id", documentId)
       .maybeSingle()
@@ -73,6 +81,20 @@ export async function getFinanceDocumentReview(
     ...row,
     signedUrl: signedResult.data?.signedUrl ?? null,
     attempts: Number(job?.attempts ?? 0),
-    possibleDuplicateExpenseIds
+    possibleDuplicateExpenseIds,
+    ...financeReadingState(row.created_at, job)
   };
+}
+
+export function financeReadingState(
+  uploadedAt: string,
+  job: { status?: unknown; locked_at?: unknown } | null
+) {
+  const lockedAt = typeof job?.locked_at === "string" ? job.locked_at : null;
+  const readingStartedAt = job?.status === "running" && lockedAt ? lockedAt : uploadedAt;
+  const age = Date.now() - new Date(readingStartedAt).getTime();
+  const readingStalled =
+    (job?.status === "running" && age > STALE_LEASE_MS) ||
+    (job?.status === "queued" && age > UNCLAIMED_GRACE_MS);
+  return { readingStartedAt, readingStalled };
 }

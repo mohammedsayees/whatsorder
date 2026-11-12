@@ -13,6 +13,10 @@ type GeminiResponse = {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
 };
 
+const GEMINI_TOTAL_BUDGET_MS = 45_000;
+const GEMINI_MIN_ATTEMPT_MS = 5_000;
+const GEMINI_RETRY_BACKOFF_MS = 1_000;
+
 function modelName() {
   return process.env.GEMINI_FINANCE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 }
@@ -84,24 +88,33 @@ async function extractWithGemini(
     }
   });
 
+  // One deadline covers both attempts so a slow first call plus a retry can
+  // never outlive the 60s function budget (download and save need headroom).
+  const deadline = Date.now() + GEMINI_TOTAL_BUDGET_MS;
   let response: Response | null = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < GEMINI_MIN_ATTEMPT_MS) break;
     try {
       response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-        signal: AbortSignal.timeout(50_000)
+        signal: AbortSignal.timeout(remaining)
       });
     } catch {
       if (attempt === 2) throw new Error("FINANCE_UPSTREAM_NETWORK");
       continue;
     }
     if (response.ok) break;
-    if ((response.status === 429 || response.status >= 500) && attempt < 2) continue;
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_BACKOFF_MS));
+      continue;
+    }
     throw new Error(`FINANCE_UPSTREAM_${response.status}`);
   }
-  if (!response?.ok) throw new Error("FINANCE_UPSTREAM_NETWORK");
+  if (!response) throw new Error("FINANCE_UPSTREAM_NETWORK");
+  if (!response.ok) throw new Error(`FINANCE_UPSTREAM_${response.status}`);
   const payload = (await response.json()) as GeminiResponse;
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   try {
@@ -114,9 +127,29 @@ async function extractWithGemini(
   }
 }
 
+async function downloadFinanceDocument(restaurantId: string, documentId: string) {
+  const admin = getSupabaseAdmin();
+  if (!admin) throw new Error("FINANCE_DOCUMENT_DOWNLOAD_FAILED");
+  const { data: document, error: documentError } = await admin
+    .from("finance_documents")
+    .select("storage_path,mime_type")
+    .eq("id", documentId)
+    .eq("restaurant_id", restaurantId)
+    .single();
+  if (documentError || !document) throw new Error("FINANCE_DOCUMENT_DOWNLOAD_FAILED");
+  const { data: blob, error: downloadError } = await admin.storage
+    .from(FINANCE_DOCUMENT_BUCKET)
+    .download(String(document.storage_path));
+  if (downloadError || !blob) throw new Error("FINANCE_DOCUMENT_DOWNLOAD_FAILED");
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), mimeType: String(document.mime_type) };
+}
+
 export async function processFinanceExtractionJob(
   restaurantId: string,
-  documentId: string
+  documentId: string,
+  // The upload action already holds the normalized bytes it just stored; reuse
+  // them instead of downloading the same file back from storage.
+  uploaded?: { bytes: Uint8Array; mimeType: string }
 ) {
   const admin = getSupabaseAdmin();
   if (!admin) return { ok: false as const, error: "unavailable" };
@@ -129,21 +162,8 @@ export async function processFinanceExtractionJob(
   if (claimError || !claimed) return { ok: false as const, error: "not_claimed" };
 
   try {
-    const { data: document, error: documentError } = await admin
-      .from("finance_documents")
-      .select("storage_path,mime_type")
-      .eq("id", documentId)
-      .eq("restaurant_id", restaurantId)
-      .single();
-    if (documentError || !document) throw new Error("FINANCE_DOCUMENT_DOWNLOAD_FAILED");
-    const { data: blob, error: downloadError } = await admin.storage
-      .from(FINANCE_DOCUMENT_BUCKET)
-      .download(String(document.storage_path));
-    if (downloadError || !blob) throw new Error("FINANCE_DOCUMENT_DOWNLOAD_FAILED");
-    const extraction = await extractWithGemini(
-      new Uint8Array(await blob.arrayBuffer()),
-      String(document.mime_type)
-    );
+    const source = uploaded ?? await downloadFinanceDocument(restaurantId, documentId);
+    const extraction = await extractWithGemini(source.bytes, source.mimeType);
     const stored = financeExtractionToStorage(extraction);
     const { data: completed, error: completeError } = await admin.rpc(
       "complete_finance_extraction_job",

@@ -21,6 +21,7 @@ function extractionMessage(code: string) {
   if (code === "not_configured") return "Bill extraction is not configured. Add this expense manually for now.";
   if (code === "provider_busy") return "The bill reader is busy. Retry in a moment.";
   if (code === "invalid_response") return "The bill reader returned uncertain data. Retry or enter it manually.";
+  if (code === "not_claimed") return "This bill is still being read. Reload in a moment.";
   return "The bill could not be read. Retry or enter it manually.";
 }
 
@@ -71,8 +72,13 @@ export async function uploadFinanceDocumentAction(formData: FormData) {
     fail("/admin/finance", "The bill could not be queued. Try again.");
   }
 
+  // Runs within this request's maxDuration (set on /admin/finance, which hosts
+  // the upload form). Reuse the bytes already in memory instead of re-downloading.
   after(async () => {
-    await processFinanceExtractionJob(session.restaurantId, documentId);
+    await processFinanceExtractionJob(session.restaurantId, documentId, {
+      bytes: inspected.bytes,
+      mimeType: inspected.contentType
+    });
   });
   revalidatePath("/admin/finance");
   redirect(access.view
@@ -93,7 +99,9 @@ export async function retryFinanceExtractionAction(formData: FormData) {
     .eq("id", documentId)
     .eq("restaurant_id", session.restaurantId)
     .maybeSingle();
-  if (!document || !["queued", "failed"].includes(String(document.status))) {
+  // "processing" is allowed so a read cut off mid-flight can be recovered; the
+  // claim RPC still refuses a job whose lease is fresh (another read running).
+  if (!document || !["queued", "processing", "failed"].includes(String(document.status))) {
     fail(path, "This bill is not available for retry.");
   }
   const result = await processFinanceExtractionJob(session.restaurantId, documentId);
