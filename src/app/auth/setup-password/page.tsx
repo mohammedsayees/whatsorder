@@ -5,7 +5,7 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 export default async function SetRestaurantPasswordPage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; verified?: string }>;
 }) {
   const [session, query] = await Promise.all([
     requireRestaurantAdmin({ allowJobsOnly: true }),
@@ -18,6 +18,11 @@ export default async function SetRestaurantPasswordPage({
         <div className="grid h-12 w-12 place-items-center rounded-lg bg-mint text-leaf">
           <LockKeyhole size={23} />
         </div>
+        {query.verified ? (
+          <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+            Email confirmed. Now choose a password so you can sign in on any device.
+          </p>
+        ) : null}
         <h1 className="mt-5 text-2xl font-black">Create your password</h1>
         <p className="mt-2 text-sm leading-6 text-stone-600">
           Activate access for <strong>{session.restaurant.name}</strong>. You will use this password

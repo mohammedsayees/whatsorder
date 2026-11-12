@@ -11,6 +11,8 @@ import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { inviteRestaurantUser } from "@/lib/restaurant-invitations";
 import { parseGoLiveSettings } from "@/lib/go-live-settings";
 import { markOnboardingTasksComplete } from "@/lib/onboarding-progress";
+import { sendOwnerVerificationEmail, startInstantOwnerSession } from "@/lib/instant-owner-access";
+import { accessTokenCookieName, refreshTokenCookieName } from "@/lib/auth-cookies";
 import { normalizeStoreSlug, storeSlugError } from "@/lib/store-slug";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
@@ -170,19 +172,46 @@ export async function claimDemoRestaurantAction(
     await markOnboardingTasksComplete(String(restaurantId), ["fulfilment_settings"]);
   }
 
-  const invitation = await inviteRestaurantUser(
-    admin,
-    String(restaurantId),
-    email,
-    "restaurant_admin"
-  );
-
   // Clear both the throwaway demo link and the new permanent one.
   revalidatePublicRestaurantCache({ id: demo.id, slug: demo.slug });
   revalidatePublicRestaurantCache({ id: demo.id, slug: values.slug });
   revalidatePath(`/r/${demo.slug}`);
   revalidatePath(`/r/${values.slug}`);
   revalidatePath("/super-admin/restaurants");
+
+  // Instant access: a brand-new owner goes straight to their dashboard and
+  // confirms the email from there. Existing accounts (or any failure) take
+  // the original emailed-invite path below.
+  const instant = await startInstantOwnerSession(admin, String(restaurantId), email);
+  if (instant.ok) {
+    const sessionCookie = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/"
+    } as const;
+    cookieStore.set(accessTokenCookieName, instant.accessToken, {
+      ...sessionCookie,
+      maxAge: Math.max(60, instant.expiresIn)
+    });
+    cookieStore.set(refreshTokenCookieName, instant.refreshToken, {
+      ...sessionCookie,
+      maxAge: 60 * 60 * 24 * 30
+    });
+    await sendOwnerVerificationEmail(email);
+    redirect(`/admin?welcome=1${settingsError ? "&settings=0" : ""}`);
+  }
+  console.info("WhatsOrder instant owner access skipped", {
+    restaurantId: String(restaurantId),
+    reason: instant.reason
+  });
+
+  const invitation = await inviteRestaurantUser(
+    admin,
+    String(restaurantId),
+    email,
+    "restaurant_admin"
+  );
 
   const linkParam = `&link=${encodeURIComponent(values.slug)}${settingsError ? "&settings=0" : ""}`;
   if (!invitation.ok) {

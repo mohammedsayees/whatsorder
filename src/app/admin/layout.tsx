@@ -8,6 +8,8 @@ import { getNewOrderAlertState } from "@/lib/data";
 import { getFinanceAccess } from "@/lib/finance-data";
 import { resolveFinanceAccess } from "@/lib/finance";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { OwnerEmailBanner } from "@/components/admin/OwnerEmailBanner";
+import { daysUntil, ownerEmailVerificationState } from "@/lib/owner-email-verification";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireRestaurantAdmin({ allowJobsOnly: true });
@@ -17,6 +19,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (jobsOnly && !isJobsPath) {
     redirect("/admin/jobs");
   }
+
+  // Instant-access owners must confirm their email within the grace period.
+  const emailState = ownerEmailVerificationState(session.restaurant);
+  if (emailState === "overdue") {
+    redirect("/auth/confirm-email-required");
+  }
+  const showEmailBanner =
+    emailState === "pending" &&
+    (session.role === "owner" || session.role === "restaurant_admin") &&
+    Boolean(session.restaurant.owner_email);
 
   const [
     cookieStore,
@@ -48,6 +60,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       realtimeAccessToken={realtimeAccessToken}
       session={session}
     >
+      {showEmailBanner ? (
+        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+          <OwnerEmailBanner
+            daysLeft={daysUntil(String(session.restaurant.owner_email_verification_due_at))}
+            email={String(session.restaurant.owner_email)}
+          />
+        </div>
+      ) : null}
       {children}
     </AdminShell>
   );
