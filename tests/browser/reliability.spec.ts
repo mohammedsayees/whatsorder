@@ -54,6 +54,7 @@ test("payment failure allows retry and completion sends the selected method",asy
   await route.fulfill({status:attempts===1?503:200,body:"ok"});
  });
  await page.goto("/?mode=payment");
+ await page.getByText("Complete & collect payment").click();
  const cash=page.getByRole("button",{name:"Complete · Cash"});
  await cash.click(); await expect(page.getByRole("alert")).toContainText("Please retry");
  await expect(cash).toBeEnabled(); await cash.click();
