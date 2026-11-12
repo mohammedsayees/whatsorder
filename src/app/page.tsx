@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: "WhatsOrder — Commission-free WhatsApp ordering for cafés and restaurants",
+  title: "WhatsOrder — Commission-free WhatsApp ordering for cafes and restaurants",
   description:
     "Take orders on WhatsApp with your own menu link, a live order board, customer loyalty and shift cash-up. AED 2 a day, no commission, free for 14 days.",
   applicationName: "WhatsOrder",
@@ -510,9 +510,9 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <section class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="kicker">For cafés and small restaurants in the UAE</p>
+      <p class="kicker">For cafes and small restaurants in the UAE</p>
       <h1><span>Take orders on WhatsApp.</span> <span>Keep every dirham.</span></h1>
-      <p class="lede">WhatsOrder gives your café its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.</p>
+      <p class="lede">WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.</p>
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="/try">Start 14-day free trial</a>
         <a class="btn btn-ghost btn-lg" href="/r/chaixpress">Order from the live demo</a>
@@ -634,7 +634,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="live">
       <div class="live-copy">
         <h3>Running every day at Chai Xpress, Ajman.</h3>
-        <p>WhatsOrder is built inside a working café, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.</p>
+        <p>WhatsOrder is built inside a working cafe, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.</p>
       </div>
       <div class="live-cta">
         <a class="btn btn-wa btn-lg" href="/r/chaixpress">Order from the live menu</a>
@@ -648,7 +648,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <section class="feat-sec" id="features">
   <div class="wrap">
     <div class="sec-head">
-      <h2>Everything a small café runs on, in one app.</h2>
+      <h2>Everything a small cafe runs on, in one app.</h2>
       <p>Ordering is the front door. Behind it is what you need to bring customers back and close the day without a notebook.</p>
     </div>
 
@@ -879,7 +879,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       </details>
       <details>
         <summary>How do I get help? <span class="chev"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
-        <p>Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a café themselves.</p>
+        <p>Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a cafe themselves.</p>
       </details>
     </div>
   </div>
@@ -909,7 +909,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0FA36B"/><path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FFFFFF"/><path d="m13.2 15.6 2 2 3.8-4.2" stroke="#0FA36B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
           WhatsOrder
         </div>
-        <p class="foot-tag">Commission-free WhatsApp ordering for cafés and small restaurants. Built in Ajman.</p>
+        <p class="foot-tag">Commission-free WhatsApp ordering for cafes and small restaurants. Built in Ajman.</p>
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href="/r/chaixpress">Live demo</a>
@@ -982,7 +982,7 @@ const landingScript = String.raw`// year
       "For cafés and small restaurants in the UAE": "للمقاهي والمطاعم الصغيرة في الإمارات",
       "Take orders on WhatsApp.": "استقبل الطلبات على واتساب.",
       "Keep every dirham.": "واحتفظ بكل درهم.",
-      "WhatsOrder gives your café its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "واتس أوردر يمنح مقهاك رابط قائمة خاصاً به، ويحوّل كل محادثة إلى تذكرة طلب واضحة، ويتذكّر كل عميل. بدرهمين في اليوم، ومن دون عمولة.",
+      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "واتس أوردر يمنح مقهاك رابط قائمة خاصاً به، ويحوّل كل محادثة إلى تذكرة طلب واضحة، ويتذكّر كل عميل. بدرهمين في اليوم، ومن دون عمولة.",
       "Start 14-day free trial": "ابدأ تجربة مجانية لمدة 14 يوماً",
       "Order from the live demo": "اطلب من العرض المباشر",
       "Build your menu from a photo in about 2 minutes. No card needed.": "أنشئ قائمتك من صورة في نحو دقيقتين. لا حاجة إلى بطاقة.",
@@ -1009,10 +1009,10 @@ const landingScript = String.raw`// year
       "Orders arrive ready to make": "الطلبات تصل جاهزة للتحضير",
       "Each order lands as a clean WhatsApp message and on your order board, with items, address and payment method. Print a kitchen ticket if you want one.": "كل طلب يصل كرسالة واتساب واضحة وعلى لوحة الطلبات، مع الأصناف والعنوان وطريقة الدفع. اطبع تذكرة للمطبخ إن أردت.",
       "Running every day at Chai Xpress, Ajman.": "يعمل كل يوم في تشاي إكسبرس، عجمان.",
-      "WhatsOrder is built inside a working café, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.": "واتس أوردر بُني داخل مقهى يعمل فعلاً، لا في مختبر. افتح القائمة الحقيقية، أضف كوب كرك إلى سلتك وشاهد ما سيراه عملاؤك تماماً.",
+      "WhatsOrder is built inside a working cafe, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.": "واتس أوردر بُني داخل مقهى يعمل فعلاً، لا في مختبر. افتح القائمة الحقيقية، أضف كوب كرك إلى سلتك وشاهد ما سيراه عملاؤك تماماً.",
       "Order from the live menu": "اطلب من القائمة المباشرة",
       "Live now": "يعمل الآن",
-      "Everything a small café runs on, in one app.": "كل ما يحتاجه مقهى صغير ليعمل، في تطبيق واحد.",
+      "Everything a small cafe runs on, in one app.": "كل ما يحتاجه مقهى صغير ليعمل، في تطبيق واحد.",
       "Ordering is the front door. Behind it is what you need to bring customers back and close the day without a notebook.": "الطلبات هي الباب الأمامي. وخلفه ما تحتاجه لإعادة العملاء وإقفال اليوم من دون دفتر.",
       "Take orders": "استقبل الطلبات",
       "Menu link and QR code": "رابط القائمة ورمز QR",
@@ -1109,12 +1109,12 @@ const landingScript = String.raw`// year
       "Is there any commission?": "هل هناك أي عمولة؟",
       "None. WhatsOrder is a flat monthly fee. We never take a percentage of your sales.": "لا شيء. واتس أوردر رسم شهري ثابت، ولا نأخذ أبداً نسبة من مبيعاتك.",
       "How do I get help?": "كيف أحصل على المساعدة؟",
-      "Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a café themselves.": "راسلنا على واتساب. واتس أوردر صُنع في عجمان على يد أشخاص يديرون مقهى بأنفسهم.",
+      "Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a cafe themselves.": "راسلنا على واتساب. واتس أوردر صُنع في عجمان على يد أشخاص يديرون مقهى بأنفسهم.",
       "Put your menu on WhatsApp today.": "ضع قائمتك على واتساب اليوم.",
       "Start your 14-day free trial, or message us and we'll set it up with you.": "ابدأ تجربتك المجانية لمدة 14 يوماً، أو راسلنا وسنجهّزها معك.",
       "Message us on WhatsApp": "راسلنا على واتساب",
       "Prefer email?": "تفضّل البريد الإلكتروني؟",
-      "Commission-free WhatsApp ordering for cafés and small restaurants. Built in Ajman.": "طلبات واتساب بلا عمولة للمقاهي والمطاعم الصغيرة. صُنع في عجمان.",
+      "Commission-free WhatsApp ordering for cafes and small restaurants. Built in Ajman.": "طلبات واتساب بلا عمولة للمقاهي والمطاعم الصغيرة. صُنع في عجمان.",
       "Restaurant jobs": "وظائف المطاعم",
       "Post a job": "انشر وظيفة",
       "Privacy": "الخصوصية",
@@ -1127,10 +1127,10 @@ const landingScript = String.raw`// year
       "FAQ": "ചോദ്യങ്ങൾ",
       "Live demo": "ലൈവ് ഡെമോ",
       "Start free trial": "സൗജന്യ ട്രയൽ തുടങ്ങൂ",
-      "For cafés and small restaurants in the UAE": "യുഎഇയിലെ കഫേകൾക്കും ചെറുകിട റെസ്റ്ററന്റുകൾക്കും",
+      "For cafes and small restaurants in the UAE": "യുഎഇയിലെ കഫേകൾക്കും ചെറുകിട റെസ്റ്ററന്റുകൾക്കും",
       "Take orders on WhatsApp.": "വാട്ട്സ്ആപ്പിൽ ഓർഡർ എടുക്കൂ.",
       "Keep every dirham.": "ഓരോ ദിർഹവും നിങ്ങൾക്കു തന്നെ.",
-      "WhatsOrder gives your café its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "WhatsOrder നിങ്ങളുടെ കഫേയ്ക്ക് സ്വന്തം മെനു ലിങ്ക് നൽകുന്നു, ഓരോ ചാറ്റും വ്യക്തമായ ഓർഡർ ടിക്കറ്റാക്കുന്നു, ഓരോ കസ്റ്റമറെയും ഓർത്തുവയ്ക്കുന്നു. ദിവസം AED 2, കമ്മീഷൻ ഇല്ല.",
+      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "WhatsOrder നിങ്ങളുടെ കഫേയ്ക്ക് സ്വന്തം മെനു ലിങ്ക് നൽകുന്നു, ഓരോ ചാറ്റും വ്യക്തമായ ഓർഡർ ടിക്കറ്റാക്കുന്നു, ഓരോ കസ്റ്റമറെയും ഓർത്തുവയ്ക്കുന്നു. ദിവസം AED 2, കമ്മീഷൻ ഇല്ല.",
       "Start 14-day free trial": "14 ദിവസത്തെ സൗജന്യ ട്രയൽ തുടങ്ങൂ",
       "Order from the live demo": "ലൈവ് ഡെമോയിൽ ഓർഡർ ചെയ്തു നോക്കൂ",
       "Build your menu from a photo in about 2 minutes. No card needed.": "ഒരു ഫോട്ടോയിൽ നിന്ന് ഏകദേശം 2 മിനിറ്റിൽ മെനു തയ്യാറാക്കാം. കാർഡ് വേണ്ട.",
@@ -1157,10 +1157,10 @@ const landingScript = String.raw`// year
       "Orders arrive ready to make": "ഓർഡറുകൾ തയ്യാറാക്കാൻ പാകത്തിൽ എത്തുന്നു",
       "Each order lands as a clean WhatsApp message and on your order board, with items, address and payment method. Print a kitchen ticket if you want one.": "ഓരോ ഓർഡറും ഇനങ്ങളും വിലാസവും പേയ്മെന്റ് രീതിയും സഹിതം വ്യക്തമായ വാട്ട്സ്ആപ്പ് സന്ദേശമായും ഓർഡർ ബോർഡിലും എത്തും. വേണമെങ്കിൽ കിച്ചൻ ടിക്കറ്റ് പ്രിന്റ് ചെയ്യാം.",
       "Running every day at Chai Xpress, Ajman.": "അജ്മാനിലെ ചായ് എക്സ്പ്രസിൽ എല്ലാ ദിവസവും പ്രവർത്തിക്കുന്നു.",
-      "WhatsOrder is built inside a working café, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.": "WhatsOrder നിർമിച്ചത് ലാബിലല്ല, പ്രവർത്തിക്കുന്ന ഒരു കഫേയ്ക്കുള്ളിലാണ്. യഥാർത്ഥ മെനു തുറന്ന് ഒരു കരക് കാർട്ടിലിട്ട് നിങ്ങളുടെ കസ്റ്റമർമാർ കാണുന്നത് അതേപടി കാണൂ.",
+      "WhatsOrder is built inside a working cafe, not a lab. Open the real menu, add a karak to your cart and see exactly what your customers would see.": "WhatsOrder നിർമിച്ചത് ലാബിലല്ല, പ്രവർത്തിക്കുന്ന ഒരു കഫേയ്ക്കുള്ളിലാണ്. യഥാർത്ഥ മെനു തുറന്ന് ഒരു കരക് കാർട്ടിലിട്ട് നിങ്ങളുടെ കസ്റ്റമർമാർ കാണുന്നത് അതേപടി കാണൂ.",
       "Order from the live menu": "ലൈവ് മെനുവിൽ ഓർഡർ ചെയ്യൂ",
       "Live now": "ഇപ്പോൾ ലൈവ്",
-      "Everything a small café runs on, in one app.": "ഒരു ചെറിയ കഫേ നടത്താൻ വേണ്ടതെല്ലാം, ഒറ്റ ആപ്പിൽ.",
+      "Everything a small cafe runs on, in one app.": "ഒരു ചെറിയ കഫേ നടത്താൻ വേണ്ടതെല്ലാം, ഒറ്റ ആപ്പിൽ.",
       "Ordering is the front door. Behind it is what you need to bring customers back and close the day without a notebook.": "ഓർഡറിംഗ് മുൻവാതിൽ മാത്രം. കസ്റ്റമർമാരെ തിരികെ കൊണ്ടുവരാനും നോട്ടുബുക്കില്ലാതെ ദിവസം ക്ലോസ് ചെയ്യാനും വേണ്ടത് അതിനു പിന്നിലുണ്ട്.",
       "Take orders": "ഓർഡർ എടുക്കാൻ",
       "Menu link and QR code": "മെനു ലിങ്കും QR കോഡും",
@@ -1257,12 +1257,12 @@ const landingScript = String.raw`// year
       "Is there any commission?": "കമ്മീഷൻ ഉണ്ടോ?",
       "None. WhatsOrder is a flat monthly fee. We never take a percentage of your sales.": "ഇല്ല. WhatsOrder ഫ്ലാറ്റ് മാസവരിയാണ്. വിൽപ്പനയുടെ ശതമാനം ഞങ്ങൾ ഒരിക്കലും എടുക്കില്ല.",
       "How do I get help?": "സഹായം എങ്ങനെ കിട്ടും?",
-      "Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a café themselves.": "വാട്ട്സ്ആപ്പിൽ മെസേജ് ചെയ്യൂ. സ്വന്തമായി കഫേ നടത്തുന്നവർ അജ്മാനിൽ നിർമിച്ചതാണ് WhatsOrder.",
+      "Message us on WhatsApp. WhatsOrder is built in Ajman by people who run a cafe themselves.": "വാട്ട്സ്ആപ്പിൽ മെസേജ് ചെയ്യൂ. സ്വന്തമായി കഫേ നടത്തുന്നവർ അജ്മാനിൽ നിർമിച്ചതാണ് WhatsOrder.",
       "Put your menu on WhatsApp today.": "നിങ്ങളുടെ മെനു ഇന്നു തന്നെ വാട്ട്സ്ആപ്പിലാക്കൂ.",
       "Start your 14-day free trial, or message us and we'll set it up with you.": "14 ദിവസത്തെ സൗജന്യ ട്രയൽ തുടങ്ങൂ, അല്ലെങ്കിൽ മെസേജ് ചെയ്യൂ; ഞങ്ങൾ കൂടെ സെറ്റ് ചെയ്തുതരാം.",
       "Message us on WhatsApp": "വാട്ട്സ്ആപ്പിൽ മെസേജ് ചെയ്യൂ",
       "Prefer email?": "ഇമെയിൽ ആണോ ഇഷ്ടം?",
-      "Commission-free WhatsApp ordering for cafés and small restaurants. Built in Ajman.": "കഫേകൾക്കും ചെറുകിട റെസ്റ്ററന്റുകൾക്കും കമ്മീഷനില്ലാത്ത വാട്ട്സ്ആപ്പ് ഓർഡറിംഗ്. അജ്മാനിൽ നിർമിച്ചത്.",
+      "Commission-free WhatsApp ordering for cafes and small restaurants. Built in Ajman.": "കഫേകൾക്കും ചെറുകിട റെസ്റ്ററന്റുകൾക്കും കമ്മീഷനില്ലാത്ത വാട്ട്സ്ആപ്പ് ഓർഡറിംഗ്. അജ്മാനിൽ നിർമിച്ചത്.",
       "Restaurant jobs": "റെസ്റ്ററന്റ് ജോലികൾ",
       "Post a job": "ജോലി പോസ്റ്റ് ചെയ്യൂ",
       "Privacy": "സ്വകാര്യത",
