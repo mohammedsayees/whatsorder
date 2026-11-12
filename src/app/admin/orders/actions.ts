@@ -49,7 +49,10 @@ export type AddOrderItemsPayload = {
 // unpaid ticket to the kitchen (payment collected later, at completion); the
 // "paid now" shortcuts complete a prepaid sale immediately. The payment_method
 // values reuse the existing enum (shown to staff as Cash/Card) so the shift
-// cash summary keeps aggregating correctly.
+// cash summary keeps aggregating correctly. "paid_credit" inserts the order
+// unpaid and then charges the credit ledger through record_customer_credit_order,
+// the same locked RPC used when completing from the orders list, so the
+// credit-limit check and ledger entry live in one transaction.
 const staffOrderActions: Record<
   string,
   { status: OrderStatus; paymentMethod: PaymentMethod | null }
@@ -57,8 +60,65 @@ const staffOrderActions: Record<
   kitchen: { status: "Preparing", paymentMethod: null },
   paid_cash: { status: "Completed", paymentMethod: "Cash on Delivery" },
   paid_card: { status: "Completed", paymentMethod: "Card on Delivery" },
-  paid_upi: { status: "Completed", paymentMethod: "UPI" }
+  paid_upi: { status: "Completed", paymentMethod: "UPI" },
+  paid_credit: { status: "Preparing", paymentMethod: null }
 };
+
+const creditChargeErrors: Record<string, string> = {
+  "Customer credit limit exceeded": "the customer's credit limit would be exceeded",
+  "Customer credit is not enabled": "credit is disabled for this customer",
+  "Customer profile not found": "the customer profile was not found",
+  "Cannot collect payment in a closed shift": "the order's shift is already closed",
+  "A different payment method is already recorded": "a different payment method is already recorded"
+};
+
+// Charges a punched order to the attached customer's credit account. Safe to
+// repeat: the RPC returns changed=false once the charge exists, so an outbox
+// replay of a paid_credit order finishes a charge an earlier attempt missed.
+async function chargeStaffOrderToCredit(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  session: { restaurantId: string; userId: string },
+  order: Order
+): Promise<StaffOrderState> {
+  if (order.payment_method === "Customer Credit") {
+    return { success: "Order saved to Customer Credit.", order };
+  }
+  const { data, error } = await supabase.rpc("record_customer_credit_order", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: order.id,
+    event_actor_user_id: session.userId
+  });
+  if (error || !data?.order_id) {
+    const known = Object.keys(creditChargeErrors).find((message) =>
+      error?.message?.includes(message)
+    );
+    if (!known) {
+      // Transient failure: the order exists unpaid; an unchanged retry
+      // resolves it via client_order_id and charges it then.
+      return {
+        retryUnchanged: true,
+        error: "The order reached the kitchen, but Customer Credit could not be recorded yet. Retry this unchanged ticket."
+      };
+    }
+    // A business rule refused the charge. The order is real and in the
+    // kitchen, so report it as saved and leave payment for the orders list.
+    return {
+      success: `Sent to the kitchen unpaid — Customer Credit was not recorded because ${creditChargeErrors[known]}. Collect payment from Orders.`,
+      order
+    };
+  }
+  const { data: charged } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("id", order.id)
+    .maybeSingle();
+  if (data.changed) scheduleOrderNotifications(session.restaurantId);
+  return {
+    success: "Order saved and charged to Customer Credit.",
+    order: (charged as Order | null) ?? order
+  };
+}
 
 function field(formData: FormData, key: string, maxLength: number) {
   return String(formData.get(key) ?? "").trim().slice(0, maxLength);
@@ -101,6 +161,9 @@ export async function submitStaffOrderAction(
     return { retryUnchanged: true, error: "The previous order attempt could not be checked. Please retry." };
   }
   if (existing.data) {
+    if (payload.action === "paid_credit") {
+      return chargeStaffOrderToCredit(supabase, session, existing.data as Order);
+    }
     return { success: "Order already synced.", order: existing.data as Order };
   }
 
@@ -200,6 +263,10 @@ export async function submitStaffOrderAction(
     return { error: "UPI is available only for restaurants in India." };
   }
 
+  if (payload.action === "paid_credit" && !selectedCustomer) {
+    return { error: "Select a credit customer before charging Customer Credit." };
+  }
+
   const orderAction = staffOrderActions[payload.action];
   const customerName =
     selectedCustomer?.name ??
@@ -275,6 +342,9 @@ export async function submitStaffOrderAction(
       if (saved.error || !saved.data) {
         return { retryUnchanged: true, error: "The saved order could not be loaded. Please retry." };
       }
+      if (payload.action === "paid_credit") {
+        return chargeStaffOrderToCredit(supabase, session, saved.data as Order);
+      }
       return { success: "Order already synced.", order: saved.data as Order };
     }
 
@@ -289,6 +359,10 @@ export async function submitStaffOrderAction(
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
   revalidatePath("/admin/shifts");
+
+  if (payload.action === "paid_credit" && insertedOrder) {
+    return chargeStaffOrderToCredit(supabase, session, insertedOrder as Order);
+  }
 
   return {
     success:

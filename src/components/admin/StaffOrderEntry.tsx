@@ -5,7 +5,7 @@ import { StaffCreditCustomerSelector } from "./StaffCreditCustomerSelector";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { Banknote, ChefHat, ChevronDown, CreditCard, Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
+import { Banknote, BookUser, ChefHat, ChevronDown, CreditCard, Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import { recordOrderPrintEventsAction } from "@/app/actions";
 import {
   addItemsToOrderAction,
@@ -105,6 +105,7 @@ export function StaffOrderEntry({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | "all">("all");
   const fulfilmentType = draft?.fulfilmentType ?? addToOrder?.fulfilment_type ?? orderTypes[0];
   const selectedCreditCustomerId = draft?.fields.credit_customer_id ?? "";
+  const selectedCreditCustomer = creditCustomers.find((customer) => customer.id === selectedCreditCustomerId);
   const setFulfilmentType = (type: FulfilmentType) => { void draftStore.patch({ fulfilmentType: type }).catch(() => {}); };
   const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
   const [pending, setPending] = useState(false);
@@ -994,6 +995,16 @@ export function StaffOrderEntry({
                   <input checked={printCustomerBill} className="h-4 w-4 accent-emerald-600" onChange={(event) => setPrintCustomerBill(event.target.checked)} type="checkbox" />
                   <ReceiptText size={15} /> Print customer bill
                 </label>
+                {selectedCreditCustomer ? (
+                  <div className="mb-2">
+                    <button className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-3 text-sm font-black text-white disabled:opacity-50" disabled={pending || ticketLines.length === 0 || needsReview || total > selectedCreditCustomer.available} name="action" type="submit" value="paid_credit">
+                      <BookUser size={17} /> Customer Credit · {selectedCreditCustomer.name}
+                    </button>
+                    {total > selectedCreditCustomer.available ? (
+                      <p className="mt-1 text-xs font-bold text-amber-800">Above available credit ({formatCurrency(selectedCreditCustomer.available, restaurant)}). Collect cash/card or send KOT.</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className={`grid gap-2 ${restaurant.country_code === "IN" ? "grid-cols-3" : "grid-cols-2"}`}>
                   <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-3 py-3 text-sm font-black text-white disabled:opacity-60" disabled={pending || ticketLines.length === 0 || needsReview} name="action" type="submit" value="paid_cash">
                     <Banknote size={17} /> Cash
@@ -1002,7 +1013,7 @@ export function StaffOrderEntry({
                     <CreditCard size={17} /> Card
                   </button>
                   {restaurant.country_code === "IN" ? (
-                    <button className="focus-ring rounded-lg bg-violet-700 px-3 py-3 text-sm font-black text-white disabled:opacity-50" disabled={pending || ticketLines.length === 0 || needsReview} type="submit" value="paid_upi">UPI</button>
+                    <button className="focus-ring rounded-lg bg-violet-700 px-3 py-3 text-sm font-black text-white disabled:opacity-50" disabled={pending || ticketLines.length === 0 || needsReview} name="action" type="submit" value="paid_upi">UPI</button>
                   ) : null}
                 </div>
               </div>

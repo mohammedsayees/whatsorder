@@ -93,11 +93,11 @@ export function StaffCreditCustomerSelector({
         ) : null}
         {shortfall > 0 ? (
           <p className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-xs font-bold text-amber-900">
-            This bill is {formatCurrency(shortfall, restaurant)} above the available credit. It can go to the kitchen, but credit completion will remain unavailable unless the balance or limit changes.
+            This bill is {formatCurrency(shortfall, restaurant)} above the available credit. It can go to the kitchen, but Customer Credit stays unavailable unless the balance or limit changes.
           </p>
         ) : (
           <p className="mt-2 text-xs font-semibold text-blue-700">
-            The customer is attached now; the credit ledger is charged only when the order is completed as Customer Credit.
+            The customer is attached. Tap Pay → Customer Credit to charge the ledger now, or Send KOT and complete it as Customer Credit from Orders later.
           </p>
         )}
       </section>
