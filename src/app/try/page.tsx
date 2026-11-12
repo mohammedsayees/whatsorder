@@ -6,7 +6,7 @@ import InstantDemoBuilder from "@/components/try/InstantDemoBuilder";
 export const metadata: Metadata = {
   title: "See your menu live in 2 minutes — WhatsOrder",
   description:
-    "Upload a photo of your menu and AI builds your restaurant's WhatsApp ordering page instantly. Free demo, no signup."
+    "Upload a photo of your menu and AI builds your restaurant's WhatsApp ordering page. Free demo, no signup, then a 14-day free trial."
 };
 
 export default function TryPage() {
@@ -21,7 +21,8 @@ export default function TryPage() {
         </h1>
         <p className="mt-3 text-slate-600">
           Upload a photo of your menu. Our AI reads it and builds your restaurant&apos;s own
-          WhatsApp ordering page — free, no signup, yours to try for 7 days.
+          WhatsApp ordering page. The demo is free with no signup. Claim it within 7 days to
+          keep it and start your 14-day free trial.
         </p>
 
         <div className="mt-8">
@@ -32,6 +33,7 @@ export default function TryPage() {
           <li>1. Snap your menu (a phone photo works)</li>
           <li>2. AI reads every item and price</li>
           <li>3. Your store goes live — place a test order from your phone</li>
+          <li>4. Claim it with your store link and WhatsApp number to start your free trial</li>
         </ol>
       </div>
     </main>

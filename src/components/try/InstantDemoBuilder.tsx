@@ -140,6 +140,7 @@ export default function InstantDemoBuilder() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [name, setName] = useState("");
   const [whatsApp, setWhatsApp] = useState("");
+  const [countryCode, setCountryCode] = useState<"AE" | "IN">("AE");
   const [pages, setPages] = useState<PagePreview[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showWhatsAppFallback, setShowWhatsAppFallback] = useState(false);
@@ -204,6 +205,7 @@ export default function InstantDemoBuilder() {
       const response = await buildDemoStoreAction({
         restaurantName: name,
         ownerWhatsApp: whatsApp.trim() || undefined,
+        countryCode,
         pages: pages.map((page) => ({
           imageBase64: dataUrlToBase64(page.dataUrl),
           mimeType: page.mimeType
@@ -239,8 +241,8 @@ export default function InstantDemoBuilder() {
           Your demo store is live — {result.itemCount} items imported
         </h2>
         <p className="mt-2 text-sm text-emerald-900/80">
-          Open it on your phone, place a test order, and share the link with your team. It stays
-          live for 7 days.
+          Open it on your phone and place a test order. This demo stays live for 7 days. Claim
+          it to keep your menu and start your 14-day free trial.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <a
@@ -289,6 +291,20 @@ export default function InstantDemoBuilder() {
         className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
         disabled={phase === "building"}
       />
+
+      <label className="mt-4 block text-sm font-semibold text-emerald-950" htmlFor="demo-country">
+        Country
+      </label>
+      <select
+        id="demo-country"
+        value={countryCode}
+        onChange={(event) => setCountryCode(event.target.value === "IN" ? "IN" : "AE")}
+        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
+        disabled={phase === "building"}
+      >
+        <option value="AE">United Arab Emirates (prices in AED)</option>
+        <option value="IN">India (prices in INR)</option>
+      </select>
 
       <div className="mt-4">
         <span className="block text-sm font-semibold text-emerald-950">
@@ -348,7 +364,7 @@ export default function InstantDemoBuilder() {
         type="tel"
         value={whatsApp}
         onChange={(event) => setWhatsApp(event.target.value)}
-        placeholder="05x xxx xxxx"
+        placeholder={countryCode === "IN" ? "98xxx xxxxx" : "05x xxx xxxx"}
         maxLength={20}
         className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500"
         disabled={phase === "building"}

@@ -8,6 +8,8 @@ import { headers } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { extractMenuPageItems } from "@/lib/menu-extraction/extract";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
+import { countryProfileFields, getCountryProfile, isCountryCode } from "@/lib/localization";
+import type { CountryCode } from "@/lib/types";
 import {
   DEMO_BUILDS_PER_DAY,
   DEMO_MAX_PAGES,
@@ -97,6 +99,9 @@ export async function buildDemoStoreAction(input: {
   // Optional lead capture: the prospect's own WhatsApp number, so follow-up
   // has a channel even if they never tap a CTA.
   ownerWhatsApp?: string;
+  // Country decides the currency the AI reads prices in. It is fixed from
+  // here on: the claim keeps it, so prices never silently change currency.
+  countryCode?: string;
 }): Promise<DemoBuildResult> {
   const supabase = getSupabaseAdmin();
   if (!supabase || !process.env.GEMINI_API_KEY) {
@@ -111,9 +116,13 @@ export async function buildDemoStoreAction(input: {
     return { ok: false, error: "Enter your restaurant name (at least 2 characters)." };
   }
 
+  const countryCode: CountryCode = isCountryCode(input.countryCode) ? input.countryCode : "AE";
+  const country = getCountryProfile(countryCode);
+
   // Optional and best-effort: an unparseable number is dropped, never a blocker.
   const ownerPhone = input.ownerWhatsApp
-    ? normalizeWhatsAppNumber(String(input.ownerWhatsApp).slice(0, 20)) || null
+    ? normalizeWhatsAppNumber(String(input.ownerWhatsApp).slice(0, 20), country.phoneCountryCode) ||
+      null
     : null;
 
   const pages = (Array.isArray(input.pages) ? input.pages : []).slice(0, DEMO_MAX_PAGES);
@@ -157,7 +166,7 @@ export async function buildDemoStoreAction(input: {
   let drafts;
   try {
     const perPage = await Promise.all(
-      pages.map((page) => extractMenuPageItems(page.imageBase64, page.mimeType, "AED"))
+      pages.map((page) => extractMenuPageItems(page.imageBase64, page.mimeType, country.currencyCode))
     );
     drafts = dedupeDraftItems(perPage.flat());
   } catch (error) {
@@ -194,6 +203,7 @@ export async function buildDemoStoreAction(input: {
       demo_expires_at: demoExpiryDate().toISOString(),
       demo_ip_hash: ipHash,
       owner_phone: ownerPhone,
+      ...countryProfileFields(countryCode),
       delivery_fee: 0,
       minimum_order_amount: 0
     })
@@ -217,6 +227,7 @@ export async function buildDemoStoreAction(input: {
         demo_expires_at: demoExpiryDate().toISOString(),
         demo_ip_hash: ipHash,
         owner_phone: ownerPhone,
+        ...countryProfileFields(countryCode),
         delivery_fee: 0,
         minimum_order_amount: 0
       })
