@@ -411,7 +411,9 @@ export async function createOrderAction(
   const persistedMessage = String(
     persistedOrder?.whatsapp_message ?? whatsappMessage
   );
-  revalidatePath(`/r/${restaurant.slug}`);
+  // Do not revalidate /r/[slug] here: the menu is edge-cached (force-static,
+  // revalidate 300) and nothing on it depends on orders. Purging it on every
+  // order made the next menu visitor wait for a full re-render from the origin.
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
   revalidatePath("/admin/customers");

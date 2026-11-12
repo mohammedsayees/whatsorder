@@ -132,6 +132,14 @@ describe("restaurant operational reliability boundaries", () => {
     expect(actions).not.toContain("rate-limit check failed open");
   });
 
+  it("keeps the edge-cached customer menu out of per-order revalidation", () => {
+    const actions = source("src/app/r/[restaurantSlug]/checkout/actions.ts");
+    const createOrder = actions.slice(actions.indexOf("export async function createOrderAction"));
+    expect(createOrder).toContain('revalidatePath("/admin/orders")');
+    expect(createOrder).not.toMatch(/revalidatePath\(`\/r\//);
+    expect(source("src/app/r/[restaurantSlug]/page.tsx")).toContain('export const dynamic = "force-static"');
+  });
+
   it("requires 12-character passwords on both invite setup boundaries", () => {
     expect(source("src/app/auth/invite/actions.ts")).toContain("password.length < 12");
     expect(source("src/app/auth/setup-password/page.tsx").match(/minLength=\{12\}/g)).toHaveLength(2);
