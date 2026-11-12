@@ -14,7 +14,11 @@ import {
 } from "@/lib/data";
 import { getUnreadChatConversationIds } from "@/lib/chat-inbox";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
-import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
+import {
+  createEphemeralAuthClient,
+  getSupabase,
+  getSupabaseAdmin
+} from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export type RealtimeAccess = {
@@ -105,7 +109,7 @@ export async function getRealtimeAccessTokenAction(): Promise<RealtimeAccess | n
       : null;
   }
 
-  const supabase = getSupabase();
+  const supabase = createEphemeralAuthClient();
   if (!supabase || !refreshToken) {
     return null;
   }
