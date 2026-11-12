@@ -150,7 +150,8 @@ begin
   select coalesce(sum(o.price_delta), 0) into delta_sum
     from jsonb_array_elements(selected) x
     join public.menu_options o on o.id = (x->>'option_id')::uuid and o.restaurant_id = target_restaurant_id;
-  return greatest(0, base_price + delta_sum) = (line->>'price')::numeric;
+  -- App prices are JavaScript sums (0.1 + 0.2 = 0.30000000000000004): compare in cents.
+  return round(greatest(0, base_price + delta_sum), 2) = round((line->>'price')::numeric, 2);
 exception when invalid_text_representation or numeric_value_out_of_range then
   return false;
 end;
@@ -221,7 +222,7 @@ begin
       needs_refresh := true;
     else
       -- Lines are validated, so the numeric casts below cannot fail.
-      select sum((line->>'price')::numeric*(line->>'quantity')::integer) into amount
+      select round(sum((line->>'price')::numeric*(line->>'quantity')::integer), 2) into amount
         from jsonb_array_elements(draft.state->'cart') line;
       if amount < (select minimum_order_amount from public.restaurants where id=target_restaurant_id) then
         needs_refresh := true;

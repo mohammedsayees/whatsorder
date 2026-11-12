@@ -6,7 +6,8 @@ insert into public.menu_categories(id,restaurant_id,name) values
 ('39200000-0000-0000-0000-000000000001','29200000-0000-0000-0000-000000000001','Tea');
 insert into public.menu_items(id,restaurant_id,category_id,name,price,is_available) values
 ('49200000-0000-0000-0000-000000000001','29200000-0000-0000-0000-000000000001','39200000-0000-0000-0000-000000000001','Karak',2,true),
-('49200000-0000-0000-0000-000000000002','29200000-0000-0000-0000-000000000001','39200000-0000-0000-0000-000000000001','Burger',10,true);
+('49200000-0000-0000-0000-000000000002','29200000-0000-0000-0000-000000000001','39200000-0000-0000-0000-000000000001','Burger',10,true),
+('49200000-0000-0000-0000-000000000003','29200000-0000-0000-0000-000000000001','39200000-0000-0000-0000-000000000001','Mini',0.1,true);
 -- Karak: required Size (exactly one), optional Extras (up to two).
 insert into public.menu_option_groups(id,restaurant_id,name,min_select,max_select) values
 ('69200000-0000-0000-0000-000000000001','29200000-0000-0000-0000-000000000001','Size',1,1),
@@ -16,11 +17,13 @@ insert into public.menu_options(id,restaurant_id,group_id,name,price_delta,is_av
 ('79200000-0000-0000-0000-000000000001','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000001','Small',0,true),
 ('79200000-0000-0000-0000-000000000002','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000001','Large',1.5,true),
 ('79200000-0000-0000-0000-000000000003','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000002','Saffron',0.5,true),
-('79200000-0000-0000-0000-000000000004','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000003','Garlic',1,true);
+('79200000-0000-0000-0000-000000000004','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000003','Garlic',1,true),
+('79200000-0000-0000-0000-000000000005','29200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000002','Foam',0.2,true);
 insert into public.menu_item_option_groups(restaurant_id,menu_item_id,group_id) values
 ('29200000-0000-0000-0000-000000000001','49200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000001'),
 ('29200000-0000-0000-0000-000000000001','49200000-0000-0000-0000-000000000001','69200000-0000-0000-0000-000000000002'),
-('29200000-0000-0000-0000-000000000001','49200000-0000-0000-0000-000000000002','69200000-0000-0000-0000-000000000003');
+('29200000-0000-0000-0000-000000000001','49200000-0000-0000-0000-000000000002','69200000-0000-0000-0000-000000000003'),
+('29200000-0000-0000-0000-000000000001','49200000-0000-0000-0000-000000000003','69200000-0000-0000-0000-000000000002');
 insert into public.whatsapp_conversations(id,restaurant_id,customer_phone,customer_name) values
 ('59200000-0000-0000-0000-000000000001','29200000-0000-0000-0000-000000000001','971500000011','Profile Name'),
 ('59200000-0000-0000-0000-000000000002','29200000-0000-0000-0000-000000000002','971500000012',null);
@@ -123,6 +126,17 @@ begin
     if sqlerrm <> 'Expired or changed quote' then raise; end if;
   end;
   if (select count(*) from public.orders where restaurant_id=r) <> 1 then raise exception 'Duplicate order'; end if;
+
+  -- JavaScript-summed prices (0.1 + 0.2) still match the catalog in cents.
+  draft := jsonb_build_object('cart',jsonb_build_array(jsonb_build_object('item_id','49200000-0000-0000-0000-000000000003',
+    'name','Mini','price',0.30000000000000004,'quantity',3,'options',jsonb_build_array(jsonb_build_object(
+      'option_id','79200000-0000-0000-0000-000000000005','group_id',extras_g,'name','Foam','price_delta',0.2)))),
+    'name','Profile Name','token','float','quotedAt',now(),'orderId',null);
+  update public.whatsapp_order_drafts set state=draft, revision=revision+1 where restaurant_id=r returning revision into rev;
+  result := public.apply_whatsapp_order_command(r,c,'y-float',rev,draft,'confirm',true);
+  if result->>'reply' not like 'Order % received%' then raise exception 'Float-summed price refused: %', result; end if;
+  if not exists(select 1 from public.orders where restaurant_id=r and total=0.9) then
+    raise exception 'Float-summed order total not rounded'; end if;
 
   -- Parse log: tenant-consistent, service-role only, 90-day retention.
   insert into public.whatsapp_order_parse_logs(restaurant_id,conversation_id,message_id,parser,input_text,outcome,created_at)

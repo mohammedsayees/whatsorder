@@ -31,7 +31,7 @@ describe("WhatsApp chat ordering v1 migration", () => {
 
   it("re-checks options and prices in the creation transaction", () => {
     expect(migration).toContain("not public.whatsapp_chat_line_is_current(target_restaurant_id, line)");
-    expect(migration).toContain("greatest(0, base_price + delta_sum) = (line->>'price')::numeric");
+    expect(migration).toContain("round(greatest(0, base_price + delta_sum), 2) = round((line->>'price')::numeric, 2)");
     expect(migration).toContain("line->>'offer_id' is not null");
   });
 
