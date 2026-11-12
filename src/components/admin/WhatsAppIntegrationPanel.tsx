@@ -293,18 +293,23 @@ export function WhatsAppIntegrationPanel({
         </section>
 
         <section className="mt-4 rounded-2xl border border-stone-200 p-4">
-          <h3 className="text-sm font-black">Takeaway chat-ordering pilot</h3>
-          <p className="mt-2 text-sm text-stone-600">English text commands, simple items at standard menu prices and payment at collection. Custom options, offers, delivery and voice ordering need staff or the menu link. Customers review a total and confirm a unique code before an order reaches the kitchen. Carts resume for 24 hours. Staff replies pause automation.</p>
-          <label className="mt-3 flex gap-2 text-sm font-bold">
-            <input type="checkbox" name="chat_ordering_enabled" defaultChecked={settings.chat_ordering_enabled ?? false} />
-            Enable takeaway ordering for approved numbers
+          <h3 className="text-sm font-black">WhatsApp chat ordering (takeaway)</h3>
+          <p className="mt-2 text-sm text-stone-600">Customers text their order, for example “2 karak, 1 smash burger”. The bot replies with an itemised total at current menu prices and asks about required options. A takeaway order reaches the kitchen only after the customer replies YES within 10 minutes. Payment is due at collection. Staff replies pause automation.</p>
+          <label className="mt-3 block text-sm font-bold">Chat ordering
+            <select name="chat_ordering_mode"
+              defaultValue={settings.chat_ordering_mode ?? (settings.chat_ordering_enabled ? "approved" : "off")}
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2">
+              <option value="off">Off — everyone gets the menu link</option>
+              <option value="approved">Approved numbers only</option>
+              <option value="everyone">Everyone</option>
+            </select>
           </label>
           <label className="mt-3 block text-sm font-bold">Approved WhatsApp numbers
             <textarea name="chat_ordering_phones" defaultValue={(settings.chat_ordering_phones ?? []).join("\n")}
               rows={3} maxLength={400} placeholder="Country code and number, one per line"
               className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2" />
           </label>
-          <p className="mt-2 text-xs text-stone-500">Up to 20 numbers. Everyone else keeps the existing menu-link flow. To test, send MENU, add an item, send NAME followed by your pickup name, then CHECKOUT. Confirming creates a real unpaid order. Disable this pilot here at any time.</p>
+          <p className="mt-2 text-xs text-stone-500">Up to 20 numbers, used when chat ordering is limited to approved numbers. Everyone else keeps the menu-link flow. Confirming creates a real unpaid takeaway order. Switch this off at any time; submitted orders are not cancelled.</p>
         </section>
         {settingsState.error ? (
           <p className="mt-4 text-sm font-bold text-rose-600">{settingsState.error}</p>

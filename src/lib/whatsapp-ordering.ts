@@ -6,7 +6,7 @@ import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { formatCurrency } from "@/lib/currency";
 import { getChatConversationByPhone, isChatAutomationActive, recordOutboundChatMessage } from "@/lib/chat-inbox";
-import { getWhatsAppChatbotSettings } from "@/lib/whatsapp-ai";
+import { getWhatsAppChatbotSettings, isChatOrderingAllowed } from "@/lib/whatsapp-ai";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { editChatCart, emptyChatOrder, isChatOrderConfirmation, normalizeChatText, type ChatOrderDraft } from "@/lib/whatsapp-order-cart";
 import type { Restaurant } from "@/lib/types";
@@ -18,8 +18,7 @@ export async function handleWhatsAppOrderMessage(input: {
   restaurantId: string; phone: string; messageId: string; text: string; baseUrl: string;
 }): Promise<boolean> {
   const settings = await getWhatsAppChatbotSettings(input.restaurantId);
-  if (!settings.enabled || !settings.answer_text || !settings.chat_ordering_enabled ||
-    !settings.chat_ordering_phones?.includes(input.phone)) return false;
+  if (!isChatOrderingAllowed(settings, input.phone)) return false;
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error("Chat ordering database unavailable");
   const conversation = await getChatConversationByPhone(input.restaurantId, input.phone);

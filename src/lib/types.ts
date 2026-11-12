@@ -323,7 +323,7 @@ export type Order = {
   points_redeemed: number;
   loyalty_discount: number;
   status: OrderStatus;
-  source?: "customer" | "staff";
+  source?: "customer" | "staff" | "whatsapp_chat";
   whatsapp_message: string;
   consent_order_processing: boolean;
   consent_marketing: boolean;

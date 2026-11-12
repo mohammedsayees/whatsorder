@@ -6,7 +6,9 @@ const mock = vi.hoisted(() => ({
   confirms: [] as Record<string, unknown>[]
 }));
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/whatsapp-ai", () => ({ getWhatsAppChatbotSettings: async () => ({
+vi.mock("@/lib/whatsapp-ai", async (importOriginal) => ({
+  isChatOrderingAllowed: (await importOriginal<typeof import("@/lib/whatsapp-ai")>()).isChatOrderingAllowed,
+  getWhatsAppChatbotSettings: async () => ({
   enabled: true, answer_text: true, chat_ordering_enabled: mock.allowed,
   chat_ordering_phones: ["971500000077"], handoff_message: "Staff will help"
 }) }));
