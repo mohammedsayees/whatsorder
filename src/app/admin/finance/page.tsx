@@ -21,6 +21,9 @@ import { getFinanceDocuments } from "@/lib/finance-document-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
+// The bill upload action posts from this page and reads the bill with Gemini in
+// after(), which shares this budget. Match the review page's retry budget.
+export const maxDuration = 60;
 
 const classificationLabels: Record<FinanceClassification, string> = {
   operating: "Operating expense",
