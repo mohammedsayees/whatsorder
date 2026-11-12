@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { maintenanceRewrites } from "./src/lib/maintenance-config";
 
 function configuredSupabaseHost() {
   try {
@@ -56,6 +57,10 @@ const nextConfig: NextConfig = {
     remotePatterns: supabaseHost
       ? [{ protocol: "https", hostname: supabaseHost }]
       : []
+  },
+  async rewrites() {
+    // Empty unless MAINTENANCE_MODE=true at build time (src/lib/maintenance-config.ts).
+    return { beforeFiles: maintenanceRewrites(), afterFiles: [], fallback: [] };
   },
   async headers() {
     return [
