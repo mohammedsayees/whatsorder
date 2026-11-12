@@ -1,6 +1,12 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+export const CHAT_ORDERING_MODES = ["off", "approved", "everyone"] as const;
+export type ChatOrderingMode = (typeof CHAT_ORDERING_MODES)[number];
+
 export type WhatsAppChatbotSettings = {
+  /** Rollout of WhatsApp chat ordering; supersedes chat_ordering_enabled. */
+  chat_ordering_mode?: ChatOrderingMode;
+  /** Pilot switch, kept in sync with chat_ordering_mode by a DB trigger. */
   chat_ordering_enabled?: boolean;
   chat_ordering_phones?: string[];
   enabled: boolean;
@@ -36,6 +42,23 @@ const MENU_REQUEST =
   /\b(menu|order|price|prices|food|drink|offer|promotion|buy)\b|قائمة|منيو|طلب|سعر|عرض|മെനു|ഓർഡർ|വില/i;
 const GREETING =
   /^(hi|hello|hey|good (morning|afternoon|evening)|salam|مرحبا|السلام عليكم|ഹായ്|ഹലോ)[!.\s]*$/i;
+/**
+ * Whether chat ordering is rolled out to this sender. Mirrors the check in
+ * apply_whatsapp_order_command, which stays authoritative. Rows written
+ * before the rollout mode existed fall back to the pilot switch.
+ */
+export function isChatOrderingAllowed(
+  settings: WhatsAppChatbotSettings,
+  phone: string
+): boolean {
+  if (!settings.enabled || !settings.answer_text) return false;
+  const mode =
+    settings.chat_ordering_mode ??
+    (settings.chat_ordering_enabled ? "approved" : "off");
+  if (mode === "everyone") return true;
+  return mode === "approved" && (settings.chat_ordering_phones ?? []).includes(phone);
+}
+
 export const WELCOME_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 export function shouldSendWhatsAppWelcome(
@@ -55,7 +78,7 @@ export async function getWhatsAppChatbotSettings(
   const { data, error } = await admin
     .from("whatsapp_chatbot_settings")
     .select(
-      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes, chat_ordering_enabled, chat_ordering_phones"
+      "enabled, answer_text, answer_audio, language_mode, tone, welcome_message, handoff_message, human_pause_minutes, chat_ordering_mode, chat_ordering_enabled, chat_ordering_phones"
     )
     .eq("restaurant_id", restaurantId)
     .maybeSingle();

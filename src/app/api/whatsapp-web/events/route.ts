@@ -238,8 +238,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Retried inbound IDs may still need processing after a previous failed attempt.
   if (type === "text") {
     try {
+      // Order-intent messages go to chat ordering before the receptionist's
+      // menu-link reply; anything else (questions, greetings) falls through.
       if (await handleWhatsAppOrderMessage({ restaurantId: event.restaurantId, phone,
-        messageId, text: body, baseUrl })) return NextResponse.json({ ok: true });
+        messageId, text: body, baseUrl, sentAt: message.timestamp })) return NextResponse.json({ ok: true });
     } catch {
       console.error("WhatsOrder chat ordering retry required");
       return NextResponse.json({ ok: false }, { status: 503 });
