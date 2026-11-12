@@ -152,7 +152,8 @@ const actionLabels: Record<StaffOrderActionKind, string> = {
   kitchen: "To kitchen",
   paid_cash: "Paid · Cash",
   paid_card: "Paid · Card",
-  paid_upi: "Paid · UPI"
+  paid_upi: "Paid · UPI",
+  paid_credit: "Customer Credit"
 };
 
 function punchTimeLabel(isoTime: string) {

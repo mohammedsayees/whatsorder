@@ -10,7 +10,7 @@ import type {
 // the exact same object can be sent live, queued in the device outbox during
 // an internet outage, and replayed later through the same server action.
 
-export const STAFF_ORDER_ACTIONS = ["kitchen", "paid_cash", "paid_card", "paid_upi"] as const;
+export const STAFF_ORDER_ACTIONS = ["kitchen", "paid_cash", "paid_card", "paid_upi", "paid_credit"] as const;
 
 export type StaffOrderActionKind = (typeof STAFF_ORDER_ACTIONS)[number];
 
@@ -93,7 +93,8 @@ const ACTION_OUTCOME: Record<
   kitchen: { status: "Preparing", paymentMethod: null },
   paid_cash: { status: "Completed", paymentMethod: "Cash on Delivery" },
   paid_card: { status: "Completed", paymentMethod: "Card on Delivery" },
-  paid_upi: { status: "Completed", paymentMethod: "UPI" }
+  paid_upi: { status: "Completed", paymentMethod: "UPI" },
+  paid_credit: { status: "Completed", paymentMethod: "Customer Credit" }
 };
 
 // Projects a queued payload into an Order shape so the shared ticket renderer

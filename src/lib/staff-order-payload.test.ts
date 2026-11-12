@@ -27,6 +27,7 @@ describe("isStaffOrderActionKind", () => {
     expect(isStaffOrderActionKind("kitchen")).toBe(true);
     expect(isStaffOrderActionKind("paid_cash")).toBe(true);
     expect(isStaffOrderActionKind("paid_card")).toBe(true);
+    expect(isStaffOrderActionKind("paid_credit")).toBe(true);
   });
 
   it("rejects anything else", () => {
