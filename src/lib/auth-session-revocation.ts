@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
-import { getSupabase } from "@/lib/supabase";
+import { createEphemeralAuthClient } from "@/lib/supabase";
 import {
   refreshTokenCookieName,
   superAdminCookieName
@@ -11,7 +11,7 @@ export async function revokeCurrentAuthSession() {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(superAdminCookieName)?.value;
   const refreshToken = cookieStore.get(refreshTokenCookieName)?.value;
-  const supabase = getSupabase();
+  const supabase = createEphemeralAuthClient();
 
   if (!supabase || !accessToken || !refreshToken) {
     return;

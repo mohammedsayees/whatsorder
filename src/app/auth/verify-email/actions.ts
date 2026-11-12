@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { accessTokenCookieName, refreshTokenCookieName } from "@/lib/auth-cookies";
-import { createEphemeralAuthClient } from "@/lib/ephemeral-auth-client";
 import { sendOwnerVerificationEmail } from "@/lib/instant-owner-access";
 import {
   createPasswordSetupToken,
@@ -12,7 +11,7 @@ import {
   passwordSetupCookieName,
   passwordSetupLifetimeMs
 } from "@/lib/password-setup";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { createEphemeralAuthClient, getSupabaseAdmin } from "@/lib/supabase";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 
 type VerifyPayload = {

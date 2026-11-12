@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
-import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
+import { createEphemeralAuthClient, getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import {
@@ -71,7 +71,7 @@ function queryError(message: string) {
 export async function loginSuperAdminAction(formData: FormData) {
   const email = stringValue(formData, "email").toLowerCase();
   const password = stringValue(formData, "password");
-  const supabase = getSupabase();
+  const supabase = createEphemeralAuthClient();
   const admin = getSupabaseAdmin();
 
   if (!supabase || !admin) {

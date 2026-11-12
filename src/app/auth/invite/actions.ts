@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getSupabase, getSupabaseAdmin } from "@/lib/supabase";
+import { createEphemeralAuthClient, getSupabaseAdmin } from "@/lib/supabase";
 import {
   getAuthenticatedUser,
   refreshTokenCookieName,
@@ -28,7 +28,7 @@ function inviteError(message: string): never {
 }
 
 export async function completeRestaurantInviteAction(payload: InvitePayload) {
-  const supabase = getSupabase();
+  const supabase = createEphemeralAuthClient();
   const admin = getSupabaseAdmin();
 
   if (!supabase || !admin) {
