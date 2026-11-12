@@ -36,6 +36,31 @@ Recommended rollout: staff phones on **Approved numbers only** → a handful of 
 
 Other commands: `REMOVE <item>`, `CLEAR`/`CANCEL`, `STAFF` (staff takeover), `NEW ORDER` (after an order was placed). `NAME` and `CHECKOUT` were removed; `CHECKOUT` quietly behaves like `CART`.
 
+**Changing a quantity.** These set the total for an item rather than adding to it:
+
+- English: `make it 3 karak`, `change karak to 3`, `only 1 karak`.
+- Arabic: `خليها 3 كرك`.
+
+`0` removes the item. If the item isn't in the order yet, it is added, with any required option questions. If it is in the order with different options (Small and Large), the bot asks the customer to remove it and re-add rather than guess. With Gemini configured, other phrasings ("just one burger") are understood too.
+
+### Language
+
+Ordering replies follow the chatbot's **Language** setting under Automation & setup:
+
+| Setting | Ordering replies |
+| --- | --- |
+| Match customer | Arabic if the customer's latest message uses Arabic letters, English if Latin letters. Messages with no letters (`2`, `1,3`) keep the conversation's language. |
+| English | English |
+| Arabic | Arabic |
+| Malayalam | English. Malayalam ordering replies are not provided yet. |
+
+- **Arabic replies** use the menu's Arabic item, option and group names where they exist (`name_ar`), otherwise the English name. Adding Arabic names in the menu makes both matching and replies better.
+- **Arabic commands:** `منيو` (menu), `السلة` (cart), `إلغاء` (clear), `احذف <صنف>` (remove), `طلب جديد` (new order) and `موظف` (staff).
+- **Arabic YES:** `نعم`, `أيوه`, `موافق`, `أكد الطلب`. As in English, casual words like `تمام` ("OK") do not confirm an order.
+- **Matching:** Arabic spelling variants (أ/إ/آ/ا, ى/ي, ة/ه, vowel marks) are treated as the same letters on both sides.
+- **Order-command replies:** the order-received and quote-no-longer-available replies come from the database (`20261114090000_whatsapp_chat_order_language.sql`). They use the conversation's language stored in the draft. Drafts from before v1.1 get English.
+- **Staff-facing order notes** stay in English.
+
 Carts last 24 hours after the last message. Limits: 20 different lines, 25 of each, 100 items in total.
 
 ### What YES confirms
@@ -138,7 +163,7 @@ Compare accepted parses with the orders staff actually prepared. Unmatched names
 
 ## Deploying and rolling back
 
-1. Apply `supabase/migrations/20261113090000_whatsapp_chat_ordering_v1.sql` to Supabase **before** deploying the app code (migration-first). It checks itself and aborts if a write policy appears on the parse log or any of these objects become reachable from the browser.
+1. Apply `supabase/migrations/20261113090000_whatsapp_chat_ordering_v1.sql` (and, for v1.1, `20261114090000_whatsapp_chat_order_language.sql`) to Supabase **before** deploying the app code (migration-first). It checks itself and aborts if a write policy appears on the parse log or any of these objects become reachable from the browser.
 2. Deploy. Existing pilot restaurants start in **Approved numbers only** with their numbers kept.
 3. Optional: set `WHATSAPP_ORDER_AI_MODEL`; check `GEMINI_API_KEY` is set.
 

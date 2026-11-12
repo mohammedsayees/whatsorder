@@ -4,6 +4,7 @@
 // verifyCartAgainstMenu (see whatsapp-order-flow.ts).
 import { cartLineKey, configuredUnitPrice } from "@/lib/cart-line";
 import type { CartLine, CartLineOption, MenuItem, MenuOption, MenuOptionCatalog, MenuOptionGroup } from "@/lib/types";
+import { CHAT_COPY, type ChatError, type ChatLang } from "@/lib/whatsapp-order-i18n";
 
 export const QUOTE_TTL_MS = 10 * 60_000;
 export const MAX_LINES = 20;
@@ -37,6 +38,8 @@ export type ChatOrderDraft = {
   noteLines?: ChatLineNote[];
   /** Derived from noteLines; read by apply_whatsapp_order_command. */
   notes?: string;
+  /** Reply language for this conversation; also read by apply_whatsapp_order_command. */
+  lang?: ChatLang;
 };
 
 export type ChatMenu = { items: MenuItem[]; catalog: MenuOptionCatalog };
@@ -44,10 +47,22 @@ export type ChatMenu = { items: MenuItem[]; catalog: MenuOptionCatalog };
 export const emptyChatOrder = (): ChatOrderDraft => ({ cart: [], name: "", token: "", quotedAt: null, orderId: null });
 
 const ARABIC_DIGITS = /[٠-٩۰-۹]/g;
+/**
+ * Lower-cased, whitespace-collapsed text for matching. Arabic spelling
+ * variants customers type interchangeably are unified (alef/hamza forms, ya,
+ * taa marbuta, vowel marks, tatweel) on both the message and menu names.
+ */
 export function normalizeChatText(text: string) {
   return text
     .normalize("NFKC")
     .replace(ARABIC_DIGITS, d => String((d.charCodeAt(0) & 0xf) % 10))
+    .replace(/[ً-ٰٟـ]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/،/g, ",")
     .toLowerCase()
     .replace(/[.!?؟]+$/g, "")
     .replace(/\s+/g, " ")
@@ -66,56 +81,75 @@ export function matchChatItem(text: string, items: MenuItem[]) {
 // ---------------------------------------------------------------------------
 // Deterministic parsing (fast path)
 
-const LEAD = /^(?:hi|hello|hey|salam)?[, ]*(?:please )?(?:i would like(?: to order)?|i'd like(?: to order)?|i want(?: to order)?|can i (?:have|get|order)|could i (?:have|get)|please add|add|order|give me|get me)\s+/;
-const TRAIL = /\s+(?:please|pls|plz|thanks|thank you)$/;
+// Arabic patterns are written in normalizeChatText's normalized spelling (ابغى → ابغي).
+const AR_LEAD = "ابي|ابغي|ابا|اريد|بغيت|عطني|اعطني|ممكن|ضيف|اضف";
+const LEAD = new RegExp(`^(?:hi|hello|hey|salam|مرحبا|السلام عليكم)?[, ]*(?:please )?(?:i would like(?: to order)?|i'd like(?: to order)?|i want(?: to order)?|can i (?:have|get|order)|could i (?:have|get)|please add|add|order|give me|get me|${AR_LEAD})\\s+`);
+const TRAIL = /\s+(?:please|pls|plz|thanks|thank you|لو سمحت|من فضلك)$/;
 const WORD_QUANTITIES: Record<string, number> = {
-  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  واحد: 1, اثنين: 2, اثنان: 2, ثنين: 2, ثلاث: 3, ثلاثه: 3, اربع: 4, اربعه: 4, خمس: 5, خمسه: 5
 };
+const REMOVE = /^(?:remove|delete|احذف|حذف|شيل|ازل|ازاله)\s+/;
+const SET_VERBS = "make it|make that|change it to|change that to|set|update|خليها|خليه|خلي|خلها|خله|غيرها|غيره";
+// "make it 3 karak", "change karak to 3", "only 1 karak", "خليها 3 كرك". Quantity 0 removes.
+const SET_PATTERNS: Array<{ pattern: RegExp; quantity: number; query: number }> = [
+  { pattern: new RegExp(`^(?:${SET_VERBS})\\s+(\\d+)\\s+(.+)$`), quantity: 1, query: 2 },
+  { pattern: /^(?:change|update|make|set)\s+(.+?)\s+to\s+(\d+)$/, quantity: 2, query: 1 },
+  { pattern: /^(?:only|just|بس|فقط)\s+(\d+)\s+(.+)$/, quantity: 1, query: 2 }
+];
 
 export type ParsedChatSegment = { query: string; quantity: number; matches: MenuItem[] };
-export type ParsedChatOrder = { op: "add" | "remove"; segments: ParsedChatSegment[] };
+export type ParsedChatOrder = { op: "add" | "remove" | "set"; segments: ParsedChatSegment[] };
 
 function splitQuantity(segment: string): { quantity: number; query: string } | null {
   let match = segment.match(/^(\d+)\s*(?:x\s*)?(.+)$/);
   if (match) return { quantity: Number(match[1]), query: match[2].trim() };
   match = segment.match(/^(.+?)\s*(?:x\s*|\*\s*)(\d+)$/);
   if (match) return { quantity: Number(match[2]), query: match[1].trim() };
-  match = segment.match(/^([a-z]+)\s+(.+)$/);
+  match = segment.match(/^(\p{L}+)\s+(.+)$/u);
   if (match && WORD_QUANTITIES[match[1]] !== undefined) return { quantity: WORD_QUANTITIES[match[1]], query: match[2] };
   return segment ? { quantity: 1, query: segment } : null;
 }
 
 /** Splits "2 karak, 1 smash burger" into segments and matches each against the public menu. */
-export function parseChatOrderText(text: string, items: MenuItem[]): ParsedChatOrder | { error: string } {
-  const normalized = normalizeChatText(text.replace(/\n/g, ",")).replace(LEAD, "").replace(TRAIL, "");
-  const remove = /^(?:remove|delete)\s+/.test(normalized);
-  const segments = normalized.replace(/^(?:remove|delete)\s+/, "").split(/\s+and\s+|\s*[,&+;]\s*|\s+و\s+/)
+export function parseChatOrderText(text: string, items: MenuItem[]): ParsedChatOrder | { error: ChatError } {
+  const whole = normalizeChatText(text.replace(/\n/g, ",")).replace(TRAIL, "");
+  for (const { pattern, quantity, query } of SET_PATTERNS) {
+    const match = whole.match(pattern);
+    if (!match) continue;
+    const amount = Number(match[quantity]);
+    if (!Number.isInteger(amount) || amount < 0 || amount > MAX_QUANTITY) return { error: { code: "quantity_range" } };
+    return { op: "set", segments: [{ query: match[query].trim(), quantity: amount, matches: matchChatItem(match[query], items) }] };
+  }
+  const normalized = whole.replace(LEAD, "");
+  const remove = REMOVE.test(normalized);
+  const segments = normalized.replace(REMOVE, "").split(/\s+and\s+|\s*[,&+;]\s*|\s+و\s+/)
     .map(s => s.trim()).filter(Boolean);
   if (!segments.length || segments.length > MAX_LINES) {
-    return { error: "Send item names and quantities, for example: 2 karak, 1 sandwich." };
+    return { error: { code: "shape" } };
   }
   const parsed: ParsedChatSegment[] = [];
   for (const segment of segments) {
     // A product name may start with digits ("7up"): prefer a whole-segment match.
     const whole = matchChatItem(segment, items);
     const split = splitQuantity(segment);
-    if (!split) return { error: "Please send an item name and a whole-number quantity." };
+    if (!split) return { error: { code: "quantity_whole" } };
     const exactWhole = whole.length === 1 &&
       [whole[0].name, whole[0].name_ar].some(n => n && normalizeChatText(n) === segment);
     const quantity = exactWhole ? 1 : split.quantity;
     const query = exactWhole ? segment : split.query;
     if (!remove && (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY)) {
-      return { error: `Choose a quantity from 1 to ${MAX_QUANTITY} per item.` };
+      return { error: { code: "quantity_range" } };
     }
     parsed.push({ query, quantity, matches: exactWhole ? whole : matchChatItem(query, items) });
   }
   return { op: remove ? "remove" : "add", segments: parsed };
 }
 
-const ORDER_COMMAND = /^(?:menu(?: \d+)?|order|takeaway|take away|new order|i want to order|i'd like to order|i would like to order|can i order|place an order|order please|i want to place an order)$/;
-const ORDER_VERB = /^(?:(?:hi|hello|hey|salam)[, ]+)?(?:please )?(?:i would like|i'd like|i want|i need|can i (?:have|get|order)|could i (?:have|get)|please add|add|order|give me|get me|remove|delete)\b/;
+const ORDER_COMMAND = /^(?:menu(?: \d+)?|order|takeaway|take away|new order|i want to order|i'd like to order|i would like to order|can i order|place an order|order please|i want to place an order|(?:منيو|القائمه|قائمه)(?: \d+)?|اطلب|طلب|طلب جديد|ابي اطلب|ابغي اطلب|اريد اطلب|سفري)$/;
+const ORDER_VERB = new RegExp(`^(?:(?:hi|hello|hey|salam|مرحبا)[, ]+)?(?:please )?(?:i would like|i'd like|i want|i need|can i (?:have|get|order)|could i (?:have|get)|please add|add|order|give me|get me|remove|delete|change|only|just|${SET_VERBS}|${AR_LEAD}|احذف|حذف|شيل|بس|فقط)(?:\\s|$)`);
 const SMALL_TALK = /^(?:hi|hello|hey|salam|salaam|good (?:morning|afternoon|evening)|thanks|thank you|thx|ok|okay|no|nope|bye|مرحبا|السلام عليكم|شكرا|ഹായ്|ഹലോ)$/;
-const QUESTION = /^(?:how|what|when|where|why|which|who|do you|does|is|are|can you|could you|will|any)\b|\?$|؟$/;
+const QUESTION = /^(?:how|what|when|where|why|which|who|do you|does|is|are|can you|could you|will|any|كم|متي|وين|فين|هل|ليش|ليه|شو|ايش|وش|اين)(?:\s|$)|\?$|؟$/;
 
 /**
  * Whether a message should go to chat ordering rather than the receptionist.
@@ -134,8 +168,23 @@ export function looksLikeChatOrder(text: string, items: MenuItem[]): boolean {
   return !("error" in parsed) && parsed.segments.every(s => s.matches.length > 0);
 }
 
-const YES = /^(?:yes|y|yes please|yes pls|yeah|yep|yup|confirm|confirmed|i confirm|نعم|ايوه|أيوه|اي|أجل|അതെ|ശരി)$/;
+// Matched after normalizeChatText, so Arabic forms are written normalized (أيوه → ايوه).
+const YES = /^(?:yes|y|yes please|yes pls|yeah|yep|yup|confirm|confirmed|i confirm|نعم|ايوه|اي|اجل|موافق|اكد|اكد الطلب|അതെ|ശരി)$/;
 export const isChatYes = (text: string) => YES.test(normalizeChatText(text));
+
+export type ChatCommand =
+  | { kind: "menu"; page: number } | { kind: "cart" } | { kind: "clear" } | { kind: "new_order" } | { kind: "order" };
+/** Fixed commands, in English or Arabic. */
+export function chatCommand(text: string): ChatCommand | null {
+  const normalized = normalizeChatText(text);
+  const menu = normalized.match(/^(?:menu|منيو|القائمه|قائمه)(?: (\d+))?$/);
+  if (menu) return { kind: "menu", page: Math.min(100, Math.max(1, Number(menu[1] ?? 1))) };
+  if (/^(?:cart|checkout|السله|سله|طلبي)$/.test(normalized)) return { kind: "cart" };
+  if (/^(?:clear|cancel|الغاء|الغي|امسح)$/.test(normalized)) return { kind: "clear" };
+  if (/^(?:new order|طلب جديد)$/.test(normalized)) return { kind: "new_order" };
+  if (/^(?:order|takeaway|take away|اطلب|طلب|سفري)$/.test(normalized)) return { kind: "order" };
+  return null;
+}
 export function chatConfirmCode(text: string): string | null {
   return normalizeChatText(text).match(/^confirm ([a-f0-9]{6,32})$/)?.[1] ?? null;
 }
@@ -252,15 +301,19 @@ export function answerPendingQuestion(text: string, line: PendingChatLine, menu:
   return { ...line, picks: [...line.picks, ...chosen.map(o => ({ option_id: o.id, group_id: o.group_id }))] };
 }
 
-export function describeQuestion(question: ChatQuestion, money: (n: number) => string): string {
+/** Arabic name when replying in Arabic and the menu has one. */
+export const localName = (entry: { name: string; name_ar?: string | null }, lang: ChatLang) =>
+  lang === "ar" && entry.name_ar ? entry.name_ar : entry.name;
+
+export function describeQuestion(question: ChatQuestion, money: (n: number) => string, lang: ChatLang = "en"): string {
+  const copy = CHAT_COPY[lang];
   if (question.kind === "item") {
-    return `Which one did you mean?\n${question.candidates.map((i, n) => `${n + 1}) ${i.name} — ${money(Number(i.price))}`).join("\n")}\nReply with a number.`;
+    return copy.chooseItem(question.candidates.map((i, n) => `${n + 1}) ${localName(i, lang)} — ${money(Number(i.price))}`).join("\n"));
   }
-  const how = question.need === question.max ? (question.need === 1 ? "choose one" : `choose ${question.need}`)
-    : `choose ${question.need}${Number.isFinite(question.max) ? ` to ${question.max}` : " or more"}`;
   const options = question.options.map((o, n) =>
-    `${n + 1}) ${o.name}${Number(o.price_delta) ? ` (${Number(o.price_delta) > 0 ? "+" : "−"}${money(Math.abs(Number(o.price_delta)))})` : ""}`);
-  return `${question.item.name} — ${question.group.name}, ${how}:\n${options.join("\n")}\nReply with ${question.need === 1 && question.max === 1 ? "a number" : "numbers, e.g. 1,2"}.`;
+    `${n + 1}) ${localName(o, lang)}${Number(o.price_delta) ? ` (${Number(o.price_delta) > 0 ? "+" : "−"}${money(Math.abs(Number(o.price_delta)))})` : ""}`);
+  return copy.chooseOptions(localName(question.item, lang), localName(question.group, lang), copy.how(question.need, question.max),
+    options.join("\n"), !(question.need === 1 && question.max === 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -285,20 +338,19 @@ export function withinCartLimits(cart: CartLine[]) {
   return cart.length <= MAX_LINES && cart.every(i => i.quantity <= MAX_QUANTITY) &&
     cart.reduce((sum, i) => sum + i.quantity, 0) <= MAX_TOTAL_QUANTITY;
 }
-export const CART_LIMIT_ERROR = `Chat orders support up to ${MAX_LINES} different items, ${MAX_QUANTITY} of each and ${MAX_TOTAL_QUANTITY} items in total. Your order has not changed.`;
 
 /** Adds resolved lines to the cart (same configuration → same line); the cart is unchanged on error. */
 export function mergeIntoCart(cart: CartLine[], lines: PendingChatLine[], menu: ChatMenu):
-  { cart: CartLine[]; error?: never } | { error: string; cart?: never } {
+  { cart: CartLine[]; error?: never } | { error: ChatError; cart?: never } {
   const next = cart.map(i => ({ ...i }));
   for (const line of lines) {
     const cartLine = toCartLine(line, menu);
-    if (!cartLine) return { error: "An item you chose is no longer available. Your order has not changed." };
+    if (!cartLine) return { error: { code: "item_unavailable" } };
     const existing = next.find(i => cartLineKey(i) === cartLineKey(cartLine));
     if (existing) existing.quantity += cartLine.quantity;
     else next.push(cartLine);
   }
-  return withinCartLimits(next) ? { cart: next } : { error: CART_LIMIT_ERROR };
+  return withinCartLimits(next) ? { cart: next } : { error: { code: "cart_limit" } };
 }
 
 /** Keeps notes only for items still in the cart and derives the order note text. */

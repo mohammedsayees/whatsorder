@@ -2,6 +2,7 @@
 // stored parse result is described with today's menu names; ids that no longer
 // exist are shown as removed rather than trusted.
 import type { ChatParseResult } from "@/lib/whatsapp-order-flow";
+import { describeChatError } from "@/lib/whatsapp-order-i18n";
 
 export type ParseLogRow = {
   id: number;
@@ -56,7 +57,14 @@ export function describeParse(parsed: unknown, names: Names): string {
   if (!result) return "—";
   switch (result.kind) {
     case "not_order": return "Passed to the receptionist";
-    case "error": return result.message.slice(0, 200);
+    case "error": {
+      // v1 rows stored English text; v1.1 rows store an error code.
+      const legacy = (result as { message?: unknown }).message;
+      if (typeof legacy === "string") return legacy.slice(0, 200);
+      return result.error && typeof result.error === "object" ? describeChatError(result.error, "en") : "—";
+    }
+    case "set": return result.lines.map(line =>
+      line.quantity === 0 ? `Remove ${itemName(line.item_id, names)}` : `Set ${itemName(line.item_id, names)} to ${line.quantity}`).join("; ");
     case "unmatched": return result.queries.length ? `Not on the menu: ${result.queries.slice(0, 5).join(", ")}` : "Not on the menu";
     case "remove": return `Remove ${result.item_ids.map(id => itemName(id, names)).join(", ")}`;
     case "add": return result.lines.map(line => {
@@ -67,5 +75,6 @@ export function describeParse(parsed: unknown, names: Names): string {
       const note = line.note?.trim();
       return `${line.quantity} × ${what}${options.length ? ` (${options.join(", ")})` : ""}${note ? ` — ${note}` : ""}`;
     }).join("; ");
+    default: return "—";
   }
 }

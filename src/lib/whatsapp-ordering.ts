@@ -139,6 +139,7 @@ export async function handleWhatsAppOrderMessage(input: {
       money: amount => formatCurrency(amount, restaurant),
       menuLink: `${input.baseUrl.replace(/\/$/, "")}/r/${encodeURIComponent(restaurant.slug)}`,
       handoffMessage: settings.handoff_message,
+      languageMode: settings.language_mode,
       newToken: () => randomBytes(6).toString("hex"),
       parse
     });
