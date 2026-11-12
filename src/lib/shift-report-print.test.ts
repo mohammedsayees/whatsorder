@@ -49,6 +49,7 @@ const report: ShiftCloseReportSnapshot = {
   upi_other_income_total: 0,
   bank_other_income_total: 0,
   other_income_breakdown: {},
+  credit_repayment_total: 0,
   combined_operational_receipts: 230,
   report_generated_at: "2026-07-17T15:20:00.000Z",
   correction_reason: null

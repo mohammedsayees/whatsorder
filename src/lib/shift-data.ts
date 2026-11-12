@@ -255,7 +255,9 @@ export async function getShiftCloseReportView(
 
 
 export type LateShiftReceipt = { id: string; shift_id: string; total: number;
-  payment_method: string; created_at: string; punched_at: string | null };
+  payment_method: string; created_at: string; punched_at: string | null;
+  /** Report version that includes this receipt, or null if it is still only an addendum. */
+  included_in_report_version: number | null };
 
 export async function getLateShiftReceipts(session: RestaurantAdminSession, shiftId?: string): Promise<LateShiftReceipt[]> {
   // Report callers have already checked ownership of the selected shift.
@@ -268,5 +270,25 @@ export async function getLateShiftReceipts(session: RestaurantAdminSession, shif
   if (shiftId) query = query.eq("shift_id", shiftId);
   const { data, error } = await query;
   if (error) throw new Error("Late shift receipts could not be loaded.");
-  return (data ?? []) as LateShiftReceipt[];
+  const receipts = (data ?? []) as Omit<LateShiftReceipt, "included_in_report_version">[];
+  if (!receipts.length) return [];
+
+  const shiftIds = [...new Set(receipts.map((receipt) => receipt.shift_id))];
+  const { data: shifts, error: shiftError } = await db.from("restaurant_shifts")
+    .select("id,close_report_version,close_report_generated_at")
+    .eq("restaurant_id", session.restaurantId).in("id", shiftIds);
+  if (shiftError) throw new Error("Late shift receipts could not be loaded.");
+  const reportById = new Map((shifts ?? []).map((shift) => [shift.id as string, shift]));
+
+  // The database recalculates the shift report in the same transaction that
+  // saves a late receipt, unless its business day was already closed. A report
+  // generated at or after the receipt was saved therefore includes it.
+  return receipts.map((receipt) => {
+    const report = reportById.get(receipt.shift_id);
+    const version = Number(report?.close_report_version ?? 0);
+    const generatedAt = report?.close_report_generated_at as string | null | undefined;
+    const included = version > 0 && Boolean(generatedAt) &&
+      Date.parse(generatedAt as string) >= Date.parse(receipt.created_at);
+    return { ...receipt, included_in_report_version: included ? version : null };
+  });
 }

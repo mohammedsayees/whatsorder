@@ -205,6 +205,12 @@ export default async function ShiftCloseReportPage({
               ))}
             </div>
           ) : <p className="mt-2 text-sm text-stone-500">No non-sales income was recorded.</p>}
+          {report.credit_repayment_total > 0 ? (
+            <p className="mt-2 text-xs text-stone-500">
+              Customer credit repayments ({money(report.credit_repayment_total)}) are counted in cash and card
+              reconciliation, but not again in total receipts: the credit sale was already counted when the order completed.
+            </p>
+          ) : null}
         </section>
 
         <section className="mt-6">

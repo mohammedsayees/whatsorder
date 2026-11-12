@@ -515,8 +515,8 @@ export type ChangePaymentState = {
 
 // Lets staff correct a mis-punched Cash/Card. Changes are audited in
 // order_payment_events. Correcting an order in a CLOSED shift is restricted to
-// managers/owners, because it cannot retroactively fix that shift's already
-// finalized cash/card totals.
+// managers/owners; the database then saves a new shift report version with the
+// recalculated expected cash/card. Shifts in a closed business day are final.
 export async function changeOrderPaymentMethodAction(
   _previousState: ChangePaymentState,
   formData: FormData
@@ -549,6 +549,7 @@ export async function changeOrderPaymentMethodAction(
       "Order not found",
       "Set payment when completing the order",
       "Only management can correct a closed shift payment",
+      "This shift belongs to a closed business day and can no longer be corrected",
       "Customer Credit must be corrected from the credit ledger"
     ];
     return { error: knownErrors.find((message) => error?.message.includes(message)) ??

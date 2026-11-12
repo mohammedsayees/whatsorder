@@ -46,6 +46,10 @@ function finiteNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 function nullableString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -231,9 +235,16 @@ export function parseShiftCloseReportSnapshot(
   const cardOtherIncomeTotal = finiteNumber(value.card_other_income_total) ?? 0;
   const upiOtherIncomeTotal = finiteNumber(value.upi_other_income_total) ?? 0;
   const bankOtherIncomeTotal = finiteNumber(value.bank_other_income_total) ?? 0;
-  const combinedOperationalReceipts =
-    finiteNumber(value.combined_operational_receipts) ??
-    numbers.combined_operational_sales! + otherIncomeTotal;
+  const otherIncomeBreakdown = isRecord(value.other_income_breakdown)
+    ? value.other_income_breakdown as ShiftCloseReportSnapshot["other_income_breakdown"]
+    : {};
+  const creditRepaymentTotal = finiteNumber(value.credit_repayment_total) ??
+    finiteNumber(otherIncomeBreakdown.customer_credit_repayment) ?? 0;
+  // Derived rather than read, so reports saved before credit repayments were
+  // excluded (they settle sales already counted) display the corrected total.
+  const combinedOperationalReceipts = roundMoney(
+    numbers.combined_operational_sales! + otherIncomeTotal - creditRepaymentTotal
+  );
   const upiReported = value.upi_reported_total === null
     ? null
     : finiteNumber(value.upi_reported_total);
@@ -297,9 +308,8 @@ export function parseShiftCloseReportSnapshot(
     card_other_income_total: cardOtherIncomeTotal,
     upi_other_income_total: upiOtherIncomeTotal,
     bank_other_income_total: bankOtherIncomeTotal,
-    other_income_breakdown: isRecord(value.other_income_breakdown)
-      ? value.other_income_breakdown as ShiftCloseReportSnapshot["other_income_breakdown"]
-      : {},
+    other_income_breakdown: otherIncomeBreakdown,
+    credit_repayment_total: creditRepaymentTotal,
     combined_operational_receipts: combinedOperationalReceipts,
     report_generated_at: value.report_generated_at as string,
     correction_reason: nullableString(value.correction_reason)

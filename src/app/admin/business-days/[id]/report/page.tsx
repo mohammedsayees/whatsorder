@@ -68,6 +68,12 @@ export default async function BusinessDayReportPage({
             <Metric highlight label="Total receipts" value={money(report.total_operational_receipts)} />
           </dl>
           <p className="mt-2 text-xs text-stone-500">Other income remains separate from order sales, order count and average order value.</p>
+          {report.credit_repayment_total > 0 ? (
+            <p className="mt-1 text-xs text-stone-500">
+              Total receipts exclude customer credit repayments ({money(report.credit_repayment_total)}): those sales were
+              already counted when the credit orders completed.
+            </p>
+          ) : null}
         </section>
 
         <section className="mt-6 grid gap-5 md:grid-cols-2">

@@ -82,5 +82,18 @@ export function parseBusinessDayCloseReportSnapshot(
   });
   if (!validShifts) return null;
 
-  return value as unknown as BusinessDayCloseReportSnapshot;
+  const breakdown = isRecord(value.other_income_breakdown) ? value.other_income_breakdown : {};
+  const repayment = Number(value.credit_repayment_total ?? breakdown.customer_credit_repayment ?? 0);
+  const creditRepaymentTotal = Number.isFinite(repayment) ? repayment : 0;
+  const combinedSales = value.combined_operational_sales as number;
+  const otherIncome = value.other_income_total as number;
+
+  return {
+    ...(value as unknown as BusinessDayCloseReportSnapshot),
+    credit_repayment_total: creditRepaymentTotal,
+    // Derived so days closed before the fix also exclude repayments, whose
+    // sales were already counted when the credit order completed.
+    total_operational_receipts:
+      Math.round((combinedSales + otherIncome - creditRepaymentTotal) * 100) / 100
+  };
 }
