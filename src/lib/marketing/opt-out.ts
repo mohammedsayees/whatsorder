@@ -32,6 +32,9 @@ function normalizeKeyword(value: string): string {
       // Zero-width / bidi marks phones insert around RTL text.
       .replace(/[​-‏‪-‮⁦-⁩﻿]/g, "")
       .trim()
+      // Customers copying the keyword from a caption often copy its quotes.
+      .replace(/^["'«“”„‘’]+|["'«»“”„‘’]+$/g, "")
+      .trim()
       .toLowerCase()
   );
 }

@@ -17,9 +17,10 @@ import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 import type { PosterCopyFacts } from "./copy";
 import { dominantLogoColor } from "./logo-color";
-import { savingStampLabel, trimWholeAmount } from "./offer-math";
+import { posterPriceText, savingStampLabel } from "./offer-math";
 import { buildPalette, normalizeHex, type PosterPalette } from "./palette";
 import { DEFAULT_POSTER_THEME, isPosterThemeId } from "./themes";
+import { FESTIVALS, festivalsForCountry, isFestivalId } from "./festivals";
 import type {
   PosterBranding,
   PosterSubject,
@@ -36,8 +37,8 @@ const EMBED_MAX_EDGE = 1200;
 export type PosterSubjectBundle = {
   subject: PosterSubject;
   facts: Omit<PosterCopyFacts, "templateId">;
-  /** What AI artwork (art.ts) would be made from. Never sent to the copy model. */
-  art: {
+  /** What AI artwork (art.ts) would be made from (null: no dish). Never sent to the copy model. */
+  art: null | {
     menuItemId: string;
     imageUrl: string | null;
     productName: string;
@@ -297,7 +298,7 @@ async function buildBestsellerSubject(
     },
     subject: {
       title: item.name,
-      priceLine: trimWholeAmount(priceLine),
+      priceLine: posterPriceText(priceLine),
       originalPriceLine: null,
       savingLabel: null,
       photoDataUri: photo?.square ?? null,
@@ -363,8 +364,8 @@ async function buildOfferSubject(
     },
     subject: {
       title: offer.title || item.name,
-      priceLine: trimWholeAmount(priceLine),
-      originalPriceLine: originalPriceLine ? trimWholeAmount(originalPriceLine) : null,
+      priceLine: posterPriceText(priceLine),
+      originalPriceLine: originalPriceLine ? posterPriceText(originalPriceLine) : null,
       savingLabel: savingStampLabel(item.price, offer.promotional_price, (amount) =>
         formatCurrency(amount, restaurant)
       ),
@@ -389,17 +390,118 @@ async function buildOfferSubject(
  * Null → the subject doesn't exist for this tenant (or isn't currently
  * sellable), which the API surfaces as a 404.
  */
+/** A dish poster without sales claims (new item, festival feature). */
+async function buildItemSubject(
+  admin: SupabaseClient,
+  restaurant: Restaurant,
+  menuItemId: string
+): Promise<PosterSubjectBundle | null> {
+  const bundle = await buildBestsellerSubject(admin, restaurant, menuItemId);
+  if (!bundle) return null;
+  bundle.subject.soldQty = null;
+  bundle.facts.soldQty = null;
+  return bundle;
+}
+
+function buildLoyaltySubject(restaurant: Restaurant): PosterSubjectBundle | null {
+  if (restaurant.loyalty_enabled === false) {
+    return null;
+  }
+  const stamps = Math.max(1, Math.round(Number(restaurant.loyalty_stamps_required ?? 10)));
+  const reward = (restaurant.loyalty_reward_description ?? "").trim() || "a free treat";
+  return {
+    art: null,
+    subject: {
+      title: reward,
+      priceLine: null,
+      originalPriceLine: null,
+      savingLabel: null,
+      photoDataUri: null,
+      photoTallDataUri: null,
+      soldQty: null,
+      loyalty: { stamps, reward }
+    },
+    facts: {
+      restaurantName: restaurant.name,
+      itemName: reward,
+      priceLines: [],
+      soldQty: null,
+      market: marketLabel(restaurant),
+      loyaltyStamps: stamps,
+      loyaltyReward: reward
+    }
+  };
+}
+
+async function buildFestivalSubject(
+  admin: SupabaseClient,
+  restaurant: Restaurant,
+  festivalId: string,
+  menuItemId: string | undefined
+): Promise<PosterSubjectBundle | null> {
+  if (!isFestivalId(festivalId)) return null;
+  const offered = festivalsForCountry(getRestaurantLocalization(restaurant).country_code);
+  if (!offered.some((festival) => festival.id === festivalId)) return null;
+  const festival = FESTIVALS[festivalId];
+  if (menuItemId) {
+    const bundle = await buildItemSubject(admin, restaurant, menuItemId);
+    if (!bundle) return null;
+    bundle.subject.festival = festivalId;
+    bundle.facts.occasion = festival.label;
+    return bundle;
+  }
+  return {
+    art: null,
+    subject: {
+      title: festival.greeting,
+      priceLine: null,
+      originalPriceLine: null,
+      savingLabel: null,
+      photoDataUri: null,
+      photoTallDataUri: null,
+      soldQty: null,
+      festival: festivalId
+    },
+    facts: {
+      restaurantName: restaurant.name,
+      itemName: restaurant.name,
+      priceLines: [],
+      soldQty: null,
+      market: marketLabel(restaurant),
+      occasion: festival.label
+    }
+  };
+}
+
+/**
+ * Resolve the owner's template + subject pick into render-ready subject data.
+ * Null → the subject doesn't exist for this tenant (or isn't currently
+ * sellable / enabled), which the API surfaces as a 404.
+ */
 export async function buildPosterSubjectBundle(
   admin: SupabaseClient,
   restaurant: Restaurant,
   templateId: PosterTemplateId,
   subjectRef: PosterSubjectRef
 ): Promise<PosterSubjectBundle | null> {
-  if (templateId === "bestseller" && "menu_item_id" in subjectRef) {
-    return buildBestsellerSubject(admin, restaurant, subjectRef.menu_item_id);
+  switch (templateId) {
+    case "bestseller":
+      return "menu_item_id" in subjectRef && subjectRef.menu_item_id && !("festival" in subjectRef)
+        ? buildBestsellerSubject(admin, restaurant, subjectRef.menu_item_id)
+        : null;
+    case "new_item":
+      return "menu_item_id" in subjectRef && subjectRef.menu_item_id && !("festival" in subjectRef)
+        ? buildItemSubject(admin, restaurant, subjectRef.menu_item_id)
+        : null;
+    case "offer":
+      return "offer_id" in subjectRef ? buildOfferSubject(admin, restaurant, subjectRef.offer_id) : null;
+    case "loyalty":
+      return "loyalty" in subjectRef ? buildLoyaltySubject(restaurant) : null;
+    case "festival":
+      return "festival" in subjectRef
+        ? buildFestivalSubject(admin, restaurant, subjectRef.festival, subjectRef.menu_item_id)
+        : null;
+    default:
+      return null;
   }
-  if (templateId === "offer" && "offer_id" in subjectRef) {
-    return buildOfferSubject(admin, restaurant, subjectRef.offer_id);
-  }
-  return null;
 }

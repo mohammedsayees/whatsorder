@@ -25,7 +25,10 @@ import {
 import { renderPosterPng } from "@/lib/poster/render";
 import { discardPosterArtifacts } from "@/lib/poster/store";
 import { buildPosterBranding, buildPosterSubjectBundle } from "@/lib/poster/subjects";
+import { isFestivalId } from "@/lib/poster/festivals";
+import { posterLanguageAllowed } from "@/lib/poster/language";
 import {
+  isPosterFormat,
   POSTER_BUCKET,
   isPosterTemplateId,
   layoutForVariant,
@@ -51,6 +54,10 @@ type GenerateBody = {
   forceTypographic?: unknown;
   /** "default": every variant in the restaurant's theme; "mix": one per theme. */
   themeMode?: unknown;
+  /** "story" (9:16, default) | "portrait" (4:5) | "square" (1:1). */
+  format?: unknown;
+  /** "en" (default) | "ar" — Arabic only for restaurants with Arabic-speaking customers. */
+  language?: unknown;
 };
 
 type GeneratedVariant = {
@@ -62,6 +69,7 @@ type GeneratedVariant = {
   shareCaption: string;
   variantIndex: number;
   theme: string;
+  format: string;
 };
 
 function parseSubjectRef(value: unknown): PosterSubjectRef | null {
@@ -69,6 +77,14 @@ function parseSubjectRef(value: unknown): PosterSubjectRef | null {
     return null;
   }
   const candidate = value as Record<string, unknown>;
+  if (candidate.loyalty === true) {
+    return { loyalty: true };
+  }
+  if (isFestivalId(candidate.festival)) {
+    return typeof candidate.menu_item_id === "string" && candidate.menu_item_id
+      ? { festival: candidate.festival, menu_item_id: candidate.menu_item_id }
+      : { festival: candidate.festival };
+  }
   if (typeof candidate.menu_item_id === "string" && candidate.menu_item_id) {
     return { menu_item_id: candidate.menu_item_id };
   }
@@ -114,6 +130,8 @@ export async function POST(request: Request) {
     );
   }
   const templateId = body.templateId;
+  const format = isPosterFormat(body.format) ? body.format : "story";
+  const language = body.language === "ar" && posterLanguageAllowed(restaurant) ? "ar" : "en";
 
   const [bundle, branding] = await Promise.all([
     buildPosterSubjectBundle(admin, restaurant, templateId, subjectRef),
@@ -161,13 +179,13 @@ export async function POST(request: Request) {
   // it in the background for next time. Text-only posters skip it entirely.
   let artStatus: PosterArtStatus = "none";
   const [copyVariants, artPlan] = await Promise.all([
-    generateCopyVariants({ templateId, ...bundle.facts }),
-    body.forceTypographic === true
+    generateCopyVariants({ templateId, ...bundle.facts, language }),
+    body.forceTypographic === true || !bundle.art
       ? Promise.resolve(null)
       : planPosterArt(admin, {
           restaurantId,
           userId: resolution.session.userId,
-          art: bundle.art
+          art: bundle.art!
         }).catch((error: unknown) => {
           console.error("WhatsOrder poster art plan failed", error);
           return null;
@@ -223,6 +241,8 @@ export async function POST(request: Request) {
         templateId,
         layout,
         branding: { ...branding, theme },
+        format,
+        language,
         subject: bundle.subject,
         copy,
         cta: { qrDataUri }
@@ -242,7 +262,7 @@ export async function POST(request: Request) {
         restaurant_id: restaurantId,
         template_id: templateId,
         subject_ref: subjectRef,
-        copy: { ...copy, variant_index: variantIndex, layout, theme },
+        copy: { ...copy, variant_index: variantIndex, layout, theme, format, language },
         storage_path: storagePath,
         status: "rendered"
       });
@@ -272,7 +292,8 @@ export async function POST(request: Request) {
         copy,
         shareCaption: buildPosterCaption(copy.caption, { storeLink }),
         variantIndex,
-        theme
+        theme,
+        format
       };
     })
   );

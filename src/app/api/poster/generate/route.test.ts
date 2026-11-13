@@ -10,6 +10,7 @@ let failInsertForVariant: number | null = null;
 let slowVariant: number | null = null;
 const renderedCtas: { qrDataUri: string | null }[] = [];
 const renderedThemes: (string | undefined)[] = [];
+const renderedFormats: string[] = [];
 const renderedArt: { cutout: unknown; background: unknown }[] = [];
 let artPlan: { status: string; kind: string; dataUri: string | null; start?: () => Promise<void> } | null = null;
 const planCalls: unknown[] = [];
@@ -70,11 +71,14 @@ vi.mock("@/lib/poster/render", () => ({
     copy: { headline: string };
     cta?: { qrDataUri: string | null };
     branding?: { theme?: string };
+    format?: string;
+    language?: string;
     subject?: { cutoutDataUri?: unknown; backgroundDataUri?: unknown };
   }) => {
     renderedArt.push({ cutout: input.subject?.cutoutDataUri, background: input.subject?.backgroundDataUri });
     if (input.cta) renderedCtas.push(input.cta);
     renderedThemes.push(input.branding?.theme);
+    renderedFormats.push(`${input.format}/${input.language}`);
     if (slowVariant !== null && input.copy.headline === `H${slowVariant}`) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -153,6 +157,7 @@ beforeEach(() => {
   uploads.length = 0;
   renderedCtas.length = 0;
   renderedThemes.length = 0;
+  renderedFormats.length = 0;
   renderedArt.length = 0;
   planCalls.length = 0;
   scheduled.length = 0;
@@ -288,4 +293,13 @@ describe("POST /api/poster/generate", () => {
       expect(response.status).toBe(200);
     });
   });
+
+  it("renders the chosen format and language, defaulting unknown values to story / English", async () => {
+    await POST(request({ format: "square", language: "ar" }));
+    expect(renderedFormats).toEqual(["square/ar", "square/ar", "square/ar"]);
+    renderedFormats.length = 0;
+    await POST(request({ format: "billboard", language: "fr" }));
+    expect(renderedFormats).toEqual(["story/en", "story/en", "story/en"]);
+  });
 });
+

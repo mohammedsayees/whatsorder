@@ -46,3 +46,18 @@ describe("savingStampLabel", () => {
     expect(savingStampLabel(100, 99.5, aed)).toBeNull();
   });
 });
+
+describe("posterPriceText", () => {
+  it("spells the rupee sign out (the poster faces have no ₹ glyph)", async () => {
+    const { posterPriceText } = await import("./offer-math");
+    expect(posterPriceText("₹120.00")).toBe("Rs 120");
+    expect(posterPriceText("₹ 1,250")).toBe("Rs 1,250");
+    expect(posterPriceText("AED 12.00")).toBe("AED 12");
+  });
+
+  it("is used for INR savings too", () => {
+    const inr = (amount: number) =>
+      new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
+    expect(savingStampLabel(150, 110, inr)).toBe("SAVE Rs 40");
+  });
+});

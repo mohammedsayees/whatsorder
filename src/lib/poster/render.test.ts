@@ -15,7 +15,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { buildPosterTree, rasterizePosterSvg, renderPosterSvg } from "./render";
+import { buildPosterTree, posterSize, rasterizePosterSvg, renderPosterSvg } from "./render";
 import type { PosterNode } from "./templates/node";
 import { buildPalette } from "./palette";
 import { POSTER_THEME_IDS, type PosterThemeId } from "./themes";
@@ -216,6 +216,41 @@ const scenarios: { name: string; props: () => PosterProps }[] = [
     name: "AI background full-bleed (no photo)",
     props: () => makeProps("bestseller", { layout: "full_bleed", photo: false, background: true })
   },
+  // Phase 7: every template × format × composition.
+  ...(["story", "portrait", "square"] as const).flatMap((format) =>
+    (["photo_hero", "full_bleed", "stat_led"] as PosterLayoutId[]).flatMap((layout) => [
+      { name: `${format} bestseller ${layout}`, props: () => ({ ...makeProps("bestseller", { layout }), format }) },
+      {
+        name: `${format} offer ${layout}`,
+        props: () => ({ ...makeProps("offer", { layout, originalPriceLine: "AED 16", savingLabel: "25% OFF" }), format })
+      },
+      {
+        name: `${format} new item ${layout}`,
+        props: () => ({ ...makeProps("new_item", { layout, soldQty: null, photo: layout !== "full_bleed" }), format })
+      },
+      {
+        name: `${format} loyalty ${layout}`,
+        props: () => {
+          const base = makeProps("loyalty", { layout, photo: false, soldQty: null });
+          return { ...base, format, subject: { ...base.subject, priceLine: null, loyalty: { stamps: 8, reward: "a free karak" } } };
+        }
+      },
+      {
+        name: `${format} festival ${layout}`,
+        props: () => {
+          const base = makeProps("festival", { layout, photo: false, soldQty: null });
+          return { ...base, format, subject: { ...base.subject, priceLine: null, festival: "eid_al_fitr" as const } };
+        }
+      }
+    ])
+  ),
+  {
+    name: "festival Arabic-led Diwali-free Eid with featured dish",
+    props: () => {
+      const base = makeProps("festival", { soldQty: null });
+      return { ...base, language: "ar" as const, subject: { ...base.subject, festival: "eid_al_adha" as const } };
+    }
+  },
   {
     name: "bestseller with Arabic names",
     props: () =>
@@ -280,8 +315,9 @@ describe("poster render pipeline", () => {
       const png = rasterizePosterSvg(svg);
       const metadata = await sharp(png).metadata();
       expect(metadata.format).toBe("png");
-      expect(metadata.width).toBe(POSTER_WIDTH);
-      expect(metadata.height).toBe(POSTER_HEIGHT);
+      const size = posterSize(scenario.props());
+      expect(metadata.width).toBe(size.width);
+      expect(metadata.height).toBe(size.height);
       expect(png.byteLength).toBeGreaterThan(10_000);
       expect(png.byteLength).toBeLessThanOrEqual(POSTER_MAX_BYTES);
       // Food posters, not app screens: no big empty fields.
@@ -387,4 +423,38 @@ describe("poster render pipeline", () => {
     const noPhoto = JSON.stringify(buildPosterTree(makeProps("bestseller", { cutout: true, photo: false })));
     expect(noPhoto).not.toContain(cutoutDataUri);
   });
+
+  describe("Phase 7 content rules", () => {
+    it("loyalty shows the restaurant's real stamp count and reward", () => {
+      const base = makeProps("loyalty", { photo: false, soldQty: null });
+      for (const layout of ["photo_hero", "full_bleed", "stat_led"] as PosterLayoutId[]) {
+        const texts = textsOf(
+          buildPosterTree({ ...base, layout, subject: { ...base.subject, priceLine: null, loyalty: { stamps: 7, reward: "a free karak" } } })
+        ).join(" | ");
+        expect(texts, layout).toMatch(/7/);
+        expect(texts, layout).toMatch(/a free karak/);
+        expect(texts, layout).not.toMatch(/\b10\b/);
+      }
+    });
+
+    it("festival greetings are code-owned, Arabic-led on Arabic posters", () => {
+      const base = makeProps("festival", { photo: false, soldQty: null });
+      const subject = { ...base.subject, priceLine: null, festival: "eid_al_fitr" as const };
+      const english = textsOf(buildPosterTree({ ...base, subject }));
+      expect(english).toContain("Eid Mubarak");
+      const arabic = JSON.stringify(buildPosterTree({ ...base, subject, language: "ar" }));
+      // The Arabic greeting comes first in the tree when the poster is Arabic.
+      expect(arabic.indexOf("مبارك")).toBeLessThan(arabic.indexOf("Eid Mubarak"));
+    });
+
+    it("never draws a rupee sign the fonts can't render", () => {
+      const base = makeProps("bestseller");
+      const texts = textsOf(
+        buildPosterTree({ ...base, subject: { ...base.subject, priceLine: "₹120" }, copy: { ...base.copy, headline: "Only ₹120 today" } })
+      ).join(" ");
+      expect(texts).not.toContain("₹");
+      expect(texts).toContain("Rs 120");
+    });
+  });
 });
+

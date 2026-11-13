@@ -28,7 +28,7 @@ import {
   type PosterTheme
 } from "./themes";
 import type { PosterBranding, PosterCallToAction } from "./types";
-import { POSTER_WIDTH } from "./types";
+import { POSTER_FORMAT_SIZES, POSTER_WIDTH, type PosterFormat } from "./types";
 import { box, img, text, type PosterNode, type PosterStyle } from "./templates/node";
 
 export const WHITE = "#ffffff";
@@ -41,6 +41,31 @@ export const WHATSAPP_GREEN = "#25d366";
 // helper.
 
 let activeTheme: PosterTheme = POSTER_THEMES[DEFAULT_POSTER_THEME];
+let activeFormat: PosterFormat = "story";
+
+export function currentFormat(): PosterFormat {
+  return activeFormat;
+}
+
+/** Canvas height of the active format. */
+export function canvasHeight(): number {
+  return POSTER_FORMAT_SIZES[activeFormat].height;
+}
+
+/** The value for the active format. */
+export function pick<T>(values: Record<PosterFormat, T>): T {
+  return values[activeFormat];
+}
+
+export function withPosterContext<T>(theme: PosterTheme, format: PosterFormat, build: () => T): T {
+  const previous = activeFormat;
+  activeFormat = format;
+  try {
+    return withTheme(theme, build);
+  } finally {
+    activeFormat = previous;
+  }
+}
 
 export function currentTheme(): PosterTheme {
   return activeTheme;
@@ -134,13 +159,28 @@ export function rgbList(hex: string): string {
   return `${r},${g},${b}`;
 }
 
-export const PAD = 72;
-export const CONTENT_WIDTH = POSTER_WIDTH - PAD * 2;
+/** Outer margin for the active format. */
+export function pad(): number {
+  return pick({ story: 72, portrait: 64, square: 56 });
+}
+
+/** Full content width for the active format. */
+export function contentWidth(): number {
+  return POSTER_WIDTH - pad() * 2;
+}
+
 /**
  * Lower content blocks are anchored this far from the bottom edge — just
  * above the call-to-action — so longer copy grows upward instead of running
  * into the CTA.
  */
+export function aboveCta(): number {
+  return pick({ story: 304, portrait: 268, square: 226 });
+}
+
+/** Story-format values, kept for callers that only ever build 9:16. */
+export const PAD = 72;
+export const CONTENT_WIDTH = POSTER_WIDTH - PAD * 2;
 export const ABOVE_CTA = 304;
 
 export { BODY_FONT };
@@ -220,10 +260,12 @@ export function fitFont(
  * `layout` styles (margins, width) apply to the outer element either way.
  */
 export function richText(
-  value: string,
+  rawValue: string,
   style: PosterStyle,
   layout: PosterStyle = {}
 ): PosterNode {
+  // The display faces have no rupee glyph; never draw an empty box.
+  const value = rawValue.replace(/₹\s*/g, "Rs ");
   if (!hasArabic(value)) {
     return text({ ...style, ...layout }, value);
   }
@@ -233,7 +275,7 @@ export function richText(
       ? layout.maxWidth
       : typeof layout.width === "number"
         ? layout.width
-        : CONTENT_WIDTH;
+        : contentWidth();
   const maxLines = typeof style.lineClamp === "number" ? style.lineClamp : 6;
 
   const lines: string[][] = [];
@@ -294,7 +336,13 @@ export function balancedWidth(
     words.reduce((sum, word) => sum + word.length * charEm * size, 0) +
     (words.length - 1) * size * 0.24;
   const longest = Math.max(...words.map((word) => word.length * charEm * size));
-  return Math.min(maxWidth, Math.max(longest, Math.ceil((total / lines) * 1.14)));
+  // Start from an even split, then widen until it still wraps into the same
+  // number of lines (an even split can force an extra line).
+  let width = Math.max(longest, Math.ceil((total / lines) * 1.14));
+  while (width < maxWidth && wrapEstimate(value, size, width, charEm).lines > lines) {
+    width = Math.ceil(width * 1.05);
+  }
+  return Math.min(maxWidth, width);
 }
 
 export function displayText(
@@ -419,7 +467,7 @@ export function brandBlock(
         padding: branding.logoDataUri ? "8px 30px 8px 8px" : "16px 30px"
       }
     : {};
-  return box({ flexDirection: "row", alignItems: "center", maxWidth: CONTENT_WIDTH, ...plate }, [
+  return box({ flexDirection: "row", alignItems: "center", maxWidth: contentWidth(), ...plate }, [
     branding.logoDataUri
       ? box(
           {
@@ -446,7 +494,7 @@ export function brandBlock(
       branding.restaurantName,
       branding.logoDataUri ? 38 : 44,
       color,
-      { maxWidth: CONTENT_WIDTH - (branding.logoDataUri ? size + 40 : 0) },
+      { maxWidth: contentWidth() - (branding.logoDataUri ? size + 40 : 0) },
       { lineClamp: 1, letterSpacing: 0.5 }
     )
   ]);
@@ -467,18 +515,24 @@ export function ctaBlock(
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      width: CONTENT_WIDTH,
+      width: contentWidth(),
       ...layout
     },
     [
       box({ flexDirection: "column", flexShrink: 1 }, [
         box({ flexDirection: "row", alignItems: "center" }, [
-          img(svgDataUri(whatsappGlyphSvg()), { width: 88, height: 88, marginRight: 22 }),
+          img(svgDataUri(whatsappGlyphSvg()), {
+            width: pick({ story: 88, portrait: 80, square: 68 }),
+            height: pick({ story: 88, portrait: 80, square: 68 }),
+            marginRight: 22
+          }),
           text(
             {
               fontFamily: activeTheme.display.family,
               fontWeight: activeTheme.display.weight,
-              fontSize: Math.round(74 * Math.min(1, activeTheme.display.sizeScale + 0.05)),
+              fontSize: Math.round(
+                pick({ story: 74, portrait: 66, square: 56 }) * Math.min(1, activeTheme.display.sizeScale + 0.05)
+              ),
               lineHeight: 1,
               color: colors.text,
               textTransform: activeTheme.display.transform
@@ -490,10 +544,10 @@ export function ctaBlock(
           {
             fontFamily: BODY_FONT,
             fontWeight: 700,
-            fontSize: 28,
+            fontSize: pick({ story: 28, portrait: 26, square: 24 }),
             color: colors.muted,
             marginTop: 12,
-            marginLeft: 110
+            marginLeft: pick({ story: 110, portrait: 102, square: 90 })
           },
           qr ? "Scan the code or tap the link" : "Tap the link in our message"
         )
@@ -507,7 +561,12 @@ export function ctaBlock(
               flexShrink: 0,
               marginLeft: 24
             },
-            [img(qr, { width: 180, height: 180 })]
+            [
+              img(qr, {
+                width: pick({ story: 180, portrait: 156, square: 128 }),
+                height: pick({ story: 180, portrait: 156, square: 128 })
+              })
+            ]
           )
         : null
     ]
@@ -747,8 +806,9 @@ export function giantLettering(
 export function texture(
   color: string,
   opacity = 0.14,
-  region: { top: number; height: number } = { top: 0, height: 1920 }
+  region?: { top: number; height: number }
 ): PosterNode {
+  region = region ?? { top: 0, height: canvasHeight() };
   return img(svgDataUri(textureSvg(activeTheme.texture, color, opacity, region.height)), {
     position: "absolute",
     top: region.top,
@@ -854,23 +914,59 @@ export function fade(
  * overall dim; a short top fade for the brand plate and a soft fade from just
  * below 55% of the height into charcoal, where the type sits on solid colour.
  */
+/** Full-bleed photo height and fade start, per format (top ~55% stays clear). */
+export function fullBleedGeometry(): { photoHeight: number; fadeTop: number } {
+  return pick({
+    story: { photoHeight: 1340, fadeTop: 1000 },
+    portrait: { photoHeight: 880, fadeTop: 700 },
+    square: { photoHeight: 1080, fadeTop: 0 }
+  });
+}
 export const FULL_BLEED_PHOTO_HEIGHT = 1340;
 export const FULL_BLEED_FADE_TOP = 1000;
 
 export function fullBleedPhoto(photo: string, scheme: PosterScheme): PosterNode[] {
   const dark = rgbList(scheme.base);
+  const { photoHeight, fadeTop } = fullBleedGeometry();
+  if (activeFormat === "square") {
+    // Square: the dish fills the right two-thirds; a sideways fade into the
+    // base colour carries the type on the left.
+    return [
+      // Texture first: the photo covers it, so it only shows on the base.
+      texture(scheme.onBase, 0.08, { top: 0, height: 1080 }),
+      img(photo, {
+        position: "absolute",
+        top: 0,
+        right: 0,
+        width: 760,
+        height: 1080,
+        objectFit: "cover"
+      }),
+      box(
+        {
+          position: "absolute",
+          top: 0,
+          left: 320,
+          width: 300,
+          height: 1080,
+          backgroundImage: `linear-gradient(90deg, rgba(${dark},1) 0%, rgba(${dark},0.8) 35%, rgba(${dark},0.3) 75%, rgba(${dark},0) 100%)`
+        },
+        []
+      )
+    ];
+  }
   return [
     // Texture only on the solid base below the photo, never over the dish.
     texture(scheme.onBase, 0.08, {
-      top: FULL_BLEED_PHOTO_HEIGHT,
-      height: 1920 - FULL_BLEED_PHOTO_HEIGHT
+      top: photoHeight,
+      height: canvasHeight() - photoHeight
     }),
     img(photo, {
       position: "absolute",
       top: 0,
       left: 0,
       width: POSTER_WIDTH,
-      height: FULL_BLEED_PHOTO_HEIGHT,
+      height: photoHeight,
       objectFit: "cover"
     }),
     fade(dark, { top: 0, height: 200, from: 0.35, to: 0, direction: "down" }),
@@ -879,9 +975,9 @@ export function fullBleedPhoto(photo: string, scheme: PosterScheme): PosterNode[
       {
         position: "absolute",
         left: 0,
-        top: FULL_BLEED_FADE_TOP,
+        top: fadeTop,
         width: "100%",
-        height: FULL_BLEED_PHOTO_HEIGHT - FULL_BLEED_FADE_TOP,
+        height: photoHeight - fadeTop,
         backgroundImage: `linear-gradient(180deg, rgba(${dark},0) 0%, rgba(${dark},0.35) 25%, rgba(${dark},0.72) 52%, rgba(${dark},0.92) 76%, rgba(${dark},1) 100%)`
       },
       []

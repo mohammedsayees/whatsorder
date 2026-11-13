@@ -7,6 +7,12 @@ import {
   sendWhatsAppImage,
   uploadWhatsAppMedia
 } from "@/lib/customer-auth/whatsapp-cloud";
+import { isSegmentFilter } from "@/lib/customer-insights";
+import {
+  CAMPAIGN_CHANNELS,
+  getSegmentMembers,
+  type CampaignChannel
+} from "@/lib/marketing/campaign";
 import { runMarketingSend } from "@/lib/marketing/send-pipeline";
 import { createMarketingSendStore } from "@/lib/marketing/send-store";
 import { buildMarketingCaption, posterStoreLink } from "@/lib/poster/caption";
@@ -48,8 +54,47 @@ export async function sendPosterToRecentCustomersAction(
   formData: FormData
 ): Promise<SendPosterState> {
   const session = await requireRestaurantRole([...MARKETING_ROLES]);
+  return sendPoster(session, String(formData.get("posterId") ?? ""));
+}
 
-  const posterId = String(formData.get("posterId") ?? "");
+/**
+ * Campaign send: one poster to the members of one customer segment, through
+ * exactly the same pipeline (consent, open window, frequency cap, ledger).
+ * Only the free in-window channel exists; paid template broadcasts are a
+ * declared seam that is rejected until implemented.
+ */
+export async function sendCampaignAction(
+  _prevState: SendPosterState,
+  formData: FormData
+): Promise<SendPosterState> {
+  const session = await requireRestaurantRole([...MARKETING_ROLES]);
+  const channel = String(formData.get("channel") ?? "service_window") as CampaignChannel;
+  if (!CAMPAIGN_CHANNELS[channel]?.available) {
+    return { error: "That sending option isn't available yet." };
+  }
+  const segment = String(formData.get("segment") ?? "");
+  if (!isSegmentFilter(segment)) {
+    return { error: "Pick a customer segment." };
+  }
+  // Fresh membership at send time; fail closed if it can't be read.
+  let members: Set<string>;
+  try {
+    members = new Set((await getSegmentMembers(session.restaurantId, segment)).members.map((member) => member.phone));
+  } catch {
+    return { error: "Couldn't load that segment right now, so nothing was sent. Try again shortly." };
+  }
+  const result = await sendPoster(session, String(formData.get("posterId") ?? ""), (phone) => members.has(phone));
+  revalidatePath("/admin/campaigns/new");
+  return result;
+}
+
+type MarketingSession = Awaited<ReturnType<typeof requireRestaurantRole>>;
+
+async function sendPoster(
+  session: MarketingSession,
+  posterId: string,
+  include?: (phone: string) => boolean
+): Promise<SendPosterState> {
   if (!posterId) {
     return { error: "Missing poster." };
   }
@@ -71,7 +116,14 @@ export async function sendPosterToRecentCustomersAction(
     return { error: "Sending is unavailable right now. Try again shortly." };
   }
 
-  const audience = await getMarketingAudience(session.restaurantId);
+  const fullAudience = await getMarketingAudience(session.restaurantId);
+  const audience = include
+    ? {
+        ...fullAudience,
+        recipients: fullAudience.recipients.filter((recipient) => include(recipient.phone)),
+        frequencyCapped: (fullAudience.cappedPhones ?? []).filter(include).length
+      }
+    : fullAudience;
   if (audience.readFailed) {
     // Fail closed, and leave any queued rows queued: a transient read error
     // must not mark customers as skipped.
@@ -81,13 +133,15 @@ export async function sendPosterToRecentCustomersAction(
   }
   const caption = buildMarketingCaption(
     poster.copy?.caption,
-    posterStoreLink(publicAppUrl(), session.restaurant.slug, posterId)
+    posterStoreLink(publicAppUrl(), session.restaurant.slug, posterId),
+    poster.copy?.language === "ar" ? "ar" : "en"
   );
 
   const result = await runMarketingSend({
     store,
     recipients: audience.recipients,
     caption,
+    ...(include ? { scope: include } : {}),
     prepareSender: async () => {
       const bytes = await downloadPosterBytes(poster.storage_path);
       if (!bytes) {

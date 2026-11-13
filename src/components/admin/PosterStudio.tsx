@@ -23,6 +23,9 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Award,
+  BadgePlus,
+  PartyPopper,
   Star,
   Tag,
   Type
@@ -38,7 +41,21 @@ import type {
   OfferOption
 } from "@/app/admin/marketing/page";
 
-type TemplateId = "bestseller" | "offer";
+type TemplateId = "bestseller" | "offer" | "new_item" | "loyalty" | "festival";
+type PosterFormatId = "story" | "portrait" | "square";
+
+const FORMATS: { id: PosterFormatId; label: string; aspect: string }[] = [
+  { id: "story", label: "Story 9:16", aspect: "aspect-[9/16]" },
+  { id: "portrait", label: "Feed 4:5", aspect: "aspect-[4/5]" },
+  { id: "square", label: "Square 1:1", aspect: "aspect-square" }
+];
+
+function aspectClass(format: string | undefined): string {
+  return FORMATS.find((entry) => entry.id === format)?.aspect ?? "aspect-[9/16]";
+}
+
+export type FestivalOption = { id: string; label: string; greeting: string };
+export type LoyaltyOption = { enabled: boolean; summary: string };
 
 type GeneratedVariant = {
   posterId: string;
@@ -49,6 +66,7 @@ type GeneratedVariant = {
   shareCaption: string;
   variantIndex: number;
   theme?: string;
+  format?: string;
 };
 
 type PosterUrlPair = {
@@ -68,6 +86,7 @@ type HistoryEntry = {
   shareCaption: string;
   sentCount: number;
   orderCount: number;
+  format?: string;
 };
 
 /** The poster the action panel is acting on: a fresh variant or a history entry. */
@@ -99,12 +118,34 @@ const TEMPLATE_CARDS: {
     label: "Offer",
     description: "Push an active offer while it runs.",
     icon: Tag
+  },
+  {
+    id: "new_item",
+    label: "New item",
+    description: "Announce a dish that just joined the menu.",
+    icon: BadgePlus
+  },
+  {
+    id: "loyalty",
+    label: "Loyalty",
+    description: "Invite customers to fill their stamp card.",
+    icon: Award
+  },
+  {
+    id: "festival",
+    label: "Festival",
+    description: "Greet customers for an occasion.",
+    icon: PartyPopper
   }
 ];
 
 export function PosterStudio({
   bestsellers,
   offers,
+  newItems,
+  loyalty,
+  festivals,
+  arabicAllowed,
   history,
   eligibleCount,
   themeLabels,
@@ -114,6 +155,13 @@ export function PosterStudio({
 }: {
   bestsellers: BestsellerOption[];
   offers: OfferOption[];
+  /** Newest available menu items (new-item template). */
+  newItems: BestsellerOption[];
+  loyalty: LoyaltyOption;
+  /** Occasions for the restaurant's country. */
+  festivals: FestivalOption[];
+  /** Offer Arabic posters (UAE or Arabic details set). */
+  arabicAllowed: boolean;
   history: HistoryEntry[];
   eligibleCount: number;
   /** Theme id → owner-facing name (from lib/poster/themes). */
@@ -130,6 +178,9 @@ export function PosterStudio({
     bestsellers[0]?.menuItemId ?? ""
   );
   const [textOnly, setTextOnly] = useState(false);
+  const [format, setFormat] = useState<PosterFormatId>("story");
+  const [language, setLanguage] = useState<"en" | "ar">("en");
+  const [featuredItemId, setFeaturedItemId] = useState<string>("");
   const [themeMode, setThemeMode] = useState<"default" | "mix">("default");
   const [artStatus, setArtStatus] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -179,20 +230,44 @@ export function PosterStudio({
           : option.priceLabel
       }));
     }
+    if (templateId === "new_item") {
+      return newItems.map((option) => ({
+        id: option.menuItemId,
+        label: option.name,
+        sublabel: option.priceLabel
+      }));
+    }
+    if (templateId === "loyalty") {
+      return loyalty.enabled ? [{ id: "loyalty", label: loyalty.summary, sublabel: "" }] : [];
+    }
+    if (templateId === "festival") {
+      return festivals.map((option) => ({ id: option.id, label: option.label, sublabel: option.greeting }));
+    }
     return offers.map((option) => ({
       id: option.offerId,
       label: option.title,
       sublabel: `Offer price ${option.priceLabel}`
     }));
-  }, [templateId, bestsellers, offers]);
+  }, [templateId, bestsellers, offers, newItems, loyalty, festivals]);
 
   function pickTemplate(next: TemplateId) {
     setTemplateId(next);
     setVariants([]);
     setError(null);
     const first =
-      next === "bestseller" ? bestsellers[0]?.menuItemId : offers[0]?.offerId;
+      next === "bestseller"
+        ? bestsellers[0]?.menuItemId
+        : next === "offer"
+          ? offers[0]?.offerId
+          : next === "new_item"
+            ? newItems[0]?.menuItemId
+            : next === "loyalty"
+              ? loyalty.enabled
+                ? "loyalty"
+                : ""
+              : festivals[0]?.id;
     setSubjectId(first ?? "");
+    setFeaturedItemId("");
   }
 
   async function generate() {
@@ -216,11 +291,17 @@ export function PosterStudio({
         body: JSON.stringify({
           templateId,
           subjectRef:
-            templateId === "bestseller"
-              ? { menu_item_id: subjectId }
-              : { offer_id: subjectId },
+            templateId === "offer"
+              ? { offer_id: subjectId }
+              : templateId === "loyalty"
+                ? { loyalty: true }
+                : templateId === "festival"
+                  ? { festival: subjectId, ...(featuredItemId ? { menu_item_id: featuredItemId } : {}) }
+                  : { menu_item_id: subjectId },
           forceTypographic: textOnly,
-          themeMode
+          themeMode,
+          format,
+          language: arabicAllowed ? language : "en"
         })
       });
       const payload = (await response.json()) as {
@@ -499,7 +580,11 @@ export function PosterStudio({
           {TEMPLATE_CARDS.map((card) => {
             const Icon = card.icon;
             const active = templateId === card.id;
-            const disabled = card.id === "offer" && offers.length === 0;
+            const disabled =
+              (card.id === "offer" && offers.length === 0) ||
+              (card.id === "loyalty" && !loyalty.enabled) ||
+              (card.id === "new_item" && newItems.length === 0) ||
+              (card.id === "festival" && festivals.length === 0);
             return (
               <button
                 className={`focus-ring rounded-xl border p-4 text-left transition ${
@@ -515,7 +600,13 @@ export function PosterStudio({
                 <Icon className={active ? "text-leaf" : "text-stone-400"} size={22} />
                 <p className="mt-2 font-black text-ink">{card.label}</p>
                 <p className="mt-0.5 text-xs text-stone-600">
-                  {disabled ? "No active offers right now." : card.description}
+                  {disabled
+                    ? card.id === "loyalty"
+                      ? "Turn on the stamp card in Settings first."
+                      : card.id === "offer"
+                        ? "No active offers right now."
+                        : "Nothing to show yet."
+                    : card.description}
                 </p>
               </button>
             );
@@ -555,11 +646,69 @@ export function PosterStudio({
           </div>
         ) : (
           <p className="mt-3 rounded-lg bg-stone-100 p-4 text-sm text-stone-600">
-            {templateId === "bestseller"
-              ? "Add at least one available menu item to generate a poster."
-              : "No active offers — create one under Menu first."}
+            {templateId === "offer"
+              ? "No active offers — create one under Menu first."
+              : templateId === "loyalty"
+                ? "Your stamp card is off. Turn it on in Settings to make loyalty posters."
+                : "Add at least one available menu item to generate a poster."}
           </p>
         )}
+        {templateId === "festival" && bestsellers.length > 0 ? (
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-stone-600">
+            Feature a dish (optional):
+            <select
+              className="focus-ring rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm"
+              onChange={(event) => setFeaturedItemId(event.target.value)}
+              value={featuredItemId}
+            >
+              <option value="">No dish — greeting only</option>
+              {bestsellers.map((option) => (
+                <option key={option.menuItemId} value={option.menuItemId}>
+                  {option.name} · {option.priceLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-semibold text-stone-600">Format:</span>
+          {FORMATS.map((entry) => (
+            <button
+              aria-pressed={format === entry.id}
+              className={`focus-ring rounded-full border px-3 py-1.5 font-bold transition ${
+                format === entry.id ? "border-leaf bg-leaf text-white" : "border-stone-200 bg-white text-ink hover:border-leaf"
+              }`}
+              key={entry.id}
+              onClick={() => setFormat(entry.id)}
+              type="button"
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        {arabicAllowed ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold text-stone-600">Language:</span>
+            {(
+              [
+                ["en", "English"],
+                ["ar", "العربية"]
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                aria-pressed={language === id}
+                className={`focus-ring rounded-full border px-3 py-1.5 font-bold transition ${
+                  language === id ? "border-leaf bg-leaf text-white" : "border-stone-200 bg-white text-ink hover:border-leaf"
+                }`}
+                key={id}
+                onClick={() => setLanguage(id)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-sm font-semibold text-stone-600">
           <input
             checked={textOnly}
@@ -648,7 +797,7 @@ export function PosterStudio({
           <div className="mt-4 grid grid-cols-3 gap-3">
             {[0, 1, 2].map((index) => (
               <div
-                className="aspect-[9/16] animate-pulse rounded-xl bg-stone-200"
+                className={`${aspectClass(format)} animate-pulse rounded-xl bg-stone-200`}
                 key={index}
               />
             ))}
@@ -672,7 +821,7 @@ export function PosterStudio({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt={`Poster variant ${index + 1}: ${variant.copy.headline}`}
-                  className="aspect-[9/16] w-full object-cover"
+                  className={`${aspectClass(variant.format)} w-full object-cover`}
                   onError={() => recoverImage(variant.posterId)}
                   src={previewFor(variant.posterId, variant.previewUrl) ?? undefined}
                 />
@@ -715,12 +864,12 @@ export function PosterStudio({
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     alt={`${entry.templateId} poster`}
-                    className="aspect-[9/16] w-full object-cover transition group-hover:opacity-90"
+                    className={`${aspectClass(entry.format)} w-full object-cover transition group-hover:opacity-90`}
                     onError={() => recoverImage(entry.id)}
                     src={previewFor(entry.id, entry.previewUrl) ?? undefined}
                   />
                 ) : (
-                  <div className="aspect-[9/16] w-full bg-stone-100" />
+                  <div className={`${aspectClass(entry.format)} w-full bg-stone-100`} />
                 )}
                 <p className="truncate px-2 pt-1 text-[11px] font-bold capitalize text-stone-500">
                   {entry.templateId}

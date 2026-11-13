@@ -277,6 +277,8 @@ export type MarketingAudience = {
   recipients: InWindowRecipient[];
   /** In-window, consented customers held back by the frequency cap. */
   frequencyCapped: number;
+  /** Phones of those held back by the frequency cap (for campaign breakdowns). */
+  cappedPhones?: string[];
   /** A read failed: the audience is empty because we fail closed, not because nobody is eligible. */
   readFailed?: true;
 };
@@ -380,7 +382,10 @@ export async function getMarketingAudience(
     .map((row) => ({ conversationId: row.id, phone: row.customer_phone }));
   return {
     recipients,
-    frequencyCapped: consentedInWindow.length - recipients.length
+    frequencyCapped: consentedInWindow.length - recipients.length,
+    cappedPhones: consentedInWindow
+      .filter((row) => recentlyMarketed.has(row.customer_phone))
+      .map((row) => row.customer_phone)
   };
 }
 

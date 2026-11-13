@@ -9,6 +9,15 @@ export function trimWholeAmount(formatted: string): string {
 }
 
 /**
+ * A formatted amount as set on a poster: trailing ".00" dropped, and "₹"
+ * spelled "Rs" because the poster display faces have no rupee glyph (it would
+ * render as an empty box).
+ */
+export function posterPriceText(formatted: string): string {
+  return trimWholeAmount(formatted).replace(/₹\s*/g, "Rs ").trim();
+}
+
+/**
  * The saving stamp for an offer, or null when there is no real cut.
  *
  * Picks the rounder, more striking figure:
@@ -48,7 +57,7 @@ export function savingStampLabel(
     return `${Math.round(percent)}% OFF`;
   }
   if (wholeSaving) {
-    return `SAVE ${trimWholeAmount(formatAmount(savingMinor / 100))}`;
+    return `SAVE ${posterPriceText(formatAmount(savingMinor / 100))}`;
   }
   if (percent >= 5) {
     return `${Math.floor(percent)}% OFF`;
