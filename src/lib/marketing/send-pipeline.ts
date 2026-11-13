@@ -68,6 +68,11 @@ export async function runMarketingSend(input: {
   caption: string;
   /** Lazily prepares the sender (e.g. uploads media) only if work remains. */
   prepareSender: () => Promise<MarketingSender | null>;
+  /**
+   * Narrows this run (a campaign's segment). Ledger rows outside the scope are
+   * left exactly as they are — not sent, not skipped.
+   */
+  scope?: (phone: string) => boolean;
   budgetMs?: number;
   concurrency?: number;
   now?: () => number;
@@ -96,6 +101,9 @@ export async function runMarketingSend(input: {
   const toSend: MarketingSendRow[] = [];
   const noLongerEligible: string[] = [];
   for (const row of rows) {
+    if (input.scope && !input.scope(row.customer_phone)) {
+      continue;
+    }
     if (row.status === "queued" || row.status === "failed") {
       if (eligible.has(row.customer_phone)) {
         toSend.push(row);

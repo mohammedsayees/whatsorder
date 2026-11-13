@@ -16,6 +16,10 @@ import { posterAttributionSource } from "@/lib/attribution";
 export const WHATSAPP_CAPTION_MAX = 1024;
 
 export const MARKETING_OPT_OUT_LINE = "Reply STOP to opt out.";
+/** Arabic posters: "To unsubscribe send «إيقاف»" (matched by lib/marketing/opt-out.ts). */
+export const MARKETING_OPT_OUT_LINE_AR = "للإلغاء أرسل «إيقاف».";
+
+const OPT_OUT_LINES = [MARKETING_OPT_OUT_LINE, MARKETING_OPT_OUT_LINE_AR];
 
 const SEPARATOR = "\n\n";
 
@@ -45,15 +49,22 @@ function stripAll(text: string, fragment: string): string {
  */
 export function buildPosterCaption(
   aiCaption: string | null | undefined,
-  options: { storeLink?: string | null; optOut?: boolean } = {}
+  options: { storeLink?: string | null; optOut?: boolean; language?: "en" | "ar" } = {}
 ): string {
   const storeLink = options.storeLink?.trim() || null;
   const tail = [
     storeLink,
-    options.optOut ? MARKETING_OPT_OUT_LINE : null
+    options.optOut
+      ? options.language === "ar"
+        ? MARKETING_OPT_OUT_LINE_AR
+        : MARKETING_OPT_OUT_LINE
+      : null
   ].filter((part): part is string => Boolean(part));
 
-  let body = stripAll(aiCaption ?? "", MARKETING_OPT_OUT_LINE);
+  let body = aiCaption ?? "";
+  for (const line of OPT_OUT_LINES) {
+    body = stripAll(body, line);
+  }
   if (storeLink) {
     body = stripAll(body, storeLink);
   }
@@ -76,7 +87,8 @@ export function buildPosterCaption(
 /** The caption sent with a marketing poster: AI text + link + opt-out line. */
 export function buildMarketingCaption(
   aiCaption: string | null | undefined,
-  storeLink?: string | null
+  storeLink?: string | null,
+  language: "en" | "ar" = "en"
 ): string {
-  return buildPosterCaption(aiCaption, { storeLink, optOut: true });
+  return buildPosterCaption(aiCaption, { storeLink, optOut: true, language });
 }

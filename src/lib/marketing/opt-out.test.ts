@@ -21,7 +21,9 @@ describe("isMarketingOptOutKeyword", () => {
     " إلغاء ",
     "‏إيقاف‏", // RTL marks phones insert
     "إلـغـاء", // tatweel
-    "ＳＴＯＰ" // full-width (NFKC)
+    "ＳＴＯＰ", // full-width (NFKC)
+    "«إيقاف»", // copied with the caption's quotes
+    '"STOP"'
   ])("matches %j", (text) => {
     expect(isMarketingOptOutKeyword(text)).toBe(true);
   });

@@ -1,6 +1,7 @@
 // lib/poster/types.ts
 //
 import type { PosterPalette } from "./palette";
+import type { FestivalId } from "./festivals";
 import type { PosterThemeId } from "./themes";
 
 // Poster Studio (Phase 1). Poster Studio is a generator, not an editor: the
@@ -8,7 +9,13 @@ import type { PosterThemeId } from "./themes";
 // tenant data and AI copy, and the pipeline renders a fixed-layout PNG. No
 // layout/font/color input ever crosses this boundary.
 
-export const POSTER_TEMPLATE_IDS = ["bestseller", "offer"] as const;
+export const POSTER_TEMPLATE_IDS = [
+  "bestseller",
+  "offer",
+  "new_item",
+  "loyalty",
+  "festival"
+] as const;
 export type PosterTemplateId = (typeof POSTER_TEMPLATE_IDS)[number];
 
 export function isPosterTemplateId(value: unknown): value is PosterTemplateId {
@@ -34,8 +41,23 @@ export function layoutForVariant(variantIndex: number): PosterLayoutId {
   ];
 }
 
-// All v1 templates are WhatsApp-status-first: 9:16 vertical.
+// Formats: 9:16 (WhatsApp status / stories), 4:5 (feed) and 1:1 (square).
+// Each composition is laid out per format (templates/frames.ts), not scaled.
+export const POSTER_FORMATS = ["story", "portrait", "square"] as const;
+export type PosterFormat = (typeof POSTER_FORMATS)[number];
+
+export function isPosterFormat(value: unknown): value is PosterFormat {
+  return typeof value === "string" && (POSTER_FORMATS as readonly string[]).includes(value);
+}
+
+export const POSTER_FORMAT_SIZES: Record<PosterFormat, { width: number; height: number; label: string }> = {
+  story: { width: 1080, height: 1920, label: "Story 9:16" },
+  portrait: { width: 1080, height: 1350, label: "Feed 4:5" },
+  square: { width: 1080, height: 1080, label: "Square 1:1" }
+};
+
 export const POSTER_WIDTH = 1080;
+/** Height of the default (story) format. */
 export const POSTER_HEIGHT = 1920;
 
 // WhatsApp rejects images above 5 MB; the render pipeline enforces this cap.
@@ -44,10 +66,15 @@ export const POSTER_MAX_BYTES = 5 * 1024 * 1024;
 // Private storage bucket; objects live at {restaurant_id}/{poster_id}.png.
 export const POSTER_BUCKET = "posters";
 
-/** What the owner picked. Exactly one id is set, matching template_id. */
+/** What the owner picked, matching template_id. */
 export type PosterSubjectRef =
   | { menu_item_id: string }
-  | { offer_id: string };
+  | { offer_id: string }
+  | { loyalty: true }
+  | { festival: FestivalId; menu_item_id?: string };
+
+/** Poster language: English, or Arabic for Arabic-speaking audiences. */
+export type PosterLanguage = "en" | "ar";
 
 /** AI-written copy. Caps are enforced at generation AND validated in code. */
 export type PosterCopy = {
@@ -97,6 +124,10 @@ export type PosterSubject = {
   backgroundDataUri?: string | null;
   /** Units sold in the window get_bestsellers looked at; 0 on cold start. */
   soldQty: number | null;
+  /** Loyalty template: the restaurant's real stamp-card terms. */
+  loyalty?: { stamps: number; reward: string } | null;
+  /** Festival template: the occasion picked by the owner. */
+  festival?: FestivalId | null;
 };
 
 export type PosterCallToAction = {
@@ -107,6 +138,10 @@ export type PosterCallToAction = {
 export type PosterProps = {
   templateId: PosterTemplateId;
   layout: PosterLayoutId;
+  /** Defaults to story (9:16). */
+  format?: PosterFormat;
+  /** Copy language; decides which festival greeting leads. Defaults to en. */
+  language?: PosterLanguage;
   branding: PosterBranding;
   subject: PosterSubject;
   copy: PosterCopy;
@@ -125,7 +160,13 @@ export type PosterRow = {
   restaurant_id: string;
   template_id: PosterTemplateId;
   subject_ref: PosterSubjectRef;
-  copy: PosterCopy & { variant_index: number; layout?: PosterLayoutId; theme?: PosterThemeId };
+  copy: PosterCopy & {
+    variant_index: number;
+    layout?: PosterLayoutId;
+    theme?: PosterThemeId;
+    format?: PosterFormat;
+    language?: PosterLanguage;
+  };
   storage_path: string;
   status: PosterStatus;
   created_at: string;

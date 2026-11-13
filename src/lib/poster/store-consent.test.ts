@@ -123,7 +123,8 @@ describe("frequency cap", () => {
     const now = Date.parse("2026-11-13T12:00:00.000Z");
     await expect(getMarketingAudience("rest-1", now)).resolves.toEqual({
       recipients: [{ conversationId: "c1", phone: "971500000001" }],
-      frequencyCapped: 1
+      frequencyCapped: 1,
+      cappedPhones: ["971500000002"]
     });
     // Tenant-scoped, only the consented in-window phones, and `sending`
     // rows (unknown outcome) count as sent.
