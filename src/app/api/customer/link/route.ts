@@ -10,22 +10,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyLinkToken } from "@/lib/customer-auth/tokens";
 import { setCustomerSession } from "@/lib/customer-auth/cookies";
+import { safeCustomerLinkNext } from "@/lib/customer-auth/safe-next";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Only allow same-origin relative redirects (prevents open-redirect abuse via
- * the `next` param). Must start with a single "/" and not "//".
- */
-function safeNext(next: string | null): string {
-  if (next && /^\/(?!\/)/.test(next)) return next;
-  return "/";
-}
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = req.nextUrl.searchParams.get("token");
-  const next = safeNext(req.nextUrl.searchParams.get("next"));
+  const next = safeCustomerLinkNext(req.nextUrl.searchParams.get("next"));
 
   if (!token) {
     return NextResponse.redirect(new URL("/?auth=missing", req.nextUrl.origin));

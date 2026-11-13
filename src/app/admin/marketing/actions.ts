@@ -14,6 +14,7 @@ import {
   setPosterStatus
 } from "@/lib/poster/store";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
 
 const MARKETING_ROLES = ["restaurant_admin", "owner", "manager"] as const;
 
@@ -47,11 +48,18 @@ export async function sendPosterToRecentCustomersAction(
     return { error: "Poster not found." };
   }
 
+  if (!(await restaurantOwnsCloudNumber(session.restaurantId))) {
+    return {
+      error:
+        "Sharing posters needs your own WhatsApp Business number, which isn't set up yet. Download the poster and post it as your WhatsApp status instead."
+    };
+  }
+
   const recipients = await getInWindowRecipients(session.restaurantId);
   if (recipients.length === 0) {
     return {
       error:
-        "No customers have an open 24-hour chat window right now. Download the poster and post it as your WhatsApp status instead."
+        "No customers who opted in to marketing have an open 24-hour chat window right now. Download the poster and post it as your WhatsApp status instead."
     };
   }
 

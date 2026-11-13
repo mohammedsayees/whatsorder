@@ -813,9 +813,50 @@ export type BillingCronSummary = {
   aged: number;
   suspended: number;
   cancelled: number;
+  failed: number;
 };
 
 const CRON_ACTOR: BillingActor = { userId: null, role: "system" };
+
+/** Issue the invoice for one cycle. Returns true if a new invoice was created. */
+async function issueCycleInvoice(
+  admin: Admin,
+  subscription: Subscription,
+  plan: Plan,
+  periodStart: string,
+  periodEnd: string,
+  issuedDate: string
+): Promise<boolean> {
+  const { data: priorInvoice, error: priorError } = await admin
+    .from("invoices")
+    .select("id")
+    .eq("idempotency_key", invoiceIdempotencyKey(subscription.id, periodStart))
+    .maybeSingle();
+  if (priorError) {
+    throw new Error(`Existing invoice could not be checked: ${priorError.message}`);
+  }
+  const yearly = subscription.billing_interval === "yearly";
+  await issueInvoiceForPeriod(admin, {
+    subscription: {
+      ...subscription,
+      billing_cycle_start: periodStart,
+      billing_cycle_end: periodEnd
+    },
+    plan,
+    periodStart,
+    periodEnd,
+    issuedDate,
+    description: yearly
+      ? `${plan.name} annual plan — ${periodStart} to ${periodEnd}`
+      : `${plan.name} plan — ${periodLabel(periodStart)}`,
+    descriptionAr: plan.name_ar
+      ? yearly
+        ? `${plan.name_ar} — ${periodStart} to ${periodEnd}`
+        : `${plan.name_ar} — ${periodLabel(periodStart)}`
+      : null
+  });
+  return !priorInvoice;
+}
 
 export async function runDailyBilling(now: Date = new Date()): Promise<BillingCronSummary> {
   const admin = getAdmin();
@@ -827,12 +868,16 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
     invoicesIssued: 0,
     aged: 0,
     suspended: 0,
-    cancelled: 0
+    cancelled: 0,
+    failed: 0
   };
 
-  // 1. Trial conversion: trial elapsed → active, enrolled into the calendar
-  //    cycle. Stub days until the next 1st are free; first invoice issues on
-  //    the next renewal pass.
+  // 1. Trial conversion: trial elapsed → active, enrolled into a cycle.
+  //    Monthly: stub days until the next 1st are free; the first invoice
+  //    issues on the next renewal pass. Yearly: the new cycle runs a full year,
+  //    so its invoice must issue now — otherwise the first year is never
+  //    billed. The yearly cycle is anchored on the trial end date (not today)
+  //    so a retried run reuses the same invoice idempotency key.
   const { data: trialing } = await admin
     .from("subscriptions")
     .select("*")
@@ -840,17 +885,43 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
     .not("trial_ends_at", "is", null)
     .lte("trial_ends_at", nowIso);
   for (const subscription of (trialing as Subscription[] | null) ?? []) {
-    const cycle = billingCycleFor(subscription.billing_interval, todayStr);
-    await transitionStatus(admin, subscription, "active", "Trial ended", CRON_ACTOR, {
-      billing_cycle_start: cycle.start,
-      billing_cycle_end: cycle.end,
-      trial_ends_at: null
-    });
-    summary.trialConverted += 1;
+    try {
+      const anchor =
+        subscription.billing_interval === "yearly" && subscription.trial_ends_at
+          ? subscription.trial_ends_at.slice(0, 10)
+          : todayStr;
+      const cycle = billingCycleFor(subscription.billing_interval, anchor);
+      if (subscription.billing_interval === "yearly") {
+        const plan = await fetchPlan(admin, subscription.plan_id);
+        if (!plan) {
+          throw new Error("Plan not found");
+        }
+        if (
+          await issueCycleInvoice(admin, subscription, plan, cycle.start, cycle.end, todayStr)
+        ) {
+          summary.invoicesIssued += 1;
+        }
+      }
+      await transitionStatus(admin, subscription, "active", "Trial ended", CRON_ACTOR, {
+        billing_cycle_start: cycle.start,
+        billing_cycle_end: cycle.end,
+        trial_ends_at: null
+      });
+      summary.trialConverted += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error("WhatsOrder billing: trial conversion failed", {
+        subscriptionId: subscription.id,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
-  // 2. Renew + generate: period ended and not cancelling → roll to the new
-  //    calendar month and issue the next invoice (idempotent).
+  // 2. Renew + generate: period ended and not cancelling → issue the next
+  //    invoice, THEN roll the cycle. Issue-first means a failed issue leaves
+  //    the subscription due, so the next run retries it (idempotent) instead
+  //    of silently skipping the period. Each subscription is isolated so one
+  //    failure cannot abort billing for the rest.
   const { data: dueForRenewal } = await admin
     .from("subscriptions")
     .select("*")
@@ -858,47 +929,41 @@ export async function runDailyBilling(now: Date = new Date()): Promise<BillingCr
     .eq("cancel_at_period_end", false)
     .lt("billing_cycle_end", todayStr);
   for (const subscription of (dueForRenewal as Subscription[] | null) ?? []) {
-    const plan = await fetchPlan(admin, subscription.plan_id);
-    if (!plan) {
-      continue;
-    }
-    const cycle = billingCycleFor(subscription.billing_interval, todayStr);
-    const periodStart = cycle.start;
-    const periodEnd = cycle.end;
-
-    const { data: rolled } = await admin
-      .from("subscriptions")
-      .update({ billing_cycle_start: periodStart, billing_cycle_end: periodEnd })
-      .eq("id", subscription.id)
-      .eq("restaurant_id", subscription.restaurant_id)
-      .select("*")
-      .single();
-    summary.renewed += 1;
-
-    const { data: priorInvoice } = await admin
-      .from("invoices")
-      .select("id")
-      .eq("idempotency_key", invoiceIdempotencyKey(subscription.id, periodStart))
-      .maybeSingle();
-
-    await issueInvoiceForPeriod(admin, {
-      subscription: (rolled as Subscription | null) ?? subscription,
-      plan,
-      periodStart,
-      periodEnd,
-      issuedDate: todayStr,
-      description:
+    try {
+      const plan = await fetchPlan(admin, subscription.plan_id);
+      if (!plan) {
+        continue;
+      }
+      // Yearly cycles follow on from the previous one (deterministic, so a
+      // retry reuses the same idempotency key); monthly snaps to the month.
+      const cycle = billingCycleFor(
+        subscription.billing_interval,
         subscription.billing_interval === "yearly"
-          ? `${plan.name} annual plan — ${periodStart} to ${periodEnd}`
-          : `${plan.name} plan — ${periodLabel(periodStart)}`,
-      descriptionAr: plan.name_ar
-        ? subscription.billing_interval === "yearly"
-          ? `${plan.name_ar} — ${periodStart} to ${periodEnd}`
-          : `${plan.name_ar} — ${periodLabel(periodStart)}`
-        : null
-    });
-    if (!priorInvoice) {
-      summary.invoicesIssued += 1;
+          ? addDays(subscription.billing_cycle_end, 1)
+          : todayStr
+      );
+
+      if (
+        await issueCycleInvoice(admin, subscription, plan, cycle.start, cycle.end, todayStr)
+      ) {
+        summary.invoicesIssued += 1;
+      }
+
+      const { error: rollError } = await admin
+        .from("subscriptions")
+        .update({ billing_cycle_start: cycle.start, billing_cycle_end: cycle.end })
+        .eq("id", subscription.id)
+        .eq("restaurant_id", subscription.restaurant_id);
+      if (rollError) {
+        throw new Error(`Cycle roll failed: ${rollError.message}`);
+      }
+      summary.renewed += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error("WhatsOrder billing: renewal failed", {
+        subscriptionId: subscription.id,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 

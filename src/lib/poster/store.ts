@@ -156,11 +156,54 @@ export async function getInWindowRecipients(
     console.error("WhatsOrder poster: recipients read failed", error.code);
     return [];
   }
-  return ((data ?? []) as {
+  const inWindow = ((data ?? []) as {
     id: string;
     customer_phone: string;
     last_inbound_at: string | null;
-  }[])
-    .filter((row) => isWithinServiceWindow(row.last_inbound_at))
+  }[]).filter((row) => isWithinServiceWindow(row.last_inbound_at));
+  if (inWindow.length === 0) {
+    return [];
+  }
+
+  // A poster is marketing: an open chat window is not consent. Keep only
+  // customers of THIS restaurant with a live marketing opt-in. Fails closed —
+  // a consent read error sends to nobody.
+  const { data: customers, error: consentError } = await admin
+    .from("customers")
+    .select(
+      "phone, marketing_opt_in, consent_marketing, marketing_consent_withdrawn_at"
+    )
+    .eq("restaurant_id", restaurantId)
+    .in(
+      "phone",
+      inWindow.map((row) => row.customer_phone)
+    );
+  if (consentError) {
+    console.error("WhatsOrder poster: consent read failed", consentError.code);
+    return [];
+  }
+  const consented = new Set(
+    ((customers ?? []) as MarketingConsentRow[])
+      .filter(hasMarketingConsent)
+      .map((row) => row.phone)
+  );
+
+  return inWindow
+    .filter((row) => consented.has(row.customer_phone))
     .map((row) => ({ conversationId: row.id, phone: row.customer_phone }));
+}
+
+export type MarketingConsentRow = {
+  phone: string;
+  marketing_opt_in: boolean | null;
+  consent_marketing: boolean | null;
+  marketing_consent_withdrawn_at: string | null;
+};
+
+export function hasMarketingConsent(row: MarketingConsentRow): boolean {
+  return (
+    row.marketing_opt_in === true &&
+    row.consent_marketing === true &&
+    !row.marketing_consent_withdrawn_at
+  );
 }

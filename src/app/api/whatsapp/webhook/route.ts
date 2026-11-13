@@ -35,8 +35,12 @@ import {
   sendWhatsAppText,
   verifyMetaSignature
 } from "@/lib/customer-auth/whatsapp-cloud";
-import { getDefaultRestaurant } from "@/lib/data";
+import { getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import {
+  cloudNumberOwnerSlug,
+  isPlatformCloudPhoneNumberId
+} from "@/lib/whatsapp-cloud-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +90,7 @@ type WhatsAppInbound = {
   entry?: Array<{
     changes?: Array<{
       value?: {
+        metadata?: { phone_number_id?: string };
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
         messages?: Array<WhatsAppInboundMessage>;
         statuses?: Array<{ id?: string; status?: string }>;
@@ -146,6 +151,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const statusEvents: ChatStatusEvent[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      // Only traffic addressed to the platform's own Cloud number is mapped
+      // to a tenant; anything else (another number on the same WABA, a
+      // forged or malformed payload) is dropped rather than defaulted.
+      if (!isPlatformCloudPhoneNumberId(change.value?.metadata?.phone_number_id)) {
+        continue;
+      }
       for (const status of change.value?.statuses ?? []) {
         if (
           status.id &&
@@ -190,10 +201,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (senders.size > 0 || statusEvents.length > 0) {
-    // PILOT: a single WhatsApp number maps to the default café. For multi-number
-    // tenancy, resolve the restaurant from the inbound metadata.phone_number_id
-    // instead (e.g. a restaurants.whatsapp_phone_number_id column).
-    const restaurant = await getDefaultRestaurant();
+    // The shared Cloud number belongs to exactly one restaurant (see
+    // lib/whatsapp-cloud-tenant.ts). For multi-number tenancy, map
+    // metadata.phone_number_id to a restaurants column instead.
+    const restaurant = await getRestaurantBySlug(cloudNumberOwnerSlug());
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
 
     if (restaurant) {

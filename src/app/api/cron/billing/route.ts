@@ -23,7 +23,9 @@ async function handle(request: Request) {
 
   try {
     const summary = await runDailyBilling();
-    return NextResponse.json({ ok: true, summary });
+    // Per-subscription failures don't abort the run, but must not look green.
+    const ok = summary.failed === 0;
+    return NextResponse.json({ ok, summary }, { status: ok ? 200 : 500 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Billing cron failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
