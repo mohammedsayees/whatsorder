@@ -100,6 +100,14 @@ const CategorySheet = dynamic(
   { ssr: false }
 );
 
+// Loaded only for an authenticated owner's guided test-order link. Ordinary
+// customer visits do not download onboarding UI or its server-action reference.
+const OnboardingTestOrderGuide = dynamic(() =>
+  import("@/components/customer/OnboardingTestOrderGuide").then(
+    (module) => module.OnboardingTestOrderGuide
+  )
+);
+
 type CategoryWithItems = {
   category: CustomerMenuCategory;
   items: CustomerMenuItem[];
@@ -155,6 +163,7 @@ export function RestaurantMenu({
     recentOrders: CustomerRecentOrder[];
   }>({ loyalty: null, recentOrders: [] });
   const [tableNumber, setTableNumber] = useState("");
+  const [onboardingTest, setOnboardingTest] = useState(false);
   const hasReturningCustomerContent =
     Boolean(
       personalization.loyalty?.enabled &&
@@ -177,11 +186,13 @@ export function RestaurantMenu({
   useEffect(() => {
     setCurrentTime(new Date());
     const clock = window.setInterval(() => setCurrentTime(new Date()), 60_000);
-    const queryTableNumber = new URLSearchParams(window.location.search)
+    const currentQuery = new URLSearchParams(window.location.search);
+    const queryTableNumber = currentQuery
       .get("table")
       ?.trim()
       .slice(0, 40);
     setTableNumber(queryTableNumber ?? "");
+    setOnboardingTest(currentQuery.get("onboarding") === "test-order");
 
     const controller = new AbortController();
     const params = new URLSearchParams({
@@ -344,6 +355,13 @@ export function RestaurantMenu({
     restaurantAddress?.split(",").slice(0, 2).join(" • ") ??
     t.freshCafeFavourites;
   const etaText = "25-35 min";
+  const checkoutQuery = [
+    tableNumber ? `table=${encodeURIComponent(tableNumber)}` : "",
+    onboardingTest ? "onboarding=test-order" : ""
+  ].filter(Boolean);
+  const checkoutHref = `/r/${restaurant.slug}/checkout${
+    checkoutQuery.length > 0 ? `?${checkoutQuery.join("&")}` : ""
+  }`;
   useEffect(() => {
     if (!categoriesWithItems.length) {
       return;
@@ -648,6 +666,13 @@ export function RestaurantMenu({
             </div>
           </div>
         </section>
+
+        {onboardingTest ? (
+          <OnboardingTestOrderGuide
+            cartCount={cart.count}
+            restaurantId={restaurant.id}
+          />
+        ) : null}
 
         {hasReturningCustomerContent ? (
           <ReturningCustomerPanel
@@ -979,9 +1004,7 @@ export function RestaurantMenu({
             </div>
             {minimumReached ? (
               <Link
-                href={`/r/${restaurant.slug}/checkout${
-                  tableNumber ? `?table=${encodeURIComponent(tableNumber)}` : ""
-                }`}
+                href={checkoutHref}
                 className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
               >
                 {t.viewCart}

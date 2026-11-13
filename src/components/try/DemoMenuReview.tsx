@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Trash2, Undo2 } from "lucide-react";
 
-import { saveDemoMenuReviewAction, type DemoReviewData } from "@/app/try/actions";
+import {
+  saveDemoMenuReviewAction,
+  skipDemoMenuReviewAction,
+  type DemoReviewData
+} from "@/app/try/actions";
 import { DEMO_MAX_PRICE, reviewFlagLabels } from "@/lib/demo-store";
 
 type ItemState = {
@@ -88,11 +92,6 @@ export default function DemoMenuReview({
       return;
     }
 
-    if (changedItems.length === 0 && deletedItemIds.length === 0 && changedCategories.length === 0) {
-      onDone(activeCount);
-      return;
-    }
-
     setSaving(true);
     try {
       const result = await saveDemoMenuReviewAction({
@@ -107,6 +106,24 @@ export default function DemoMenuReview({
       onDone(activeCount);
     } catch {
       setError("Your changes couldn't be saved. Try again in a moment.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function skip() {
+    setError(null);
+    setSaving(true);
+
+    try {
+      const result = await skipDemoMenuReviewAction();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onDone(review.items.length);
+    } catch {
+      setError("Your progress couldn't be saved. Try again in a moment.");
     } finally {
       setSaving(false);
     }
@@ -245,7 +262,7 @@ export default function DemoMenuReview({
         </button>
         <button
           type="button"
-          onClick={() => onDone(review.items.length)}
+          onClick={skip}
           disabled={saving}
           className="mt-2 w-full py-2 text-sm font-semibold text-slate-500 hover:text-slate-700"
         >

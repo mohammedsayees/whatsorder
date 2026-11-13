@@ -45,10 +45,12 @@ type PendingWhatsAppOrder = {
 
 export function CheckoutForm({
   initialTableNumber = "",
+  onboardingTest = false,
   prefill = null,
   restaurant
 }: {
   initialTableNumber?: string;
+  onboardingTest?: boolean;
   prefill?: CustomerProfile | null;
   restaurant: PublicRestaurant;
 }) {
@@ -316,6 +318,14 @@ export function CheckoutForm({
         <p className="mt-2 text-stone-600">
           {language === "ar" ? `أرسل طلبا واضحا إلى ${restaurantName} عبر واتساب.` : `Send a clear order to ${restaurantName} on WhatsApp.`}
         </p>
+        {onboardingTest ? (
+          <aside className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+            <p className="font-black">Test order · Step 2 of 3</p>
+            <p className="mt-1 text-violet-900/75">
+              Complete checkout with your own details. Then return to the dashboard tab and accept this order.
+            </p>
+          </aside>
+        ) : null}
         {prefill ? (
           <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-mint/20 px-3 py-1.5 text-sm font-bold text-leaf">
             <CheckCircle2 size={15} />

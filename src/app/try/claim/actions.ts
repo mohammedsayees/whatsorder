@@ -17,6 +17,7 @@ import { normalizeStoreSlug, storeSlugError } from "@/lib/store-slug";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { FOUNDER_WHATSAPP_NUMBER } from "@/lib/demo-store";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 
 // Everything the owner typed, echoed back on error so React's post-action
 // form reset restores it instead of wiping a long form. Multi-value fields
@@ -32,6 +33,7 @@ const echoedFields = [
   "owner_email",
   "whatsapp_number",
   "slug",
+  "accepting_orders",
   "delivery_enabled",
   "pickup_enabled",
   "car_pickup_enabled",
@@ -78,6 +80,7 @@ export async function claimDemoRestaurantAction(
   values.owner_email = values.owner_email.toLowerCase().slice(0, 254);
   values.whatsapp_number = values.whatsapp_number.slice(0, 20);
   values.slug = normalizeStoreSlug(values.slug);
+  values.accepting_orders = formData.get("accepting_orders") === "on" ? "on" : "off";
   values.closed_days = formData.getAll("closed_days").map(String).join(",").slice(0, 100);
   const fail = (error: string): ClaimFormState => ({ error, values });
 
@@ -144,6 +147,12 @@ export async function claimDemoRestaurantAction(
     return fail(safeClaimDatabaseError(error?.message));
   }
 
+  await recordOnboardingEvent(
+    String(restaurantId),
+    "restaurant_claimed",
+    "claim_action"
+  );
+
   const cookieStore = await cookies();
   // Cookies set before the review step used path "/try/claim"; those are
   // left to expire. They're inert: the claim RPC already nulled the proof.
@@ -160,7 +169,10 @@ export async function claimDemoRestaurantAction(
   // Settings, and the success page says so.
   const { error: settingsError } = await admin
     .from("restaurants")
-    .update({ ...goLive.settings, updated_at: new Date().toISOString() })
+    .update({ ...goLive.settings,
+      accepting_orders: values.accepting_orders === "on",
+      updated_at: new Date().toISOString()
+    })
     .eq("id", String(restaurantId))
     .eq("is_demo", false);
   if (settingsError) {

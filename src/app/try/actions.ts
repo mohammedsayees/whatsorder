@@ -36,6 +36,7 @@ import {
   serializeDemoClaimCookie
 } from "@/lib/demo-claim";
 import { getClaimableDemo } from "@/app/try/claim/claimable-demo";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 
 // Instant demo store builder (self-serve funnel, PRD Phase 1). Public-facing:
 // no auth, so every input is validated here and writes go through the
@@ -359,7 +360,10 @@ async function finishBuild(
   revalidatePublicRestaurantCache({ id: restaurant.id, slug: restaurant.slug });
 
   const url = `/r/${restaurant.slug}`;
-  await notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone });
+  await Promise.all([
+    notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone }),
+    recordOnboardingEvent(restaurant.id, "demo_built", "demo_builder")
+  ]);
 
   // Names are unique per demo (dedupeDraftItems, and size grouping only
   // merges names that differed by their size suffix), so confidence and sizes
@@ -471,5 +475,20 @@ export async function saveDemoMenuReviewAction(input: unknown): Promise<DemoRevi
     console.error("WhatsOrder demo review save failed", { restaurantId: demo.id, failures: failures.slice(0, 3) });
     return { ok: false, error: "Some changes didn't save. Try again, or fix them later in your dashboard." };
   }
+  await recordOnboardingEvent(demo.id, "menu_reviewed", "menu_review");
+  return { ok: true };
+}
+
+export async function skipDemoMenuReviewAction(): Promise<DemoReviewSaveResult> {
+  const demo = await getClaimableDemo();
+
+  if (!demo) {
+    return {
+      ok: false,
+      error: "This demo session has expired. Build the demo again on this device."
+    };
+  }
+
+  await recordOnboardingEvent(demo.id, "menu_reviewed", "menu_review_skipped");
   return { ok: true };
 }

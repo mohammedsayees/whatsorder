@@ -3,6 +3,7 @@ import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
 import { getMenu } from "@/lib/data";
 import { markOnboardingTasksComplete } from "@/lib/onboarding-progress";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 
 function publicAppUrl() {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
@@ -28,7 +29,10 @@ export default async function PrintMenuPage() {
     color: { dark: "#17201b", light: "#ffffff" }
   });
   // Opening the print/QR designer is the moment the owner gets their QR code.
-  await markOnboardingTasksComplete(restaurant.id, ["qr_generated"]);
+  await Promise.all([
+    markOnboardingTasksComplete(restaurant.id, ["qr_generated"]),
+    recordOnboardingEvent(restaurant.id, "qr_opened", "menu_print")
+  ]);
 
   return (
     <MenuPrintDesigner

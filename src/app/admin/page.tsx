@@ -16,6 +16,7 @@ import {
 import type { DashboardTrendRange } from "@/lib/types";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getOnboardingProgress } from "@/lib/onboarding-progress";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 
 function parseRange(value: string | undefined): DashboardTrendRange {
   return value === "30d" || value === "mtd" ? value : "7d";
@@ -47,7 +48,8 @@ export default async function AdminDashboardPage({
   const [{ analytics, trend, dailySummary, commission }, onboarding, integration] = await Promise.all([
     getAdminDashboardSnapshot(restaurant, range),
     getOnboardingProgress(restaurant.id),
-    getWhatsAppIntegration(restaurant.id)
+    getWhatsAppIntegration(restaurant.id),
+    recordOnboardingEvent(restaurant.id, "dashboard_opened", "admin_dashboard")
   ]);
 
   return (
@@ -77,26 +79,24 @@ export default async function AdminDashboardPage({
         <section className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-900">
           <h2 className="text-lg font-black">You&apos;re live. Welcome to WhatsOrder.</h2>
           <p className="mt-1 text-sm">
-            Customers can order now at{" "}
+            Your menu is ready at{" "}
             <Link className="font-bold underline" href={`/r/${restaurant.slug}`}>
               /r/{restaurant.slug}
             </Link>
-            . Your 14-day free trial has started.
+            . Start with one test order; delivery, detailed hours and the rest can wait.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
-            <Link className="rounded-full bg-leaf px-4 py-2 text-white" href="/admin/menu/print">
-              Print your QR code
-            </Link>
-            <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href={`/r/${restaurant.slug}`}>
-              Place a test order
-            </Link>
-            <Link className="rounded-full bg-white px-4 py-2 ring-1 ring-emerald-200" href="/admin/menu">
-              Add food photos
-            </Link>
-          </div>
+          <Link
+            className="mt-3 inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-bold text-white"
+            href={`/r/${restaurant.slug}?onboarding=test-order`}
+            rel="noopener"
+            target="_blank"
+          >
+            Place my test order
+            <ArrowRight size={16} />
+          </Link>
           {query.settings === "0" ? (
             <p className="mt-3 text-sm text-amber-900">
-              Your delivery and opening-hours details didn&apos;t save. Add them in{" "}
+              Your initial order settings didn&apos;t save. Review them in{" "}
               <Link className="font-bold underline" href="/admin/settings">
                 Settings
               </Link>
@@ -124,7 +124,11 @@ export default async function AdminDashboardPage({
       </div>
 
       <div className="mt-6">
-        <OnboardingProgressCard progress={onboarding} />
+        <OnboardingProgressCard
+          acceptingOrders={restaurant.accepting_orders !== false}
+          progress={onboarding}
+          restaurantSlug={restaurant.slug}
+        />
       </div>
 
       <div className="mt-6">

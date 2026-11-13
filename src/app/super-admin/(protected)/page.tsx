@@ -16,7 +16,7 @@ import { getSuperAdminDashboardData } from "@/lib/super-admin-data";
 import { RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 
 export default async function SuperAdminDashboardPage() {
-  const { metrics, restaurants } = await getSuperAdminDashboardData();
+  const { metrics, onboardingFunnel, restaurants } = await getSuperAdminDashboardData();
   const cards = [
     { label: "Total restaurants", value: metrics.totalRestaurants, icon: Building2, href: "/super-admin/restaurants" },
     { label: "Live restaurants", value: metrics.liveRestaurants, icon: Store, href: "/super-admin/restaurants?filter=live" },
@@ -29,6 +29,17 @@ export default async function SuperAdminDashboardPage() {
     { label: "Total customers", value: metrics.totalCustomers, icon: Users, href: "/super-admin/restaurants" },
     { label: "Still onboarding", value: metrics.onboardingRestaurants, icon: CheckCircle2, href: "/super-admin/onboarding" }
   ];
+  const funnel = [
+    ["Demo built", onboardingFunnel.demo_built],
+    ["Menu reviewed", onboardingFunnel.menu_reviewed],
+    ["Claim opened", onboardingFunnel.claim_viewed],
+    ["Restaurant claimed", onboardingFunnel.restaurant_claimed],
+    ["Dashboard opened", onboardingFunnel.dashboard_opened],
+    ["Test started", onboardingFunnel.test_order_started],
+    ["Test accepted", onboardingFunnel.test_order_accepted],
+    ["QR opened", onboardingFunnel.qr_opened]
+  ] as const;
+  const funnelStart = onboardingFunnel.demo_built;
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
@@ -58,6 +69,27 @@ export default async function SuperAdminDashboardPage() {
             </Link>
           );
         })}
+      </section>
+
+      <section className="mt-8 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-sm font-black uppercase tracking-wide text-leaf">Activation funnel</p>
+          <h2 className="mt-1 text-lg font-black">First-time owner conversion</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            One first-occurrence event per restaurant. No customer contact data is stored here.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          {funnel.map(([label, count], index) => (
+            <article className="rounded-lg bg-stone-50 p-3" key={label}>
+              <p className="text-xs font-bold text-stone-500">{index + 1}. {label}</p>
+              <p className="mt-2 text-2xl font-black">{count}</p>
+              <p className="mt-1 text-xs font-semibold text-stone-400">
+                {funnelStart > 0 ? `${Math.round((count / funnelStart) * 100)}% of demos` : "No demos yet"}
+              </p>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="mt-8 rounded-lg border border-stone-200 bg-white shadow-sm">
