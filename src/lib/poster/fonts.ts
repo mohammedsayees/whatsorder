@@ -3,7 +3,8 @@
 // Poster fonts, loaded once per serverless instance. The .woff files (Satori
 // reads ttf/otf/woff, not woff2) are committed under assets/fonts/ and traced
 // into the deploy bundle via outputFileTracingIncludes in next.config.ts.
-// Anton is the display face (condensed food-poster headlines), Bricolage
+// Anton is the street-food/bold display face, DM Serif Display the premium
+// one (themes.ts), Bricolage
 // Grotesque the body face, and Cairo Bold the Arabic fallback so Arabic item
 // and café names render (Noto Sans Arabic crashes satori's opentype.js on a
 // GSUB lookup it doesn't support; Cairo shapes cleanly). ~150 KB total.
@@ -36,6 +37,7 @@ const FONT_FILES: { file: string; name: string; weight: 400 | 700 }[] = [
     weight: 700
   },
   { file: "anton-latin-400-normal.woff", name: "Anton", weight: 400 },
+  { file: "dm-serif-display-latin-400-normal.woff", name: "DM Serif Display", weight: 400 },
   { file: "cairo-arabic-700-normal.woff", name: "Cairo", weight: 700 }
 ];
 

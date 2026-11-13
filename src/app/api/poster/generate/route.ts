@@ -10,7 +10,11 @@ import { NextResponse } from "next/server";
 
 import { buildPosterCaption, posterStoreLink } from "@/lib/poster/caption";
 import { generateCopyVariants } from "@/lib/poster/copy";
-import { PALETTE } from "@/lib/poster/design";
+import {
+  DEFAULT_POSTER_THEME,
+  themesForGeneration
+} from "@/lib/poster/themes";
+import { DEFAULT_PALETTE } from "@/lib/poster/palette";
 import { publicAppUrl } from "@/lib/public-app-url";
 import { qrCodeDataUrl } from "@/lib/store-share-assets";
 import {
@@ -44,6 +48,8 @@ type GenerateBody = {
   subjectRef?: unknown;
   /** "Swap photo" v1: force the text-only design even when a photo exists. */
   forceTypographic?: unknown;
+  /** "default": every variant in the restaurant's theme; "mix": one per theme. */
+  themeMode?: unknown;
 };
 
 type GeneratedVariant = {
@@ -54,6 +60,7 @@ type GeneratedVariant = {
   /** AI caption + tracked store link, ready to paste (no opt-out line). */
   shareCaption: string;
   variantIndex: number;
+  theme: string;
 };
 
 function parseSubjectRef(value: unknown): PosterSubjectRef | null {
@@ -154,6 +161,12 @@ export async function POST(request: Request) {
     ...bundle.facts
   });
 
+  const themes = themesForGeneration(
+    branding.theme ?? DEFAULT_POSTER_THEME,
+    body.themeMode === "mix" ? "mix" : "default",
+    copyVariants.length
+  );
+
   // Everything this request creates, so a partial failure can be undone.
   // Recorded BEFORE each write is attempted: a write that errors client-side
   // may still have landed, and removing a non-existent object is harmless.
@@ -169,18 +182,19 @@ export async function POST(request: Request) {
       // Each variant slot gets its own composition, so one generation offers
       // three visually distinct posters — not the same layout thrice.
       const layout = layoutForVariant(variantIndex);
+      const theme = themes[variantIndex];
       // Each variant's QR encodes its own tracked link, so orders from a
       // scanned poster are attributed to that exact poster.
       const storeLink = posterStoreLink(appUrl, restaurant.slug, posterId);
       const qrDataUri = await qrCodeDataUrl(storeLink, {
         width: 360,
         margin: 1,
-        dark: PALETTE.charcoal
+        dark: (branding.palette ?? DEFAULT_PALETTE).dark
       }).catch(() => null);
       const png = await renderPosterPng({
         templateId,
         layout,
-        branding,
+        branding: { ...branding, theme },
         subject: bundle.subject,
         copy,
         cta: { qrDataUri }
@@ -200,7 +214,7 @@ export async function POST(request: Request) {
         restaurant_id: restaurantId,
         template_id: templateId,
         subject_ref: subjectRef,
-        copy: { ...copy, variant_index: variantIndex, layout },
+        copy: { ...copy, variant_index: variantIndex, layout, theme },
         storage_path: storagePath,
         status: "rendered"
       });
@@ -229,7 +243,8 @@ export async function POST(request: Request) {
           downloadResult.data?.signedUrl ?? previewResult.data.signedUrl,
         copy,
         shareCaption: buildPosterCaption(copy.caption, { storeLink }),
-        variantIndex
+        variantIndex,
+        theme
       };
     })
   );

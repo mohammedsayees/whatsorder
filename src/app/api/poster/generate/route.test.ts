@@ -9,6 +9,8 @@ let rpcArgs: Record<string, unknown> | null = null;
 let failInsertForVariant: number | null = null;
 let slowVariant: number | null = null;
 const renderedCtas: { qrDataUri: string | null }[] = [];
+const renderedThemes: (string | undefined)[] = [];
+const insertedThemes: (string | undefined)[] = [];
 const qrUrls: string[] = [];
 
 vi.mock("@/lib/store-share-assets", () => ({
@@ -34,7 +36,7 @@ vi.mock("@/lib/poster/subjects", () => ({
     subject: { photoDataUri: null },
     facts: {}
   }),
-  buildPosterBranding: async () => ({})
+  buildPosterBranding: async () => ({ theme: "minimal_cafe" })
 }));
 
 vi.mock("@/lib/poster/copy", () => ({
@@ -50,8 +52,10 @@ vi.mock("@/lib/poster/render", () => ({
   renderPosterPng: async (input: {
     copy: { headline: string };
     cta?: { qrDataUri: string | null };
+    branding?: { theme?: string };
   }) => {
     if (input.cta) renderedCtas.push(input.cta);
+    renderedThemes.push(input.branding?.theme);
     if (slowVariant !== null && input.copy.headline === `H${slowVariant}`) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -62,7 +66,8 @@ vi.mock("@/lib/poster/render", () => ({
 function postersTable() {
   const filters: unknown[][] = [];
   const builder: Record<string, unknown> = {
-    insert: async (row: { id: string; copy: { variant_index: number } }) => {
+    insert: async (row: { id: string; copy: { variant_index: number; theme?: string } }) => {
+      insertedThemes.push(row.copy.theme);
       if (row.copy.variant_index === failInsertForVariant) {
         return { error: { message: "boom" } };
       }
@@ -113,12 +118,13 @@ vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: () => admin }));
 
 const { POST } = await import("./route");
 
-function request() {
+function request(extra: Record<string, unknown> = {}) {
   return new Request("https://app.test/api/poster/generate", {
     method: "POST",
     body: JSON.stringify({
       templateId: "bestseller",
-      subjectRef: { menu_item_id: "item-1" }
+      subjectRef: { menu_item_id: "item-1" },
+      ...extra
     })
   });
 }
@@ -127,6 +133,8 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_APP_URL = "https://app.test";
   uploads.length = 0;
   renderedCtas.length = 0;
+  renderedThemes.length = 0;
+  insertedThemes.length = 0;
   qrUrls.length = 0;
   inserts.length = 0;
   removedObjects.length = 0;
@@ -205,5 +213,19 @@ describe("POST /api/poster/generate", () => {
     // Every id an insert was attempted for, including the failed one.
     expect(idFilter[2]).toHaveLength(3);
     expect(idFilter[2]).toEqual(expect.arrayContaining(inserts));
+  });
+
+  it("renders every variant in the restaurant's theme by default", async () => {
+    await POST(request());
+    expect(renderedThemes).toEqual(["minimal_cafe", "minimal_cafe", "minimal_cafe"]);
+    expect(insertedThemes.sort()).toEqual(["minimal_cafe", "minimal_cafe", "minimal_cafe"]);
+  });
+
+  it("offers one variant per theme on request, starting with the default", async () => {
+    const response = await POST(request({ themeMode: "mix" }));
+    const payload = (await response.json()) as { variants: { theme: string; variantIndex: number }[] };
+    const byIndex = [...payload.variants].sort((a, b) => a.variantIndex - b.variantIndex);
+    expect(byIndex[0].theme).toBe("minimal_cafe");
+    expect(new Set(byIndex.map((variant) => variant.theme)).size).toBe(3);
   });
 });

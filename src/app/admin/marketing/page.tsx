@@ -9,6 +9,12 @@ import {
   getPosterPerformance
 } from "@/lib/poster/store";
 import { publicAppUrl } from "@/lib/public-app-url";
+import {
+  DEFAULT_POSTER_THEME,
+  POSTER_THEMES,
+  POSTER_THEME_IDS,
+  isPosterThemeId
+} from "@/lib/poster/themes";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
@@ -131,6 +137,12 @@ export default async function MarketingPage() {
       <PosterStudio
         bestsellers={bestsellers}
         eligibleCount={audience.recipients.length}
+        defaultThemeId={
+          isPosterThemeId(session.restaurant.poster_theme)
+            ? session.restaurant.poster_theme
+            : DEFAULT_POSTER_THEME
+        }
+        themeLabels={Object.fromEntries(POSTER_THEME_IDS.map((id) => [id, POSTER_THEMES[id].label]))}
         frequencyCappedCount={audience.frequencyCapped}
         sendBlockedReason={
           ownsCloudNumber

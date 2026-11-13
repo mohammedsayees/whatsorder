@@ -48,6 +48,7 @@ type GeneratedVariant = {
   /** AI caption + tracked store link, ready to paste. */
   shareCaption: string;
   variantIndex: number;
+  theme?: string;
 };
 
 type PosterUrlPair = {
@@ -106,6 +107,8 @@ export function PosterStudio({
   offers,
   history,
   eligibleCount,
+  themeLabels,
+  defaultThemeId,
   frequencyCappedCount,
   sendBlockedReason
 }: {
@@ -113,6 +116,10 @@ export function PosterStudio({
   offers: OfferOption[];
   history: HistoryEntry[];
   eligibleCount: number;
+  /** Theme id → owner-facing name (from lib/poster/themes). */
+  themeLabels: Record<string, string>;
+  /** The restaurant's default poster theme (Settings → Poster branding). */
+  defaultThemeId: string;
   /** Consented in-window customers held back by the 24h frequency cap. */
   frequencyCappedCount: number;
   /** Set when this restaurant cannot send at all (e.g. no own Cloud number). */
@@ -123,6 +130,7 @@ export function PosterStudio({
     bestsellers[0]?.menuItemId ?? ""
   );
   const [textOnly, setTextOnly] = useState(false);
+  const [themeMode, setThemeMode] = useState<"default" | "mix">("default");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rateLimited, setRateLimited] = useState(false);
@@ -210,7 +218,8 @@ export function PosterStudio({
             templateId === "bestseller"
               ? { menu_item_id: subjectId }
               : { offer_id: subjectId },
-          forceTypographic: textOnly
+          forceTypographic: textOnly,
+          themeMode
         })
       });
       const payload = (await response.json()) as {
@@ -559,6 +568,32 @@ export function PosterStudio({
           Text-only design (skip the photo)
           <span className="font-normal text-stone-500">· applies to the next generation</span>
         </label>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-semibold text-stone-600">Look:</span>
+          {(
+            [
+              ["default", `Your theme (${themeLabels[defaultThemeId] ?? defaultThemeId})`],
+              ["mix", "One of each theme"]
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              aria-pressed={themeMode === mode}
+              className={`focus-ring rounded-full border px-3 py-1.5 font-bold transition ${
+                themeMode === mode
+                  ? "border-leaf bg-leaf text-white"
+                  : "border-stone-200 bg-white text-ink hover:border-leaf"
+              }`}
+              key={mode}
+              onClick={() => setThemeMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+          <a className="text-xs font-semibold text-leaf underline" href="/admin/settings#poster-branding">
+            Change colours &amp; default look
+          </a>
+        </div>
         {textOnlyPending ? (
           <p className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">
             {textOnly
@@ -638,6 +673,11 @@ export function PosterStudio({
                   onError={() => recoverImage(variant.posterId)}
                   src={previewFor(variant.posterId, variant.previewUrl) ?? undefined}
                 />
+                {variant.theme && themeLabels[variant.theme] ? (
+                  <span className="block bg-white px-2 py-1 text-left text-[11px] font-bold text-stone-500">
+                    {themeLabels[variant.theme]}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>

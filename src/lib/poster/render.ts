@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 
+import { themeOf, withTheme } from "./design";
 import { getPosterFonts } from "./fonts";
 import { bestsellerTemplate } from "./templates/bestseller";
 import { offerTemplate } from "./templates/offer";
@@ -27,7 +28,7 @@ const TEMPLATES: Record<PosterTemplateId, (props: PosterProps) => PosterNode> = 
 };
 
 export function buildPosterTree(props: PosterProps): PosterNode {
-  return TEMPLATES[props.templateId](props);
+  return withTheme(themeOf(props.branding), () => TEMPLATES[props.templateId](props));
 }
 
 /** Satori layout+shaping step, exposed separately for snapshot tests. */
