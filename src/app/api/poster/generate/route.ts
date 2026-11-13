@@ -6,9 +6,10 @@
 // URLs returned. Node runtime on purpose: render-once-and-store.
 
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { buildPosterCaption, posterStoreLink } from "@/lib/poster/caption";
+import { planPosterArt, type PosterArtStatus } from "@/lib/poster/art";
 import { generateCopyVariants } from "@/lib/poster/copy";
 import {
   DEFAULT_POSTER_THEME,
@@ -156,10 +157,37 @@ export async function POST(request: Request) {
     );
   }
 
-  const copyVariants = await generateCopyVariants({
-    templateId,
-    ...bundle.facts
-  });
+  // AI artwork (cut-out / background): use it when cached; otherwise start
+  // it in the background for next time. Text-only posters skip it entirely.
+  let artStatus: PosterArtStatus = "none";
+  const [copyVariants, artPlan] = await Promise.all([
+    generateCopyVariants({ templateId, ...bundle.facts }),
+    body.forceTypographic === true
+      ? Promise.resolve(null)
+      : planPosterArt(admin, {
+          restaurantId,
+          userId: resolution.session.userId,
+          art: bundle.art
+        }).catch((error: unknown) => {
+          console.error("WhatsOrder poster art plan failed", error);
+          return null;
+        })
+  ]);
+  if (artPlan) {
+    artStatus = artPlan.status;
+    if (artPlan.dataUri) {
+      if (artPlan.kind === "cutout") bundle.subject.cutoutDataUri = artPlan.dataUri;
+      else bundle.subject.backgroundDataUri = artPlan.dataUri;
+    }
+    if (artPlan.start) {
+      const start = artPlan.start;
+      after(() =>
+        start().catch((error: unknown) => {
+          console.error("WhatsOrder poster art generation failed", error);
+        })
+      );
+    }
+  }
 
   const themes = themesForGeneration(
     branding.theme ?? DEFAULT_POSTER_THEME,
@@ -264,5 +292,5 @@ export async function POST(request: Request) {
   const variants = settled.map(
     (result) => (result as PromiseFulfilledResult<GeneratedVariant>).value
   );
-  return NextResponse.json({ variants });
+  return NextResponse.json({ variants, art: artStatus });
 }

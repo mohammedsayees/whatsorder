@@ -912,3 +912,63 @@ export function bandLettering(
     }
   );
 }
+
+/**
+ * AI studio cut-out on a coloured backdrop: a solid disc, a soft contact
+ * shadow, and the transparent dish drawn larger than the disc so it breaks
+ * out of the circle. Absolute-positioned by its top-left corner.
+ */
+export function cutoutOnBackdrop(
+  cutout: string,
+  options: {
+    top: number;
+    left: number;
+    /** Backdrop disc diameter. */
+    size: number;
+    backdrop: string;
+    /** Dish size relative to the disc (> 1 breaks the frame). */
+    scale?: number;
+    /** Draw the disc (false: dish sits straight on the poster field). */
+    disc?: boolean;
+  }
+): PosterNode[] {
+  const dish = Math.round(options.size * (options.scale ?? 1.08));
+  const offset = Math.round((options.size - dish) / 2);
+  return [
+    options.disc === false
+      ? null
+      : box(
+          {
+            position: "absolute",
+            top: options.top,
+            left: options.left,
+            width: options.size,
+            height: options.size,
+            borderRadius: 999,
+            backgroundColor: options.backdrop
+          },
+          []
+        ),
+    // Contact shadow under the dish.
+    box(
+      {
+        position: "absolute",
+        top: options.top + Math.round(options.size * 0.78),
+        left: options.left + Math.round(options.size * 0.14),
+        width: Math.round(options.size * 0.72),
+        height: Math.round(options.size * 0.16),
+        backgroundImage:
+          "radial-gradient(ellipse at center, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.14) 45%, rgba(0,0,0,0) 72%)"
+      },
+      []
+    ),
+    img(cutout, {
+      position: "absolute",
+      top: options.top + offset - Math.round(options.size * 0.04),
+      left: options.left + offset,
+      width: dish,
+      height: dish,
+      objectFit: "contain"
+    })
+  ].filter((node): node is PosterNode => node !== null);
+}

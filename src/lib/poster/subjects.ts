@@ -36,9 +36,32 @@ const EMBED_MAX_EDGE = 1200;
 export type PosterSubjectBundle = {
   subject: PosterSubject;
   facts: Omit<PosterCopyFacts, "templateId">;
+  /** What AI artwork (art.ts) would be made from. Never sent to the copy model. */
+  art: {
+    menuItemId: string;
+    imageUrl: string | null;
+    productName: string;
+    categoryName: string;
+    hasPhoto: boolean;
+  };
 };
 
-async function fetchImageBytes(url: string | null | undefined): Promise<Buffer | null> {
+async function categoryName(
+  admin: SupabaseClient,
+  restaurantId: string,
+  categoryId: string | null | undefined
+): Promise<string> {
+  if (!categoryId) return "Menu";
+  const { data } = await admin
+    .from("menu_categories")
+    .select("name")
+    .eq("restaurant_id", restaurantId)
+    .eq("id", categoryId)
+    .maybeSingle();
+  return (data as { name?: string } | null)?.name ?? "Menu";
+}
+
+export async function fetchImageBytes(url: string | null | undefined): Promise<Buffer | null> {
   if (!url || !/^https?:\/\//.test(url)) {
     return null;
   }
@@ -260,8 +283,18 @@ async function buildBestsellerSubject(
   }
 
   const priceLine = formatCurrency(item.price, restaurant);
-  const photo = await preparePosterPhoto(await fetchImageBytes(item.image_url));
+  const [photo, category] = await Promise.all([
+    fetchImageBytes(item.image_url).then(preparePosterPhoto),
+    categoryName(admin, restaurant.id, item.category_id)
+  ]);
   return {
+    art: {
+      menuItemId: item.id,
+      imageUrl: photo ? item.image_url : null,
+      productName: item.name,
+      categoryName: category,
+      hasPhoto: Boolean(photo)
+    },
     subject: {
       title: item.name,
       priceLine: trimWholeAmount(priceLine),
@@ -316,8 +349,18 @@ async function buildOfferSubject(
       ? formatCurrency(item.price, restaurant)
       : null;
 
-  const photo = await preparePosterPhoto(await fetchImageBytes(item.image_url));
+  const [photo, category] = await Promise.all([
+    fetchImageBytes(item.image_url).then(preparePosterPhoto),
+    categoryName(admin, restaurant.id, item.category_id)
+  ]);
   return {
+    art: {
+      menuItemId: item.id,
+      imageUrl: photo ? item.image_url : null,
+      productName: item.name,
+      categoryName: category,
+      hasPhoto: Boolean(photo)
+    },
     subject: {
       title: offer.title || item.name,
       priceLine: trimWholeAmount(priceLine),

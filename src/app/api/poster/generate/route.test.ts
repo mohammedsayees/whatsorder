@@ -10,6 +10,22 @@ let failInsertForVariant: number | null = null;
 let slowVariant: number | null = null;
 const renderedCtas: { qrDataUri: string | null }[] = [];
 const renderedThemes: (string | undefined)[] = [];
+const renderedArt: { cutout: unknown; background: unknown }[] = [];
+let artPlan: { status: string; kind: string; dataUri: string | null; start?: () => Promise<void> } | null = null;
+const planCalls: unknown[] = [];
+const scheduled: (() => unknown)[] = [];
+
+vi.mock("@/lib/poster/art", () => ({
+  planPosterArt: async (...args: unknown[]) => {
+    planCalls.push(args[1]);
+    return artPlan;
+  }
+}));
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return { ...actual, after: (task: () => unknown) => scheduled.push(task) };
+});
 const insertedThemes: (string | undefined)[] = [];
 const qrUrls: string[] = [];
 
@@ -33,8 +49,9 @@ vi.mock("@/lib/super-admin-auth", () => ({
 
 vi.mock("@/lib/poster/subjects", () => ({
   buildPosterSubjectBundle: async () => ({
-    subject: { photoDataUri: null },
-    facts: {}
+    subject: { photoDataUri: "data:image/png;base64,PHOTO" },
+    facts: {},
+    art: { menuItemId: "item-1", imageUrl: "https://cdn/p.jpg", productName: "Karak", categoryName: "Tea", hasPhoto: true }
   }),
   buildPosterBranding: async () => ({ theme: "minimal_cafe" })
 }));
@@ -53,7 +70,9 @@ vi.mock("@/lib/poster/render", () => ({
     copy: { headline: string };
     cta?: { qrDataUri: string | null };
     branding?: { theme?: string };
+    subject?: { cutoutDataUri?: unknown; backgroundDataUri?: unknown };
   }) => {
+    renderedArt.push({ cutout: input.subject?.cutoutDataUri, background: input.subject?.backgroundDataUri });
     if (input.cta) renderedCtas.push(input.cta);
     renderedThemes.push(input.branding?.theme);
     if (slowVariant !== null && input.copy.headline === `H${slowVariant}`) {
@@ -134,6 +153,10 @@ beforeEach(() => {
   uploads.length = 0;
   renderedCtas.length = 0;
   renderedThemes.length = 0;
+  renderedArt.length = 0;
+  planCalls.length = 0;
+  scheduled.length = 0;
+  artPlan = { status: "none", kind: "cutout", dataUri: null };
   insertedThemes.length = 0;
   qrUrls.length = 0;
   inserts.length = 0;
@@ -227,5 +250,42 @@ describe("POST /api/poster/generate", () => {
     const byIndex = [...payload.variants].sort((a, b) => a.variantIndex - b.variantIndex);
     expect(byIndex[0].theme).toBe("minimal_cafe");
     expect(new Set(byIndex.map((variant) => variant.theme)).size).toBe(3);
+  });
+
+  describe("AI artwork", () => {
+    it("uses a ready cut-out in every variant", async () => {
+      artPlan = { status: "ready", kind: "cutout", dataUri: "data:image/png;base64,CUT" };
+      const response = await POST(request());
+      expect(((await response.json()) as { art: string }).art).toBe("ready");
+      expect(renderedArt.every((art) => art.cutout === "data:image/png;base64,CUT")).toBe(true);
+      expect(scheduled).toHaveLength(0);
+    });
+
+    it("starts missing artwork after the response and renders this time without it", async () => {
+      const start = vi.fn(async () => undefined);
+      artPlan = { status: "preparing", kind: "cutout", dataUri: null, start };
+      const response = await POST(request());
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as { art: string }).art).toBe("preparing");
+      expect(renderedArt.every((art) => !art.cutout && !art.background)).toBe(true);
+      expect(start).not.toHaveBeenCalled();
+      expect(scheduled).toHaveLength(1);
+      await scheduled[0]();
+      expect(start).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips artwork entirely for text-only posters, and when the hourly limit blocks", async () => {
+      await POST(request({ forceTypographic: true }));
+      expect(planCalls).toHaveLength(0);
+      rpcResult = { data: 600, error: null };
+      await POST(request());
+      expect(planCalls).toHaveLength(0);
+    });
+
+    it("never fails a generation because artwork planning failed", async () => {
+      artPlan = null;
+      const response = await POST(request());
+      expect(response.status).toBe(200);
+    });
   });
 });

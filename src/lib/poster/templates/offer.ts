@@ -5,10 +5,12 @@
 // is computed in code from the real regular and promotional prices
 // (offer-math.ts); the AI contributes headline/subline only.
 //
-//   photo_hero — dish in an arch, rotated saving stamp, giant price below
-//                (no photo: the arch itself holds the giant price)
+//   photo_hero — the AI cut-out bursting out of a colour-filled arch, else
+//                the photo in an arch; rotated saving stamp, giant price
+//                below (no photo: the arch itself holds the giant price)
 //   full_bleed — dish fills the top, short soft fade, price on the base colour
-//                (no photo: diagonal bands with the item name as texture)
+//                (no photo: the AI background when cached, else diagonal
+//                bands with the item name as texture)
 //   stat_led   — the price is the hero, dish in a circle
 //                (no photo: concentric rings)
 //
@@ -27,6 +29,7 @@ import {
   brandBlock,
   canvas,
   ctaBlock,
+  cutoutOnBackdrop,
   disc,
   displayText,
   fitFont,
@@ -90,7 +93,10 @@ function archHero(props: PosterProps, photo: string | null): PosterNode {
   const archWidth = 840;
   const archHeight = 860;
 
-  const archNode = photo
+  const cutout = photo ? props.subject.cutoutDataUri ?? null : null;
+  const archNode = cutout
+    ? arch(archWidth, archHeight, { top: 180, left: 120 }, { fill: s.decoA, children: [] })
+    : photo
     ? arch(archWidth, archHeight, { top: 180, left: 120 }, { photo })
     : arch(archWidth, archHeight, { top: 180, left: 120 }, {
         fill: s.decoA,
@@ -115,6 +121,9 @@ function archHero(props: PosterProps, photo: string | null): PosterNode {
       disc(560, s.decoB, { top: 60, right: -190 }),
       disc(240, s.decoA, { top: 800, left: -120 }),
       archNode,
+      ...(cutout
+        ? cutoutOnBackdrop(cutout, { top: 270, left: 150, size: 780, backdrop: s.decoA, scale: 1.1, disc: false })
+        : []),
       savingStamp(props, {
         size: 330,
         fill: s.stampFill,
@@ -149,7 +158,8 @@ function archHero(props: PosterProps, photo: string | null): PosterNode {
 
 function fullBleed(props: PosterProps, photo: string | null): PosterNode {
   const s = posterScheme(props.branding, "bleed");
-  const tall = props.subject.photoTallDataUri ?? photo;
+  // A photo-less item uses its cached AI background in the photo's place.
+  const tall = props.subject.photoTallDataUri ?? photo ?? props.subject.backgroundDataUri ?? null;
   const { priceLine, originalPriceLine } = props.subject;
   const headlineSize = fitFont(props.copy.headline, {
     width: CONTENT_WIDTH,
