@@ -10,6 +10,9 @@ const base = () => ({
   rls_tables: ["orders", "restaurants"],
   functions: ["is_restaurant_member(uuid)"],
   sequences: { finance_report_runs_id_seq: 7 },
+  table_grants: ["orders:authenticated:SELECT", "orders:service_role:INSERT", "orders:service_role:SELECT"],
+  function_grants: ["is_restaurant_member(uuid):authenticated", "create_order_with_customer_v4(jsonb):service_role"],
+  default_privileges: ["postgres:r:service_role:SELECT"],
   old_links: 0
 });
 
@@ -55,6 +58,26 @@ describe("rehearsal data checks", () => {
     expect(statusOf(results, "Live updates")).toBe("FAIL");
     expect(statusOf(results, "Extensions")).toBe("FAIL");
     expect(results.find((r) => r.check.startsWith("Old Sydney")).detail).toContain("3 row(s)");
+  });
+
+  it("fails any permission difference, in either direction", () => {
+    const cases = [
+      ["Table permissions", (s) => s.table_grants.push("orders:anon:SELECT")],
+      ["Table permissions", (s) => { s.table_grants = s.table_grants.filter((g) => !g.includes("service_role:INSERT")); }],
+      ["Function execute", (s) => s.function_grants.push("create_order_with_customer_v4(jsonb):anon")],
+      ["Function execute", (s) => { s.function_grants = []; }],
+      ["Default privileges", (s) => s.default_privileges.push("postgres:r:anon:SELECT")]
+    ];
+    for (const [check, change] of cases) {
+      const newer = base();
+      change(newer);
+      const result = compareSnapshots(base(), newer, { mode: "rehearsal" }).find((r) => r.check.startsWith(check));
+      expect(result.status, check).toBe("FAIL");
+    }
+    const exposed = base();
+    exposed.table_grants.push("orders:anon:SELECT");
+    const detail = compareSnapshots(base(), exposed).find((r) => r.check.startsWith("Table permissions")).detail;
+    expect(detail).toContain("only in new: orders:anon:SELECT");
   });
 
   it("requires live updates for orders and chat even if both sides lack them", () => {
