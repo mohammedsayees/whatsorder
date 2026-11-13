@@ -17,7 +17,7 @@ describe("onboarding funnel event contracts", () => {
     source("src/app/try/claim/actions.ts"),
     source("src/app/admin/page.tsx"),
     source("src/app/admin/orders/status-actions.ts"),
-    source("src/app/admin/menu/print/page.tsx")
+    source("src/app/admin/share/actions.ts")
   ].join("\n");
 
   it("stores one PII-free occurrence per restaurant and milestone", () => {

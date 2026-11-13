@@ -54,6 +54,6 @@ describe("onboarding test-order handoff", () => {
     expect(ordersPage).toContain(
       "Test order accepted — your store is ready"
     );
-    expect(ordersPage).toContain('href="/admin/menu/print"');
+    expect(ordersPage).toContain('href="/admin/share"');
   });
 });
