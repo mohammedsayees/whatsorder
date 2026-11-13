@@ -1,17 +1,42 @@
-# Sydney → Mumbai cutover: runbook and settings checklist
+# Sydney → Mumbai move: post-move checks, settings checklist, cutover reference
 
-This covers what the migration scripts do not: freezing writes on Sydney, and the project settings that do not travel with a database dump.
+**The move is done.** Start with "Post-move checks" below. The cutover steps further down are kept as a reference for any future project move.
 
-**In the rehearsal, never freeze Sydney:** it is production, and the freeze stops every order. Instead, practise `freeze`, the API check in step 5, and `unfreeze` on the rehearsal (Mumbai) project. Point `$OLD_*` at it for that test only. Run everything else as written.
-
-Scripts used:
+Scripts used:Scripts used:
 
 | Script | What it does |
 |---|---|
 | `scripts/freeze-old-project.sql` | Blocks every app write on Sydney (all public tables, plus Auth and Storage). Has a rollback. |
 | `scripts/copy-storage-buckets.mjs` | Copies storage file bytes (`plan`, `copy`, `verify`). |
 | `scripts/rewrite-storage-urls.sql` | Rewrites stored Sydney storage URLs to Mumbai. |
-| `scripts/rehearsal-checks.mjs` | Compares the two databases: rows, permissions, and the definitions of policies, functions, triggers, indexes, constraints, buckets and API role settings. |
+| `scripts/rehearsal-checks.mjs` | Compares the two databases: rows, permissions, and the definitions of policies, functions, triggers, indexes, constraints, buckets and API role settings. `--mode post-move` instead finds writes that reached Sydney after the switch. |
+
+## Post-move checks
+
+Do these in order, while Sydney still exists. `$OLD_*` is Sydney, `$NEW_*` is Mumbai, and `<switch time>` is when production started using Mumbai: the redeploy with the Mumbai keys.
+
+1. **Find writes that went to Sydney after the switch.** Old Vercel deployments, open browser tabs, the WhatsApp connector, crons and webhooks can keep using the Sydney keys. Anything they wrote never reached Mumbai.
+
+   ```bash
+   OLD_DB_URL=... NEW_DB_URL=... node scripts/rehearsal-checks.mjs --old-ref <sydney ref> --mode post-move --since <switch time, e.g. 2026-11-10T22:00:00+04:00>
+   ```
+
+   - "Writes to the old DB after the move" FAIL lists each Sydney table written after the switch, newest first. Those rows (orders, chat messages, status changes, customers) are missing from Mumbai and need copying across or following up by hand.
+   - "Old Sydney storage links in new DB" must PASS. Otherwise images and files break when Sydney is deleted. Run `scripts/rewrite-storage-urls.sql` on Mumbai.
+   - "Cutover freeze removed from new DB" must PASS.
+   - Schema and permission differences show as WARN. They are expected only for migrations applied to Mumbai after the move. Anything else is drift from the restore.
+2. **Stop further writes to Sydney** once step 1 is clean or reconciled:
+
+   ```bash
+   psql "$OLD_DB_URL" -X -v ON_ERROR_STOP=1 -v action=freeze -f scripts/freeze-old-project.sql
+   ```
+
+   Verify it with the API check in cutover step 5 below. Stray old deployments then fail visibly instead of losing orders. Alternatively, pause the Sydney project.
+3. **Check storage bytes:** `node scripts/copy-storage-buckets.mjs verify` with `SOURCE_*` = Sydney and `TARGET_*` = Mumbai. Expect `MISSING` only for files uploaded to Sydney after the switch (see step 1).
+4. **Work through the settings checklist** below on Mumbai. **API Max rows** first (audit finding 5): reports, CSV exports and credit balances are understated if it was left at the default 1,000.
+5. **Supabase GitHub integration:** PRs show a "Supabase Preview" check linked to project `ktcgpdfpqhypyerbbkwr`. Confirm that is Mumbai. If it is Sydney, re-link the integration (Supabase dashboard → Project Settings → Integrations → GitHub) to the Mumbai project.
+6. **Vercel:** Production and Preview env vars use the Mumbai URL and keys. Old deployments still carry Sydney keys, so delete or protect any you don't need.
+7. **Decommission Sydney** only after all of the above, and after a final backup is downloaded.
 
 ## Why Sydney has to be frozen in the database
 
@@ -23,7 +48,9 @@ Maintenance mode (`MAINTENANCE_MODE=true`) only applies to the deployment it was
 
 Anything written to Sydney after the final dump is lost. The freeze turns those writes into errors, so nothing is silently dropped.
 
-## Cutover steps
+## Cutover steps (reference)
+
+In a rehearsal, never freeze the live old project: the freeze stops every order. Practise `freeze`, the API check in step 5 and `unfreeze` on the rehearsal target instead.
 
 1. **Before the window:** complete the settings checklist below on Mumbai, and fix every FAIL from the last rehearsal.
 2. **Maintenance on:** set `MAINTENANCE_MODE=true` on production and redeploy.

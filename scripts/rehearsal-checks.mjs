@@ -3,6 +3,7 @@
 //
 //   OLD_DB_URL=postgresql://...sydney... NEW_DB_URL=postgresql://...mumbai... \
 //   node scripts/rehearsal-checks.mjs --old-ref <old 20-char project ref> [--mode rehearsal|cutover]
+//   node scripts/rehearsal-checks.mjs --old-ref <ref> --mode post-move --since <switch time, ISO 8601>
 //
 // Compares the two databases and prints PASS / WARN / FAIL per check; exits 1
 // on any FAIL. Uses psql (needed for the dump/restore anyway).
@@ -11,6 +12,12 @@
 //                             dump, so "new has fewer rows than old" is a WARN.
 // --mode cutover              writes are frozen (maintenance on), so every
 //                             count must match exactly.
+// --mode post-move            the new project is live and has moved on. Row
+//                             counts are not compared; instead every old-DB
+//                             table written (created_at / updated_at) after
+//                             --since FAILs: those writes never reached the
+//                             new project. Schema / permission differences
+//                             are WARN (migrations may have run since).
 //
 // Permissions are compared exactly: table, view and sequence grants and
 // function EXECUTE for anon / authenticated / service_role / PUBLIC, plus the
@@ -33,6 +40,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
+const MODES = ["rehearsal", "cutover", "post-move"];
 const REQUIRED_REALTIME_TABLES = ["orders", "whatsapp_messages"];
 // Added to the OLD project by scripts/freeze-old-project.sql at cutover.
 const FREEZE_TRIGGER = "zz_cutover_freeze";
@@ -164,6 +172,25 @@ select json_build_object(
                         'supabase_auth_admin', 'supabase_storage_admin')
       and setting not like 'default_transaction_read_only=%'
   ),
+  'latest_writes', (
+    select coalesce(json_object_agg(w.table_name, w.latest), '{}') from (
+      select c.table_name,
+        (xpath('/row/m/text()', query_to_xml(
+          format('select greatest(%s) as m from public.%I', c.cols, c.table_name),
+          false, true, '')))[1]::text as latest
+      from (
+        select col.table_name, string_agg(format('max(%I)', col.column_name), ', ') as cols
+        from information_schema.columns col
+        join information_schema.tables tab
+          on tab.table_schema = col.table_schema and tab.table_name = col.table_name
+        where col.table_schema = 'public' and tab.table_type = 'BASE TABLE'
+          and col.column_name in ('created_at', 'updated_at')
+          and col.data_type like 'timestamp%'
+        group by col.table_name
+      ) c
+    ) w
+    where w.latest is not null
+  ),
   'sequences', (
     select coalesce(json_object_agg(sequencename, coalesce(last_value, 0)), '{}')
     from pg_sequences where schemaname = 'public'
@@ -247,12 +274,19 @@ function compareSets(name, oldList, newList) {
 }
 
 /** Pure comparison of two snapshots. Returns [{check, status, detail}]. */
-export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal" } = {}) {
-  if (!["rehearsal", "cutover"].includes(mode)) throw new Error(`unknown mode ${mode}`);
-  const results = [
+export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal", since = null } = {}) {
+  if (!MODES.includes(mode)) throw new Error(`unknown mode ${mode}`);
+  const postMove = mode === "post-move";
+  if (postMove && !Number.isFinite(Date.parse(since ?? ""))) {
+    throw new Error("post-move mode needs --since <switch time, ISO 8601>");
+  }
+  const results = postMove ? [] : [
     compareCounts("Row counts (public, auth.users/identities, storage)", oldSnap.rows, newSnap.rows, mode),
     compareCounts("Storage file records per bucket", oldSnap.storage_objects, newSnap.storage_objects, mode),
-    compareCounts("Sequence positions", oldSnap.sequences, newSnap.sequences, mode),
+    compareCounts("Sequence positions", oldSnap.sequences, newSnap.sequences, mode)
+  ];
+  const schemaStart = results.length;
+  results.push(
     compareSets("Realtime publication", oldSnap.realtime, newSnap.realtime),
     compareSets("Extensions", oldSnap.extensions, newSnap.extensions),
     compareSets("RLS-enabled tables", oldSnap.rls_tables, newSnap.rls_tables),
@@ -268,7 +302,23 @@ export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal" } = {}) 
     compareSets("Table permissions (anon, authenticated, service_role, PUBLIC)", oldSnap.table_grants, newSnap.table_grants),
     compareSets("Function execute permissions (API roles)", oldSnap.function_grants, newSnap.function_grants),
     compareSets("Default privileges for new objects", oldSnap.default_privileges, newSnap.default_privileges)
-  ];
+  );
+  if (postMove) {
+    for (const r of results.slice(schemaStart)) {
+      if (r.status === "FAIL") {
+        r.status = "WARN";
+        r.detail = `${r.detail} (expected only if migrations ran on the new project after the move)`;
+      }
+    }
+    const cutoff = Date.parse(since);
+    const late = Object.entries(oldSnap.latest_writes ?? {})
+      .filter(([, latest]) => Date.parse(latest) > cutoff)
+      .sort(([, a], [, b]) => Date.parse(b) - Date.parse(a))
+      .map(([table, latest]) => `${table} (last ${latest})`);
+    results.unshift(late.length
+      ? { check: "Writes to the old DB after the move", status: "FAIL", detail: `${late.length} table(s) written after ${since}, not in the new project: ${shortList(late)}` }
+      : { check: "Writes to the old DB after the move", status: "PASS", detail: `none after ${since}` });
+  }
 
   const missingRealtime = REQUIRED_REALTIME_TABLES.filter((t) => !newSnap.realtime.includes(t));
   results.push(missingRealtime.length
@@ -301,24 +351,28 @@ export function takeSnapshot(dbUrl, oldRef, run = execFileSync) {
 }
 
 function parseArgs(argv) {
-  const options = { mode: "rehearsal", oldRef: null };
+  const options = { mode: "rehearsal", oldRef: null, since: null };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--mode") options.mode = argv[++i];
     else if (argv[i] === "--old-ref") options.oldRef = argv[++i];
+    else if (argv[i] === "--since") options.since = argv[++i];
     else throw new Error(`unknown option ${argv[i]}`);
   }
   if (!/^[a-z0-9]{20}$/.test(options.oldRef ?? "")) throw new Error("--old-ref must be the old 20-character project ref");
-  if (!["rehearsal", "cutover"].includes(options.mode)) throw new Error("--mode must be rehearsal or cutover");
+  if (!MODES.includes(options.mode)) throw new Error("--mode must be rehearsal, cutover or post-move");
+  if (options.mode === "post-move" && !Number.isFinite(Date.parse(options.since ?? ""))) {
+    throw new Error("--mode post-move needs --since <switch time, ISO 8601, e.g. 2026-11-10T22:00:00+04:00>");
+  }
   return options;
 }
 
 function main() {
-  const { mode, oldRef } = parseArgs(process.argv.slice(2));
+  const { mode, oldRef, since } = parseArgs(process.argv.slice(2));
   const oldUrl = process.env.OLD_DB_URL;
   const newUrl = process.env.NEW_DB_URL;
   if (!oldUrl || !newUrl) throw new Error("Set OLD_DB_URL and NEW_DB_URL");
   if (oldUrl === newUrl) throw new Error("OLD_DB_URL and NEW_DB_URL are the same database");
-  const results = compareSnapshots(takeSnapshot(oldUrl, oldRef), takeSnapshot(newUrl, oldRef), { mode });
+  const results = compareSnapshots(takeSnapshot(oldUrl, oldRef), takeSnapshot(newUrl, oldRef), { mode, since });
   for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.check}: ${r.detail}`);
   const failed = results.filter((r) => r.status === "FAIL").length;
   console.log(failed ? `${failed} check(s) FAILED (${mode} mode)` : `All checks passed (${mode} mode)`);

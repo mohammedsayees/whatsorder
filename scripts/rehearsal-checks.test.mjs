@@ -19,6 +19,7 @@ const base = () => ({
   indexes: { "orders:orders_pkey": "h-idx", "orders:idx_orders_restaurant": "h-idx2" },
   constraints: { "orders:orders_restaurant_id_fkey": "h-con" },
   role_settings: ["authenticated:statement_timeout=8s"],
+  latest_writes: { orders: "2026-11-10T17:55:00.000+00:00", restaurants: "2026-11-01T09:00:00+00:00" },
   buckets: { "menu-images": "public=true | size_limit=2097152 | mime=image/webp", posters: "public=false | size_limit=none | mime=any" },
   old_links: 0
 });
@@ -141,6 +142,36 @@ describe("rehearsal data checks", () => {
     const results = compareSnapshots(frozenOld, restoredWhileFrozen, { mode: "cutover" });
     expect(statusOf(results, "Cutover freeze removed")).toBe("FAIL");
     expect(statusOf(results, "Triggers")).toBe("PASS");
+  });
+
+  it("post-move: fails on writes to the old DB after the switch, ignores row growth", () => {
+    const sydney = base();
+    const mumbai = base();
+    mumbai.rows["public.orders"] = 500;
+    const since = "2026-11-10T18:00:00Z";
+    const clean = compareSnapshots(sydney, mumbai, { mode: "post-move", since });
+    expect(clean.every((r) => r.status === "PASS")).toBe(true);
+    expect(clean.some((r) => r.check.startsWith("Row counts"))).toBe(false);
+
+    sydney.latest_writes.orders = "2026-11-11T08:30:00.000+00:00";
+    sydney.latest_writes.whatsapp_messages = "2026-11-12T10:00:00.000+00:00";
+    const late = compareSnapshots(sydney, mumbai, { mode: "post-move", since });
+    expect(late[0]).toMatchObject({ check: "Writes to the old DB after the move", status: "FAIL" });
+    expect(late[0].detail).toContain("2 table(s)");
+    expect(late[0].detail.indexOf("whatsapp_messages")).toBeLessThan(late[0].detail.indexOf("orders"));
+  });
+
+  it("post-move: schema drift is a warning, but leftover Sydney links still fail", () => {
+    const mumbai = base();
+    mumbai.functions.push("new_rpc_after_move()");
+    mumbai.old_links = 3;
+    const results = compareSnapshots(base(), mumbai, { mode: "post-move", since: "2026-11-10T18:00:00Z" });
+    expect(statusOf(results, "Public functions")).toBe("WARN");
+    expect(statusOf(results, "Old Sydney storage links")).toBe("FAIL");
+  });
+
+  it("post-move needs a switch time", () => {
+    expect(() => compareSnapshots(base(), base(), { mode: "post-move" })).toThrow(/--since/);
   });
 
   it("snapshots read-only through psql with the old storage prefix", () => {
