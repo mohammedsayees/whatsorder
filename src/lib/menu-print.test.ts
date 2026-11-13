@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPrintableMenuSections } from "@/lib/menu-print";
+import {
+  buildPrintableCataloguePages,
+  buildPrintableMenuSections
+} from "@/lib/menu-print";
 import type { MenuCategory, MenuItem } from "@/lib/types";
 
 const categories: MenuCategory[] = [
@@ -72,5 +75,44 @@ describe("buildPrintableMenuSections", () => {
     const sections = buildPrintableMenuSections(categories, items, true);
 
     expect(sections.map((section) => section.category.name)).toEqual(["Food", "Drinks"]);
+  });
+});
+
+describe("buildPrintableCataloguePages", () => {
+  it("creates deterministic category pages without mixing categories", () => {
+    const foodItems = Array.from({ length: 7 }, (_, index) => ({
+      ...items[0],
+      id: `food-${index}`,
+      category_id: "food",
+      name: `Food ${index + 1}`
+    }));
+    const drinkItems = Array.from({ length: 2 }, (_, index) => ({
+      ...items[0],
+      id: `drink-${index}`,
+      name: `Drink ${index + 1}`
+    }));
+    const sections = buildPrintableMenuSections(
+      categories,
+      [...foodItems, ...drinkItems],
+      false
+    );
+
+    const pages = buildPrintableCataloguePages(sections, 6);
+
+    expect(pages.map((page) => page.category.name)).toEqual([
+      "Food",
+      "Food",
+      "Drinks"
+    ]);
+    expect(pages.map((page) => page.items.length)).toEqual([6, 1, 2]);
+    expect(pages.map((page) => [page.categoryPage, page.categoryPageCount])).toEqual([
+      [1, 2],
+      [2, 2],
+      [1, 1]
+    ]);
+  });
+
+  it("rejects an invalid page capacity", () => {
+    expect(() => buildPrintableCataloguePages([], 0)).toThrow(RangeError);
   });
 });
