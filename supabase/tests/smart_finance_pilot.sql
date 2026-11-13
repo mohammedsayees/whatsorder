@@ -4,6 +4,9 @@ begin;
 -- The legacy test fixture seeds the production pilot slug. Rename it only
 -- inside this rolled-back transaction so this test owns a minimal pilot menu.
 update public.restaurants set slug = 'chaixpress-existing-test-fixture' where slug = 'chaixpress';
+-- A rename reserves the old slug for its restaurant (restaurant_slug_history).
+-- Release it deliberately, as an operator would, so the fixture can reuse it.
+delete from public.restaurant_slug_history where slug = 'chaixpress';
 
 insert into auth.users (id, email, role, aud, created_at, updated_at) values
   ('1e000000-0000-0000-0000-000000000001', 'pilot-owner@test.invalid', 'authenticated', 'authenticated', now(), now());

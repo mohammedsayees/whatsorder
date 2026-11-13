@@ -11,6 +11,7 @@
 // stay server-only.
 
 import { getCustomerSession } from "@/lib/customer-auth/cookies";
+import { isSessionRevoked } from "@/lib/customer-auth/one-time";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { CartLine } from "@/lib/types";
 
@@ -82,6 +83,21 @@ export async function loadCustomerContext(
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return { ...COLD_OPEN, signedIn: true, phone: identity.phone, error: "service_unavailable" };
+  }
+
+  // Staff can sign a customer out on every device (e.g. a forwarded login
+  // link). Fail closed: if the check can't run, treat as signed out.
+  const { data: revocation, error: revocationError } = await supabase
+    .from("customer_session_revocations")
+    .select("revoked_before")
+    .eq("restaurant_id", identity.restaurantId)
+    .eq("phone", identity.phone)
+    .maybeSingle();
+  if (
+    revocationError ||
+    isSessionRevoked(identity.issuedAt, revocation?.revoked_before as string | undefined)
+  ) {
+    return COLD_OPEN;
   }
 
   const { data, error } = await supabase.rpc("get_customer_context", {

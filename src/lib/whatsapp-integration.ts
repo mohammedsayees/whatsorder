@@ -6,6 +6,7 @@ import {
   CONNECTOR_TIMESTAMP_HEADER,
   signConnectorPayload
 } from "@/lib/whatsapp-web-signing";
+import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
 
 export type WhatsAppIntegration = {
   restaurant_id: string;
@@ -82,7 +83,11 @@ export async function callWhatsAppWebConnector(
   }
 }
 
-/** Send through the restaurant's active transport, with Cloud API fallback. */
+/**
+ * Send through the restaurant's active transport. Falls back to the shared
+ * Cloud API number only for the restaurant that owns it — any other tenant
+ * sending from it would route customer replies into the owner's inbox.
+ */
 export async function sendRestaurantWhatsAppText(
   restaurantId: string,
   to: string,
@@ -103,6 +108,9 @@ export async function sendRestaurantWhatsAppText(
     return result.ok ? `web:${messageId}` : null;
   }
 
+  if (!(await restaurantOwnsCloudNumber(restaurantId))) {
+    return null;
+  }
   return sendWhatsAppText(to, body);
 }
 

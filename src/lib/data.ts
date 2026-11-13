@@ -323,6 +323,12 @@ export async function getDefaultRestaurant() {
 
 type GetMenuOptions = {
   admin?: boolean;
+  /**
+   * Throw instead of degrading to "no options" when the public catalog
+   * cannot be read. Order pricing must use this: an empty catalog would let
+   * an order skip required option groups (e.g. a size) during a DB blip.
+   */
+  failClosed?: boolean;
 };
 
 type AdminMenuSnapshotPayload = {
@@ -635,6 +641,9 @@ export async function getMenuOptionCatalog(
       restaurantId,
       message: error instanceof Error ? error.message : "unknown"
     });
+    if (options.failClosed) {
+      throw new Error("Menu options are unavailable");
+    }
     return EMPTY_OPTION_CATALOG;
   }
 }

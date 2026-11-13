@@ -8,24 +8,17 @@
 // the zero-tap path for someone arriving from chat.
 
 import { NextRequest, NextResponse } from "next/server";
+import { consumeLinkToken } from "@/lib/customer-auth/one-time";
 import { verifyLinkToken } from "@/lib/customer-auth/tokens";
 import { setCustomerSession } from "@/lib/customer-auth/cookies";
+import { safeCustomerLinkNext } from "@/lib/customer-auth/safe-next";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Only allow same-origin relative redirects (prevents open-redirect abuse via
- * the `next` param). Must start with a single "/" and not "//".
- */
-function safeNext(next: string | null): string {
-  if (next && /^\/(?!\/)/.test(next)) return next;
-  return "/";
-}
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = req.nextUrl.searchParams.get("token");
-  const next = safeNext(req.nextUrl.searchParams.get("next"));
+  const next = safeCustomerLinkNext(req.nextUrl.searchParams.get("next"));
 
   if (!token) {
     return NextResponse.redirect(new URL("/?auth=missing", req.nextUrl.origin));
@@ -33,7 +26,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const identity = await verifyLinkToken(token);
-    await setCustomerSession(identity);
+    // One-time: a forwarded or reused link falls through to "expired".
+    if (!(await consumeLinkToken(identity.jti, identity.restaurantId))) {
+      throw new Error("Link already used");
+    }
+    await setCustomerSession({ restaurantId: identity.restaurantId, phone: identity.phone });
     // Clean redirect WITHOUT the token in the URL (so it can't be re-shared
     // or leak via history/referrer).
     return NextResponse.redirect(new URL(next, req.nextUrl.origin));

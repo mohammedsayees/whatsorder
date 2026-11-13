@@ -6,7 +6,8 @@
 //
 // Two token kinds, both HS256-signed with CUSTOMER_AUTH_SECRET:
 //   - "link"    : short-lived (10 min), carried in the WhatsApp deep link.
-//                 Proves Meta-verified phone + which café. Single purpose.
+//                 Proves Meta-verified phone + which café. Single use: its
+//                 jti is recorded on first use (lib/customer-auth/one-time.ts).
 //   - "session" : long-lived (90 days), stored as an httpOnly cookie so the
 //                 customer never sees a login screen again.
 //
@@ -64,6 +65,17 @@ interface IdentityClaims extends JWTPayload {
   phone: string;
 }
 
+/** A verified deep-link token: identity plus its one-time id. */
+export interface LinkTokenClaims extends CustomerIdentity {
+  /** One-time id; the link route records it so a link works only once. */
+  jti: string | null;
+}
+
+/** A verified session: identity plus when it was issued (seconds). */
+export interface SessionClaims extends CustomerIdentity {
+  issuedAt: number | null;
+}
+
 /**
  * Mint the short-lived deep-link token. Call this from the WhatsApp webhook
  * after the Cloud API has handed you the verified sender phone, then append
@@ -74,6 +86,7 @@ export async function mintLinkToken(identity: CustomerIdentity): Promise<string>
   const phone = normalizePhone(identity.phone);
   return new SignJWT({ rid: identity.restaurantId, phone })
     .setProtectedHeader({ alg: ALG })
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setAudience(AUD_LINK)
     .setExpirationTime(LINK_TTL)
@@ -81,12 +94,12 @@ export async function mintLinkToken(identity: CustomerIdentity): Promise<string>
 }
 
 /** Verify a deep-link token. Throws if expired, wrong audience, or tampered. */
-export async function verifyLinkToken(token: string): Promise<CustomerIdentity> {
+export async function verifyLinkToken(token: string): Promise<LinkTokenClaims> {
   const { payload } = await jwtVerify<IdentityClaims>(token, getSecret(), {
     audience: AUD_LINK,
   });
   if (!payload.rid || !payload.phone) throw new Error("Malformed link token.");
-  return { restaurantId: payload.rid, phone: payload.phone };
+  return { restaurantId: payload.rid, phone: payload.phone, jti: payload.jti ?? null };
 }
 
 /** Mint the long-lived session token that backs the httpOnly cookie. */
@@ -101,10 +114,14 @@ export async function mintSessionToken(identity: CustomerIdentity): Promise<stri
 }
 
 /** Verify a session token. Throws if expired, wrong audience, or tampered. */
-export async function verifySessionToken(token: string): Promise<CustomerIdentity> {
+export async function verifySessionToken(token: string): Promise<SessionClaims> {
   const { payload } = await jwtVerify<IdentityClaims>(token, getSecret(), {
     audience: AUD_SESSION,
   });
   if (!payload.rid || !payload.phone) throw new Error("Malformed session token.");
-  return { restaurantId: payload.rid, phone: payload.phone };
+  return {
+    restaurantId: payload.rid,
+    phone: payload.phone,
+    issuedAt: typeof payload.iat === "number" ? payload.iat : null
+  };
 }

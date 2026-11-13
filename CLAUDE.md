@@ -12,7 +12,7 @@ Multi-tenant WhatsApp-ordering + restaurant dashboard SaaS (UAE). Pilot: Chai Xp
 ## Architecture — two separate paths (do not cross without instruction)
 **Customer path** (public PWA, QR/link — keep it lightweight, no heavy deps):
 - `src/app/r/[restaurantSlug]/` (menu, checkout, thank-you), `src/components/customer/` (CartProvider, CheckoutForm, RestaurantMenu).
-- Order creation: `createOrderAction` in `src/app/actions.ts` → RPC `create_order_with_customer_v4` (server re-prices via `src/lib/order-pricing.ts`).
+- Order creation: `createOrderAction` in `src/app/r/[restaurantSlug]/checkout/actions.ts` → RPC `create_order_with_customer_v5` (server re-prices via `src/lib/order-pricing.ts`; rate limits run first).
 
 **Staff/admin path** (dashboard, behind auth):
 - `src/app/admin/` (orders, orders/new staff entry, shifts, menu, menu/import AI builder, customers, reports, settings), `src/app/super-admin/`.

@@ -13,11 +13,15 @@
 //         storage.objects rows, so the target LISTS every file whose bytes are
 //         not there yet. For the same reason resume is tracked in a local state
 //         file (one copied "bucket/path" per line), never by listing the target.
+//         The state file is bound to the target project: it defaults to
+//         storage-copy-state-<target ref>.txt, its first line records the
+//         target, and a file written for another target (e.g. the rehearsal
+//         project) is refused instead of silently skipping every file.
 // verify  download each file from both projects and compare SHA-256; exits 1 on
 //         any missing or different file.
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const DEFAULT_BUCKETS = [
@@ -86,9 +90,32 @@ async function pool(items, concurrency, work) {
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run));
 }
 
-function readState(statePath) {
+const STATE_HEADER = "# target: ";
+
+/** Ref of a Supabase project URL: https://<ref>.supabase.co -> <ref>. */
+export function projectRef(url) {
+  return new URL(url).host.split(".")[0];
+}
+
+export function defaultStatePath(targetUrl) {
+  return `storage-copy-state-${projectRef(targetUrl)}.txt`;
+}
+
+/**
+ * Copied keys from a state file that must belong to `targetId`. A missing
+ * file is a fresh start; a file without a matching header is refused.
+ */
+export function readState(statePath, targetId) {
   if (!statePath || !existsSync(statePath)) return new Set();
-  return new Set(readFileSync(statePath, "utf8").split("\n").filter(Boolean));
+  const [header = "", ...lines] = readFileSync(statePath, "utf8").split("\n");
+  const owner = header.startsWith(STATE_HEADER) ? header.slice(STATE_HEADER.length).trim() : null;
+  if (owner !== targetId) {
+    throw new Error(
+      `State file ${statePath} was written for ${owner ? `target ${owner}` : "an unknown target"}, not ${targetId}. ` +
+        "Use a fresh --state file for this target (or delete the stale one)."
+    );
+  }
+  return new Set(lines.filter(Boolean));
 }
 
 /**
@@ -101,11 +128,18 @@ export async function runStorageCopy({
   mode = "plan",
   buckets = DEFAULT_BUCKETS,
   statePath = null,
+  targetId = null,
   concurrency = 4,
   log = console.log
 }) {
   if (!["plan", "copy", "verify"].includes(mode)) throw new Error(`unknown mode ${mode}`);
-  const done = readState(statePath);
+  if (statePath && mode === "copy" && !targetId) {
+    throw new Error("targetId is required with a state file");
+  }
+  const done = mode === "copy" ? readState(statePath, targetId) : new Set();
+  if (statePath && mode === "copy" && !existsSync(statePath)) {
+    writeFileSync(statePath, `${STATE_HEADER}${targetId}\n`);
+  }
   const report = { buckets: {}, ok: true };
 
   for (const bucket of buckets) {
@@ -157,7 +191,7 @@ export async function runStorageCopy({
 }
 
 function parseArgs(argv) {
-  const options = { mode: "plan", buckets: [], statePath: "storage-copy-state.txt", concurrency: 4 };
+  const options = { mode: "plan", buckets: [], statePath: null, concurrency: 4 };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--bucket") options.buckets.push(argv[++i]);
@@ -190,6 +224,8 @@ async function main() {
   const clientOptions = { auth: { persistSession: false, autoRefreshToken: false } };
   const report = await runStorageCopy({
     ...options,
+    statePath: options.statePath ?? defaultStatePath(targetUrl),
+    targetId: projectRef(targetUrl),
     source: createClient(sourceUrl, requiredEnv("SOURCE_SERVICE_ROLE_KEY"), clientOptions),
     target: createClient(targetUrl, requiredEnv("TARGET_SERVICE_ROLE_KEY"), clientOptions)
   });

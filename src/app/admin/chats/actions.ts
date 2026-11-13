@@ -16,6 +16,7 @@ import {
   sendWhatsAppTemplate
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
 import { getWhatsAppChatbotSettings } from "@/lib/whatsapp-ai";
 import { formatOpeningTime, todayOpeningHours } from "@/lib/opening-hours";
 import {
@@ -195,6 +196,13 @@ export async function sendChatTemplateAction(
   if (isWithinServiceWindow(conversation.last_inbound_at)) {
     return {
       error: "The reply window is still open — send a normal (free) reply instead."
+    };
+  }
+
+  if (!(await restaurantOwnsCloudNumber(session.restaurantId))) {
+    return {
+      error:
+        "Template messages need your own WhatsApp Business number, which isn't set up yet."
     };
   }
 

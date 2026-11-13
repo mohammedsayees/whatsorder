@@ -14,7 +14,9 @@ import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
+import { restaurantDateBoundaryIso } from "@/lib/localization";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
+import { ownedStoragePath } from "@/lib/storage-ownership";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
 import {
@@ -74,16 +76,6 @@ async function getOfferActionContext(formData: FormData) {
 
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   return { restaurant: session.restaurant, supabase };
-}
-
-function uaeDateBoundary(value: string, endOfDay = false) {
-  if (!value) {
-    return null;
-  }
-
-  return new Date(
-    `${value}T${endOfDay ? "23:59:59" : "00:00:00"}+04:00`
-  ).toISOString();
 }
 
 function stringValue(formData: FormData, key: string) {
@@ -245,6 +237,47 @@ export async function withdrawCustomerMarketingConsentAction(formData: FormData)
     .eq("id", customerId)
     .eq("restaurant_id", session.restaurantId);
   databaseFailure("Marketing consent withdrawal", error);
+
+  revalidatePath("/admin/customers");
+}
+
+/**
+ * Sign a customer out of this restaurant on every device (e.g. their WhatsApp
+ * login link was forwarded). Sessions issued before now stop working; the
+ * customer signs in again from a fresh link.
+ */
+export async function signOutCustomerEverywhereAction(formData: FormData) {
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const customerId = stringValue(formData, "customer_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase || !customerId) {
+    return;
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("phone")
+    .eq("id", customerId)
+    .eq("restaurant_id", session.restaurantId)
+    .maybeSingle();
+  databaseFailure("Customer lookup", customerError);
+  if (!customer?.phone) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("customer_session_revocations").upsert(
+    {
+      restaurant_id: session.restaurantId,
+      phone: customer.phone,
+      revoked_before: now,
+      revoked_by: session.userId,
+      updated_at: now
+    },
+    { onConflict: "restaurant_id,phone" }
+  );
+  databaseFailure("Customer sign-out", error);
 
   revalidatePath("/admin/customers");
 }
@@ -500,7 +533,7 @@ export async function uploadRestaurantBrandImageAction(
     return { ok: false, error: imageSaveError.message };
   }
 
-  const previousStoragePath = storagePathFromPublicUrl(previousUrl, bucketName);
+  const previousStoragePath = ownedStoragePath(previousUrl, bucketName, restaurant.id);
   if (previousStoragePath) {
     await supabase.storage.from(bucketName).remove([previousStoragePath]);
   }
@@ -539,10 +572,7 @@ export async function removeMenuItemImageAction(formData: FormData) {
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Menu image removal", error);
-  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
-  if (storagePath) {
-    await supabase.storage.from("menu-images").remove([storagePath]);
-  }
+  await removeOwnedMenuImage(supabase, restaurant, String(item?.image_url ?? ""));
 
   revalidateMenuPaths(restaurant);
 }
@@ -588,10 +618,7 @@ export async function deleteMenuItemAction(formData: FormData) {
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Menu item deletion", error);
-  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
-  if (storagePath) {
-    await supabase.storage.from("menu-images").remove([storagePath]);
-  }
+  await removeOwnedMenuImage(supabase, restaurant, String(item?.image_url ?? ""));
 
   revalidateMenuPaths(restaurant);
 }
@@ -747,8 +774,8 @@ export async function addMenuOfferAction(formData: FormData) {
     description_ar: limitedStringValue(formData, "description_ar", 300) || null,
     promotional_price: promotionalPrice,
     max_quantity_per_order: maximumQuantity,
-    starts_at: uaeDateBoundary(stringValue(formData, "starts_on")),
-    ends_at: uaeDateBoundary(stringValue(formData, "ends_on"), true),
+    starts_at: restaurantDateBoundaryIso(stringValue(formData, "starts_on"), restaurant),
+    ends_at: restaurantDateBoundaryIso(stringValue(formData, "ends_on"), restaurant, true),
     display_order: count ?? 0,
     is_active: formData.get("is_active") === "on"
   });
@@ -1419,15 +1446,27 @@ function updateCategoryDisplayOrder(
     .eq("restaurant_id", category.restaurant_id);
 }
 
-function storagePathFromPublicUrl(url: string, bucketName = "menu-images") {
-  const marker = `/storage/v1/object/public/${bucketName}/`;
-  const markerIndex = url.indexOf(marker);
-
-  if (markerIndex < 0) {
-    return null;
+// Deletes only files inside this restaurant's own menu folder, and never one
+// another restaurant's item still points at (e.g. after a slug rename freed
+// the folder name for someone else).
+async function removeOwnedMenuImage(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurant: { id: string; slug: string },
+  imageUrl: string
+) {
+  const storagePath = ownedStoragePath(imageUrl, "menu-images", restaurant.slug);
+  if (!storagePath) {
+    return;
   }
-
-  return decodeURIComponent(url.slice(markerIndex + marker.length).split("?")[0]);
+  const { count, error } = await supabase
+    .from("menu_items")
+    .select("id", { count: "exact", head: true })
+    .eq("image_url", imageUrl)
+    .neq("restaurant_id", restaurant.id);
+  if (error || (count ?? 0) > 0) {
+    return;
+  }
+  await supabase.storage.from("menu-images").remove([storagePath]);
 }
 
 function orderTargetsFromForm(form: FormData) {

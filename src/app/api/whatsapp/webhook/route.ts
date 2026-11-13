@@ -9,8 +9,9 @@
 //          window are free-form (no per-message cost).
 //
 // SAFE BEFORE SETUP: with no env configured, GET verification returns 403 and
-// POST acknowledges (200) without sending — so deploying this changes nothing
-// until you fill in the WhatsApp env vars.
+// POST acknowledges (200) without reading, storing or sending anything — so
+// deploying this changes nothing until you fill in the WhatsApp env vars.
+// Nothing is ever processed without a verified WHATSAPP_APP_SECRET signature.
 //
 // Required env (see .env.example):
 //   WHATSAPP_VERIFY_TOKEN     — string you also enter in Meta's webhook config
@@ -33,10 +34,14 @@ import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import {
   buildCustomerLinkUrl,
   sendWhatsAppText,
-  verifyMetaSignature
+  webhookAuthOutcome
 } from "@/lib/customer-auth/whatsapp-cloud";
-import { getDefaultRestaurant } from "@/lib/data";
+import { getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import {
+  cloudNumberOwnerSlug,
+  isPlatformCloudPhoneNumberId
+} from "@/lib/whatsapp-cloud-tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +91,7 @@ type WhatsAppInbound = {
   entry?: Array<{
     changes?: Array<{
       value?: {
+        metadata?: { phone_number_id?: string };
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
         messages?: Array<WhatsAppInboundMessage>;
         statuses?: Array<{ id?: string; status?: string }>;
@@ -108,25 +114,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Read the raw body so we can verify the signature over exact bytes.
   const rawBody = await req.text();
 
-  const appSecret = process.env.WHATSAPP_APP_SECRET;
-  if (appSecret) {
-    const ok = verifyMetaSignature(
-      rawBody,
-      req.headers.get("x-hub-signature-256"),
-      appSecret
-    );
-    if (!ok) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
-  } else if (process.env.WHATSAPP_ACCESS_TOKEN) {
-    // Fail closed: a send-capable deployment must never act on unverified
-    // payloads, or forged POSTs could spam arbitrary phones from our number.
-    return new NextResponse("Webhook signature verification is not configured", {
-      status: 401
-    });
+  const auth = webhookAuthOutcome({
+    rawBody,
+    signature: req.headers.get("x-hub-signature-256"),
+    appSecret: process.env.WHATSAPP_APP_SECRET,
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN
+  });
+  if (auth === "reject") {
+    return new NextResponse("Invalid or unverifiable signature", { status: 401 });
   }
-  // With neither secret nor access token we're pre-configuration; accept and
-  // no-op below.
+  if (auth === "ignore") {
+    // Pre-configuration: acknowledge so Meta doesn't retry, but never act on
+    // (or store) an unverifiable payload.
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
 
   let payload: WhatsAppInbound;
   try {
@@ -146,6 +147,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const statusEvents: ChatStatusEvent[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      // Only traffic addressed to the platform's own Cloud number is mapped
+      // to a tenant; anything else (another number on the same WABA, a
+      // forged or malformed payload) is dropped rather than defaulted.
+      if (!isPlatformCloudPhoneNumberId(change.value?.metadata?.phone_number_id)) {
+        continue;
+      }
       for (const status of change.value?.statuses ?? []) {
         if (
           status.id &&
@@ -190,10 +197,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (senders.size > 0 || statusEvents.length > 0) {
-    // PILOT: a single WhatsApp number maps to the default café. For multi-number
-    // tenancy, resolve the restaurant from the inbound metadata.phone_number_id
-    // instead (e.g. a restaurants.whatsapp_phone_number_id column).
-    const restaurant = await getDefaultRestaurant();
+    // The shared Cloud number belongs to exactly one restaurant (see
+    // lib/whatsapp-cloud-tenant.ts). For multi-number tenancy, map
+    // metadata.phone_number_id to a restaurants column instead.
+    const restaurant = await getRestaurantBySlug(cloudNumberOwnerSlug());
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
 
     if (restaurant) {

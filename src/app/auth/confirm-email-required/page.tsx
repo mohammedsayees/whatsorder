@@ -15,7 +15,7 @@ export default async function ConfirmEmailRequiredPage() {
   if (!session) {
     redirect("/admin-login");
   }
-  if (ownerEmailVerificationState(session.restaurant) !== "overdue") {
+  if (ownerEmailVerificationState(session.owner) !== "overdue") {
     redirect("/admin");
   }
 
@@ -28,7 +28,7 @@ export default async function ConfirmEmailRequiredPage() {
           To open your dashboard again, confirm that you own the email you signed up with.
         </p>
         <div className="mt-5">
-          <OwnerEmailBanner blocking daysLeft={0} email={session.restaurant.owner_email ?? session.email} />
+          <OwnerEmailBanner blocking daysLeft={0} email={session.owner.owner_email ?? session.email} />
         </div>
         <p className="mt-5 text-xs text-stone-500">
           Wrong email address? Message WhatsOrder support on WhatsApp and we&apos;ll fix it.

@@ -65,3 +65,21 @@ export function countryProfileFields(countryCode: CountryCode) {
     time_zone: profile.timeZone
   };
 }
+
+/**
+ * UTC ISO timestamp for the start (or last second) of a calendar date
+ * (YYYY-MM-DD) in the restaurant's own time zone. Null for empty or
+ * malformed input.
+ */
+export function restaurantDateBoundaryIso(
+  value: string,
+  restaurant: Partial<RestaurantLocalization> | null | undefined,
+  endOfDay = false
+): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+  const { utcOffset } = getRestaurantLocalization(restaurant);
+  const date = new Date(`${value}T${endOfDay ? "23:59:59" : "00:00:00"}${utcOffset}`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}

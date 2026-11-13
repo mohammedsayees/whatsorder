@@ -15,6 +15,7 @@ import {
   verifySessionToken,
   SESSION_TTL_SECONDS,
   type CustomerIdentity,
+  type SessionClaims,
 } from "./tokens";
 
 function cookieName(restaurantId: string): string {
@@ -45,7 +46,7 @@ export async function setCustomerSession(identity: CustomerIdentity): Promise<vo
  */
 export async function getCustomerSession(
   restaurantId: string,
-): Promise<CustomerIdentity | null> {
+): Promise<SessionClaims | null> {
   const jar = await cookies();
   const token = jar.get(cookieName(restaurantId))?.value;
   if (!token) return null;

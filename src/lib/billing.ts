@@ -300,6 +300,16 @@ export function toDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * The platform billing calendar date: Asia/Dubai (UTC+4, no DST). A plain
+ * UTC date is a day behind between 00:00 and 04:00 Dubai time, so invoices
+ * issued or plans assigned then were dated yesterday. The daily cron runs at
+ * 03:00 UTC (07:00 Dubai), where both agree.
+ */
+export function billingDateString(reference: Date = new Date()): string {
+  return toDateString(new Date(reference.getTime() + 4 * 60 * 60 * 1000));
+}
+
 export function parseDate(value: string): Date {
   return new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
 }

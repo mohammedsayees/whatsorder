@@ -65,3 +65,19 @@ describe("multi-country restaurant localization", () => {
     expect(range.startIso).toBe("2026-07-14T00:00:00+05:30");
   });
 });
+
+describe("restaurantDateBoundaryIso", () => {
+  it("uses the restaurant's own time zone for offer start and end dates", async () => {
+    const { restaurantDateBoundaryIso } = await import("./localization");
+    expect(restaurantDateBoundaryIso("2026-12-01", { country_code: "AE" })).toBe("2026-11-30T20:00:00.000Z");
+    expect(restaurantDateBoundaryIso("2026-12-01", { country_code: "IN" })).toBe("2026-11-30T18:30:00.000Z");
+    expect(restaurantDateBoundaryIso("2026-12-01", { country_code: "IN" }, true)).toBe("2026-12-01T18:29:59.000Z");
+  });
+
+  it("rejects empty or malformed dates", async () => {
+    const { restaurantDateBoundaryIso } = await import("./localization");
+    expect(restaurantDateBoundaryIso("", { country_code: "AE" })).toBeNull();
+    expect(restaurantDateBoundaryIso("2026-13-45", { country_code: "AE" })).toBeNull();
+    expect(restaurantDateBoundaryIso("1/12/2026", { country_code: "AE" })).toBeNull();
+  });
+});

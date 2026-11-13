@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { currentSlugForReleasedSlug } from "@/lib/slug-history";
 import { CartProvider } from "@/components/customer/CartProvider";
 import { RestaurantMenu } from "@/components/customer/RestaurantMenu";
 import {
@@ -40,6 +41,11 @@ export default async function RestaurantPage({
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
+    // A renamed store keeps its old link: send old QR codes to the new one.
+    const currentSlug = await currentSlugForReleasedSlug(restaurantSlug);
+    if (currentSlug) {
+      redirect(`/r/${currentSlug}`);
+    }
     notFound();
   }
 

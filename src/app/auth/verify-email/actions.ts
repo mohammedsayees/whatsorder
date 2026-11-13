@@ -142,12 +142,12 @@ export async function resendOwnerVerificationEmailAction(
   _previous: ResendVerificationState
 ): Promise<ResendVerificationState> {
   const session = await getRestaurantAdminSession();
-  const ownerEmail = session?.restaurant.owner_email?.toLowerCase();
+  const ownerEmail = session?.owner.owner_email?.toLowerCase();
   if (
     !session ||
     !ownerEmail ||
     (session.role !== "owner" && session.role !== "restaurant_admin") ||
-    session.restaurant.owner_email_verified_at
+    session.owner.owner_email_verified_at
   ) {
     return { status: "error", message: "There's nothing to confirm for this account." };
   }
