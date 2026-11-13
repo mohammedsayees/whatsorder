@@ -21,14 +21,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   // Instant-access owners must confirm their email within the grace period.
-  const emailState = ownerEmailVerificationState(session.restaurant);
+  const emailState = ownerEmailVerificationState(session.owner);
   if (emailState === "overdue") {
     redirect("/auth/confirm-email-required");
   }
   const showEmailBanner =
     emailState === "pending" &&
     (session.role === "owner" || session.role === "restaurant_admin") &&
-    Boolean(session.restaurant.owner_email);
+    Boolean(session.owner.owner_email);
 
   const [
     cookieStore,
@@ -63,8 +63,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {showEmailBanner ? (
         <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
           <OwnerEmailBanner
-            daysLeft={daysUntil(String(session.restaurant.owner_email_verification_due_at))}
-            email={String(session.restaurant.owner_email)}
+            daysLeft={daysUntil(String(session.owner.owner_email_verification_due_at))}
+            email={String(session.owner.owner_email)}
           />
         </div>
       ) : null}

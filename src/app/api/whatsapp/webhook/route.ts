@@ -9,8 +9,9 @@
 //          window are free-form (no per-message cost).
 //
 // SAFE BEFORE SETUP: with no env configured, GET verification returns 403 and
-// POST acknowledges (200) without sending — so deploying this changes nothing
-// until you fill in the WhatsApp env vars.
+// POST acknowledges (200) without reading, storing or sending anything — so
+// deploying this changes nothing until you fill in the WhatsApp env vars.
+// Nothing is ever processed without a verified WHATSAPP_APP_SECRET signature.
 //
 // Required env (see .env.example):
 //   WHATSAPP_VERIFY_TOKEN     — string you also enter in Meta's webhook config
@@ -33,7 +34,7 @@ import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import {
   buildCustomerLinkUrl,
   sendWhatsAppText,
-  verifyMetaSignature
+  webhookAuthOutcome
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { getRestaurantBySlug } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -113,25 +114,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Read the raw body so we can verify the signature over exact bytes.
   const rawBody = await req.text();
 
-  const appSecret = process.env.WHATSAPP_APP_SECRET;
-  if (appSecret) {
-    const ok = verifyMetaSignature(
-      rawBody,
-      req.headers.get("x-hub-signature-256"),
-      appSecret
-    );
-    if (!ok) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
-  } else if (process.env.WHATSAPP_ACCESS_TOKEN) {
-    // Fail closed: a send-capable deployment must never act on unverified
-    // payloads, or forged POSTs could spam arbitrary phones from our number.
-    return new NextResponse("Webhook signature verification is not configured", {
-      status: 401
-    });
+  const auth = webhookAuthOutcome({
+    rawBody,
+    signature: req.headers.get("x-hub-signature-256"),
+    appSecret: process.env.WHATSAPP_APP_SECRET,
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN
+  });
+  if (auth === "reject") {
+    return new NextResponse("Invalid or unverifiable signature", { status: 401 });
   }
-  // With neither secret nor access token we're pre-configuration; accept and
-  // no-op below.
+  if (auth === "ignore") {
+    // Pre-configuration: acknowledge so Meta doesn't retry, but never act on
+    // (or store) an unverifiable payload.
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
 
   let payload: WhatsAppInbound;
   try {

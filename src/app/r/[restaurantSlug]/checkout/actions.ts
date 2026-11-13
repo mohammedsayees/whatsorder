@@ -10,6 +10,7 @@ import {
   getRestaurantBySlug
 } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { checkPendingOrderCaps } from "@/lib/pending-order-caps";
 import {
   buildWhatsAppAppUrl,
   buildWhatsAppMessage,
@@ -318,6 +319,29 @@ export async function createOrderAction(
     return {
       ok: false,
       error: "This order was not saved to the dashboard. You can send it directly on WhatsApp.",
+      fallbackWhatsappUrl: buildWhatsAppUrl(
+        restaurant.whatsapp_number,
+        message,
+        restaurant.phone_country_code
+      )
+    };
+  }
+
+  const cap = await checkPendingOrderCaps(supabase, {
+    restaurantId: restaurant.id,
+    customerPhone,
+    submissionToken
+  });
+  if (cap === "phone_limit") {
+    return {
+      ok: false,
+      error: `You already have orders waiting for ${restaurant.name} to accept. Please wait for them to be confirmed before placing another.`
+    };
+  }
+  if (cap === "restaurant_limit" || cap === "unavailable") {
+    return {
+      ok: false,
+      error: "This restaurant is very busy right now. Please try again in a few minutes.",
       fallbackWhatsappUrl: buildWhatsAppUrl(
         restaurant.whatsapp_number,
         message,

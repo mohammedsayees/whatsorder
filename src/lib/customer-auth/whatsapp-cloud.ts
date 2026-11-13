@@ -50,6 +50,28 @@ export function verifyMetaSignature(
 }
 
 /**
+ * What the webhook may do with a POST:
+ *   "process" — signature verified with the app secret
+ *   "reject"  — bad signature, or a send-capable deployment (access token set)
+ *               without the secret to verify with (401)
+ *   "ignore"  — nothing configured: acknowledge, but read/store nothing
+ * Unsigned payloads are never processed, in any environment.
+ */
+export function webhookAuthOutcome(input: {
+  rawBody: string;
+  signature: string | null;
+  appSecret: string | undefined;
+  accessToken: string | undefined;
+}): "process" | "reject" | "ignore" {
+  if (input.appSecret) {
+    return verifyMetaSignature(input.rawBody, input.signature, input.appSecret)
+      ? "process"
+      : "reject";
+  }
+  return input.accessToken ? "reject" : "ignore";
+}
+
+/**
  * Send a plain-text WhatsApp message via the Cloud API. No-op (returns null)
  * until the access token + phone-number id are set, so the webhook can be wired
  * up before credentials exist. Never throws — logs and returns null on error.

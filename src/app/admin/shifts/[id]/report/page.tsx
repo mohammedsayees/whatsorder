@@ -119,7 +119,7 @@ export default async function ShiftCloseReportPage({
   const latestReport = view.reports[0].snapshot;
   const money = (value: number) => formatCurrency(value, report);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
-  const ownerPhone = session.restaurant.owner_phone;
+  const ownerPhone = session.owner.owner_phone;
   const shareUrl = ownerPhone
     ? buildWhatsAppUrl(
         ownerPhone,

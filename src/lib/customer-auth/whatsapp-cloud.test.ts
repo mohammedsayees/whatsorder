@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildCustomerLinkUrl, verifyMetaSignature } from "./whatsapp-cloud";
+import { buildCustomerLinkUrl, verifyMetaSignature, webhookAuthOutcome } from "./whatsapp-cloud";
 
 describe("buildCustomerLinkUrl", () => {
   it("builds a link route URL with an encoded next param", () => {
@@ -40,5 +40,25 @@ describe("verifyMetaSignature", () => {
 
   it("rejects when no app secret is configured", () => {
     expect(verifyMetaSignature(body, valid, undefined)).toBe(false);
+  });
+});
+
+describe("webhookAuthOutcome", () => {
+  const secret = "app-secret";
+  const rawBody = '{"entry":[]}';
+  const signature = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+
+  it("processes only verified payloads", () => {
+    expect(webhookAuthOutcome({ rawBody, signature, appSecret: secret, accessToken: "t" })).toBe("process");
+    expect(webhookAuthOutcome({ rawBody, signature: null, appSecret: secret, accessToken: "t" })).toBe("reject");
+  });
+
+  it("rejects when it could send but cannot verify", () => {
+    expect(webhookAuthOutcome({ rawBody, signature, appSecret: undefined, accessToken: "t" })).toBe("reject");
+  });
+
+  it("never processes unsigned payloads, even with nothing configured", () => {
+    expect(webhookAuthOutcome({ rawBody, signature: null, appSecret: undefined, accessToken: undefined })).toBe("ignore");
+    expect(webhookAuthOutcome({ rawBody, signature: null, appSecret: "", accessToken: "" })).toBe("ignore");
   });
 });

@@ -18,6 +18,37 @@ export { refreshTokenCookieName };
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const OWNER_DETAIL_KEYS = [
+  "owner_name",
+  "owner_email",
+  "owner_phone",
+  "owner_email_verified_at",
+  "owner_email_verification_due_at"
+] as const;
+const STAFF_HIDDEN_KEYS = [...OWNER_DETAIL_KEYS, "internal_notes"] as const;
+
+export type RestaurantOwnerDetails = Pick<Restaurant, (typeof OWNER_DETAIL_KEYS)[number]>;
+export type StaffVisibleRestaurant = Omit<Restaurant, (typeof STAFF_HIDDEN_KEYS)[number]>;
+
+/** Split a restaurant row into the staff-visible part and owner details. */
+export function splitRestaurantForStaff(row: Restaurant): {
+  restaurant: StaffVisibleRestaurant;
+  owner: RestaurantOwnerDetails;
+} {
+  const restaurant: Record<string, unknown> = { ...row };
+  const owner: Record<string, unknown> = {};
+  for (const key of OWNER_DETAIL_KEYS) {
+    owner[key] = row[key] ?? null;
+  }
+  for (const key of STAFF_HIDDEN_KEYS) {
+    delete restaurant[key];
+  }
+  return {
+    restaurant: restaurant as StaffVisibleRestaurant,
+    owner: owner as RestaurantOwnerDetails
+  };
+}
+
 export type SuperAdminSession = {
   userId: string;
   email: string;
@@ -29,7 +60,14 @@ export type RestaurantAdminSession = {
   email: string;
   role: "restaurant_admin" | "staff" | "owner" | "manager";
   restaurantId: string;
-  restaurant: Restaurant;
+  /**
+   * The restaurant row WITHOUT internal (super-admin) notes or owner contact
+   * details: this object is routinely passed to client components, so
+   * anything on it reaches every staff member's browser.
+   */
+  restaurant: StaffVisibleRestaurant;
+  /** Owner contact / verification fields. Server-side use only. */
+  owner: RestaurantOwnerDetails;
 };
 
 export type RestaurantSessionIssue =
@@ -176,7 +214,7 @@ export const resolveRestaurantAdminSession = cache(async function resolveRestaur
       email: user.email ?? membership.email,
       role: membership.role,
       restaurantId: membership.restaurant_id,
-      restaurant
+      ...splitRestaurantForStaff(restaurant)
     }
   };
 });
