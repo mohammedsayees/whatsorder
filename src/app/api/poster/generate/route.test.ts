@@ -8,6 +8,15 @@ let rpcResult: { data: unknown; error: unknown } = { data: 0, error: null };
 let rpcArgs: Record<string, unknown> | null = null;
 let failInsertForVariant: number | null = null;
 let slowVariant: number | null = null;
+const renderedCtas: { qrDataUri: string | null }[] = [];
+const qrUrls: string[] = [];
+
+vi.mock("@/lib/store-share-assets", () => ({
+  qrCodeDataUrl: async (url: string) => {
+    qrUrls.push(url);
+    return `data:image/png;base64,QR`;
+  }
+}));
 
 vi.mock("@/lib/super-admin-auth", () => ({
   resolveRestaurantAdminSession: async () => ({
@@ -38,7 +47,11 @@ vi.mock("@/lib/poster/copy", () => ({
 }));
 
 vi.mock("@/lib/poster/render", () => ({
-  renderPosterPng: async (input: { copy: { headline: string } }) => {
+  renderPosterPng: async (input: {
+    copy: { headline: string };
+    cta?: { qrDataUri: string | null };
+  }) => {
+    if (input.cta) renderedCtas.push(input.cta);
     if (slowVariant !== null && input.copy.headline === `H${slowVariant}`) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
@@ -113,6 +126,8 @@ function request() {
 beforeEach(() => {
   process.env.NEXT_PUBLIC_APP_URL = "https://app.test";
   uploads.length = 0;
+  renderedCtas.length = 0;
+  qrUrls.length = 0;
   inserts.length = 0;
   removedObjects.length = 0;
   deletedRows.length = 0;
@@ -130,6 +145,14 @@ describe("POST /api/poster/generate", () => {
       variants: { posterId: string; shareCaption: string }[];
     };
     expect(payload.variants).toHaveLength(3);
+    // Each variant's poster carries a QR of its own tracked link.
+    expect(renderedCtas).toHaveLength(3);
+    expect(renderedCtas.every((cta) => cta.qrDataUri === "data:image/png;base64,QR")).toBe(true);
+    expect(qrUrls.sort()).toEqual(
+      payload.variants
+        .map((variant) => `https://app.test/r/chaixpress?src=poster-${variant.posterId}`)
+        .sort()
+    );
     for (const variant of payload.variants) {
       expect(variant.shareCaption).toBe(
         `C\n\nhttps://app.test/r/chaixpress?src=poster-${variant.posterId}`

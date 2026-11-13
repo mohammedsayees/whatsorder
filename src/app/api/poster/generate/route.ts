@@ -10,7 +10,9 @@ import { NextResponse } from "next/server";
 
 import { buildPosterCaption, posterStoreLink } from "@/lib/poster/caption";
 import { generateCopyVariants } from "@/lib/poster/copy";
+import { PALETTE } from "@/lib/poster/design";
 import { publicAppUrl } from "@/lib/public-app-url";
+import { qrCodeDataUrl } from "@/lib/store-share-assets";
 import {
   checkPosterGenerationRateLimit,
   posterRateLimitMessage
@@ -117,6 +119,7 @@ export async function POST(request: Request) {
   }
   if (body.forceTypographic === true) {
     bundle.subject.photoDataUri = null;
+    bundle.subject.photoTallDataUri = null;
   }
 
   // Cost control: checked (and the attempt recorded) only once the request is
@@ -166,12 +169,21 @@ export async function POST(request: Request) {
       // Each variant slot gets its own composition, so one generation offers
       // three visually distinct posters — not the same layout thrice.
       const layout = layoutForVariant(variantIndex);
+      // Each variant's QR encodes its own tracked link, so orders from a
+      // scanned poster are attributed to that exact poster.
+      const storeLink = posterStoreLink(appUrl, restaurant.slug, posterId);
+      const qrDataUri = await qrCodeDataUrl(storeLink, {
+        width: 360,
+        margin: 1,
+        dark: PALETTE.charcoal
+      }).catch(() => null);
       const png = await renderPosterPng({
         templateId,
         layout,
         branding,
         subject: bundle.subject,
-        copy
+        copy,
+        cta: { qrDataUri }
       });
 
       created.storagePaths.push(storagePath);
@@ -216,9 +228,7 @@ export async function POST(request: Request) {
         downloadUrl:
           downloadResult.data?.signedUrl ?? previewResult.data.signedUrl,
         copy,
-        shareCaption: buildPosterCaption(copy.caption, {
-          storeLink: posterStoreLink(appUrl, restaurant.slug, posterId)
-        }),
+        shareCaption: buildPosterCaption(copy.caption, { storeLink }),
         variantIndex
       };
     })
