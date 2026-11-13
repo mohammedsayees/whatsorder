@@ -8,6 +8,7 @@
 // the zero-tap path for someone arriving from chat.
 
 import { NextRequest, NextResponse } from "next/server";
+import { consumeLinkToken } from "@/lib/customer-auth/one-time";
 import { verifyLinkToken } from "@/lib/customer-auth/tokens";
 import { setCustomerSession } from "@/lib/customer-auth/cookies";
 import { safeCustomerLinkNext } from "@/lib/customer-auth/safe-next";
@@ -25,7 +26,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const identity = await verifyLinkToken(token);
-    await setCustomerSession(identity);
+    // One-time: a forwarded or reused link falls through to "expired".
+    if (!(await consumeLinkToken(identity.jti, identity.restaurantId))) {
+      throw new Error("Link already used");
+    }
+    await setCustomerSession({ restaurantId: identity.restaurantId, phone: identity.phone });
     // Clean redirect WITHOUT the token in the URL (so it can't be re-shared
     // or leak via history/referrer).
     return NextResponse.redirect(new URL(next, req.nextUrl.origin));

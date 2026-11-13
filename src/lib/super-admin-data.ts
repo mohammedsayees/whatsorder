@@ -174,6 +174,16 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
     return null;
   }
 
+  const { data: notesRow } = await supabase
+    .from("restaurant_internal_notes")
+    .select("notes")
+    .eq("restaurant_id", id)
+    .maybeSingle();
+  // Fall back to the legacy column for a database not yet migrated.
+  const internalNotes =
+    (notesRow as { notes?: string } | null)?.notes ??
+    ((restaurant as Restaurant).internal_notes || null);
+
   const restaurantOrders = (orders ?? []) as Order[];
   const restaurantTasks = (onboardingTasks ?? []) as OnboardingTask[];
   const normalizedTeamMemberships = (teamMemberships ?? []).map((membership) => ({
@@ -192,6 +202,8 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
   return {
     restaurant: {
       ...(restaurant as Restaurant),
+      // Notes live in a super-admin-only table, not on the member-readable row.
+      internal_notes: internalNotes,
       status: (restaurant.status as Restaurant["status"]) ?? "draft",
       plan: (restaurant.plan as Restaurant["plan"]) ?? "trial",
       orders_count: ordersCount ?? 0,

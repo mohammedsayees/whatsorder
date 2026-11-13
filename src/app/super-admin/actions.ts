@@ -605,10 +605,19 @@ export async function updateRestaurantNotesAction(formData: FormData) {
     return;
   }
 
-  const { error } = await supabase
-    .from("restaurants")
-    .update({ internal_notes: stringValue(formData, "internal_notes") || null })
-    .eq("id", restaurantId);
+  // Super-admin-only table: restaurant members can read the restaurants row.
+  const notes = stringValue(formData, "internal_notes");
+  const { error } = notes
+    ? await supabase
+        .from("restaurant_internal_notes")
+        .upsert(
+          { restaurant_id: restaurantId, notes, updated_at: new Date().toISOString() },
+          { onConflict: "restaurant_id" }
+        )
+    : await supabase
+        .from("restaurant_internal_notes")
+        .delete()
+        .eq("restaurant_id", restaurantId);
   if (error) {
     redirect(
       `/super-admin/restaurants/${restaurantId}?tab=notes&error=${queryError(error.message)}`

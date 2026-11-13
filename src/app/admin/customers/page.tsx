@@ -8,6 +8,7 @@ import {
   CustomerCreditPanel
 } from "@/components/admin/CustomerCreditPanel";
 import { PaginationNav } from "@/components/admin/PaginationNav";
+import { SignOutCustomerButton } from "@/components/admin/SignOutCustomerButton";
 import { WithdrawMarketingConsentButton } from "@/components/admin/WithdrawMarketingConsentButton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/currency";
@@ -395,6 +396,11 @@ export default async function AdminCustomersPage({
                       </p>
                     )}
                   </div>
+
+                  <SignOutCustomerButton
+                    customerId={customer.id}
+                    customerName={customer.name}
+                  />
 
                   <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
                     <p>
