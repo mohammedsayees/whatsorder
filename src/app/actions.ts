@@ -249,6 +249,47 @@ export async function withdrawCustomerMarketingConsentAction(formData: FormData)
   revalidatePath("/admin/customers");
 }
 
+/**
+ * Sign a customer out of this restaurant on every device (e.g. their WhatsApp
+ * login link was forwarded). Sessions issued before now stop working; the
+ * customer signs in again from a fresh link.
+ */
+export async function signOutCustomerEverywhereAction(formData: FormData) {
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const customerId = stringValue(formData, "customer_id");
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase || !customerId) {
+    return;
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("phone")
+    .eq("id", customerId)
+    .eq("restaurant_id", session.restaurantId)
+    .maybeSingle();
+  databaseFailure("Customer lookup", customerError);
+  if (!customer?.phone) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("customer_session_revocations").upsert(
+    {
+      restaurant_id: session.restaurantId,
+      phone: customer.phone,
+      revoked_before: now,
+      revoked_by: session.userId,
+      updated_at: now
+    },
+    { onConflict: "restaurant_id,phone" }
+  );
+  databaseFailure("Customer sign-out", error);
+
+  revalidatePath("/admin/customers");
+}
+
 export async function redeemLoyaltyRewardAction(formData: FormData) {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const customerId = stringValue(formData, "customer_id");
