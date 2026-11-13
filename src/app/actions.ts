@@ -15,6 +15,7 @@ import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
+import { ownedStoragePath } from "@/lib/storage-ownership";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
 import {
@@ -500,7 +501,7 @@ export async function uploadRestaurantBrandImageAction(
     return { ok: false, error: imageSaveError.message };
   }
 
-  const previousStoragePath = storagePathFromPublicUrl(previousUrl, bucketName);
+  const previousStoragePath = ownedStoragePath(previousUrl, bucketName, restaurant.id);
   if (previousStoragePath) {
     await supabase.storage.from(bucketName).remove([previousStoragePath]);
   }
@@ -539,10 +540,7 @@ export async function removeMenuItemImageAction(formData: FormData) {
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Menu image removal", error);
-  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
-  if (storagePath) {
-    await supabase.storage.from("menu-images").remove([storagePath]);
-  }
+  await removeOwnedMenuImage(supabase, restaurant, String(item?.image_url ?? ""));
 
   revalidateMenuPaths(restaurant);
 }
@@ -588,10 +586,7 @@ export async function deleteMenuItemAction(formData: FormData) {
     .eq("id", itemId)
     .eq("restaurant_id", restaurant.id);
   databaseFailure("Menu item deletion", error);
-  const storagePath = storagePathFromPublicUrl(String(item?.image_url ?? ""));
-  if (storagePath) {
-    await supabase.storage.from("menu-images").remove([storagePath]);
-  }
+  await removeOwnedMenuImage(supabase, restaurant, String(item?.image_url ?? ""));
 
   revalidateMenuPaths(restaurant);
 }
@@ -1419,15 +1414,27 @@ function updateCategoryDisplayOrder(
     .eq("restaurant_id", category.restaurant_id);
 }
 
-function storagePathFromPublicUrl(url: string, bucketName = "menu-images") {
-  const marker = `/storage/v1/object/public/${bucketName}/`;
-  const markerIndex = url.indexOf(marker);
-
-  if (markerIndex < 0) {
-    return null;
+// Deletes only files inside this restaurant's own menu folder, and never one
+// another restaurant's item still points at (e.g. after a slug rename freed
+// the folder name for someone else).
+async function removeOwnedMenuImage(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurant: { id: string; slug: string },
+  imageUrl: string
+) {
+  const storagePath = ownedStoragePath(imageUrl, "menu-images", restaurant.slug);
+  if (!storagePath) {
+    return;
   }
-
-  return decodeURIComponent(url.slice(markerIndex + marker.length).split("?")[0]);
+  const { count, error } = await supabase
+    .from("menu_items")
+    .select("id", { count: "exact", head: true })
+    .eq("image_url", imageUrl)
+    .neq("restaurant_id", restaurant.id);
+  if (error || (count ?? 0) > 0) {
+    return;
+  }
+  await supabase.storage.from("menu-images").remove([storagePath]);
 }
 
 function orderTargetsFromForm(form: FormData) {
