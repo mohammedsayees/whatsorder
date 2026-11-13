@@ -8,6 +8,7 @@ import {
   getRestaurantBySlug
 } from "@/lib/data";
 import { getPublicFeedback } from "@/lib/feedback";
+import { getPrebuildRestaurantSlugs } from "@/lib/prebuild-menus";
 import type {
   CustomerMenuCategory,
   CustomerMenuItem,
@@ -20,6 +21,15 @@ import type {
 // of invoking a function for every anonymous menu visit.
 export const dynamic = "force-static";
 export const revalidate = 300;
+// Pre-render every public menu at build time so the first visitor after a
+// deploy gets the edge copy instead of a cold origin render (~3 s measured).
+// Restaurants added later still render on first request (dynamicParams).
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  const slugs = await getPrebuildRestaurantSlugs();
+  return slugs.map((restaurantSlug) => ({ restaurantSlug }));
+}
 
 export default async function RestaurantPage({
   params
