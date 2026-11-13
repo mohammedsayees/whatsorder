@@ -2,7 +2,13 @@ import { PosterStudio } from "@/components/admin/PosterStudio";
 import { formatCurrency } from "@/lib/currency";
 import { getMenuOffers } from "@/lib/data";
 import { isOfferOrderable } from "@/lib/order-pricing";
-import { getMarketingAudience, getPosterHistory } from "@/lib/poster/store";
+import { buildPosterCaption, posterStoreLink } from "@/lib/poster/caption";
+import {
+  getMarketingAudience,
+  getPosterHistory,
+  getPosterPerformance
+} from "@/lib/poster/store";
+import { publicAppUrl } from "@/lib/public-app-url";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
@@ -101,6 +107,12 @@ export default async function MarketingPage() {
     ? await getMarketingAudience(session.restaurantId)
     : { recipients: [], frequencyCapped: 0 };
 
+  const performance = await getPosterPerformance(
+    session.restaurantId,
+    history.map((entry) => entry.id)
+  );
+  const appUrl = publicAppUrl();
+
   const offers: OfferOption[] = allOffers
     .filter((offer) => isOfferOrderable(offer))
     .map((offer) => ({
@@ -132,7 +144,13 @@ export default async function MarketingPage() {
           createdAt: entry.created_at,
           previewUrl: entry.previewUrl,
           downloadUrl: entry.downloadUrl,
-          caption: entry.copy?.caption ?? ""
+          headline: entry.copy?.headline ?? "",
+          caption: entry.copy?.caption ?? "",
+          shareCaption: buildPosterCaption(entry.copy?.caption, {
+            storeLink: posterStoreLink(appUrl, session.restaurant.slug, entry.id)
+          }),
+          sentCount: performance.get(entry.id)?.sentCount ?? 0,
+          orderCount: performance.get(entry.id)?.orderCount ?? 0
         }))}
         offers={offers}
       />

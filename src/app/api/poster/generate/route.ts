@@ -8,7 +8,9 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { buildPosterCaption, posterStoreLink } from "@/lib/poster/caption";
 import { generateCopyVariants } from "@/lib/poster/copy";
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   checkPosterGenerationRateLimit,
   posterRateLimitMessage
@@ -47,6 +49,8 @@ type GeneratedVariant = {
   previewUrl: string;
   downloadUrl: string;
   copy: PosterCopy;
+  /** AI caption + tracked store link, ready to paste (no opt-out line). */
+  shareCaption: string;
   variantIndex: number;
 };
 
@@ -151,6 +155,7 @@ export async function POST(request: Request) {
   // Recorded BEFORE each write is attempted: a write that errors client-side
   // may still have landed, and removing a non-existent object is harmless.
   const created = { posterIds: [] as string[], storagePaths: [] as string[] };
+  const appUrl = publicAppUrl();
 
   // allSettled, not all: every variant must have finished (or failed) before
   // cleanup runs, or a slow sibling could upload after the cleanup.
@@ -211,6 +216,9 @@ export async function POST(request: Request) {
         downloadUrl:
           downloadResult.data?.signedUrl ?? previewResult.data.signedUrl,
         copy,
+        shareCaption: buildPosterCaption(copy.caption, {
+          storeLink: posterStoreLink(appUrl, restaurant.slug, posterId)
+        }),
         variantIndex
       };
     })

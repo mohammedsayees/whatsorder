@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { currentSlugForReleasedSlug } from "@/lib/slug-history";
 import { CartProvider } from "@/components/customer/CartProvider";
 import { CheckoutForm } from "@/components/customer/CheckoutForm";
+import { sanitizeAttributionSource } from "@/lib/attribution";
 import { getRestaurantBySlug } from "@/lib/data";
 import { loadCustomerContext } from "@/lib/customer-auth/context";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
@@ -11,11 +12,12 @@ export default async function CheckoutPage({
   searchParams
 }: {
   params: Promise<{ restaurantSlug: string }>;
-  searchParams: Promise<{ table?: string; onboarding?: string }>;
+  searchParams: Promise<{ table?: string; onboarding?: string; src?: string }>;
 }) {
   const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
   const tableNumber = String(query.table ?? "").trim().slice(0, 40);
   const onboardingRequested = query.onboarding === "test-order";
+  const attributionSource = sanitizeAttributionSource(query.src);
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
@@ -40,6 +42,7 @@ export default async function CheckoutPage({
   return (
     <CartProvider restaurantSlug={restaurant.slug}>
       <CheckoutForm
+        attributionSource={attributionSource}
         initialTableNumber={tableNumber}
         onboardingTest={onboardingTest}
         prefill={profile}

@@ -15,7 +15,7 @@ vi.mock("@/lib/super-admin-auth", () => ({
       userId: "user-1",
       role: "owner",
       restaurantId: "rest-1",
-      restaurant: { id: "rest-1", name: "Chai Xpress" }
+      restaurant: { id: "rest-1", name: "Chai Xpress", slug: "chaixpress" }
     }
   })
 }));
@@ -111,6 +111,7 @@ function request() {
 }
 
 beforeEach(() => {
+  process.env.NEXT_PUBLIC_APP_URL = "https://app.test";
   uploads.length = 0;
   inserts.length = 0;
   removedObjects.length = 0;
@@ -125,8 +126,15 @@ describe("POST /api/poster/generate", () => {
   it("returns three variants when allowed, and records the attempt per restaurant", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { variants: unknown[] };
+    const payload = (await response.json()) as {
+      variants: { posterId: string; shareCaption: string }[];
+    };
     expect(payload.variants).toHaveLength(3);
+    for (const variant of payload.variants) {
+      expect(variant.shareCaption).toBe(
+        `C\n\nhttps://app.test/r/chaixpress?src=poster-${variant.posterId}`
+      );
+    }
     expect(rpcArgs).toEqual({
       target_restaurant_id: "rest-1",
       target_user_id: "user-1",
