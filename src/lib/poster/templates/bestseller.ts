@@ -4,11 +4,13 @@
 // fallback it always has something to say. Three compositions (one per
 // generated variant, see layoutForVariant), each with a photo-less form:
 //
-//   photo_hero — dish in a big ringed circle bleeding off the edge, a rotated
-//                sold-count stamp overlapping it (no photo: the item name as
-//                oversized cropped lettering)
+//   photo_hero — the AI studio cut-out on a colour disc, breaking its frame;
+//                else the photo in a big ringed circle bleeding off the edge;
+//                a rotated sold-count stamp overlaps it (no photo: the item
+//                name as oversized cropped lettering)
 //   full_bleed — the dish fills the top of the frame, a short soft fade into
-//                the base colour carries the type (no photo: diagonal bands)
+//                the base colour carries the type (no photo: the AI
+//                background when cached, else diagonal bands)
 //   stat_led   — the sold count is the hero (no sales yet: the headline is),
 //                photo in a circle at the edge (no photo: concentric rings)
 //
@@ -27,6 +29,7 @@ import {
   brandBlock,
   canvas,
   ctaBlock,
+  cutoutOnBackdrop,
   disc,
   displayText,
   fitFont,
@@ -88,6 +91,7 @@ export function plateFor(s: PosterScheme): string {
 
 function photoHero(props: PosterProps, photo: string | null): PosterNode {
   const s = posterScheme(props.branding, "hero");
+  const cutout = photo ? props.subject.cutoutDataUri ?? null : null;
   const headlineSize = fitFont(props.copy.headline, {
     width: CONTENT_WIDTH,
     maxLines: 2,
@@ -99,7 +103,12 @@ function photoHero(props: PosterProps, photo: string | null): PosterNode {
     [
       texture(s.text, 0.12),
       disc(1180, s.decoA, { top: -420, right: -520 }),
-      photo
+      ...(cutout
+        ? cutoutOnBackdrop(cutout, { top: 150, left: 300, size: 780, backdrop: s.decoB, scale: 1.12 })
+        : []),
+      cutout
+        ? null
+        : photo
         ? photoCircle(photo, 860, s.ring, { top: 120, right: -120 })
         : giantLettering(props.subject.title, {
             size: 460,
@@ -140,7 +149,8 @@ function photoHero(props: PosterProps, photo: string | null): PosterNode {
 
 function fullBleed(props: PosterProps, photo: string | null): PosterNode {
   const s = posterScheme(props.branding, "bleed");
-  const tall = props.subject.photoTallDataUri ?? photo;
+  // A photo-less item uses its cached AI background in the photo's place.
+  const tall = props.subject.photoTallDataUri ?? photo ?? props.subject.backgroundDataUri ?? null;
   const headlineSize = fitFont(props.copy.headline, {
     width: CONTENT_WIDTH,
     maxLines: 2,

@@ -91,6 +91,10 @@ export type PosterSubject = {
   photoDataUri: string | null;
   /** Same photo smart-cropped tall for full-bleed layouts; falls back to photoDataUri. */
   photoTallDataUri?: string | null;
+  /** AI studio cut-out of the dish (transparent PNG), when one is cached. */
+  cutoutDataUri?: string | null;
+  /** AI illustrated background for a photo-less item, when one is cached. */
+  backgroundDataUri?: string | null;
   /** Units sold in the window get_bestsellers looked at; 0 on cold start. */
   soldQty: number | null;
 };

@@ -131,6 +131,7 @@ export function PosterStudio({
   );
   const [textOnly, setTextOnly] = useState(false);
   const [themeMode, setThemeMode] = useState<"default" | "mix">("default");
+  const [artStatus, setArtStatus] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rateLimited, setRateLimited] = useState(false);
@@ -225,6 +226,7 @@ export function PosterStudio({
       const payload = (await response.json()) as {
         variants?: GeneratedVariant[];
         error?: string;
+        art?: string;
       };
       if (!response.ok || !payload.variants?.length) {
         setRateLimited(response.status === 429);
@@ -232,6 +234,7 @@ export function PosterStudio({
         return;
       }
       setVariants(payload.variants);
+      setArtStatus(payload.art ?? null);
       setGeneratedTextOnly(textOnly);
       setFocusSource("variant");
     } catch (cause) {
@@ -684,6 +687,8 @@ export function PosterStudio({
         ) : null}
       </section>
 
+      {!generating && variants.length > 0 && artStatus ? <ArtNote status={artStatus} /> : null}
+
       {/* 4 — actions for the selected variant */}
       {focused?.source === "variant" ? renderActionPanel(focused) : null}
 
@@ -770,3 +775,26 @@ function SendSummary({ state }: { state: SendPosterState }) {
     </div>
   );
 }
+
+const ART_NOTES: Record<string, string> = {
+  ready: "Using the studio cut-out of this dish.",
+  preparing:
+    "We're making a studio cut-out (or background) for this dish. Generate again in about a minute to use it — these posters use your photo as it is.",
+  limit: "Today's AI artwork allowance is used up, so these posters use your photo as it is. It resets tomorrow.",
+  unavailable: "AI artwork couldn't be made for this dish just now, so these posters use your photo as it is."
+};
+
+function ArtNote({ status }: { status: string }) {
+  const note = ART_NOTES[status];
+  if (!note) return null;
+  return (
+    <p
+      className={`-mt-4 rounded-lg p-3 text-sm font-semibold ${
+        status === "ready" ? "bg-mint text-leaf" : "bg-stone-100 text-stone-600"
+      }`}
+    >
+      {note}
+    </p>
+  );
+}
+

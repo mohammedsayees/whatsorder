@@ -1,5 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`poster render pipeline > renders AI background full-bleed (no photo) deterministically and inside the PNG contract 1`] = `"af973244a5579f4a50c86c4b321f79c171c271f774970e5ce08edab155e001fe"`;
+
 exports[`poster render pipeline > renders bestseller full-bleed bands (no photo) deterministically and inside the PNG contract 1`] = `"012b3395ce60194adb088973a8c1c8947049a5f14d72c6bb7acce72d0e4c4bea"`;
 
 exports[`poster render pipeline > renders bestseller full-bleed deterministically and inside the PNG contract 1`] = `"af973244a5579f4a50c86c4b321f79c171c271f774970e5ce08edab155e001fe"`;
@@ -15,6 +17,22 @@ exports[`poster render pipeline > renders bestseller stat-led deterministically 
 exports[`poster render pipeline > renders bestseller stat-led rings (no photo) deterministically and inside the PNG contract 1`] = `"40196bdfb4cf0cca97452a05d3a6796687c38369b996b531f8b95e914ee47685"`;
 
 exports[`poster render pipeline > renders bestseller with Arabic names deterministically and inside the PNG contract 1`] = `"8405d731855fa9e56e76e46f78c802074db5161d1c08de221419fa2b3becc3b2"`;
+
+exports[`poster render pipeline > renders cut-out bold_deal bestseller hero deterministically and inside the PNG contract 1`] = `"afe7d76397543e1de81f94ba8a1f24fd618e1059d367152131977022259996da"`;
+
+exports[`poster render pipeline > renders cut-out bold_deal offer arch deterministically and inside the PNG contract 1`] = `"6d9c17fd7517a33e8d49bbb5e7a17d79d8c03819b1f187ce06da54299dc7ecde"`;
+
+exports[`poster render pipeline > renders cut-out dark_premium bestseller hero deterministically and inside the PNG contract 1`] = `"2cfe6ea1cd293159fa782dfa4fa730658192138ef26704165b2aca60dc6a5e7c"`;
+
+exports[`poster render pipeline > renders cut-out dark_premium offer arch deterministically and inside the PNG contract 1`] = `"085ec25302fde491c5ee760d3f6dd2cf8e3d7cbf26e8053c45ede0f4dbeeddd5"`;
+
+exports[`poster render pipeline > renders cut-out minimal_cafe bestseller hero deterministically and inside the PNG contract 1`] = `"89b798539edec5a1e5a02dee6deead2ee93c18db86813ec8f406bed09854a206"`;
+
+exports[`poster render pipeline > renders cut-out minimal_cafe offer arch deterministically and inside the PNG contract 1`] = `"cea975505a3d9b1a3128b96b048cfc71e3da7985b8e0063775ece320c44f00b2"`;
+
+exports[`poster render pipeline > renders cut-out street_food bestseller hero deterministically and inside the PNG contract 1`] = `"7f73c21b9e538f5b62bcf0b945917f34def25fee8f3c85afad20e7e3e02ec5fb"`;
+
+exports[`poster render pipeline > renders cut-out street_food offer arch deterministically and inside the PNG contract 1`] = `"5dbddca715656e812dc19899aa84763371ebde8b8868cdacadb83dd833ec35f6"`;
 
 exports[`poster render pipeline > renders offer arch price fill (no photo) deterministically and inside the PNG contract 1`] = `"815ceaa9fc8abafc7506360a5625a775224b2e657d544a3a3f0c253ba6d486fa"`;
 

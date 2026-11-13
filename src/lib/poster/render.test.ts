@@ -31,6 +31,8 @@ import {
 let photoDataUri: string;
 let logoDataUri: string;
 let qrDataUri: string;
+let cutoutDataUri: string;
+let backgroundDataUri: string;
 
 beforeAll(async () => {
   // Deterministic in-memory fixtures — no binary files in the repo. The photo
@@ -49,6 +51,16 @@ beforeAll(async () => {
     .png()
     .toBuffer();
   qrDataUri = `data:image/png;base64,${qr.toString("base64")}`;
+  // A transparent "cut-out" (dish on alpha) and a textured background.
+  const cutout = await sharp(
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><ellipse cx="200" cy="250" rx="170" ry="70" fill="#efe6d8"/><rect x="120" y="120" width="160" height="130" fill="#f6f1e8"/><ellipse cx="200" cy="122" rx="80" ry="24" fill="#a0592a"/></svg>`
+    )
+  )
+    .png()
+    .toBuffer();
+  cutoutDataUri = `data:image/png;base64,${cutout.toString("base64")}`;
+  backgroundDataUri = photoDataUri;
 
   const logo = await sharp({
     create: {
@@ -78,6 +90,8 @@ function makeProps(
     qr?: boolean;
     theme?: PosterThemeId;
     brand?: string | null;
+    cutout?: boolean;
+    background?: boolean;
   } = {}
 ): PosterProps {
   return {
@@ -95,6 +109,8 @@ function makeProps(
       originalPriceLine: overrides.originalPriceLine ?? null,
       savingLabel: overrides.savingLabel ?? null,
       photoDataUri: overrides.photo === false ? null : photoDataUri,
+      cutoutDataUri: overrides.cutout ? cutoutDataUri : null,
+      backgroundDataUri: overrides.background ? backgroundDataUri : null,
       soldQty: overrides.soldQty === undefined ? 87 : overrides.soldQty
     },
     cta: { qrDataUri: overrides.qr === false ? null : qrDataUri },
@@ -185,6 +201,21 @@ const scenarios: { name: string; props: () => PosterProps }[] = [
       }))
     )
   ),
+  // Phase 6: AI cut-out (bestseller hero, offer arch) and AI background.
+  ...POSTER_THEME_IDS.flatMap((theme) => [
+    {
+      name: `cut-out ${theme} bestseller hero`,
+      props: () => makeProps("bestseller", { theme, cutout: true })
+    },
+    {
+      name: `cut-out ${theme} offer arch`,
+      props: () => makeProps("offer", { theme, cutout: true, originalPriceLine: "AED 16", savingLabel: "25% OFF" })
+    }
+  ]),
+  {
+    name: "AI background full-bleed (no photo)",
+    props: () => makeProps("bestseller", { layout: "full_bleed", photo: false, background: true })
+  },
   {
     name: "bestseller with Arabic names",
     props: () =>
@@ -344,5 +375,16 @@ describe("poster render pipeline", () => {
         }
       }
     });
+  });
+
+  it("uses the cut-out instead of the photo when one is cached", () => {
+    const withCutout = JSON.stringify(buildPosterTree(makeProps("bestseller", { cutout: true })));
+    expect(withCutout).toContain(cutoutDataUri);
+    expect(withCutout).not.toContain(photoDataUri);
+    const offer = JSON.stringify(buildPosterTree(makeProps("offer", { cutout: true })));
+    expect(offer).toContain(cutoutDataUri);
+    // No photo → a cached cut-out (of an old photo) is never shown.
+    const noPhoto = JSON.stringify(buildPosterTree(makeProps("bestseller", { cutout: true, photo: false })));
+    expect(noPhoto).not.toContain(cutoutDataUri);
   });
 });

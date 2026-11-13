@@ -166,6 +166,8 @@ export async function generateMenuItemImageAction(input: {
     .from("ai_image_generations")
     .select("id", { count: "exact", head: true })
     .eq("restaurant_id", restaurant.id)
+    // Poster artwork has its own cap (lib/poster/art.ts).
+    .eq("purpose", "menu_photo")
     .neq("status", "failed")
     .gte("created_at", uaeDayStartIso());
 
