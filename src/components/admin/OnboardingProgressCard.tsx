@@ -59,7 +59,7 @@ export function OnboardingProgressCard({
       title: "Share with customers",
       description: "Download your QR code or copy the permanent store link.",
       action: "Get QR and link",
-      href: "/admin/menu/print"
+      href: "/admin/share"
     }
   ];
   const completed = steps.filter((step) => state[step.key]).length;

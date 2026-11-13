@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileDown, Sparkles } from "lucide-react";
+import { FileDown, Share2, Sparkles } from "lucide-react";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { OptionGroupsManager } from "@/components/admin/OptionGroupsManager";
@@ -40,8 +40,17 @@ export default async function AdminMenuPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canWrite ? (
+            <Link
+              className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white hover:bg-leaf/90"
+              href="/admin/share"
+            >
+              <Share2 size={18} />
+              Share QR & link
+            </Link>
+          ) : null}
           <Link
-            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white hover:bg-leaf/90"
+            className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-3 font-black text-ink hover:bg-stone-50"
             href="/admin/menu/print"
           >
             <FileDown size={18} />

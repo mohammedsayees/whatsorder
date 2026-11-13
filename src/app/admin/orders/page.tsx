@@ -188,7 +188,7 @@ export default async function AdminOrdersPage({
           </p>
           <Link
             className="focus-ring mt-3 inline-flex rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
-            href="/admin/menu/print"
+            href="/admin/share"
           >
             Get QR code and store link
           </Link>
