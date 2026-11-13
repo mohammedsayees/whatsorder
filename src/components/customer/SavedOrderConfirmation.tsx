@@ -6,9 +6,10 @@ import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { formatCurrency } from "@/lib/currency";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
+import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 
-export function SavedOrderConfirmation({ restaurant, order, language, webPushPublicKey }: {
-  restaurant: PublicRestaurant; order: OrderConfirmation; language?: string; webPushPublicKey: string | null;
+export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey }: {
+  restaurant: PublicRestaurant; order: OrderConfirmation; language?: string; onboardingTest?: boolean; webPushPublicKey: string | null;
 }) {
   const active = order.status !== "Cancelled" && order.status !== "Completed";
   const arabic = language === "ar";
@@ -38,6 +39,20 @@ export function SavedOrderConfirmation({ restaurant, order, language, webPushPub
       </ul>
       <p className="mt-3 text-lg font-bold">{t("Total", "الإجمالي")}: {formatCurrency(order.total, restaurant)}</p>
       <div className="mt-6 flex flex-col gap-3">
+        {onboardingTest ? (
+          <aside className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-start text-violet-950">
+            <p className="font-black">Test order saved · Final step</p>
+            <p className="mt-1 text-sm text-violet-900/75">
+              Return to Orders and accept the highlighted test order to finish setup.
+            </p>
+            <Link
+              className="focus-ring mt-3 inline-flex w-full items-center justify-center rounded-full bg-violet-700 px-5 py-3 font-black text-white"
+              href={onboardingOrdersHref(order.id)}
+            >
+              Go to dashboard and accept order
+            </Link>
+          </aside>
+        ) : null}
         <a className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-bold text-white"
           href={buildWhatsAppUrl(restaurant.whatsapp_number,
             active ? order.whatsapp_message : `Hi, I need help with order #${order.id.slice(-8).toUpperCase()}.`,

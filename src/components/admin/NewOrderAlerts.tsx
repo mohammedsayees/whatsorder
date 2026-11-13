@@ -628,26 +628,30 @@ export function NewOrderAlertsProvider({
 
 export function NewOrderAlertCard({
   children,
+  focus = false,
   orderId,
   urgent = false
 }: {
   children: React.ReactNode;
+  focus?: boolean;
   orderId: string;
   urgent?: boolean;
 }) {
   const { highlightedOrderIds } = useContext(NewOrderAlertsContext);
-  const highlighted = highlightedOrderIds.has(orderId);
+  const realtimeHighlighted = highlightedOrderIds.has(orderId);
+  const highlighted = focus || realtimeHighlighted;
 
   return (
     <article
       className={`overflow-hidden rounded-xl border border-l-4 bg-white shadow-sm transition-all duration-500 ${
         highlighted
-          ? "animate-pulse border-leaf ring-4 ring-mint"
+          ? `${realtimeHighlighted ? "animate-pulse " : ""}border-leaf ring-4 ring-mint`
           : urgent
             ? "border-rose-200 border-l-rose-500"
             : "border-stone-200 border-l-stone-300"
       }`}
       data-new-order-highlight={highlighted ? "true" : undefined}
+      id={`order-${orderId}`}
     >
       {children}
     </article>
