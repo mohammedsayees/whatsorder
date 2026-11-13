@@ -20,6 +20,14 @@ import { ChatUnreadNavBadge } from "@/components/admin/ChatUnreadNavBadge";
 import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
+import { isGuidedAdminSetup } from "@/lib/admin-shell";
+
+const setupNavHrefs = new Set([
+  "/admin",
+  "/admin/orders",
+  "/admin/menu",
+  "/admin/settings"
+]);
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: BarChart3, staff: true },
@@ -54,8 +62,10 @@ export function AdminShell({
   session: RestaurantAdminSession;
 }) {
   const jobsOnly = session.restaurant.jobs_only === true;
+  const guidedSetup = isGuidedAdminSetup(session.restaurant, session.role);
   const visibleNavItems = navItems.filter((item) => {
     if (jobsOnly) return item.href === "/admin/jobs";
+    if (guidedSetup && !setupNavHrefs.has(item.href)) return false;
     if (item.finance && !financeVisible) return false;
     return session.role !== "staff" || item.staff;
   });
@@ -68,7 +78,11 @@ export function AdminShell({
           </Link>
           <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
           <p className="mt-0.5 text-xs capitalize text-stone-500">
-            {jobsOnly ? "Jobs employer account" : session.role.replace("_", " ")}
+            {jobsOnly
+              ? "Jobs employer account"
+              : guidedSetup
+                ? "Setup mode · 4 essentials"
+                : session.role.replace("_", " ")}
           </p>
         </div>
         <nav

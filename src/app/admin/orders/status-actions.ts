@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { scheduleOrderNotifications } from "@/lib/notification-jobs";
 import type { OrderStatus } from "@/lib/types";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 const stringValue = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const limitedStringValue = (data: FormData, key: string, limit: number) => stringValue(data, key).slice(0, limit);
 function databaseFailure(operation: string, error: { message: string } | null) {
@@ -50,6 +51,14 @@ export async function updateOrderStatusAction(formData: FormData) {
     }
 
     scheduleOrderNotifications(restaurant.id);
+
+    if (status === "Accepted") {
+      await recordOnboardingEvent(
+        restaurant.id,
+        "test_order_accepted",
+        "order_status"
+      );
+    }
   }
 
   revalidatePath("/admin");

@@ -3,6 +3,34 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { OnboardingProgress, OnboardingTask } from "@/lib/types";
 
+export type LaunchMilestoneState = {
+  storeReady: boolean;
+  testOrderComplete: boolean;
+  storeShared: boolean;
+};
+
+export function getLaunchMilestoneState(
+  progress: OnboardingProgress
+): LaunchMilestoneState {
+  const completed = new Set(
+    progress.tasks
+      .filter((task) => task.is_completed)
+      .map((task) => task.task_key)
+  );
+
+  return {
+    storeReady: [
+      "restaurant_details",
+      "whatsapp_number",
+      "menu_uploaded",
+      "restaurant_live"
+    ].every((taskKey) => completed.has(taskKey)),
+    testOrderComplete:
+      Boolean(progress.activatedAt) || completed.has("test_order"),
+    storeShared: completed.has("qr_generated")
+  };
+}
+
 export async function getOnboardingProgress(
   restaurantId: string
 ): Promise<OnboardingProgress> {

@@ -9,6 +9,7 @@ function source(path: string) {
 describe("self-serve claim store link contracts", () => {
   const migration = source("supabase/migrations/20261112120000_self_serve_claim_store_link.sql");
   const claimAction = source("src/app/try/claim/actions.ts");
+  const claimForm = source("src/components/try/ClaimDemoForm.tsx");
   const claimLookup = source("src/app/try/claim/claimable-demo.ts");
   const demoAction = source("src/app/try/actions.ts");
   const slugAction = source("src/app/admin/settings/actions.ts");
@@ -64,12 +65,20 @@ describe("self-serve claim store link contracts", () => {
   it("validates go-live settings before claiming and saves them to the claimed tenant only", () => {
     const parseAt = claimAction.indexOf("parseGoLiveSettings(formData)");
     const rpcAt = claimAction.indexOf('admin.rpc("claim_demo_restaurant"');
-    const saveAt = claimAction.indexOf(".update({ ...goLive.settings");
+    const saveAt = claimAction.search(/\.update\(\{\s*\.\.\.goLive\.settings/);
     expect(parseAt).toBeGreaterThan(-1);
     expect(parseAt).toBeLessThan(rpcAt);
     expect(saveAt).toBeGreaterThan(rpcAt);
     expect(claimAction).toContain('.eq("id", String(restaurantId))\n    .eq("is_demo", false)');
     expect(claimAction).toContain('markOnboardingTasksComplete(String(restaurantId), ["fulfilment_settings"])');
+  });
+
+  it("keeps claiming short with safe takeaway-only launch defaults", () => {
+    expect(claimForm).toContain('name="pickup_enabled" type="hidden" value="on"');
+    expect(claimForm).not.toContain('name="delivery_enabled"');
+    expect(claimForm).toContain('name="hours_mode" type="hidden" value="always"');
+    expect(claimForm).toContain('name="accepting_orders"');
+    expect(claimAction).toContain('accepting_orders: values.accepting_orders === "on"');
   });
 
   it("limits store link changes to owners and admins of their own restaurant", () => {

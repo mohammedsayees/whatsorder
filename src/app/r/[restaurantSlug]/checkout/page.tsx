@@ -9,10 +9,11 @@ export default async function CheckoutPage({
   searchParams
 }: {
   params: Promise<{ restaurantSlug: string }>;
-  searchParams: Promise<{ table?: string }>;
+  searchParams: Promise<{ table?: string; onboarding?: string }>;
 }) {
   const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
   const tableNumber = String(query.table ?? "").trim().slice(0, 40);
+  const onboardingTest = query.onboarding === "test-order";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
@@ -25,7 +26,12 @@ export default async function CheckoutPage({
 
   return (
     <CartProvider restaurantSlug={restaurant.slug}>
-      <CheckoutForm initialTableNumber={tableNumber} prefill={profile} restaurant={restaurant} />
+      <CheckoutForm
+        initialTableNumber={tableNumber}
+        onboardingTest={onboardingTest}
+        prefill={profile}
+        restaurant={restaurant}
+      />
     </CartProvider>
   );
 }

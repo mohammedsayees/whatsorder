@@ -2,6 +2,10 @@ import "server-only";
 
 import { getUaeMonthStartIso } from "@/lib/date-time";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import {
+  onboardingEventNames,
+  type OnboardingEventName
+} from "@/lib/onboarding-events";
 import type {
   Customer,
   MenuCategory,
@@ -226,22 +230,33 @@ export async function getSuperAdminDashboardData() {
   let totalCustomers = restaurants.reduce((sum, restaurant) => sum + restaurant.customers_count, 0);
   let subscriptions: Array<{ status: string }> = [];
   let outstandingBalance = 0;
+  const onboardingFunnel = Object.fromEntries(
+    onboardingEventNames.map((eventName) => [eventName, 0])
+  ) as Record<OnboardingEventName, number>;
 
   if (supabase) {
-    const [orderResult, customerResult, subscriptionResult, invoiceResult] = await Promise.all([
+    const [
+      orderResult,
+      customerResult,
+      subscriptionResult,
+      invoiceResult,
+      onboardingEventResult
+    ] = await Promise.all([
       supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
         .gte("created_at", monthStartIso),
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("subscriptions").select("status"),
-      supabase.from("invoices").select("id,total").eq("status", "issued")
+      supabase.from("invoices").select("id,total").eq("status", "issued"),
+      supabase.from("onboarding_funnel_events").select("event_name")
     ]);
     const dashboardError =
       orderResult.error ??
       customerResult.error ??
       subscriptionResult.error ??
-      invoiceResult.error;
+      invoiceResult.error ??
+      onboardingEventResult.error;
     if (dashboardError) {
       throw new Error(`Super Admin dashboard metrics could not be loaded: ${dashboardError.message}`);
     }
@@ -249,6 +264,13 @@ export async function getSuperAdminDashboardData() {
     ordersThisMonth = orderResult.count ?? 0;
     totalCustomers = customerResult.count ?? totalCustomers;
     subscriptions = (subscriptionResult.data ?? []) as Array<{ status: string }>;
+    for (const row of (onboardingEventResult.data ?? []) as Array<{
+      event_name: OnboardingEventName;
+    }>) {
+      if (row.event_name in onboardingFunnel) {
+        onboardingFunnel[row.event_name] += 1;
+      }
+    }
     const invoiceRows = (invoiceResult.data ?? []) as Array<{ id: string; total: number }>;
     if (invoiceRows.length > 0) {
       const invoiceIds = invoiceRows.map((invoice) => invoice.id);
@@ -275,6 +297,7 @@ export async function getSuperAdminDashboardData() {
 
   return {
     restaurants,
+    onboardingFunnel,
     metrics: {
       totalRestaurants: restaurants.length,
       liveRestaurants: restaurants.filter((restaurant) => restaurant.status === "live").length,

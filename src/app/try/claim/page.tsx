@@ -6,10 +6,11 @@ import ClaimDemoForm from "@/components/try/ClaimDemoForm";
 import { getClaimableDemo } from "@/app/try/claim/claimable-demo";
 import { getCountryProfile } from "@/lib/localization";
 import { suggestStoreSlug } from "@/lib/store-slug";
+import { recordOnboardingEvent } from "@/lib/onboarding-events";
 
 export const metadata: Metadata = {
   title: "Claim your restaurant — WhatsOrder",
-  description: "Set your store link, delivery and opening hours, then start a free 14-day trial."
+  description: "Claim your AI-built restaurant menu and start a free 14-day trial."
 };
 
 async function siteOrigin() {
@@ -56,7 +57,7 @@ export default async function ClaimDemoRestaurantPage({
           )}
           {query.settings === "0" ? (
             <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              We couldn&apos;t save your delivery and opening-hours details. Your store is claimed;
+              We couldn&apos;t save your initial order settings. Your store is claimed;
               set them in Settings after you sign in.
             </p>
           ) : null}
@@ -74,6 +75,9 @@ export default async function ClaimDemoRestaurantPage({
   }
 
   const demo = await getClaimableDemo();
+  if (demo) {
+    await recordOnboardingEvent(demo.id, "claim_viewed", "claim_page");
+  }
 
   return (
     <main className="min-h-screen bg-[#FDFDFB] px-4 py-10 sm:py-16">
