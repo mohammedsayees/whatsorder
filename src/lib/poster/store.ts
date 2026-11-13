@@ -7,6 +7,7 @@
 import "server-only";
 
 import { isWithinServiceWindow } from "@/lib/chat-inbox";
+import { posterAttributionSource } from "@/lib/attribution";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 import { POSTER_BUCKET, type PosterRow } from "./types";
@@ -160,6 +161,65 @@ export async function getFreshPosterUrls(
       })
     )
   );
+}
+
+export type PosterPerformance = {
+  /** Customers this poster was actually delivered to (status sent). */
+  sentCount: number;
+  /** Non-cancelled orders placed through this poster's tracked link. */
+  orderCount: number;
+};
+
+/**
+ * Per-poster sent count and attributed orders for this restaurant's posters.
+ * Read failures yield zeros (display only — nothing acts on these numbers).
+ */
+export async function getPosterPerformance(
+  restaurantId: string,
+  posterIds: string[]
+): Promise<Map<string, PosterPerformance>> {
+  const result = new Map<string, PosterPerformance>(
+    posterIds.map((id) => [id, { sentCount: 0, orderCount: 0 }])
+  );
+  const admin = getSupabaseAdmin();
+  if (!admin || posterIds.length === 0) {
+    return result;
+  }
+  const sources = new Map(
+    posterIds.map((id) => [posterAttributionSource(id), id])
+  );
+  const [sends, orders] = await Promise.all([
+    admin
+      .from("marketing_sends")
+      .select("poster_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "sent")
+      .in("poster_id", posterIds),
+    admin
+      .from("orders")
+      .select("attribution_source")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "Cancelled")
+      .in("attribution_source", [...sources.keys()])
+  ]);
+  if (sends.error) {
+    console.error("WhatsOrder poster: send counts failed", sends.error.code);
+  } else {
+    for (const row of (sends.data ?? []) as { poster_id: string }[]) {
+      const entry = result.get(row.poster_id);
+      if (entry) entry.sentCount += 1;
+    }
+  }
+  if (orders.error) {
+    console.error("WhatsOrder poster: attributed orders failed", orders.error.code);
+  } else {
+    for (const row of (orders.data ?? []) as { attribution_source: string }[]) {
+      const posterId = sources.get(row.attribution_source);
+      const entry = posterId ? result.get(posterId) : undefined;
+      if (entry) entry.orderCount += 1;
+    }
+  }
+  return result;
 }
 
 export async function downloadPosterBytes(

@@ -46,11 +46,14 @@ type PendingWhatsAppOrder = {
 };
 
 export function CheckoutForm({
+  attributionSource = null,
   initialTableNumber = "",
   onboardingTest = false,
   prefill = null,
   restaurant
 }: {
+  /** Validated ?src= token from the store link, stored on the order. */
+  attributionSource?: string | null;
   initialTableNumber?: string;
   onboardingTest?: boolean;
   prefill?: CustomerProfile | null;
@@ -360,6 +363,9 @@ export function CheckoutForm({
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           {onboardingTest ? <input name="onboarding_test" type="hidden" value="true" /> : null}
           <input name="order_language" readOnly type="hidden" value={language} />
+          {attributionSource ? (
+            <input name="attribution_source" readOnly type="hidden" value={attributionSource} />
+          ) : null}
           <input name="submission_token" readOnly type="hidden" value={submissionToken} />
           <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />
           <input name="items" type="hidden" />

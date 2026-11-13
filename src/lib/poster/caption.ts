@@ -1,8 +1,16 @@
 // lib/poster/caption.ts
 //
-// Builds the caption actually sent with a marketing poster. The opt-out line
-// is appended in CODE (never by the AI prompt) so it is always present,
-// always worded the same and never duplicated.
+// Builds the caption that goes out with a poster. Everything after the AI
+// text is appended in CODE (never by the AI prompt) so it is always present,
+// always worded the same and never duplicated:
+//
+//   <AI caption>
+//
+//   <tracked store link>            (Phase 3: ?src=poster-<id>)
+//
+//   Reply STOP to opt out.          (marketing sends only)
+
+import { posterAttributionSource } from "@/lib/attribution";
 
 /** WhatsApp Cloud API limit for image captions. */
 export const WHATSAPP_CAPTION_MAX = 1024;
@@ -11,27 +19,64 @@ export const MARKETING_OPT_OUT_LINE = "Reply STOP to opt out.";
 
 const SEPARATOR = "\n\n";
 
+/** `<app url>/r/<slug>?src=poster-<posterId>` */
+export function posterStoreLink(
+  appUrl: string,
+  restaurantSlug: string,
+  posterId: string
+): string {
+  const base = appUrl.replace(/\/+$/, "");
+  return `${base}/r/${encodeURIComponent(restaurantSlug)}?src=${posterAttributionSource(posterId)}`;
+}
+
+function stripAll(text: string, fragment: string): string {
+  let result = text;
+  while (fragment && result.includes(fragment)) {
+    result = result.replace(fragment, "");
+  }
+  return result;
+}
+
 /**
- * AI caption + opt-out line, within WhatsApp's caption limit. Idempotent: a
- * caption that already carries the line (e.g. the stored sent caption) is not
- * given a second one. The AI text is trimmed to make room — the opt-out line
- * is never the part that gets cut.
+ * AI caption + store link (+ opt-out line), within WhatsApp's caption limit.
+ * Idempotent: a caption that already carries the link or the opt-out line is
+ * not given a second one. The AI text is trimmed to make room — the link and
+ * the opt-out line are never the part that gets cut.
  */
-export function buildMarketingCaption(aiCaption: string | null | undefined): string {
-  let body = (aiCaption ?? "").trim();
-  // Strip every existing copy of the line so it ends up exactly once, last.
-  while (body.includes(MARKETING_OPT_OUT_LINE)) {
-    body = body.replace(MARKETING_OPT_OUT_LINE, "");
+export function buildPosterCaption(
+  aiCaption: string | null | undefined,
+  options: { storeLink?: string | null; optOut?: boolean } = {}
+): string {
+  const storeLink = options.storeLink?.trim() || null;
+  const tail = [
+    storeLink,
+    options.optOut ? MARKETING_OPT_OUT_LINE : null
+  ].filter((part): part is string => Boolean(part));
+
+  let body = stripAll(aiCaption ?? "", MARKETING_OPT_OUT_LINE);
+  if (storeLink) {
+    body = stripAll(body, storeLink);
   }
   body = body.trim();
 
+  const tailText = tail.join(SEPARATOR);
   if (!body) {
-    return MARKETING_OPT_OUT_LINE;
+    return tailText;
   }
-
-  const room = WHATSAPP_CAPTION_MAX - SEPARATOR.length - MARKETING_OPT_OUT_LINE.length;
+  if (!tailText) {
+    return body.slice(0, WHATSAPP_CAPTION_MAX);
+  }
+  const room = WHATSAPP_CAPTION_MAX - SEPARATOR.length - tailText.length;
   if (body.length > room) {
-    body = `${body.slice(0, room - 1).trimEnd()}…`;
+    body = `${body.slice(0, Math.max(0, room - 1)).trimEnd()}…`;
   }
-  return `${body}${SEPARATOR}${MARKETING_OPT_OUT_LINE}`;
+  return `${body}${SEPARATOR}${tailText}`;
+}
+
+/** The caption sent with a marketing poster: AI text + link + opt-out line. */
+export function buildMarketingCaption(
+  aiCaption: string | null | undefined,
+  storeLink?: string | null
+): string {
+  return buildPosterCaption(aiCaption, { storeLink, optOut: true });
 }

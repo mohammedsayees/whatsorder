@@ -9,7 +9,8 @@ import {
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { runMarketingSend } from "@/lib/marketing/send-pipeline";
 import { createMarketingSendStore } from "@/lib/marketing/send-store";
-import { buildMarketingCaption } from "@/lib/poster/caption";
+import { buildMarketingCaption, posterStoreLink } from "@/lib/poster/caption";
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   downloadPosterBytes,
   getFreshPosterUrls,
@@ -78,7 +79,10 @@ export async function sendPosterToRecentCustomersAction(
       error: "Couldn't check who has opted in right now, so nothing was sent. Try again shortly."
     };
   }
-  const caption = buildMarketingCaption(poster.copy?.caption);
+  const caption = buildMarketingCaption(
+    poster.copy?.caption,
+    posterStoreLink(publicAppUrl(), session.restaurant.slug, posterId)
+  );
 
   const result = await runMarketingSend({
     store,
