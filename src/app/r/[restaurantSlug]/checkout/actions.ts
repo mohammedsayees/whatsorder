@@ -29,11 +29,13 @@ import {
 import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
+import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 import type { CartLine, FulfilmentType, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
   | {
       ok: true;
+      onboardingTest: boolean;
       orderId: string;
       confirmationUrl: string | null;
       webPushPublicKey: string | null;
@@ -111,6 +113,14 @@ export async function createOrderAction(
   if (!restaurant) {
     return { ok: false, error: "Restaurant not found." };
   }
+
+  const onboardingRequested = stringValue(formData, "onboarding_test") === "true";
+  const onboardingSession = onboardingRequested
+    ? await getRestaurantAdminSession()
+    : null;
+  const onboardingTest =
+    onboardingSession?.restaurantId === restaurant.id &&
+    onboardingSession.role !== "staff";
 
   if (restaurant.accepting_orders === false) {
     return {
@@ -455,6 +465,7 @@ export async function createOrderAction(
 
   return {
     ok: true,
+    onboardingTest,
     // Future WhatsApp Business API support can replace this click-to-WhatsApp URL with a template send.
     orderId,
     confirmationUrl: confirmationAuthorized

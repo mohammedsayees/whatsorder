@@ -50,6 +50,8 @@ const sourceOptions: { label: string; value: OrderSourceView }[] = [
   { label: "WhatsApp chat", value: "whatsapp_chat" }
 ];
 
+const orderIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
 function positivePage(value?: string) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -86,6 +88,8 @@ export default async function AdminOrdersPage({
     status?: string;
     sort?: string;
     source?: string;
+    highlight?: string;
+    onboarding?: string;
   }>;
 }) {
   const [session, query] = await Promise.all([
@@ -103,6 +107,9 @@ export default async function AdminOrdersPage({
   const sort = query.sort === "overdue" ? "overdue" : "oldest";
   const source = parseOrderSourceView(query.source);
   const q = query.q?.trim().slice(0, 80) ?? "";
+  const highlightedOrderId = orderIdPattern.test(query.highlight ?? "")
+    ? query.highlight
+    : undefined;
   const requestedPage = positivePage(query.page);
   const isOperational = status !== "completed" && status !== "cancelled";
   const primaryStatus = isOperational ? "active" : status;
@@ -139,6 +146,11 @@ export default async function AdminOrdersPage({
     getLatestOrderRiderAssignments(restaurant.id, orderIds),
     getCustomerCreditSummariesForOrders(restaurant, ordersPage.items)
   ]);
+  const visibleHighlightedOrderId = ordersPage.items.some(
+    (order) => order.id === highlightedOrderId
+  )
+    ? highlightedOrderId
+    : undefined;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -159,6 +171,29 @@ export default async function AdminOrdersPage({
       </div>
       <NotificationDeliveryStatus restaurantId={restaurant.id} />
       <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
+
+      {query.onboarding === "test-order" && visibleHighlightedOrderId ? (
+        <section className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-4 text-violet-950">
+          <p className="font-black">Your test order is highlighted below</p>
+          <p className="mt-1 text-sm text-violet-900/75">
+            Select <strong>Accept order</strong> to finish your test and activate the full dashboard.
+          </p>
+        </section>
+      ) : null}
+      {query.onboarding === "accepted" ? (
+        <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-950">
+          <p className="font-black">Test order accepted — your store is ready</p>
+          <p className="mt-1 text-sm text-emerald-900/75">
+            You have completed the ordering flow. Next, get your permanent QR code and store link.
+          </p>
+          <Link
+            className="focus-ring mt-3 inline-flex rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
+            href="/admin/menu/print"
+          >
+            Get QR code and store link
+          </Link>
+        </section>
+      ) : null}
 
       <section className="sticky top-0 z-20 mt-4 rounded-xl border border-stone-200 bg-white/95 p-3 shadow-sm backdrop-blur">
         <div className="flex gap-2" aria-label="Order status">
@@ -283,6 +318,7 @@ export default async function AdminOrdersPage({
           <OrderList
             customers={customers}
             customerCredit={customerCredit}
+            highlightedOrderId={visibleHighlightedOrderId}
             orders={ordersPage.items}
             paymentChanges={paymentChanges}
             restaurant={restaurant}

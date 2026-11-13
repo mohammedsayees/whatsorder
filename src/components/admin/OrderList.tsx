@@ -38,6 +38,7 @@ import type { CustomerCreditMaps } from "@/lib/customer-credit-data";
 import { orderSource } from "@/lib/order-source";
 
 export function OrderList({
+  highlightedOrderId,
   orders,
   restaurant,
   riders = [],
@@ -46,6 +47,7 @@ export function OrderList({
   customerCredit = { byCustomerId: {}, byPhone: {} },
   paymentChanges = {}
 }: {
+  highlightedOrderId?: string;
   orders: Order[];
   restaurant: Restaurant;
   riders?: DeliveryRider[];
@@ -94,6 +96,7 @@ export function OrderList({
 
         return (
           <NewOrderAlertCard
+            focus={highlightedOrderId === order.id}
             key={order.id}
             orderId={order.id}
             urgent={timing.tone === "red"}
@@ -174,6 +177,7 @@ export function OrderList({
                     fulfilmentType={fulfilmentType}
                     key={`${order.id}-${order.status}`}
                     orderId={order.id}
+                    onboardingTest={highlightedOrderId === order.id}
                     orderTotal={Number(order.total)}
                     paymentMethod={order.payment_method}
                     showCancel={false}

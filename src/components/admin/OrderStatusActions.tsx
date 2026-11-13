@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { updateOrderStatusAction } from "@/app/actions";
 import { collectPaymentAndCompleteAction } from "@/app/admin/orders/actions";
@@ -27,6 +28,7 @@ export function OrderStatusActions({
   credit,
   countryCode,
   orderId,
+  onboardingTest = false,
   orderTotal = 0,
   paymentMethod,
   status,
@@ -36,11 +38,13 @@ export function OrderStatusActions({
   credit?: CustomerCreditSummary;
   countryCode?: CountryCode;
   orderId: string;
+  onboardingTest?: boolean;
   orderTotal?: number;
   paymentMethod: PaymentMethod | null;
   status: OrderStatus;
   showCancel?: boolean;
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [submittingStatus, setSubmittingStatus] = useState<OrderStatus | null>(null);
   const [collecting, setCollecting] = useState<PaymentMethod | null>(null);
@@ -73,7 +77,12 @@ export function OrderStatusActions({
 
   async function runAction(action: (data: FormData) => Promise<void>, data: FormData) {
     setError(null);
-    try { await action(data); }
+    try {
+      await action(data);
+      if (onboardingTest && data.get("status") === "Accepted") {
+        router.replace("/admin/orders?onboarding=accepted");
+      }
+    }
     catch { setError("The change could not be saved. Please retry."); }
     finally { setCollecting(null); setSubmittingStatus(null); }
   }

@@ -22,6 +22,7 @@ import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import { formatCurrency } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
+import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
@@ -38,6 +39,7 @@ type CapturedLocation = {
 };
 
 type PendingWhatsAppOrder = {
+  onboardingTest: boolean;
   orderId: string;
   webPushPublicKey: string | null;
   whatsappUrl: string;
@@ -167,13 +169,17 @@ export function CheckoutForm({
 
       if (result.confirmationUrl) {
         cart.clearCart();
-        router.push(`${result.confirmationUrl}&lang=${language}`);
+        const onboardingQuery = result.onboardingTest
+          ? "&onboarding=test-order"
+          : "";
+        router.push(`${result.confirmationUrl}&lang=${language}${onboardingQuery}`);
         return;
       }
 
       // Without a signing secret, retain the direct-tap handoff in memory.
       // Never replace the current page with an automatic WhatsApp redirect.
       setPendingWhatsAppOrder({
+        onboardingTest: result.onboardingTest,
         orderId: result.orderId,
         webPushPublicKey: result.webPushPublicKey,
         whatsappUrl: result.whatsappUrl
@@ -207,10 +213,26 @@ export function CheckoutForm({
         <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
           Reference: {pendingWhatsAppOrder.orderId}
         </p>
+        {pendingWhatsAppOrder.onboardingTest ? (
+          <aside className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-left text-violet-950">
+            <p className="font-black">Test order saved · Final step</p>
+            <p className="mt-1 text-sm text-violet-900/75">
+              Return to Orders and accept the highlighted test order to finish setup.
+            </p>
+            <Link
+              className="focus-ring mt-3 inline-flex w-full items-center justify-center rounded-full bg-violet-700 px-5 py-3 font-black text-white"
+              href={onboardingOrdersHref(pendingWhatsAppOrder.orderId)}
+            >
+              Go to dashboard and accept order
+            </Link>
+          </aside>
+        ) : null}
         <a
           className="focus-ring mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
           href={pendingWhatsAppOrder.whatsappUrl}
           onClick={() => cart.clearCart()}
+          rel={pendingWhatsAppOrder.onboardingTest ? "noopener noreferrer" : undefined}
+          target={pendingWhatsAppOrder.onboardingTest ? "_blank" : undefined}
         >
           <MessageCircle size={20} />
           {language === "ar" ? "إرسال عبر واتساب" : "Open WhatsApp to send"}
@@ -336,6 +358,7 @@ export function CheckoutForm({
         ) : null}
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          {onboardingTest ? <input name="onboarding_test" type="hidden" value="true" /> : null}
           <input name="order_language" readOnly type="hidden" value={language} />
           <input name="submission_token" readOnly type="hidden" value={submissionToken} />
           <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />

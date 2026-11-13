@@ -4,6 +4,7 @@ import { CartProvider } from "@/components/customer/CartProvider";
 import { CheckoutForm } from "@/components/customer/CheckoutForm";
 import { getRestaurantBySlug } from "@/lib/data";
 import { loadCustomerContext } from "@/lib/customer-auth/context";
+import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 
 export default async function CheckoutPage({
   params,
@@ -14,7 +15,7 @@ export default async function CheckoutPage({
 }) {
   const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
   const tableNumber = String(query.table ?? "").trim().slice(0, 40);
-  const onboardingTest = query.onboarding === "test-order";
+  const onboardingRequested = query.onboarding === "test-order";
   const restaurant = await getRestaurantBySlug(restaurantSlug);
 
   if (!restaurant) {
@@ -28,7 +29,13 @@ export default async function CheckoutPage({
 
   // Signed-in returning customer → prefill name/address from their profile.
   // Cold open returns immediately without a DB hit.
-  const { profile } = await loadCustomerContext(restaurant.id);
+  const [{ profile }, onboardingSession] = await Promise.all([
+    loadCustomerContext(restaurant.id),
+    onboardingRequested ? getRestaurantAdminSession() : Promise.resolve(null)
+  ]);
+  const onboardingTest =
+    onboardingSession?.restaurantId === restaurant.id &&
+    onboardingSession.role !== "staff";
 
   return (
     <CartProvider restaurantSlug={restaurant.slug}>
