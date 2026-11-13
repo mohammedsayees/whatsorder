@@ -12,6 +12,10 @@
 // --mode cutover              writes are frozen (maintenance on), so every
 //                             count must match exactly.
 //
+// Permissions are compared exactly: table, view and sequence grants and
+// function EXECUTE for anon / authenticated / service_role / PUBLIC, plus the
+// default privileges new objects get ("Automatically expose new tables").
+//
 // File BYTES are checked by `node scripts/copy-storage-buckets.mjs verify`;
 // this script compares storage.objects rows per bucket only.
 
@@ -70,6 +74,38 @@ select json_build_object(
     select coalesce(json_agg(p.oid::regprocedure::text order by 1), '[]')
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
+  ),
+  'table_grants', (
+    select coalesce(json_agg(entry order by entry), '[]') from (
+      select c.relname || ':' || case a.grantee when 0 then 'PUBLIC' else a.grantee::regrole::text end
+             || ':' || a.privilege_type as entry
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      cross join lateral aclexplode(coalesce(c.relacl, acldefault((case when c.relkind = 'S' then 's' else 'r' end)::"char", c.relowner))) a
+      where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'S')
+        and (a.grantee = 0 or a.grantee::regrole::text in ('anon', 'authenticated', 'service_role'))
+    ) g
+  ),
+  'function_grants', (
+    select coalesce(json_agg(entry order by entry), '[]') from (
+      select p.oid::regprocedure::text || ':' || case a.grantee when 0 then 'PUBLIC' else a.grantee::regrole::text end as entry
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      cross join lateral aclexplode(coalesce(p.proacl, acldefault('f'::"char", p.proowner))) a
+      where n.nspname = 'public' and a.privilege_type = 'EXECUTE'
+        and (a.grantee = 0 or a.grantee::regrole::text in ('anon', 'authenticated', 'service_role'))
+    ) g
+  ),
+  'default_privileges', (
+    select coalesce(json_agg(entry order by entry), '[]') from (
+      select d.defaclrole::regrole::text || ':' || d.defaclobjtype::text || ':'
+             || case a.grantee when 0 then 'PUBLIC' else a.grantee::regrole::text end || ':' || a.privilege_type as entry
+      from pg_default_acl d
+      left join pg_namespace n on n.oid = d.defaclnamespace
+      cross join lateral aclexplode(d.defaclacl) a
+      where (n.nspname = 'public' or d.defaclnamespace = 0)
+        and (a.grantee = 0 or a.grantee::regrole::text in ('anon', 'authenticated', 'service_role'))
+    ) g
   ),
   'sequences', (
     select coalesce(json_object_agg(sequencename, coalesce(last_value, 0)), '{}')
@@ -145,7 +181,10 @@ export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal" } = {}) 
     compareSets("Extensions", oldSnap.extensions, newSnap.extensions),
     compareSets("RLS-enabled tables", oldSnap.rls_tables, newSnap.rls_tables),
     compareSets("RLS policies", oldSnap.policies, newSnap.policies),
-    compareSets("Public functions", oldSnap.functions, newSnap.functions)
+    compareSets("Public functions", oldSnap.functions, newSnap.functions),
+    compareSets("Table permissions (anon, authenticated, service_role, PUBLIC)", oldSnap.table_grants, newSnap.table_grants),
+    compareSets("Function execute permissions (API roles)", oldSnap.function_grants, newSnap.function_grants),
+    compareSets("Default privileges for new objects", oldSnap.default_privileges, newSnap.default_privileges)
   ];
 
   const missingRealtime = REQUIRED_REALTIME_TABLES.filter((t) => !newSnap.realtime.includes(t));
