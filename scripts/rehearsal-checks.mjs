@@ -16,13 +16,29 @@
 // function EXECUTE for anon / authenticated / service_role / PUBLIC, plus the
 // default privileges new objects get ("Automatically expose new tables").
 //
+// Schema objects are compared by DEFINITION, not just name: policies (command,
+// roles, USING / WITH CHECK), public functions (full body, SECURITY DEFINER,
+// search_path), triggers on public and auth tables (incl. enabled state),
+// public indexes and constraints (incl. validated state), and storage bucket
+// settings (public flag, size limit, MIME types), plus per-role settings of
+// the API roles (statement_timeout etc.; pg_dump does not carry them). The
+// cutover write freeze (scripts/freeze-old-project.sql) is ignored. Definitions are hashed to
+// keep output short; a FAIL names each changed object.
+//
 // File BYTES are checked by `node scripts/copy-storage-buckets.mjs verify`;
-// this script compares storage.objects rows per bucket only.
+// this script compares storage.objects rows per bucket only. Project settings
+// outside the database (Auth URLs, API max rows, SMTP, ...) are NOT covered:
+// see docs/MUMBAI_CUTOVER.md.
 
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const REQUIRED_REALTIME_TABLES = ["orders", "whatsapp_messages"];
+// Added to the OLD project by scripts/freeze-old-project.sql at cutover.
+const FREEZE_TRIGGER = "zz_cutover_freeze";
+const isFreezeTrigger = (key) => key.endsWith(`:${FREEZE_TRIGGER}`);
+const withoutFreeze = (defs = {}) =>
+  Object.fromEntries(Object.entries(defs).filter(([key]) => !isFreezeTrigger(key)));
 const MAX_LISTED = 10;
 
 // Text-like columns that can hold a stored storage URL (same set the rewrite
@@ -107,6 +123,47 @@ select json_build_object(
         and (a.grantee = 0 or a.grantee::regrole::text in ('anon', 'authenticated', 'service_role'))
     ) g
   ),
+  'policy_definitions', (
+    select coalesce(json_object_agg(schemaname || '.' || tablename || ':' || policyname,
+      md5(concat_ws(' | ', cmd, permissive, roles::text, qual, with_check))), '{}')
+    from pg_policies where schemaname in ('public', 'storage')
+  ),
+  'function_definitions', (
+    select coalesce(json_object_agg(p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid))), '{}')
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind in ('f', 'p')
+  ),
+  'triggers', (
+    select coalesce(json_object_agg(n.nspname || '.' || c.relname || ':' || t.tgname,
+      md5(pg_get_triggerdef(t.oid) || ' enabled=' || t.tgenabled::text)), '{}')
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where not t.tgisinternal and n.nspname in ('public', 'auth')
+  ),
+  'indexes', (
+    select coalesce(json_object_agg(tablename || ':' || indexname, md5(indexdef)), '{}')
+    from pg_indexes where schemaname = 'public'
+  ),
+  'constraints', (
+    select coalesce(json_object_agg(c.conrelid::regclass::text || ':' || c.conname,
+      md5(pg_get_constraintdef(c.oid) || ' validated=' || c.convalidated::text)), '{}')
+    from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+    where n.nspname = 'public' and c.conrelid <> 0
+  ),
+  'buckets', (
+    select coalesce(json_object_agg(id, concat_ws(' | ', 'public=' || public::text,
+      'size_limit=' || coalesce(file_size_limit::text, 'none'),
+      'mime=' || coalesce(array_to_string(allowed_mime_types, ','), 'any'))), '{}')
+    from storage.buckets
+  ),
+  'role_settings', (
+    select coalesce(json_agg(r.rolname || ':' || setting order by 1), '[]')
+    from pg_roles r cross join lateral unnest(r.rolconfig) setting
+    where r.rolname in ('anon', 'authenticated', 'service_role', 'authenticator',
+                        'supabase_auth_admin', 'supabase_storage_admin')
+      and setting not like 'default_transaction_read_only=%'
+  ),
   'sequences', (
     select coalesce(json_object_agg(sequencename, coalesce(last_value, 0)), '{}')
     from pg_sequences where schemaname = 'public'
@@ -159,6 +216,25 @@ function compareCounts(name, oldCounts, newCounts, mode) {
   return { check: name, status: "PASS", detail: `${Object.keys(oldCounts).length} compared` };
 }
 
+/** Same keys, same definition (or hash) per key. */
+function compareDefinitions(name, oldDefs = {}, newDefs = {}) {
+  const missing = [];
+  const changed = [];
+  for (const [key, value] of Object.entries(oldDefs)) {
+    if (!(key in newDefs)) missing.push(key);
+    else if (newDefs[key] !== value) changed.push(key);
+  }
+  const extra = Object.keys(newDefs).filter((key) => !(key in oldDefs));
+  if (!missing.length && !changed.length && !extra.length) {
+    return { check: name, status: "PASS", detail: `${Object.keys(oldDefs).length} match` };
+  }
+  const parts = [];
+  if (missing.length) parts.push(`missing in new: ${shortList(missing)}`);
+  if (changed.length) parts.push(`different: ${shortList(changed)}`);
+  if (extra.length) parts.push(`only in new: ${shortList(extra)}`);
+  return { check: name, status: "FAIL", detail: parts.join("; ") };
+}
+
 function compareSets(name, oldList, newList) {
   const { missing, extra } = listDiff(oldList, newList);
   if (!missing.length && !extra.length) {
@@ -182,6 +258,13 @@ export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal" } = {}) 
     compareSets("RLS-enabled tables", oldSnap.rls_tables, newSnap.rls_tables),
     compareSets("RLS policies", oldSnap.policies, newSnap.policies),
     compareSets("Public functions", oldSnap.functions, newSnap.functions),
+    compareDefinitions("RLS policy definitions", oldSnap.policy_definitions, newSnap.policy_definitions),
+    compareDefinitions("Function definitions (body, security definer, search_path)", oldSnap.function_definitions, newSnap.function_definitions),
+    compareDefinitions("Triggers (public, auth)", withoutFreeze(oldSnap.triggers), withoutFreeze(newSnap.triggers)),
+    compareDefinitions("Indexes (public)", oldSnap.indexes, newSnap.indexes),
+    compareDefinitions("Constraints (public)", oldSnap.constraints, newSnap.constraints),
+    compareSets("API role settings (statement_timeout, ...)", oldSnap.role_settings ?? [], newSnap.role_settings ?? []),
+    compareDefinitions("Storage bucket settings (public flag, size limit, MIME types)", oldSnap.buckets, newSnap.buckets),
     compareSets("Table permissions (anon, authenticated, service_role, PUBLIC)", oldSnap.table_grants, newSnap.table_grants),
     compareSets("Function execute permissions (API roles)", oldSnap.function_grants, newSnap.function_grants),
     compareSets("Default privileges for new objects", oldSnap.default_privileges, newSnap.default_privileges)
@@ -191,6 +274,13 @@ export function compareSnapshots(oldSnap, newSnap, { mode = "rehearsal" } = {}) 
   results.push(missingRealtime.length
     ? { check: "Live updates (orders, chat)", status: "FAIL", detail: `not published: ${missingRealtime.join(", ")}` }
     : { check: "Live updates (orders, chat)", status: "PASS", detail: REQUIRED_REALTIME_TABLES.join(", ") });
+
+  // A dump taken while frozen carries the freeze triggers: Mumbai would
+  // reject every app write.
+  const leftover = Object.keys(newSnap.triggers ?? {}).filter(isFreezeTrigger);
+  results.push(leftover.length
+    ? { check: "Cutover freeze removed from new DB", status: "FAIL", detail: `${leftover.length} table(s) still frozen; run scripts/freeze-old-project.sql -v action=unfreeze on the NEW database` }
+    : { check: "Cutover freeze removed from new DB", status: "PASS", detail: "none" });
 
   const oldLinks = Number(newSnap.old_links);
   results.push(oldLinks === 0

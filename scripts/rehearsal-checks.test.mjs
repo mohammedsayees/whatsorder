@@ -13,6 +13,13 @@ const base = () => ({
   table_grants: ["orders:authenticated:SELECT", "orders:service_role:INSERT", "orders:service_role:SELECT"],
   function_grants: ["is_restaurant_member(uuid):authenticated", "create_order_with_customer_v4(jsonb):service_role"],
   default_privileges: ["postgres:r:service_role:SELECT"],
+  policy_definitions: { "public.orders:Read orders": "h-policy" },
+  function_definitions: { "is_restaurant_member(uuid)": "h-fn" },
+  triggers: { "public.orders:set_updated_at": "h-trg", "auth.users:on_auth_user_created": "h-auth" },
+  indexes: { "orders:orders_pkey": "h-idx", "orders:idx_orders_restaurant": "h-idx2" },
+  constraints: { "orders:orders_restaurant_id_fkey": "h-con" },
+  role_settings: ["authenticated:statement_timeout=8s"],
+  buckets: { "menu-images": "public=true | size_limit=2097152 | mime=image/webp", posters: "public=false | size_limit=none | mime=any" },
   old_links: 0
 });
 
@@ -93,6 +100,47 @@ describe("rehearsal data checks", () => {
     newer.functions = Array.from({ length: 15 }, (_, i) => `extra_${i}()`);
     const detail = compareSnapshots(base(), newer).find((r) => r.check === "Public functions").detail;
     expect(detail).toContain("(+");
+  });
+
+  it("fails same-named objects whose definitions drifted", () => {
+    const drift = [
+      ["RLS policy definitions", (s) => { s.policy_definitions["public.orders:Read orders"] = "broader"; }],
+      ["Function definitions", (s) => { s.function_definitions["is_restaurant_member(uuid)"] = "no-search-path"; }],
+      ["Triggers", (s) => { delete s.triggers["auth.users:on_auth_user_created"]; }],
+      ["Triggers", (s) => { s.triggers["public.orders:set_updated_at"] = "disabled"; }],
+      ["Indexes", (s) => { delete s.indexes["orders:idx_orders_restaurant"]; }],
+      ["Constraints", (s) => { s.constraints["orders:orders_restaurant_id_fkey"] = "not-validated"; }],
+      ["API role settings", (s) => { s.role_settings = []; }],
+      ["Storage bucket settings", (s) => { s.buckets.posters = "public=true | size_limit=none | mime=any"; }]
+    ];
+    for (const [check, mutate] of drift) {
+      const newer = base();
+      mutate(newer);
+      const results = compareSnapshots(base(), newer, { mode: "rehearsal" });
+      expect(statusOf(results, check)).toBe("FAIL");
+      expect(results.filter((r) => r.status === "FAIL")).toHaveLength(1);
+    }
+  });
+
+  it("names missing, changed and extra definitions", () => {
+    const newer = base();
+    newer.indexes["orders:orders_pkey"] = "changed";
+    delete newer.indexes["orders:idx_orders_restaurant"];
+    newer.indexes["orders:idx_new"] = "x";
+    const { detail } = compareSnapshots(base(), newer).find((r) => r.check.startsWith("Indexes"));
+    expect(detail).toBe("missing in new: orders:idx_orders_restaurant; different: orders:orders_pkey; only in new: orders:idx_new");
+  });
+
+  it("ignores the freeze on the old DB but fails if it reached the new one", () => {
+    const frozenOld = base();
+    frozenOld.triggers["public.orders:zz_cutover_freeze"] = "h-freeze";
+    expect(compareSnapshots(frozenOld, base(), { mode: "cutover" }).every((r) => r.status === "PASS")).toBe(true);
+
+    const restoredWhileFrozen = base();
+    restoredWhileFrozen.triggers["public.orders:zz_cutover_freeze"] = "h-freeze";
+    const results = compareSnapshots(frozenOld, restoredWhileFrozen, { mode: "cutover" });
+    expect(statusOf(results, "Cutover freeze removed")).toBe("FAIL");
+    expect(statusOf(results, "Triggers")).toBe("PASS");
   });
 
   it("snapshots read-only through psql with the old storage prefix", () => {
