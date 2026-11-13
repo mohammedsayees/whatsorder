@@ -19,6 +19,7 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { connectionClosePolicy } from "./connection-policy.mjs";
+import { classifyStatus, createOutbox } from "./outbox.mjs";
 
 const port = Number(process.env.CONNECTOR_PORT ?? process.env.PORT ?? 8080);
 const appUrl = process.env.WHATSORDER_APP_URL?.replace(/\/$/, "");
@@ -65,30 +66,54 @@ function validSignature(body, headers, target) {
   );
 }
 
-async function postEvent(event) {
+/** One signed POST. "ok", "drop" (app rejected it for good) or "retry". */
+async function sendEventOnce(event) {
   const body = JSON.stringify(event);
+  const timestamp = String(Date.now());
+  try {
+    const response = await fetch(`${appUrl}/api/whatsapp-web/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-whatsorder-timestamp": timestamp,
+        "x-whatsorder-signature": signatureFor(
+          body,
+          timestamp,
+          "POST:/api/whatsapp-web/events"
+        )
+      },
+      body,
+      signal: AbortSignal.timeout(20_000)
+    });
+    if (response.ok) return "ok";
+    logger.warn({ status: response.status, type: event.type }, "event callback rejected");
+    return classifyStatus(response.status);
+  } catch (error) {
+    logger.warn({ error: error?.message, type: event.type }, "event callback failed");
+    return "retry";
+  }
+}
+
+// Customer messages must survive app downtime: they go through the on-disk
+// outbox (retried with backoff, in order). Connection-state events (qr,
+// connected, disconnected) are only meaningful now, so they get a few quick
+// attempts and are then superseded by the next state change.
+const outbox = createOutbox({
+  // Inside the session volume; restoreSessions only reads UUID-named dirs.
+  dir: path.join(dataDir, ".outbox"),
+  send: sendEventOnce,
+  logger
+});
+
+async function postEvent(event) {
+  if (event.type === "message") {
+    await outbox.deliver(event);
+    return true;
+  }
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const timestamp = String(Date.now());
-    try {
-      const response = await fetch(`${appUrl}/api/whatsapp-web/events`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-whatsorder-timestamp": timestamp,
-          "x-whatsorder-signature": signatureFor(
-            body,
-            timestamp,
-            "POST:/api/whatsapp-web/events"
-          )
-        },
-        body,
-        signal: AbortSignal.timeout(20_000)
-      });
-      if (response.ok) return true;
-      logger.warn({ attempt, status: response.status, type: event.type }, "event callback rejected");
-    } catch (error) {
-      logger.warn({ attempt, error: error?.message, type: event.type }, "event callback failed");
-    }
+    const result = await sendEventOnce(event);
+    if (result === "ok") return true;
+    if (result === "drop") return false;
     if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
   }
   return false;
@@ -406,6 +431,8 @@ async function restoreSessions() {
 }
 
 await restoreSessions();
+// Deliver anything left from before a restart.
+outbox.flush().catch((error) => logger.error({ error: error?.message }, "outbox flush failed"));
 server.listen(port, "0.0.0.0", () => {
   logger.info({ port, dataDir }, "WhatsOrder WhatsApp Web connector listening");
 });

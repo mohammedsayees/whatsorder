@@ -30,6 +30,12 @@ WhatsApp Web credentials never enter Supabase or the browser. They remain in
 the connector volume. App-to-connector and connector-to-app requests are signed
 with a five-minute replay window.
 
+Inbound customer messages the app cannot accept right away (deploys, outages,
+maintenance) are kept in `<CONNECTOR_DATA_DIR>/.outbox` on the volume and
+retried in order with backoff (1 s doubling to 5 min), including after a
+restart. Messages older than 24 hours, or beyond 5,000 queued, are dropped
+with a warning. The app de-duplicates on message id, so redelivery is safe.
+
 This is an unofficial WhatsApp Web integration. A restaurant may need to scan a
 new QR after logout or a WhatsApp-side session reset, and WhatsApp may restrict
 unsupported automation. Keep the existing official Cloud API transport
