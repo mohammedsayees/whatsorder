@@ -5,6 +5,11 @@ export type PrintableMenuSection = {
   items: MenuItem[];
 };
 
+export type PrintableCataloguePage = PrintableMenuSection & {
+  categoryPage: number;
+  categoryPageCount: number;
+};
+
 export function buildPrintableMenuSections(
   categories: MenuCategory[],
   items: MenuItem[],
@@ -23,4 +28,27 @@ export function buildPrintableMenuSections(
       )
     }))
     .filter((section) => section.items.length > 0);
+}
+
+export function buildPrintableCataloguePages(
+  sections: PrintableMenuSection[],
+  itemsPerPage: number
+): PrintableCataloguePage[] {
+  if (!Number.isInteger(itemsPerPage) || itemsPerPage < 1) {
+    throw new RangeError("itemsPerPage must be a positive integer");
+  }
+
+  return sections.flatMap((section) => {
+    const categoryPageCount = Math.ceil(section.items.length / itemsPerPage);
+
+    return Array.from({ length: categoryPageCount }, (_, pageIndex) => ({
+      category: section.category,
+      items: section.items.slice(
+        pageIndex * itemsPerPage,
+        (pageIndex + 1) * itemsPerPage
+      ),
+      categoryPage: pageIndex + 1,
+      categoryPageCount
+    }));
+  });
 }
