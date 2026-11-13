@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listAllFiles, runStorageCopy } from "./copy-storage-buckets.mjs";
+import { defaultStatePath, listAllFiles, runStorageCopy } from "./copy-storage-buckets.mjs";
 
 // In-memory stand-in for the parts of supabase-js storage the script uses.
 // `rowsOnly` paths are listed (storage.objects row restored by the DB dump)
@@ -131,15 +131,44 @@ describe("storage bucket copy script", () => {
   it("resumes from the state file instead of trusting the target listing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "storage-copy-"));
     const statePath = join(dir, "state.txt");
-    writeFileSync(statePath, "menu-images/r1/tea.webp\n");
+    writeFileSync(statePath, "# target: mumbai\nmenu-images/r1/tea.webp\n");
     const source = fakeProject({ buckets: sourceBuckets, files: sourceFiles });
     const target = fakeProject({ files: { "menu-images/r1/tea.webp": sourceFiles["menu-images/r1/tea.webp"] } });
-    const report = await runStorageCopy({ source, target, mode: "copy", buckets, statePath, log: quiet });
+    const report = await runStorageCopy({ source, target, mode: "copy", buckets, statePath, targetId: "mumbai", log: quiet });
     expect(report.buckets["menu-images"]).toMatchObject({ files: 2, copied: 1, skipped: 1 });
     expect(target.uploads.map((u) => u.key)).not.toContain("menu-images/r1/tea.webp");
-    expect(readFileSync(statePath, "utf8").trim().split("\n").sort()).toEqual([
+    const [header, ...keys] = readFileSync(statePath, "utf8").trim().split("\n");
+    expect(header).toBe("# target: mumbai");
+    expect(keys.sort()).toEqual([
       "finance-documents/r1/bill.pdf", "menu-images/r1/deep/cake.png", "menu-images/r1/tea.webp"
     ]);
+  });
+
+  it("refuses a state file left over from another target (rehearsal -> production)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "storage-copy-"));
+    const statePath = join(dir, "state.txt");
+    const source = fakeProject({ buckets: sourceBuckets, files: sourceFiles });
+    await runStorageCopy({ source, target: fakeProject(), mode: "copy", buckets, statePath, targetId: "rehearsal", log: quiet });
+
+    const production = fakeProject();
+    await expect(
+      runStorageCopy({ source, target: production, mode: "copy", buckets, statePath, targetId: "production", log: quiet })
+    ).rejects.toThrow(/written for target rehearsal, not production/);
+    expect(production.uploads).toEqual([]);
+  });
+
+  it("refuses a legacy state file with no target header", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "storage-copy-"));
+    const statePath = join(dir, "state.txt");
+    writeFileSync(statePath, "menu-images/r1/tea.webp\n");
+    const source = fakeProject({ buckets: sourceBuckets, files: sourceFiles });
+    await expect(
+      runStorageCopy({ source, target: fakeProject(), mode: "copy", buckets, statePath, targetId: "production", log: quiet })
+    ).rejects.toThrow(/unknown target/);
+  });
+
+  it("names the default state file after the target project", () => {
+    expect(defaultStatePath("https://abcdmumbai.supabase.co")).toBe("storage-copy-state-abcdmumbai.txt");
   });
 
   it("reports a failed source download without stopping the run", async () => {
