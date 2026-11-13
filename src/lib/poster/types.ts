@@ -58,7 +58,7 @@ export type PosterCopy = {
 
 export type PosterBranding = {
   restaurantName: string;
-  /** Logo as a base64 data URI; null → name set in Bricolage Grotesque 700. */
+  /** Logo as a base64 data URI; null → the name alone carries the brand. */
   logoDataUri: string | null;
 };
 
@@ -72,10 +72,22 @@ export type PosterSubject = {
   priceLine: string | null;
   /** Pre-offer price for strikethrough display (offer template only). */
   originalPriceLine: string | null;
-  /** Item photo as a base64 data URI; null → typographic variant. */
+  /**
+   * Saving stamp ("25% OFF" / "SAVE AED 4"), computed in code from the real
+   * regular and promotional prices (offer-math.ts); null when there's no cut.
+   */
+  savingLabel?: string | null;
+  /** Item photo as a base64 data URI (square, smart-cropped); null → typographic variant. */
   photoDataUri: string | null;
+  /** Same photo smart-cropped tall for full-bleed layouts; falls back to photoDataUri. */
+  photoTallDataUri?: string | null;
   /** Units sold in the window get_bestsellers looked at; 0 on cold start. */
   soldQty: number | null;
+};
+
+export type PosterCallToAction = {
+  /** QR code (PNG data URI) of the poster's tracked store link; null → no QR. */
+  qrDataUri: string | null;
 };
 
 export type PosterProps = {
@@ -84,6 +96,7 @@ export type PosterProps = {
   branding: PosterBranding;
   subject: PosterSubject;
   copy: PosterCopy;
+  cta?: PosterCallToAction;
 };
 
 export type PosterStatus =
@@ -103,13 +116,3 @@ export type PosterRow = {
   status: PosterStatus;
   created_at: string;
 };
-
-// WhatsOrder brand palette (tailwind.config.ts) — pine/amber/cream family.
-// Templates use these fixed values; tenants supply only logo + data.
-export const POSTER_COLORS = {
-  ink: "#17201b",
-  pine: "#1f8a5b",
-  mint: "#e8f7ef",
-  cream: "#f7f1e8",
-  amber: "#f6b642"
-} as const;

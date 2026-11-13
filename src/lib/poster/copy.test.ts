@@ -137,3 +137,29 @@ describe("fallbackCopyVariants", () => {
     }
   });
 });
+
+describe("sales figure de-duplication", () => {
+  it("rejects a headline or subline that repeats the sold count", async () => {
+    const { repeatsSalesFigure } = await import("./copy");
+    const facts87 = { ...facts, soldQty: 87 };
+    expect(repeatsSalesFigure(variant("87 cups and counting"), facts87)).toBe(true);
+    expect(repeatsSalesFigure(variant("Hot", "Over 87+ sold"), facts87)).toBe(true);
+    expect(repeatsSalesFigure(variant("Hot", "sub", "87 sold this month"), facts87)).toBe(false);
+    expect(repeatsSalesFigure(variant("1870 reasons"), facts87)).toBe(false);
+    expect(repeatsSalesFigure(variant("87 cups"), { ...facts, soldQty: null })).toBe(false);
+  });
+
+  it("replaces such variants with fallbacks that don't repeat it either", () => {
+    const facts87 = { ...facts, soldQty: 87 };
+    const result = normalizeCopyVariants(
+      JSON.stringify([
+        { headline: "87 cups a month", subline: "Strong and sweet", caption: "Order now" }
+      ]),
+      facts87
+    );
+    expect(result).toHaveLength(3);
+    for (const copy of result) {
+      expect(`${copy.headline} ${copy.subline}`).not.toMatch(/(^|\D)87(\D|$)/);
+    }
+  });
+});

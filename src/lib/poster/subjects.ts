@@ -16,6 +16,7 @@ import { isOfferOrderable } from "@/lib/order-pricing";
 import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 import type { PosterCopyFacts } from "./copy";
+import { savingStampLabel, trimWholeAmount } from "./offer-math";
 import type {
   PosterBranding,
   PosterSubject,
@@ -34,14 +35,7 @@ export type PosterSubjectBundle = {
   facts: Omit<PosterCopyFacts, "templateId">;
 };
 
-/**
- * Fetch an image URL and re-encode it as a JPEG data URI sized for embedding.
- * Returns null on any failure (missing, unreachable, low-res, not an image) —
- * null is a designed-for state, not an error.
- */
-export async function imageUrlToDataUri(
-  url: string | null | undefined
-): Promise<string | null> {
+async function fetchImageBytes(url: string | null | undefined): Promise<Buffer | null> {
   if (!url || !/^https?:\/\//.test(url)) {
     return null;
   }
@@ -54,6 +48,80 @@ export async function imageUrlToDataUri(
     if (source.byteLength === 0 || source.byteLength > MAX_SOURCE_BYTES) {
       return null;
     }
+    return source;
+  } catch {
+    return null;
+  }
+}
+
+// Food-photo treatment: a modest saturation/contrast lift so dishes read as
+// appetising on a phone screen, never a filter look.
+const PHOTO_SATURATION = 1.15;
+const PHOTO_BRIGHTNESS = 1.03;
+const PHOTO_CONTRAST = 1.08;
+
+export type PosterPhotoSet = { square: string; tall: string };
+
+/**
+ * Owner photo → two smart-cropped, lightly enhanced JPEG data URIs: a square
+ * one (circle / arch / window layouts) and a tall one (full-bleed). Cropping
+ * uses sharp's attention strategy, which centres on the most salient region
+ * (usually the dish) instead of the geometric centre. Null on any failure.
+ */
+export async function preparePosterPhoto(
+  source: Buffer | null
+): Promise<PosterPhotoSet | null> {
+  if (!source) {
+    return null;
+  }
+  try {
+    const base = sharp(source, { limitInputPixels: 40_000_000 }).rotate();
+    const metadata = await base.metadata();
+    if (
+      !metadata.width ||
+      !metadata.height ||
+      Math.min(metadata.width, metadata.height) < MIN_PHOTO_EDGE
+    ) {
+      return null;
+    }
+    const enhanced = base
+      .clone()
+      .modulate({ saturation: PHOTO_SATURATION, brightness: PHOTO_BRIGHTNESS })
+      .linear(PHOTO_CONTRAST, -128 * (PHOTO_CONTRAST - 1));
+    const crop = (width: number, height: number) =>
+      enhanced
+        .clone()
+        .resize({
+          width,
+          height,
+          fit: "cover",
+          position: sharp.strategy.attention
+        })
+        .jpeg({ quality: 84 })
+        .toBuffer();
+    const [square, tall] = await Promise.all([crop(1080, 1080), crop(1080, 1400)]);
+    return {
+      square: `data:image/jpeg;base64,${square.toString("base64")}`,
+      tall: `data:image/jpeg;base64,${tall.toString("base64")}`
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch an image URL (logos) and re-encode it as a JPEG data URI sized for
+ * embedding, untouched otherwise. Returns null on any failure (missing,
+ * unreachable, low-res, not an image) — null is a designed-for state.
+ */
+export async function imageUrlToDataUri(
+  url: string | null | undefined
+): Promise<string | null> {
+  const source = await fetchImageBytes(url);
+  if (!source) {
+    return null;
+  }
+  try {
     const image = sharp(source, { limitInputPixels: 40_000_000 });
     const metadata = await image.metadata();
     if (
@@ -79,12 +147,30 @@ export async function imageUrlToDataUri(
   }
 }
 
+/** Logo for posters: PNG (keeps transparency), at most 480px on an edge. */
+async function logoUrlToDataUri(url: string | null | undefined): Promise<string | null> {
+  const source = await fetchImageBytes(url);
+  if (!source) {
+    return null;
+  }
+  try {
+    const png = await sharp(source, { limitInputPixels: 40_000_000 })
+      .rotate()
+      .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildPosterBranding(
   restaurant: Restaurant
 ): Promise<PosterBranding> {
   return {
     restaurantName: restaurant.name,
-    logoDataUri: await imageUrlToDataUri(restaurant.logo_url)
+    logoDataUri: await logoUrlToDataUri(restaurant.logo_url)
   };
 }
 
@@ -139,12 +225,15 @@ async function buildBestsellerSubject(
   }
 
   const priceLine = formatCurrency(item.price, restaurant);
+  const photo = await preparePosterPhoto(await fetchImageBytes(item.image_url));
   return {
     subject: {
       title: item.name,
-      priceLine,
+      priceLine: trimWholeAmount(priceLine),
       originalPriceLine: null,
-      photoDataUri: await imageUrlToDataUri(item.image_url),
+      savingLabel: null,
+      photoDataUri: photo?.square ?? null,
+      photoTallDataUri: photo?.tall ?? null,
       soldQty
     },
     facts: {
@@ -192,12 +281,17 @@ async function buildOfferSubject(
       ? formatCurrency(item.price, restaurant)
       : null;
 
+  const photo = await preparePosterPhoto(await fetchImageBytes(item.image_url));
   return {
     subject: {
       title: offer.title || item.name,
-      priceLine,
-      originalPriceLine,
-      photoDataUri: await imageUrlToDataUri(item.image_url),
+      priceLine: trimWholeAmount(priceLine),
+      originalPriceLine: originalPriceLine ? trimWholeAmount(originalPriceLine) : null,
+      savingLabel: savingStampLabel(item.price, offer.promotional_price, (amount) =>
+        formatCurrency(amount, restaurant)
+      ),
+      photoDataUri: photo?.square ?? null,
+      photoTallDataUri: photo?.tall ?? null,
       soldQty: null
     },
     facts: {

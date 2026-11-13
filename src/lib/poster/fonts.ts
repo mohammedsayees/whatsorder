@@ -3,7 +3,10 @@
 // Poster fonts, loaded once per serverless instance. The .woff files (Satori
 // reads ttf/otf/woff, not woff2) are committed under assets/fonts/ and traced
 // into the deploy bundle via outputFileTracingIncludes in next.config.ts.
-// Latin subsets keep the cold-start read small (~70 KB total).
+// Anton is the display face (condensed food-poster headlines), Bricolage
+// Grotesque the body face, and Cairo Bold the Arabic fallback so Arabic item
+// and café names render (Noto Sans Arabic crashes satori's opentype.js on a
+// GSUB lookup it doesn't support; Cairo shapes cleanly). ~150 KB total.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,6 +17,10 @@ export type PosterFont = {
   weight: 400 | 700;
   style: "normal";
 };
+
+/** Font stacks: Cairo is the per-glyph fallback for Arabic in both. */
+export const DISPLAY_FONT = "Anton, Cairo";
+export const BODY_FONT = "Bricolage Grotesque, Cairo";
 
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts");
 
@@ -28,7 +35,8 @@ const FONT_FILES: { file: string; name: string; weight: 400 | 700 }[] = [
     name: "Bricolage Grotesque",
     weight: 700
   },
-  { file: "geist-mono-latin-400-normal.woff", name: "Geist Mono", weight: 400 }
+  { file: "anton-latin-400-normal.woff", name: "Anton", weight: 400 },
+  { file: "cairo-arabic-700-normal.woff", name: "Cairo", weight: 700 }
 ];
 
 let fontsPromise: Promise<PosterFont[]> | null = null;

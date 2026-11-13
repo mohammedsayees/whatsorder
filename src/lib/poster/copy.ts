@@ -79,6 +79,18 @@ export function copyAmountsGrounded(
 }
 
 /**
+ * The poster layouts already show the sold count once, in large type; the
+ * headline/subline must not say it again (the caption may).
+ */
+export function repeatsSalesFigure(copy: PosterCopy, facts: PosterCopyFacts): boolean {
+  if (!facts.soldQty || facts.soldQty <= 0) {
+    return false;
+  }
+  const figure = new RegExp(`(^|[^\\d])${facts.soldQty}([^\\d]|$)`);
+  return figure.test(copy.headline) || figure.test(copy.subline);
+}
+
+/**
  * Deterministic copy used when the model is unavailable, ungrounded, or
  * returns fewer than 3 usable variants. Poster generation never blocks on
  * the LLM — same "numbers are the product, narration is a nicety" stance as
@@ -129,10 +141,9 @@ export function fallbackCopyVariants(facts: PosterCopyFacts): PosterCopy[] {
   return [
     {
       headline: truncateToCap(`Our bestseller: ${item}`, HEADLINE_MAX),
+      // The layout shows the sold count; the subline never repeats it.
       subline: truncateToCap(
-        sold
-          ? `${sold}+ sold this month at ${facts.restaurantName}.`
-          : `The one regulars at ${facts.restaurantName} keep coming back for.`,
+        `The one regulars at ${facts.restaurantName} keep coming back for.`,
         SUBLINE_MAX
       ),
       caption: truncateToCap(
@@ -143,9 +154,7 @@ export function fallbackCopyVariants(facts: PosterCopyFacts): PosterCopy[] {
     {
       headline: truncateToCap(`${item}. Enough said.`, HEADLINE_MAX),
       subline: truncateToCap(
-        sold
-          ? `${sold}+ orders this month can't be wrong.`
-          : "Ask anyone who's tried it.",
+        sold ? "This many orders can't be wrong." : "Ask anyone who's tried it.",
         SUBLINE_MAX
       ),
       caption: truncateToCap(
@@ -214,7 +223,7 @@ export function normalizeCopyVariants(
     if (!copy.headline || !copy.subline || !copy.caption) {
       continue;
     }
-    if (!copyAmountsGrounded(copy, facts)) {
+    if (!copyAmountsGrounded(copy, facts) || repeatsSalesFigure(copy, facts)) {
       continue;
     }
     variants.push(copy);
@@ -240,7 +249,7 @@ function copyPrompt(facts: PosterCopyFacts): string {
     : `Mention NO prices, discounts, or percentages — the data has none.`;
   const soldRule =
     facts.soldQty && facts.soldQty > 0
-      ? `You may cite the sales figure ${facts.soldQty} verbatim.`
+      ? `The poster already shows the sales figure (${facts.soldQty}) in large type. Do NOT repeat it in the headline or subline; you may cite it verbatim once in the caption.`
       : `There is no sales figure — make NO numeric popularity claims.`;
 
   return `You write short poster copy for a small café in ${facts.market} that takes orders on WhatsApp.
