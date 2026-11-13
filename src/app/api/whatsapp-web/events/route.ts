@@ -13,6 +13,11 @@ import {
   getWhatsAppChatbotSettings,
   shouldSendWhatsAppWelcome
 } from "@/lib/whatsapp-ai";
+import { withdrawMarketingConsentByPhone } from "@/lib/marketing/consent";
+import {
+  isMarketingOptOutKeyword,
+  optOutConfirmationMessage
+} from "@/lib/marketing/opt-out";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { handleWhatsAppOrderMessage } from "@/lib/whatsapp-ordering";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -236,6 +241,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
   // Persist a pilot command and its reply before acknowledging the connector.
   // Retried inbound IDs may still need processing after a previous failed attempt.
+  // Marketing opt-out keyword: withdraw consent for this restaurant only,
+  // confirm once, and never hand the message to ordering or the AI.
+  if (type === "text" && isMarketingOptOutKeyword(body)) {
+    const restaurantId = event.restaurantId;
+    const withdrawn = await withdrawMarketingConsentByPhone(
+      restaurantId,
+      phone,
+      "customer_replied_stop"
+    );
+    if (!withdrawn) {
+      return NextResponse.json({ ok: false }, { status: 503 });
+    }
+    if (!existing) {
+      const { data: restaurant } = await admin
+        .from("restaurants")
+        .select("name")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      const reply = optOutConfirmationMessage(
+        (restaurant as { name?: string } | null)?.name ?? ""
+      );
+      const sent = await sendRestaurantWhatsAppText(restaurantId, phone, reply);
+      if (sent) {
+        await recordOutboundChatMessage({
+          restaurantId,
+          phone,
+          body: reply,
+          waMessageId: sent,
+          senderType: "system"
+        });
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
   if (type === "text") {
     try {
       // Order-intent messages go to chat ordering before the receptionist's

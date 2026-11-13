@@ -19,6 +19,7 @@ import { normalizeImageUpload } from "@/lib/server-image-upload";
 import { ownedStoragePath } from "@/lib/storage-ownership";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
+import { marketingConsentWithdrawalFields } from "@/lib/marketing/opt-out";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole,
@@ -224,16 +225,9 @@ export async function withdrawCustomerMarketingConsentAction(formData: FormData)
     return;
   }
 
-  const now = new Date().toISOString();
   const { error } = await supabase
     .from("customers")
-    .update({
-      consent_marketing: false,
-      marketing_opt_in: false,
-      marketing_consent_source: "restaurant_recorded_stop",
-      marketing_consent_updated_at: now,
-      marketing_consent_withdrawn_at: now
-    })
+    .update(marketingConsentWithdrawalFields("restaurant_recorded_stop"))
     .eq("id", customerId)
     .eq("restaurant_id", session.restaurantId);
   databaseFailure("Marketing consent withdrawal", error);

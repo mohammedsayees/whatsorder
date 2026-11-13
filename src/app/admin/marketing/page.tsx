@@ -2,12 +2,16 @@ import { PosterStudio } from "@/components/admin/PosterStudio";
 import { formatCurrency } from "@/lib/currency";
 import { getMenuOffers } from "@/lib/data";
 import { isOfferOrderable } from "@/lib/order-pricing";
-import { getInWindowRecipients, getPosterHistory } from "@/lib/poster/store";
+import { getMarketingAudience, getPosterHistory } from "@/lib/poster/store";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
+import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
 
 export const dynamic = "force-dynamic";
+// The poster send action runs inside this page's request; its loop keeps a
+// 40 s budget (lib/marketing/send-pipeline.ts) under this ceiling.
+export const maxDuration = 60;
 
 export type BestsellerOption = {
   menuItemId: string;
@@ -85,12 +89,17 @@ export default async function MarketingPage() {
     "manager"
   ]);
 
-  const [bestsellers, allOffers, history, recipients] = await Promise.all([
+  const [bestsellers, allOffers, history, ownsCloudNumber] = await Promise.all([
     getBestsellerOptions(session.restaurantId, session.restaurant),
     getMenuOffers(session.restaurantId, { admin: true }),
     getPosterHistory(session.restaurantId),
-    getInWindowRecipients(session.restaurantId)
+    restaurantOwnsCloudNumber(session.restaurantId)
   ]);
+  // Only the owner of the shared Cloud number can send at all; skip the
+  // audience reads otherwise.
+  const audience = ownsCloudNumber
+    ? await getMarketingAudience(session.restaurantId)
+    : { recipients: [], frequencyCapped: 0 };
 
   const offers: OfferOption[] = allOffers
     .filter((offer) => isOfferOrderable(offer))
@@ -109,7 +118,13 @@ export default async function MarketingPage() {
       </p>
       <PosterStudio
         bestsellers={bestsellers}
-        eligibleCount={recipients.length}
+        eligibleCount={audience.recipients.length}
+        frequencyCappedCount={audience.frequencyCapped}
+        sendBlockedReason={
+          ownsCloudNumber
+            ? null
+            : "Sharing to customers needs your own WhatsApp Business number, which isn't set up yet. Download the poster and post it as your WhatsApp status instead."
+        }
         history={history.map((entry) => ({
           id: entry.id,
           templateId: entry.template_id,

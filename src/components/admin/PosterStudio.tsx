@@ -71,12 +71,18 @@ export function PosterStudio({
   bestsellers,
   offers,
   history,
-  eligibleCount
+  eligibleCount,
+  frequencyCappedCount,
+  sendBlockedReason
 }: {
   bestsellers: BestsellerOption[];
   offers: OfferOption[];
   history: HistoryEntry[];
   eligibleCount: number;
+  /** Consented in-window customers held back by the 24h frequency cap. */
+  frequencyCappedCount: number;
+  /** Set when this restaurant cannot send at all (e.g. no own Cloud number). */
+  sendBlockedReason: string | null;
 }) {
   const [templateId, setTemplateId] = useState<TemplateId>("bestseller");
   const [subjectId, setSubjectId] = useState<string>(
@@ -96,10 +102,18 @@ export function PosterStudio({
   >(sendPosterToRecentCustomersAction, {});
 
   useEffect(() => {
-    if (sendState.sentAt) {
+    if (sendState.sentAt || sendState.error) {
       setConfirmingSend(false);
     }
-  }, [sendState.sentAt]);
+  }, [sendState]);
+
+  const sendDisabledReason =
+    sendBlockedReason ??
+    (eligibleCount === 0
+      ? frequencyCappedCount > 0
+        ? "Everyone with an open chat window already got a marketing message in the last 24 hours."
+        : "No customers who opted in have an open 24-hour chat window right now."
+      : null);
 
   const subjectOptions = useMemo(() => {
     if (templateId === "bestseller") {
@@ -347,20 +361,16 @@ export function PosterStudio({
                   ) : (
                     <Send size={16} />
                   )}
-                  Confirm send to {eligibleCount} customer
+                  Confirm send to up to {eligibleCount} customer
                   {eligibleCount === 1 ? "" : "s"}
                 </button>
               </form>
             ) : (
               <button
                 className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf px-4 py-2.5 text-sm font-black text-leaf hover:bg-mint disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={eligibleCount === 0 || sendPending}
+                disabled={Boolean(sendDisabledReason) || sendPending}
                 onClick={() => setConfirmingSend(true)}
-                title={
-                  eligibleCount === 0
-                    ? "No customers have an open 24-hour chat window right now."
-                    : undefined
-                }
+                title={sendDisabledReason ?? undefined}
                 type="button"
               >
                 <Send size={16} />
@@ -380,20 +390,28 @@ export function PosterStudio({
               Regenerate copy
             </button>
           </div>
+          {sendBlockedReason ? (
+            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+              {sendBlockedReason}
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-stone-500">
+              Goes only to customers who opted in to offers and messaged you in
+              the last 24 hours, at most one marketing message per customer per
+              day
+              {frequencyCappedCount > 0
+                ? ` (${frequencyCappedCount} held back today)`
+                : ""}
+              . &ldquo;Reply STOP to opt out.&rdquo; is added to every caption.
+            </p>
+          )}
           {sendState.error ? (
             <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">
               {sendState.error}
             </p>
           ) : null}
-          {sendState.sentAt ? (
-            <p className="mt-3 rounded-lg bg-mint p-3 text-sm font-semibold text-leaf">
-              Sent to {sendState.sentCount} customer
-              {sendState.sentCount === 1 ? "" : "s"}
-              {sendState.failedCount
-                ? ` (${sendState.failedCount} failed)`
-                : ""}
-              . Free — inside their 24-hour window.
-            </p>
+          {sendState.sentAt || sendState.error ? (
+            <SendSummary state={sendState} />
           ) : null}
         </section>
       ) : null}
@@ -430,6 +448,41 @@ export function PosterStudio({
             ))}
           </div>
         </section>
+      ) : null}
+    </div>
+  );
+}
+
+function SendSummary({ state }: { state: SendPosterState }) {
+  const sent = state.sentCount ?? 0;
+  const failed = state.failedCount ?? 0;
+  const skipped = state.skippedCount ?? 0;
+  const pending = state.pendingCount ?? 0;
+  if (sent + failed + skipped + pending === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3 rounded-lg bg-mint p-3 text-sm text-leaf">
+      <p className="font-semibold">
+        Sent {sent} · Failed {failed} · Skipped {skipped}
+        {pending > 0 ? ` · Not reached ${pending}` : ""}
+      </p>
+      {skipped > 0 ? (
+        <p className="mt-1 text-xs text-stone-600">
+          Skipped customers already got this poster or another marketing
+          message in the last 24 hours, or are no longer opted in.
+        </p>
+      ) : null}
+      {pending > 0 ? (
+        <p className="mt-1 text-xs text-stone-600">
+          {pending} customer{pending === 1 ? " is" : "s are"} still queued. Send
+          again to finish — nobody gets the poster twice.
+        </p>
+      ) : null}
+      {sent > 0 ? (
+        <p className="mt-1 text-xs text-stone-600">
+          Free — inside their 24-hour window.
+        </p>
       ) : null}
     </div>
   );
