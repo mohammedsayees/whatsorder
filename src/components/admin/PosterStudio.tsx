@@ -6,7 +6,15 @@
 // text-only design. Mobile-first; critical actions stay reachable on a
 // ~600px POS terminal viewport.
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent
+} from "react";
 import {
   Download,
   Loader2,
@@ -19,6 +27,7 @@ import {
 } from "lucide-react";
 
 import {
+  refreshPosterUrlsAction,
   sendPosterToRecentCustomersAction,
   type SendPosterState
 } from "@/app/admin/marketing/actions";
@@ -35,6 +44,11 @@ type GeneratedVariant = {
   downloadUrl?: string;
   copy: { headline: string; subline: string; caption: string };
   variantIndex: number;
+};
+
+type PosterUrlPair = {
+  previewUrl: string | null;
+  downloadUrl: string | null;
 };
 
 type HistoryEntry = {
@@ -91,6 +105,10 @@ export function PosterStudio({
   const [textOnly, setTextOnly] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
+  // Signed URLs expire after an hour; fresher ones minted on demand win.
+  const [freshUrls, setFreshUrls] = useState<Record<string, PosterUrlPair>>({});
+  const refreshAttempted = useRef(new Set<string>());
   const [variants, setVariants] = useState<GeneratedVariant[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [confirmingSend, setConfirmingSend] = useState(false);
@@ -150,6 +168,7 @@ export function PosterStudio({
     abortRef.current = controller;
     setGenerating(true);
     setError(null);
+    setRateLimited(false);
     setVariants([]);
     setSelectedIndex(0);
     setConfirmingSend(false);
@@ -172,6 +191,7 @@ export function PosterStudio({
         error?: string;
       };
       if (!response.ok || !payload.variants?.length) {
+        setRateLimited(response.status === 429);
         setError(payload.error ?? "Poster generation failed. Try again.");
         return;
       }
@@ -182,6 +202,71 @@ export function PosterStudio({
       }
     } finally {
       setGenerating(false);
+    }
+  }
+
+  const refreshUrls = useCallback(
+    async (posterIds: string[]): Promise<Record<string, PosterUrlPair>> => {
+      if (posterIds.length === 0) {
+        return {};
+      }
+      try {
+        const fresh = await refreshPosterUrlsAction(posterIds);
+        const next: Record<string, PosterUrlPair> = {};
+        for (const entry of fresh) {
+          next[entry.posterId] = {
+            previewUrl: entry.previewUrl,
+            downloadUrl: entry.downloadUrl
+          };
+        }
+        setFreshUrls((current) => ({ ...current, ...next }));
+        return next;
+      } catch {
+        return {};
+      }
+    },
+    []
+  );
+
+  // A broken preview (expired URL) gets one refresh per poster per page view,
+  // so a genuinely missing file can't loop.
+  const recoverImage = useCallback(
+    (posterId: string) => {
+      if (refreshAttempted.current.has(posterId)) {
+        return;
+      }
+      refreshAttempted.current.add(posterId);
+      void refreshUrls([posterId]);
+    },
+    [refreshUrls]
+  );
+
+  // History rows whose URL couldn't be signed at render time.
+  useEffect(() => {
+    const missing = history
+      .filter((entry) => !entry.previewUrl)
+      .map((entry) => entry.id)
+      .filter((id) => !refreshAttempted.current.has(id));
+    missing.forEach((id) => refreshAttempted.current.add(id));
+    void refreshUrls(missing);
+  }, [history, refreshUrls]);
+
+  function previewFor(posterId: string, fallback: string | null | undefined) {
+    return freshUrls[posterId]?.previewUrl ?? fallback ?? null;
+  }
+
+  // Always mint a fresh download URL first: the page may have been open for
+  // longer than the URL lives. Falls back to the link's own href.
+  async function downloadPoster(
+    event: MouseEvent<HTMLAnchorElement>,
+    posterId: string
+  ) {
+    event.preventDefault();
+    const fallback = event.currentTarget.href;
+    const fresh = await refreshUrls([posterId]);
+    const url = fresh[posterId]?.downloadUrl ?? fallback;
+    if (url) {
+      window.location.assign(url);
     }
   }
 
@@ -292,7 +377,12 @@ export function PosterStudio({
               : "Generate posters"}
         </button>
         {error ? (
-          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">
+          <p
+            className={`mt-3 rounded-lg p-3 text-sm font-semibold ${
+              rateLimited ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"
+            }`}
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -326,7 +416,8 @@ export function PosterStudio({
                 <img
                   alt={`Poster variant ${index + 1}: ${variant.copy.headline}`}
                   className="aspect-[9/16] w-full object-cover"
-                  src={variant.previewUrl}
+                  onError={() => recoverImage(variant.posterId)}
+                  src={previewFor(variant.posterId, variant.previewUrl) ?? undefined}
                 />
               </button>
             ))}
@@ -343,7 +434,12 @@ export function PosterStudio({
             <a
               className="focus-ring inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-black text-white hover:bg-ink/90"
               download
-              href={selected.downloadUrl ?? selected.previewUrl}
+              href={
+                freshUrls[selected.posterId]?.downloadUrl ??
+                selected.downloadUrl ??
+                selected.previewUrl
+              }
+              onClick={(event) => downloadPoster(event, selected.posterId)}
             >
               <Download size={16} />
               Download — free
@@ -427,15 +523,17 @@ export function PosterStudio({
               <a
                 className="focus-ring group overflow-hidden rounded-lg border border-stone-200"
                 download
-                href={entry.downloadUrl ?? undefined}
+                href={freshUrls[entry.id]?.downloadUrl ?? entry.downloadUrl ?? undefined}
                 key={entry.id}
+                onClick={(event) => downloadPoster(event, entry.id)}
               >
-                {entry.previewUrl ? (
+                {previewFor(entry.id, entry.previewUrl) ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     alt={`${entry.templateId} poster`}
                     className="aspect-[9/16] w-full object-cover transition group-hover:opacity-90"
-                    src={entry.previewUrl}
+                    onError={() => recoverImage(entry.id)}
+                    src={previewFor(entry.id, entry.previewUrl) ?? undefined}
                   />
                 ) : (
                   <div className="aspect-[9/16] w-full bg-stone-100" />
