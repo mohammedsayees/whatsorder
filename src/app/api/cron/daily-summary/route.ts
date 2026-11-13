@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { runDailySummary } from "@/lib/daily-summary/run";
 
 // Daily Insight Job (BOH). Triggered by the Vercel cron schedule in vercel.json
-// at 03:00 UTC = 07:00 GST. Guarded by CRON_SECRET so only the scheduler (or an
+// at 03:00 UTC = 07:00 GST, with catch-up runs at 03:20 and 03:40 UTC: a run
+// stops starting new restaurants after ~200 s, and later runs claim only the
+// restaurants not yet summarised for the day (claims are idempotent). Guarded by CRON_SECRET so only the scheduler (or an
 // operator holding the secret) can run it. Fails closed if the secret is unset.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

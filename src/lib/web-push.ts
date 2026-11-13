@@ -3,6 +3,7 @@ import "server-only";
 import webPush from "web-push";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type DeliveryResult, orderReference } from "@/lib/order-notifications";
+import { isAllowedPushEndpoint } from "@/lib/push-endpoints";
 import type { OrderStatus } from "@/lib/types";
 
 type PushPayload = {
@@ -99,6 +100,10 @@ async function sendToSubscription(
   subscription: PushSubscriptionRow,
   payload: PushPayload
 ): Promise<DeliveryResult> {
+  // Rows stored before the endpoint allowlist existed are never contacted.
+  if (!isAllowedPushEndpoint(subscription.endpoint)) {
+    return { status: "skipped", reason: "endpoint_not_allowed" };
+  }
   try {
     await webPush.sendNotification(
       {

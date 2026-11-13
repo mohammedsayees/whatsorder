@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRestaurantBySlug } from "@/lib/data";
 import { getOrderPushAuthorization } from "@/lib/push-auth";
+import { isAllowedPushEndpoint } from "@/lib/push-endpoints";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 type SubscriptionBody = {
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
 
   if (
     !validString(endpoint, 12, 4096) ||
-    !endpoint.startsWith("https://") ||
+    !isAllowedPushEndpoint(endpoint) ||
     !validString(auth, 8, 512) ||
     !validString(p256dh, 16, 512)
   ) {

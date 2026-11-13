@@ -162,3 +162,14 @@ describe("calendar date helpers", () => {
     expect(invoiceIdempotencyKey("sub-1", "2026-02-01")).toBe("sub-1:2026-02-01");
   });
 });
+
+describe("billingDateString", () => {
+  it("uses the Dubai calendar date, not UTC", async () => {
+    const { billingDateString } = await import("./billing");
+    // 21:30 UTC on the 12th is 01:30 on the 13th in Dubai.
+    expect(billingDateString(new Date("2026-11-12T21:30:00Z"))).toBe("2026-11-13");
+    expect(billingDateString(new Date("2026-11-12T19:59:59Z"))).toBe("2026-11-12");
+    // The 03:00 UTC cron sees the same date either way.
+    expect(billingDateString(new Date("2026-11-13T03:00:00Z"))).toBe("2026-11-13");
+  });
+});

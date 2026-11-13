@@ -7,9 +7,36 @@ type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
 export type RestaurantInviteRole = "restaurant_admin" | "manager" | "staff";
 
-async function findAuthUserByEmail(supabase: AdminClient, email: string) {
-  const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  return data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
+const AUTH_USERS_PAGE_SIZE = 1000;
+// Hard stop so a misbehaving API can never loop forever (100k users).
+const AUTH_USERS_MAX_PAGES = 100;
+
+/**
+ * Find an auth user by email across ALL pages. Reading only the first page
+ * missed every user past the first 1,000, so inviting them created a
+ * duplicate invite instead of linking the existing account. Throws if a page
+ * cannot be read, rather than wrongly reporting "no such user".
+ */
+export async function findAuthUserByEmail(supabase: AdminClient, email: string) {
+  const wanted = email.toLowerCase();
+  for (let page = 1; page <= AUTH_USERS_MAX_PAGES; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PAGE_SIZE
+    });
+    if (error) {
+      throw new Error(`Auth users could not be listed: ${error.message}`);
+    }
+    const users = data?.users ?? [];
+    const match = users.find((user) => user.email?.toLowerCase() === wanted);
+    if (match) {
+      return match;
+    }
+    if (users.length < AUTH_USERS_PAGE_SIZE) {
+      return null;
+    }
+  }
+  throw new Error("Auth user lookup exceeded the page limit.");
 }
 
 export async function inviteRestaurantUser(
@@ -48,7 +75,14 @@ export async function inviteRestaurantUser(
   let invitationSent = !error;
 
   if (error) {
-    user = await findAuthUserByEmail(supabase, email);
+    try {
+      user = await findAuthUserByEmail(supabase, email);
+    } catch (lookupError) {
+      return {
+        ok: false as const,
+        error: lookupError instanceof Error ? lookupError.message : "User lookup failed."
+      };
+    }
 
     if (!user) {
       return { ok: false as const, error: error.message };
