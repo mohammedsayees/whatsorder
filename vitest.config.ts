@@ -2,7 +2,12 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  test: { exclude: ["**/node_modules/**", "**/tests/browser/**"] },
+  test: {
+    // Local Claude worktrees contain complete repository copies. Never collect
+    // their tests alongside the active checkout or expensive render suites run
+    // twice and can race each other into timeouts.
+    exclude: ["**/.claude/worktrees/**", "**/node_modules/**", "**/tests/browser/**"]
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

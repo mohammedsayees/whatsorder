@@ -85,3 +85,44 @@ test("recoverable server failures retry after reload with the same order id", as
   expect(ids).toHaveLength(2);
   expect(ids[1]).toBe(ids[0]);
 });
+
+test("photo menu switches layouts and shows real size prices", async ({ page }) => {
+  await page.goto("/?mode=print-menu");
+  await expect(page.getByRole("heading", { name: "Fresh Juices" }).first()).toBeVisible();
+  await expect(page.getByText("Small").first()).toBeVisible();
+  await expect(page.getByText(/AED\s*8/).first()).toBeVisible();
+  await page.getByLabel("Catalogue layout").selectOption("hero");
+  await expect(page.locator(".catalogue-page-hero")).toHaveCount(1);
+  await expect(page.locator(".catalogue-page-grid")).toHaveCount(1);
+  await expect(page.locator(".catalogue-card-first").first()).toContainText("Signature");
+  await page.getByLabel("Catalogue layout").selectOption("beverage");
+  await expect(page.locator(".catalogue-page-beverage")).toHaveCount(2);
+});
+
+test("print designer saves its theme and requests a designed PDF", async ({ page }) => {
+  let submittedSettings: Record<string, unknown> | null = null;
+  await page.route("**/api/menu/print-pdf", async (route) => {
+    submittedSettings = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      body: "%PDF-1.7 fixture",
+      contentType: "application/pdf",
+      status: 200
+    });
+  });
+  await page.goto("/?mode=print-menu");
+  await page.getByLabel("Restaurant theme").selectOption("midnight");
+  await page.getByLabel("Cover title").fill("Fixture Specials");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download designed PDF" }).click();
+  await download;
+
+  expect(submittedSettings).toMatchObject({
+    coverTitle: "Fixture Specials",
+    includeBackCover: true,
+    includeCover: true,
+    themeId: "midnight"
+  });
+  await expect.poll(async () => page.evaluate(() =>
+    localStorage.getItem("whatsorder:print-theme:v1:restaurant-a")
+  )).toContain('"themeId":"midnight"');
+});

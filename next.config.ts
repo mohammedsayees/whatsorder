@@ -49,7 +49,11 @@ const nextConfig: NextConfig = {
   // Poster Studio reads its font files (assets/fonts/*.woff) at runtime; the
   // tracer can't see fs reads, so include them for the render route.
   outputFileTracingIncludes: {
-    "/api/poster/generate": ["./assets/fonts/*.woff"]
+    "/api/poster/generate": ["./assets/fonts/*.woff"],
+    "/api/menu/print-pdf": [
+      "./assets/fonts/*.woff",
+      "./node_modules/@fontsource/cairo/files/*.woff"
+    ]
   },
   images: {
     // Only the configured Supabase project can use the image optimizer.
