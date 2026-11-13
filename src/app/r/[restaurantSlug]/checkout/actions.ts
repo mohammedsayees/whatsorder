@@ -158,11 +158,22 @@ export async function createOrderAction(
     };
   }
 
-  const [menu, offers, optionCatalog] = await Promise.all([
-    getMenu(restaurant.id),
-    getMenuOffers(restaurant.id),
-    getMenuOptionCatalog(restaurant.id)
-  ]);
+  let menu: Awaited<ReturnType<typeof getMenu>>;
+  let offers: Awaited<ReturnType<typeof getMenuOffers>>;
+  let optionCatalog: Awaited<ReturnType<typeof getMenuOptionCatalog>>;
+  try {
+    // failClosed: never price an order against an empty option catalog.
+    [menu, offers, optionCatalog] = await Promise.all([
+      getMenu(restaurant.id),
+      getMenuOffers(restaurant.id),
+      getMenuOptionCatalog(restaurant.id, { failClosed: true })
+    ]);
+  } catch {
+    return {
+      ok: false,
+      error: "Ordering is temporarily unavailable. Please try again in a moment."
+    };
+  }
   const verifiedCart = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
 
   if (!verifiedCart.ok) {

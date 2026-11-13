@@ -11,6 +11,7 @@ import {
   TRIAL_DAYS,
   addDays,
   billingCycleFor,
+  billingDateString,
   buildContractChangePatch,
   computeInvoiceTotals,
   computeLineTotal,
@@ -49,7 +50,7 @@ function getAdmin(): Admin {
 }
 
 function today(reference: Date = new Date()): string {
-  return toDateString(reference);
+  return billingDateString(reference);
 }
 
 // ---------------------------------------------------------------------------

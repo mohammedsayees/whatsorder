@@ -18,7 +18,47 @@ export type DailySummaryRunResult = {
   skipped_empty: number; // retained for compatibility; zero-order alerts are now sent
   already_done: number; // a non-failed run already existed (idempotency)
   failed: number;
+  deferred: number; // not started before the time budget ran out; a later run picks them up
 };
+
+/** Restaurants summarised at once. Each is mostly waiting on the model call. */
+export const DAILY_SUMMARY_CONCURRENCY = 5;
+/**
+ * Stop starting new restaurants after this long, leaving headroom inside the
+ * route's 300 s maxDuration for the ones already running. Unstarted ones are
+ * reported as `deferred`; the catch-up cron runs claim them (claims are
+ * idempotent per restaurant and day).
+ */
+export const DAILY_SUMMARY_START_BUDGET_MS = 200_000;
+
+/**
+ * Run `work` over `items` with at most `concurrency` in flight, starting no
+ * new item once `shouldStop()` is true. Returns how many were never started.
+ */
+export async function runWithBudget<T>(
+  items: readonly T[],
+  concurrency: number,
+  shouldStop: () => boolean,
+  work: (item: T) => Promise<void>
+): Promise<number> {
+  let next = 0;
+  let notStarted = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      if (shouldStop()) {
+        notStarted += items.length - next;
+        next = items.length;
+        return;
+      }
+      const item = items[next++];
+      await work(item);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, lane)
+  );
+  return notStarted;
+}
 
 /**
  * A restaurant's local calendar date, optionally shifted by whole days.
@@ -50,7 +90,7 @@ export function dubaiDateString(now: Date, offsetDays = 0): string {
 }
 
 /**
- * Batch job: one deterministic-numbers + narration + record per active, opted-in
+ * Batch job (bounded concurrency, time-budgeted): one deterministic-numbers + narration + record per active, opted-in
  * restaurant for yesterday in that tenant's timezone. Each restaurant is isolated in its own
  * try/catch so a single café failing never kills the batch, and the unique
  * (restaurant_id, summary_date) constraint makes reruns idempotent.
@@ -61,7 +101,12 @@ export function dubaiDateString(now: Date, offsetDays = 0): string {
 export async function runDailySummary(options?: {
   targetDay?: string;
   now?: Date;
+  startBudgetMs?: number;
+  clock?: () => number;
 }): Promise<DailySummaryRunResult> {
+  const clock = options?.clock ?? Date.now;
+  const startedAt = clock();
+  const startBudgetMs = options?.startBudgetMs ?? DAILY_SUMMARY_START_BUDGET_MS;
   const admin = getSupabaseAdmin();
   if (!admin) {
     throw new Error("Supabase admin client is not configured.");
@@ -88,10 +133,12 @@ export async function runDailySummary(options?: {
     generated: 0,
     skipped_empty: 0,
     already_done: 0,
-    failed: 0
+    failed: 0,
+    deferred: 0
   };
 
-  for (const restaurant of restaurants ?? []) {
+  type SummaryRestaurant = NonNullable<typeof restaurants>[number];
+  const summarise = async (restaurant: SummaryRestaurant) => {
     result.processed += 1;
     const summaryDate =
       options?.targetDay ?? restaurantDateString(now, -1, restaurant);
@@ -104,7 +151,7 @@ export async function runDailySummary(options?: {
       });
       if (claim.error) throw new Error("Daily summary claim failed");
       token = claim.data;
-      if (!token) { result.already_done++; continue; }
+      if (!token) { result.already_done++; return; }
       const save = async (values: Record<string, unknown>) => {
         const saved = await admin.from("daily_summary_runs").update(values)
           .eq("restaurant_id", restaurant.id).eq("summary_date", summaryDate)
@@ -197,6 +244,18 @@ export async function runDailySummary(options?: {
         }
       }
     }
+  };
+
+  result.deferred = await runWithBudget(
+    restaurants ?? [],
+    DAILY_SUMMARY_CONCURRENCY,
+    () => clock() - startedAt > startBudgetMs,
+    summarise
+  );
+  if (result.deferred > 0) {
+    console.warn("Daily summary deferred restaurants to the next run", {
+      deferred: result.deferred
+    });
   }
   return result;
 }

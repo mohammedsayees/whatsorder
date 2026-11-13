@@ -14,6 +14,7 @@ import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
+import { restaurantDateBoundaryIso } from "@/lib/localization";
 import { normalizeImageUpload } from "@/lib/server-image-upload";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
@@ -74,16 +75,6 @@ async function getOfferActionContext(formData: FormData) {
 
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   return { restaurant: session.restaurant, supabase };
-}
-
-function uaeDateBoundary(value: string, endOfDay = false) {
-  if (!value) {
-    return null;
-  }
-
-  return new Date(
-    `${value}T${endOfDay ? "23:59:59" : "00:00:00"}+04:00`
-  ).toISOString();
 }
 
 function stringValue(formData: FormData, key: string) {
@@ -747,8 +738,8 @@ export async function addMenuOfferAction(formData: FormData) {
     description_ar: limitedStringValue(formData, "description_ar", 300) || null,
     promotional_price: promotionalPrice,
     max_quantity_per_order: maximumQuantity,
-    starts_at: uaeDateBoundary(stringValue(formData, "starts_on")),
-    ends_at: uaeDateBoundary(stringValue(formData, "ends_on"), true),
+    starts_at: restaurantDateBoundaryIso(stringValue(formData, "starts_on"), restaurant),
+    ends_at: restaurantDateBoundaryIso(stringValue(formData, "ends_on"), restaurant, true),
     display_order: count ?? 0,
     is_active: formData.get("is_active") === "on"
   });
