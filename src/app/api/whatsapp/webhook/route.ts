@@ -37,6 +37,11 @@ import {
   webhookAuthOutcome
 } from "@/lib/customer-auth/whatsapp-cloud";
 import { getRestaurantBySlug } from "@/lib/data";
+import { withdrawMarketingConsentByPhone } from "@/lib/marketing/consent";
+import {
+  isMarketingOptOutKeyword,
+  optOutConfirmationMessage
+} from "@/lib/marketing/opt-out";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   cloudNumberOwnerSlug,
@@ -255,8 +260,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         after(() => downloadChatMedia(restaurant.id, mediaJobs));
       }
 
+      // Marketing opt-out: a bare STOP / UNSUBSCRIBE / إيقاف / إلغاء withdraws
+      // marketing consent for THIS restaurant only, gets one confirmation,
+      // and no other automated reply.
+      const optOutSenders = new Set(
+        inboundMessages
+          .filter((m) => m.type === "text" && isMarketingOptOutKeyword(m.body))
+          .map((m) => m.from)
+      );
       await Promise.all(
-        [...senders].map(async (phone) => {
+        [...optOutSenders].map(async (phone) => {
+          const withdrawn = await withdrawMarketingConsentByPhone(
+            restaurant.id,
+            phone,
+            "customer_replied_stop"
+          );
+          if (!withdrawn) {
+            return;
+          }
+          const body = optOutConfirmationMessage(restaurant.name);
+          const sent = await sendWhatsAppText(phone, body);
+          if (sent) {
+            await recordOutboundChatMessage({
+              restaurantId: restaurant.id,
+              phone,
+              body,
+              waMessageId: sent,
+              senderType: "system"
+            });
+          }
+        })
+      );
+
+      await Promise.all(
+        [...senders].filter((phone) => !optOutSenders.has(phone)).map(async (phone) => {
           const token = await mintLinkToken({ restaurantId: restaurant.id, phone });
           const url = buildCustomerLinkUrl(baseUrl, token, restaurant.slug);
           const body = `View your order & stamps at ${restaurant.name} →\n${url}`;
