@@ -12,9 +12,11 @@ import { createMarketingSendStore } from "@/lib/marketing/send-store";
 import { buildMarketingCaption } from "@/lib/poster/caption";
 import {
   downloadPosterBytes,
+  getFreshPosterUrls,
   getMarketingAudience,
   getPosterForRestaurant,
-  setPosterStatus
+  setPosterStatus,
+  type PosterUrls
 } from "@/lib/poster/store";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
@@ -151,4 +153,24 @@ export async function sendPosterToRecentCustomersAction(
     };
   }
   return { ...counts, sentAt: Date.now() };
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_URL_REFRESH = 30;
+
+/**
+ * Fresh signed preview/download URLs for this restaurant's posters. Signed
+ * URLs expire after an hour, so Poster Studio calls this when an image fails
+ * to load and right before a download.
+ */
+export async function refreshPosterUrlsAction(
+  posterIds: string[]
+): Promise<PosterUrls[]> {
+  const session = await requireRestaurantRole([...MARKETING_ROLES]);
+  const ids = Array.isArray(posterIds)
+    ? [...new Set(posterIds.filter((id) => typeof id === "string" && UUID_PATTERN.test(id)))]
+        .slice(0, MAX_URL_REFRESH)
+    : [];
+  return getFreshPosterUrls(session.restaurantId, ids);
 }

@@ -88,6 +88,80 @@ export async function getPosterHistory(
   );
 }
 
+/**
+ * Removes posters (rows, then PNGs) created by a generation that failed part
+ * way. Scoped to this restaurant; only status `rendered` rows are touched so
+ * a poster that was somehow already sent is never removed. Best-effort: a
+ * leftover object is invisible to owners and caught by retention.
+ */
+export async function discardPosterArtifacts(
+  restaurantId: string,
+  artifacts: { posterIds: string[]; storagePaths: string[] }
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    return;
+  }
+  if (artifacts.posterIds.length > 0) {
+    const { error } = await admin
+      .from("posters")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "rendered")
+      .in("id", artifacts.posterIds);
+    if (error) {
+      console.error("WhatsOrder poster: discard rows failed", error.code);
+    }
+  }
+  // Only ever remove objects under this restaurant's own prefix.
+  const paths = artifacts.storagePaths.filter((path) =>
+    path.startsWith(`${restaurantId}/`)
+  );
+  if (paths.length > 0) {
+    const { error } = await admin.storage.from(POSTER_BUCKET).remove(paths);
+    if (error) {
+      console.error("WhatsOrder poster: discard objects failed", error.message);
+    }
+  }
+}
+
+export type PosterUrls = {
+  posterId: string;
+  previewUrl: string | null;
+  downloadUrl: string | null;
+};
+
+/** Fresh signed URLs for this restaurant's posters (signed URLs expire after an hour). */
+export async function getFreshPosterUrls(
+  restaurantId: string,
+  posterIds: string[]
+): Promise<PosterUrls[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin || posterIds.length === 0) {
+    return [];
+  }
+  const { data, error } = await admin
+    .from("posters")
+    .select("id, template_id, storage_path")
+    .eq("restaurant_id", restaurantId)
+    .in("id", posterIds);
+  if (error) {
+    console.error("WhatsOrder poster: url refresh read failed", error.code);
+    return [];
+  }
+  return Promise.all(
+    ((data ?? []) as Pick<PosterRow, "id" | "template_id" | "storage_path">[]).map(
+      async (row) => ({
+        posterId: row.id,
+        previewUrl: await signPosterUrl(row.storage_path),
+        downloadUrl: await signPosterUrl(row.storage_path, {
+          download: `${row.template_id}-poster.png`
+        })
+      })
+    )
+  );
+}
+
 export async function downloadPosterBytes(
   storagePath: string
 ): Promise<Uint8Array | null> {

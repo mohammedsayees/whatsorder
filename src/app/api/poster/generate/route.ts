@@ -9,7 +9,12 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { generateCopyVariants } from "@/lib/poster/copy";
+import {
+  checkPosterGenerationRateLimit,
+  posterRateLimitMessage
+} from "@/lib/poster/limits";
 import { renderPosterPng } from "@/lib/poster/render";
+import { discardPosterArtifacts } from "@/lib/poster/store";
 import { buildPosterBranding, buildPosterSubjectBundle } from "@/lib/poster/subjects";
 import {
   POSTER_BUCKET,
@@ -35,6 +40,14 @@ type GenerateBody = {
   subjectRef?: unknown;
   /** "Swap photo" v1: force the text-only design even when a photo exists. */
   forceTypographic?: unknown;
+};
+
+type GeneratedVariant = {
+  posterId: string;
+  previewUrl: string;
+  downloadUrl: string;
+  copy: PosterCopy;
+  variantIndex: number;
 };
 
 function parseSubjectRef(value: unknown): PosterSubjectRef | null {
@@ -102,12 +115,46 @@ export async function POST(request: Request) {
     bundle.subject.photoDataUri = null;
   }
 
+  // Cost control: checked (and the attempt recorded) only once the request is
+  // known-good, right before the model call and renders that cost money.
+  const limit = await checkPosterGenerationRateLimit(
+    admin,
+    restaurantId,
+    resolution.session.userId ?? null
+  );
+  if (limit.status === "limited") {
+    return NextResponse.json(
+      {
+        error: posterRateLimitMessage(limit.retryAfterSeconds),
+        code: "rate_limited",
+        retryAfterSeconds: limit.retryAfterSeconds
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfterSeconds) }
+      }
+    );
+  }
+  if (limit.status === "unavailable") {
+    return NextResponse.json(
+      { error: "Poster Studio is busy right now. Please try again in a minute." },
+      { status: 503 }
+    );
+  }
+
   const copyVariants = await generateCopyVariants({
     templateId,
     ...bundle.facts
   });
 
-  const variants = await Promise.all(
+  // Everything this request creates, so a partial failure can be undone.
+  // Recorded BEFORE each write is attempted: a write that errors client-side
+  // may still have landed, and removing a non-existent object is harmless.
+  const created = { posterIds: [] as string[], storagePaths: [] as string[] };
+
+  // allSettled, not all: every variant must have finished (or failed) before
+  // cleanup runs, or a slow sibling could upload after the cleanup.
+  const settled = await Promise.allSettled(
     copyVariants.map(async (copy: PosterCopy, variantIndex: number) => {
       const posterId = randomUUID();
       const storagePath = `${restaurantId}/${posterId}.png`;
@@ -122,6 +169,7 @@ export async function POST(request: Request) {
         copy
       });
 
+      created.storagePaths.push(storagePath);
       const { error: uploadError } = await admin.storage
         .from(POSTER_BUCKET)
         .upload(storagePath, png, { contentType: "image/png" });
@@ -129,6 +177,7 @@ export async function POST(request: Request) {
         throw new Error(`POSTER_UPLOAD_FAILED:${uploadError.message}`);
       }
 
+      created.posterIds.push(posterId);
       const { error: insertError } = await admin.from("posters").insert({
         id: posterId,
         restaurant_id: restaurantId,
@@ -165,17 +214,22 @@ export async function POST(request: Request) {
         variantIndex
       };
     })
-  ).catch((error: unknown) => {
-    console.error("WhatsOrder poster generate failed", error);
-    return null;
-  });
+  );
 
-  if (!variants) {
+  const failure = settled.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected"
+  );
+  if (failure) {
+    console.error("WhatsOrder poster generate failed", failure.reason);
+    await discardPosterArtifacts(restaurantId, created);
     return NextResponse.json(
       { error: "Poster generation failed. Please try again." },
       { status: 500 }
     );
   }
 
+  const variants = settled.map(
+    (result) => (result as PromiseFulfilledResult<GeneratedVariant>).value
+  );
   return NextResponse.json({ variants });
 }
