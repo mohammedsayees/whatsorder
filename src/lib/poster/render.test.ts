@@ -17,6 +17,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { buildPosterTree, rasterizePosterSvg, renderPosterSvg } from "./render";
 import type { PosterNode } from "./templates/node";
+import { buildPalette } from "./palette";
+import { POSTER_THEME_IDS, type PosterThemeId } from "./themes";
 import {
   POSTER_HEIGHT,
   POSTER_MAX_BYTES,
@@ -74,6 +76,8 @@ function makeProps(
     headline?: string;
     restaurantName?: string;
     qr?: boolean;
+    theme?: PosterThemeId;
+    brand?: string | null;
   } = {}
 ): PosterProps {
   return {
@@ -81,7 +85,9 @@ function makeProps(
     layout: overrides.layout ?? "photo_hero",
     branding: {
       restaurantName: overrides.restaurantName ?? "Chai Xpress",
-      logoDataUri: overrides.logo === false ? null : logoDataUri
+      logoDataUri: overrides.logo === false ? null : logoDataUri,
+      ...(overrides.theme ? { theme: overrides.theme } : {}),
+      ...(overrides.brand !== undefined ? { palette: buildPalette(overrides.brand) } : {})
     },
     subject: {
       title: overrides.title ?? "Karak Chai",
@@ -163,6 +169,22 @@ const scenarios: { name: string; props: () => PosterProps }[] = [
     name: "offer price-led rings (no photo, no saving, no QR)",
     props: () => makeProps("offer", { layout: "stat_led", photo: false, qr: false })
   },
+  // Every theme × composition, alternating photo / no photo and brand colours.
+  ...POSTER_THEME_IDS.flatMap((theme, themeIndex) =>
+    (["photo_hero", "full_bleed", "stat_led"] as PosterLayoutId[]).flatMap((layout, layoutIndex) =>
+      (["bestseller", "offer"] as const).map((templateId) => ({
+        name: `theme ${theme} ${templateId} ${layout}`,
+        props: () =>
+          makeProps(templateId, {
+            theme,
+            layout,
+            photo: (themeIndex + layoutIndex) % 2 === 0,
+            brand: [null, "#1d4ed8", "#2f7d4f", "#db2777"][themeIndex],
+            ...(templateId === "offer" ? { originalPriceLine: "AED 16", savingLabel: "25% OFF" } : {})
+          })
+      }))
+    )
+  ),
   {
     name: "bestseller with Arabic names",
     props: () =>
@@ -261,14 +283,31 @@ describe("poster render pipeline", () => {
   describe("poster content rules", () => {
     const layouts: PosterLayoutId[] = ["photo_hero", "full_bleed", "stat_led"];
 
-    it("shows the sold count and the café name exactly once", () => {
-      for (const layout of layouts) {
-        for (const photo of [true, false]) {
-          const texts = textsOf(buildPosterTree(makeProps("bestseller", { layout, photo })));
-          expect(texts.filter((value) => value.includes("87")), `${layout} photo=${photo}`).toHaveLength(1);
-          expect(texts.filter((value) => value.includes("Chai Xpress")), `${layout} photo=${photo}`).toHaveLength(1);
+    it("shows the sold count and the café name exactly once, in every theme", () => {
+      for (const theme of POSTER_THEME_IDS) {
+        for (const layout of layouts) {
+          for (const photo of [true, false]) {
+            const texts = textsOf(buildPosterTree(makeProps("bestseller", { layout, photo, theme })));
+            const where = `${theme} ${layout} photo=${photo}`;
+            expect(texts.filter((value) => value.includes("87")), where).toHaveLength(1);
+            expect(texts.filter((value) => value.includes("Chai Xpress")), where).toHaveLength(1);
+          }
         }
       }
+    });
+
+    it("themes change type, not just colour", () => {
+      const familiesOf = (theme: PosterThemeId) =>
+        new Set(
+          stylesOf(buildPosterTree(makeProps("bestseller", { theme })))
+            .map((style) => String(style.fontFamily ?? ""))
+            .filter(Boolean)
+        );
+      expect(familiesOf("street_food").has("Anton, Cairo")).toBe(true);
+      expect(familiesOf("bold_deal").has("Anton, Cairo")).toBe(true);
+      expect(familiesOf("dark_premium").has("DM Serif Display, Cairo")).toBe(true);
+      expect(familiesOf("dark_premium").has("Anton, Cairo")).toBe(false);
+      expect(familiesOf("minimal_cafe").has("Anton, Cairo")).toBe(false);
     });
 
     it("shows the offer's saving stamp once, and only when there is one", () => {

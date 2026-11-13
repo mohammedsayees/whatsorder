@@ -1,5 +1,8 @@
 // lib/poster/types.ts
 //
+import type { PosterPalette } from "./palette";
+import type { PosterThemeId } from "./themes";
+
 // Poster Studio (Phase 1). Poster Studio is a generator, not an editor: the
 // owner picks a template + subject, the server assembles PosterProps from live
 // tenant data and AI copy, and the pipeline renders a fixed-layout PNG. No
@@ -60,6 +63,13 @@ export type PosterBranding = {
   restaurantName: string;
   /** Logo as a base64 data URI; null → the name alone carries the brand. */
   logoDataUri: string | null;
+  /**
+   * The restaurant's poster palette (palette.ts): from its brand colour, else
+   * its logo's dominant colour, else the default food palette.
+   */
+  palette?: PosterPalette;
+  /** The look for this poster; defaults to street_food. */
+  theme?: PosterThemeId;
 };
 
 export type PosterSubject = {
@@ -111,7 +121,7 @@ export type PosterRow = {
   restaurant_id: string;
   template_id: PosterTemplateId;
   subject_ref: PosterSubjectRef;
-  copy: PosterCopy & { variant_index: number; layout?: PosterLayoutId };
+  copy: PosterCopy & { variant_index: number; layout?: PosterLayoutId; theme?: PosterThemeId };
   storage_path: string;
   status: PosterStatus;
   created_at: string;

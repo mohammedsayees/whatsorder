@@ -7,38 +7,41 @@
 //
 //   photo_hero — dish in an arch, rotated saving stamp, giant price below
 //                (no photo: the arch itself holds the giant price)
-//   full_bleed — dish fills the top, short soft fade, price on charcoal
+//   full_bleed — dish fills the top, short soft fade, price on the base colour
 //                (no photo: diagonal bands with the item name as texture)
-//   stat_led   — the price is the hero on charcoal, dish in a circle
+//   stat_led   — the price is the hero, dish in a circle
 //                (no photo: concentric rings)
+//
+// Colours from the restaurant palette via posterScheme; type, stamp shape and
+// decoration from the active theme.
 
 import {
   ABOVE_CTA,
   CONTENT_WIDTH,
   PAD,
-  balancedWidth,
-  PALETTE,
   arch,
+  balancedWidth,
   band,
+  bandLettering,
   bodyText,
   brandBlock,
   canvas,
   ctaBlock,
   disc,
   displayText,
-  dotTexture,
   fitFont,
   fullBleedPhoto,
   layer,
   photoCircle,
+  posterScheme,
   priceRow,
+  rgbList,
   rings,
-  stamp
+  stamp,
+  texture
 } from "../design";
 import type { PosterProps } from "../types";
-import { box, type PosterNode } from "./node";
-
-const { charcoal, cream, tomato, chili, mustard } = PALETTE;
+import type { PosterNode } from "./node";
 
 export function offerTemplate(props: PosterProps): PosterNode {
   const photo = props.subject.photoDataUri;
@@ -76,6 +79,7 @@ function priceSize(price: string | null, width: number, max: number): number {
 // ── photo_hero (arch) ───────────────────────────────────────────────────────
 
 function archHero(props: PosterProps, photo: string | null): PosterNode {
+  const s = posterScheme(props.branding, "arch");
   const { priceLine, originalPriceLine } = props.subject;
   const headlineSize = fitFont(props.copy.headline, {
     width: CONTENT_WIDTH,
@@ -89,57 +93,62 @@ function archHero(props: PosterProps, photo: string | null): PosterNode {
   const archNode = photo
     ? arch(archWidth, archHeight, { top: 180, left: 120 }, { photo })
     : arch(archWidth, archHeight, { top: 180, left: 120 }, {
-        fill: tomato,
+        fill: s.decoA,
         children: [
-          bodyText(props.subject.title, 48, cream, { maxWidth: archWidth - 160, marginTop: 200 }, {
+          bodyText(props.subject.title, 48, s.onDecoA, { maxWidth: archWidth - 160, marginTop: 200 }, {
             textAlign: "center",
             lineClamp: 2
           }),
           priceLine
-            ? displayText(priceLine, priceSize(priceLine, archWidth - 120, 300), cream, { marginTop: 18 }, { lineHeight: 0.9 })
+            ? displayText(priceLine, priceSize(priceLine, archWidth - 120, 300), s.onDecoA, { marginTop: 18 }, { lineHeight: 0.9 })
             : null,
           originalPriceLine
-            ? bodyText(originalPriceLine, 54, mustard, { marginTop: 12 }, { textDecoration: "line-through" })
+            ? bodyText(originalPriceLine, 54, s.accentOnDecoA, { marginTop: 12 }, { textDecoration: "line-through" })
             : null
         ]
       });
 
-  return canvas(cream, [
-    dotTexture(tomato, 0.12),
-    disc(560, mustard, { top: 60, right: -190 }),
-    disc(240, tomato, { top: 800, left: -120 }),
-    archNode,
-    savingStamp(props, {
-      size: 330,
-      fill: photo ? mustard : charcoal,
-      color: photo ? charcoal : mustard,
-      rotate: 12,
-      position: { top: 150, right: 40 }
-    }),
-    layer({ top: PAD, left: PAD }, [brandBlock(props.branding, charcoal, { ring: charcoal })]),
-    layer({ bottom: ABOVE_CTA, left: PAD, width: CONTENT_WIDTH }, [
-      displayText(props.copy.headline, headlineSize, charcoal, {
-        maxWidth: balancedWidth(props.copy.headline, headlineSize, CONTENT_WIDTH)
+  return canvas(
+    s.bg,
+    [
+      texture(s.text, 0.12),
+      disc(560, s.decoB, { top: 60, right: -190 }),
+      disc(240, s.decoA, { top: 800, left: -120 }),
+      archNode,
+      savingStamp(props, {
+        size: 330,
+        fill: s.stampFill,
+        color: s.stampText,
+        rotate: 12,
+        position: { top: 150, right: 40 }
       }),
-      photo
-        ? priceRow(priceLine, originalPriceLine, {
-            size: priceSize(priceLine, CONTENT_WIDTH - 300, 210),
-            color: tomato,
-            strikeColor: chili,
-            layout: { marginTop: 22 }
-          })
-        : bodyText(props.copy.subline, 40, charcoal, { marginTop: 24 }, { opacity: 0.85, lineClamp: 2 }),
-      photo
-        ? bodyText(props.subject.title, 44, charcoal, { marginTop: 14 }, { lineClamp: 1 })
-        : null
-    ]),
-    layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text: charcoal, muted: chili })])
-  ]);
+      layer({ top: PAD, left: PAD }, [brandBlock(props.branding, s.text, { ring: s.ring })]),
+      layer({ bottom: ABOVE_CTA, left: PAD, width: CONTENT_WIDTH }, [
+        displayText(props.copy.headline, headlineSize, s.text, {
+          maxWidth: balancedWidth(props.copy.headline, headlineSize, CONTENT_WIDTH)
+        }),
+        photo
+          ? priceRow(priceLine, originalPriceLine, {
+              size: priceSize(priceLine, CONTENT_WIDTH - 300, 210),
+              color: s.accent,
+              strikeColor: s.text,
+              layout: { marginTop: 22 }
+            })
+          : bodyText(props.copy.subline, 40, s.text, { marginTop: 24 }, { lineClamp: 2 }),
+        photo
+          ? bodyText(props.subject.title, 44, s.text, { marginTop: 14 }, { lineClamp: 1 })
+          : null
+      ]),
+      layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text: s.text, muted: s.accent })])
+    ],
+    s.accent
+  );
 }
 
 // ── full_bleed ──────────────────────────────────────────────────────────────
 
 function fullBleed(props: PosterProps, photo: string | null): PosterNode {
+  const s = posterScheme(props.branding, "bleed");
   const tall = props.subject.photoTallDataUri ?? photo;
   const { priceLine, originalPriceLine } = props.subject;
   const headlineSize = fitFont(props.copy.headline, {
@@ -148,85 +157,100 @@ function fullBleed(props: PosterProps, photo: string | null): PosterNode {
     max: tall ? 100 : 140,
     min: 64
   });
+  const text = tall ? s.onBase : s.text;
+  const accent = tall ? s.accentOnBase : s.accent;
   const decoration: (PosterNode | null)[] = tall
-    ? fullBleedPhoto(tall)
+    ? fullBleedPhoto(tall, s)
     : [
-        dotTexture(cream, 0.08),
-        band(mustard, { top: 230, height: 420, rotate: 10 }, [
-          displayText(props.subject.title, 290, chili, {}, { whiteSpace: "nowrap", lineHeight: 0.9 })
+        texture(s.text, 0.08),
+        band(s.decoB, { top: 230, height: 420, rotate: 10 }, [
+          bandLettering(props.subject.title, 290, { fill: s.decoA, stroke: s.decoA })
         ]),
-        band(tomato, { top: 700, height: 70, rotate: 10 }),
-        band(cream, { top: 800, height: 22, rotate: 10 })
+        band(s.decoA, { top: 700, height: 70, rotate: 10 }),
+        band(s.ring, { top: 800, height: 22, rotate: 10 })
       ];
-  return canvas(charcoal, [
-    ...decoration,
-    savingStamp(props, {
-      size: 340,
-      fill: tomato,
-      color: cream,
-      rotate: -10,
-      position: tall ? { top: 860, right: 48 } : { top: 640, right: 70 }
-    }),
-    layer({ top: PAD, left: PAD }, [
-      brandBlock(props.branding, cream, tall ? { ring: cream, plate: "rgba(28,23,20,0.78)" } : { ring: cream })
-    ]),
-    // Price is the hero; type starts where the fade is near-solid.
-    layer({ bottom: ABOVE_CTA, left: PAD, width: CONTENT_WIDTH }, [
-      priceRow(priceLine, originalPriceLine, {
-        size: priceSize(priceLine, CONTENT_WIDTH - 300, 190),
-        color: mustard,
-        strikeColor: cream
+  return canvas(
+    tall ? s.base : s.bg,
+    [
+      ...decoration,
+      savingStamp(props, {
+        size: 340,
+        fill: s.stampFill,
+        color: s.stampText,
+        rotate: -10,
+        position: tall ? { top: 860, right: 48 } : { top: 640, right: 70 }
       }),
-      bodyText(props.subject.title, 40, cream, { marginTop: 10 }, { opacity: 0.85, lineClamp: 1 }),
-      displayText(props.copy.headline, headlineSize, cream, {
-        marginTop: 18,
-        maxWidth: balancedWidth(props.copy.headline, headlineSize, CONTENT_WIDTH)
-      })
-    ]),
-    layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text: cream, muted: mustard })])
-  ]);
+      layer({ top: PAD, left: PAD }, [
+        brandBlock(
+          props.branding,
+          text,
+          tall ? { ring: s.palette.light, plate: `rgba(${rgbList(s.base)},0.78)` } : { ring: s.ring }
+        )
+      ]),
+      // Price is the hero; type starts where the fade is near-solid.
+      layer({ bottom: ABOVE_CTA, left: PAD, width: CONTENT_WIDTH }, [
+        priceRow(priceLine, originalPriceLine, {
+          size: priceSize(priceLine, CONTENT_WIDTH - 300, 190),
+          color: accent,
+          strikeColor: text
+        }),
+        bodyText(props.subject.title, 40, text, { marginTop: 10 }, { lineClamp: 1 }),
+        displayText(props.copy.headline, headlineSize, text, {
+          marginTop: 18,
+          maxWidth: balancedWidth(props.copy.headline, headlineSize, CONTENT_WIDTH)
+        })
+      ]),
+      layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text, muted: accent })])
+    ],
+    accent
+  );
 }
 
 // ── stat_led (price hero) ───────────────────────────────────────────────────
 
 function priceLed(props: PosterProps, photo: string | null): PosterNode {
+  const s = posterScheme(props.branding, "price");
   const { priceLine, originalPriceLine } = props.subject;
   const lowerWidth = 560;
   const ledHeadlineSize = fitFont(props.copy.headline, { width: lowerWidth, maxLines: 3, max: 104, min: 72 });
   const titleWidth = props.subject.savingLabel ? CONTENT_WIDTH - 300 : CONTENT_WIDTH;
-  return canvas(charcoal, [
-    dotTexture(mustard, 0.1),
-    photo
-      ? photoCircle(photo, 620, tomato, { top: 1010, right: -210 }, 20)
-      : rings(680, [tomato, chili, tomato, charcoal], { top: 980, right: -250 }, 0.18),
-    savingStamp(props, {
-      size: 320,
-      fill: tomato,
-      color: cream,
-      rotate: 14,
-      position: { top: 250, right: 50 }
-    }),
-    layer({ top: PAD, left: PAD }, [brandBlock(props.branding, cream, { ring: cream })]),
-    layer({ top: 250, left: PAD, width: CONTENT_WIDTH }, [
-      displayText(
-        props.subject.title,
-        fitFont(props.subject.title, { width: titleWidth, maxLines: 3, max: 120, min: 76 }),
-        cream,
-        { maxWidth: titleWidth }
-      ),
-      priceLine
-        ? displayText(priceLine, priceSize(priceLine, CONTENT_WIDTH, 360), mustard, { marginTop: 24 }, { lineHeight: 0.86 })
-        : null,
-      originalPriceLine
-        ? bodyText(`Was ${originalPriceLine}`, 52, cream, { marginTop: 18 }, { textDecoration: "line-through", opacity: 0.8 })
-        : null
-    ]),
-    layer({ bottom: ABOVE_CTA, left: PAD, width: lowerWidth }, [
-      displayText(props.copy.headline, ledHeadlineSize, cream, {
-        maxWidth: balancedWidth(props.copy.headline, ledHeadlineSize, lowerWidth)
+  return canvas(
+    s.bg,
+    [
+      texture(s.text, 0.1),
+      photo
+        ? photoCircle(photo, 620, s.decoA, { top: 1010, right: -210 }, 20)
+        : rings(680, [s.decoA, s.decoB, s.decoA, s.bg], { top: 980, right: -250 }, 0.18),
+      savingStamp(props, {
+        size: 320,
+        fill: s.stampFill,
+        color: s.stampText,
+        rotate: 14,
+        position: { top: 250, right: 50 }
       }),
-      bodyText(props.copy.subline, 36, mustard, { marginTop: 20 }, { lineClamp: 2 })
-    ]),
-    layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text: cream, muted: mustard })])
-  ]);
+      layer({ top: PAD, left: PAD }, [brandBlock(props.branding, s.text, { ring: s.ring })]),
+      layer({ top: 250, left: PAD, width: CONTENT_WIDTH }, [
+        displayText(
+          props.subject.title,
+          fitFont(props.subject.title, { width: titleWidth, maxLines: 3, max: 120, min: 76 }),
+          s.text,
+          { maxWidth: titleWidth }
+        ),
+        priceLine
+          ? displayText(priceLine, priceSize(priceLine, CONTENT_WIDTH, 360), s.accent, { marginTop: 24 }, { lineHeight: 0.86 })
+          : null,
+        originalPriceLine
+          ? bodyText(`Was ${originalPriceLine}`, 52, s.text, { marginTop: 18 }, { textDecoration: "line-through" })
+          : null
+      ]),
+      layer({ bottom: ABOVE_CTA, left: PAD, width: lowerWidth }, [
+        displayText(props.copy.headline, ledHeadlineSize, s.text, {
+          maxWidth: balancedWidth(props.copy.headline, ledHeadlineSize, lowerWidth)
+        }),
+        bodyText(props.copy.subline, 36, s.accent, { marginTop: 20 }, { lineClamp: 2 })
+      ]),
+      layer({ bottom: PAD, left: PAD }, [ctaBlock(props.cta, { text: s.text, muted: s.accent })])
+    ],
+    s.accent
+  );
 }

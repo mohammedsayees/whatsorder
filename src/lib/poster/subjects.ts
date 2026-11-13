@@ -16,7 +16,10 @@ import { isOfferOrderable } from "@/lib/order-pricing";
 import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 import type { PosterCopyFacts } from "./copy";
+import { dominantLogoColor } from "./logo-color";
 import { savingStampLabel, trimWholeAmount } from "./offer-math";
+import { buildPalette, normalizeHex, type PosterPalette } from "./palette";
+import { DEFAULT_POSTER_THEME, isPosterThemeId } from "./themes";
 import type {
   PosterBranding,
   PosterSubject,
@@ -165,13 +168,45 @@ async function logoUrlToDataUri(url: string | null | undefined): Promise<string 
   }
 }
 
+export type PaletteSource = "brand_color" | "logo" | "default";
+
+/**
+ * The restaurant's poster palette: its chosen brand colour, else its logo's
+ * dominant colour, else the default food palette.
+ */
+export async function resolvePosterPalette(
+  restaurant: Pick<Restaurant, "poster_brand_color">,
+  logoDataUri: string | null
+): Promise<{ palette: PosterPalette; source: PaletteSource; seed: string | null }> {
+  const chosen = normalizeHex(restaurant.poster_brand_color);
+  if (chosen) {
+    return { palette: buildPalette(chosen), source: "brand_color", seed: chosen };
+  }
+  const fromLogo = await dominantLogoColor(logoDataUri);
+  if (fromLogo) {
+    return { palette: buildPalette(fromLogo), source: "logo", seed: fromLogo };
+  }
+  return { palette: buildPalette(null), source: "default", seed: null };
+}
+
 export async function buildPosterBranding(
   restaurant: Restaurant
 ): Promise<PosterBranding> {
+  const logoDataUri = await logoUrlToDataUri(restaurant.logo_url);
+  const { palette } = await resolvePosterPalette(restaurant, logoDataUri);
   return {
     restaurantName: restaurant.name,
-    logoDataUri: await logoUrlToDataUri(restaurant.logo_url)
+    logoDataUri,
+    palette,
+    theme: isPosterThemeId(restaurant.poster_theme) ? restaurant.poster_theme : DEFAULT_POSTER_THEME
   };
+}
+
+/** For the settings preview: the palette posters will use right now. */
+export async function previewPosterPalette(
+  restaurant: Pick<Restaurant, "poster_brand_color" | "logo_url">
+) {
+  return resolvePosterPalette(restaurant, await logoUrlToDataUri(restaurant.logo_url));
 }
 
 function marketLabel(restaurant: Restaurant): string {

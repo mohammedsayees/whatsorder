@@ -1,31 +1,138 @@
 // lib/poster/design.ts
 //
-// Poster design system: palette, type helpers, and the shared pieces every
-// template composes — brand block, WhatsApp call-to-action with QR, saving
-// stamp, photo shapes and code-drawn decoration. Satori constraints apply:
-// flexbox + absolute positioning, inline styles, data-URI images only.
+// Poster design system: theme context, colour scheme, type helpers, and the
+// shared pieces every template composes — brand block, WhatsApp call-to-action
+// with QR, stamp, photo shapes and code-drawn decoration. Satori constraints
+// apply: flexbox + absolute positioning, inline styles, data-URI images only.
+//
+// Colours come from the restaurant's palette through posterScheme(), which
+// picks every text colour against its own background at >= 4.5:1. Shapes,
+// type and decoration come from the active theme (themes.ts).
 //
 // Every number shown on a poster arrives already formatted from tenant data
 // (subjects.ts / offer-math.ts); nothing here computes or invents a figure.
 
-import { BODY_FONT, DISPLAY_FONT } from "./fonts";
+import { BODY_FONT } from "./fonts";
 import { hasArabic, visualWordOrder } from "./bidi";
+import {
+  DEFAULT_PALETTE,
+  hexToRgb,
+  textOn,
+  textableFill,
+  type PosterPalette
+} from "./palette";
+import {
+  DEFAULT_POSTER_THEME,
+  POSTER_THEMES,
+  type PaletteRole,
+  type PosterTheme
+} from "./themes";
 import type { PosterBranding, PosterCallToAction } from "./types";
 import { POSTER_WIDTH } from "./types";
 import { box, img, text, type PosterNode, type PosterStyle } from "./templates/node";
 
-// Food-poster palette (warm, appetite-led). Phase 5 replaces this fixed set
-// with a per-restaurant palette passed in through PosterBranding.
-export const PALETTE = {
-  charcoal: "#1c1714",
-  cream: "#fff3df",
-  tomato: "#e0412f",
-  chili: "#9e2a1f",
-  mustard: "#f5b82e",
-  leaf: "#2f7d4f",
-  white: "#ffffff",
-  whatsapp: "#25d366"
-} as const;
+export const WHITE = "#ffffff";
+export const WHATSAPP_GREEN = "#25d366";
+
+// ── theme context ───────────────────────────────────────────────────────────
+//
+// Tree building is synchronous, so the active theme is set for the duration
+// of one template call (withTheme) instead of being threaded through every
+// helper.
+
+let activeTheme: PosterTheme = POSTER_THEMES[DEFAULT_POSTER_THEME];
+
+export function currentTheme(): PosterTheme {
+  return activeTheme;
+}
+
+export function withTheme<T>(theme: PosterTheme, build: () => T): T {
+  const previous = activeTheme;
+  activeTheme = theme;
+  try {
+    return build();
+  } finally {
+    activeTheme = previous;
+  }
+}
+
+export function themeOf(branding: PosterBranding): PosterTheme {
+  return POSTER_THEMES[branding.theme ?? DEFAULT_POSTER_THEME] ?? POSTER_THEMES[DEFAULT_POSTER_THEME];
+}
+
+export function paletteOf(branding: PosterBranding): PosterPalette {
+  return branding.palette ?? DEFAULT_PALETTE;
+}
+
+// ── colour scheme ───────────────────────────────────────────────────────────
+
+export type PosterField = "hero" | "bleed" | "stat" | "arch" | "price";
+
+/**
+ * Every colour a composition uses, resolved from the palette for one field.
+ * Text colours are always chosen against the surface they sit on.
+ */
+export type PosterScheme = {
+  palette: PosterPalette;
+  bg: string;
+  /** Main text on bg. */
+  text: string;
+  /** Accent text on bg (prices, the sold count) — a brand colour when it passes. */
+  accent: string;
+  /** Decoration fills (never carry body text). */
+  decoA: string;
+  decoB: string;
+  /** Ring around circular photos. */
+  ring: string;
+  stampFill: string;
+  stampText: string;
+  /** Text on decoA, e.g. lettering inside a band or an arch. */
+  onDecoA: string;
+  /** Accent text on decoA (struck price inside a filled arch). */
+  accentOnDecoA: string;
+  /** Solid area below a full-bleed photo, and text on it. */
+  base: string;
+  onBase: string;
+  accentOnBase: string;
+};
+
+export function posterScheme(branding: PosterBranding, field: PosterField): PosterScheme {
+  const palette = paletteOf(branding);
+  const theme = themeOf(branding);
+  const bgRole = theme.fields[field];
+  const bg = textableFill(palette[bgRole], palette.dark, palette.light);
+  const decoRoles = (["primary", "secondary", "primaryDeep", "dark", "light"] as PaletteRole[]).filter(
+    (role) => palette[role] !== bg
+  );
+  const decoA = textableFill(palette[decoRoles[0]], palette.dark, palette.light);
+  const decoB = palette[decoRoles[1]];
+  const accents = theme.accents.map((role) => palette[role]);
+  // Stamps sit on the field (or a photo); give them a fill that stands out.
+  const stampFill = textableFill(bgRole === "dark" ? palette.secondary : decoA, palette.dark, palette.light);
+  const base = palette.dark;
+  return {
+    palette,
+    bg,
+    text: textOn(bg, palette),
+    accent: textOn(bg, palette, accents),
+    decoA,
+    decoB,
+    ring: bgRole === "light" ? palette.dark : palette.light,
+    stampFill,
+    stampText: textOn(stampFill, palette),
+    onDecoA: textOn(decoA, palette),
+    accentOnDecoA: textOn(decoA, palette, [palette.secondary, palette.light]),
+    base,
+    onBase: textOn(base, palette, [palette.light]),
+    accentOnBase: textOn(base, palette, accents)
+  };
+}
+
+/** "#rrggbb" → "r,g,b" for rgba() gradients. */
+export function rgbList(hex: string): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `${r},${g},${b}`;
+}
 
 export const PAD = 72;
 export const CONTENT_WIDTH = POSTER_WIDTH - PAD * 2;
@@ -36,7 +143,7 @@ export const CONTENT_WIDTH = POSTER_WIDTH - PAD * 2;
  */
 export const ABOVE_CTA = 304;
 
-export { BODY_FONT, DISPLAY_FONT };
+export { BODY_FONT };
 
 // ── text fitting ────────────────────────────────────────────────────────────
 
@@ -85,14 +192,19 @@ export function fitFont(
   value: string,
   options: { width: number; maxLines: number; max: number; min: number; charEm?: number }
 ): number {
-  const charEm = charEmFor(value, options.charEm ?? DISPLAY_CHAR_EM);
-  for (let size = options.max; size > options.min; size -= 4) {
+  // Display text (no explicit charEm) follows the active theme's face.
+  const display = options.charEm === undefined;
+  const scale = display ? activeTheme.display.sizeScale : 1;
+  const charEm = charEmFor(value, options.charEm ?? activeTheme.display.charEm);
+  const max = Math.round(options.max * scale);
+  const min = Math.round(options.min * scale);
+  for (let size = max; size > min; size -= 4) {
     const { lines, overflow } = wrapEstimate(value, size, options.width, charEm);
     if (!overflow && lines <= options.maxLines) {
       return size;
     }
   }
-  return options.min;
+  return min;
 }
 
 // ── Arabic-aware text ───────────────────────────────────────────────────────
@@ -170,7 +282,7 @@ export function balancedWidth(
   value: string,
   size: number,
   maxWidth: number,
-  latinCharEm = DISPLAY_CHAR_EM
+  latinCharEm = activeTheme.display.charEm
 ): number {
   // Arabic lines are wrapped by richText itself; leave their width alone.
   if (hasArabic(value)) return maxWidth;
@@ -195,11 +307,12 @@ export function displayText(
   return richText(
     value,
     {
-      fontFamily: DISPLAY_FONT,
+      fontFamily: activeTheme.display.family,
+      fontWeight: activeTheme.display.weight,
       fontSize: size,
-      lineHeight: 0.98,
+      lineHeight: activeTheme.display.lineHeight,
       color,
-      textTransform: "uppercase",
+      textTransform: activeTheme.display.transform,
       ...extra
     },
     layout
@@ -245,26 +358,45 @@ function starburstPoints(spikes: number, outer: number, inner: number): string {
   return points.join(" ");
 }
 
+function stampShapeSvg(shape: PosterTheme["stamp"], fill: string, ring: string): string {
+  switch (shape) {
+    case "badge":
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="${fill}"/><circle cx="50" cy="50" r="44" fill="none" stroke="${ring}" stroke-width="0.8"/></svg>`;
+    case "seal":
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" fill="${fill}"/><circle cx="50" cy="50" r="45" fill="none" stroke="${ring}" stroke-width="0.6"/><circle cx="50" cy="50" r="42.5" fill="none" stroke="${ring}" stroke-width="0.6"/></svg>`;
+    case "tag":
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M18 14 H92 V86 H18 L4 50 Z" fill="${fill}" stroke="${ring}" stroke-width="1.6" stroke-linejoin="round"/><circle cx="17" cy="50" r="4" fill="${ring}"/></svg>`;
+    default:
+      return starburstSvg(fill, ring);
+  }
+}
+
 function starburstSvg(fill: string, ring: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="${starburstPoints(22, 50, 44)}" fill="${fill}"/><circle cx="50" cy="50" r="38.5" fill="none" stroke="${ring}" stroke-width="1.2" stroke-dasharray="2.2 2"/></svg>`;
 }
 
 // Chat bubble + handset (handset path: Material "call" icon, Apache-2.0).
 function whatsappGlyphSvg(): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 3C12.4 3 3 12 3 23.2c0 3.9 1.1 7.5 3.1 10.6L3.4 44.6l11.3-2.9c2.8 1.5 6 2.3 9.3 2.3 11.6 0 21-9 21-20.2S35.6 3 24 3z" fill="${PALETTE.whatsapp}"/><g transform="translate(12 11.5) scale(1)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#ffffff"/></g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 3C12.4 3 3 12 3 23.2c0 3.9 1.1 7.5 3.1 10.6L3.4 44.6l11.3-2.9c2.8 1.5 6 2.3 9.3 2.3 11.6 0 21-9 21-20.2S35.6 3 24 3z" fill="${WHATSAPP_GREEN}"/><g transform="translate(12 11.5) scale(1)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="#ffffff"/></g></svg>`;
 }
 
-// Satori doesn't tile images, so the texture is one canvas-sized SVG whose
+// Satori doesn't tile images, so a texture is one canvas-sized SVG whose
 // rect is filled with a repeating <pattern>.
-function dotGridSvg(
+function textureSvg(
+  kind: PosterTheme["texture"],
   color: string,
   opacity: number,
-  spacing: number,
-  radius: number,
   height: number
 ): string {
-  const tile = spacing * 2;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height}" viewBox="0 0 1080 ${height}"><defs><pattern id="d" width="${tile}" height="${tile}" patternUnits="userSpaceOnUse"><g fill="${color}" fill-opacity="${opacity}"><circle cx="${spacing / 2}" cy="${spacing / 2}" r="${radius}"/><circle cx="${spacing * 1.5}" cy="${spacing * 1.5}" r="${radius}"/></g></pattern></defs><rect width="1080" height="${height}" fill="url(#d)"/></svg>`;
+  const tile =
+    kind === "stripes"
+      ? `<pattern id="d" width="48" height="48" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="16" height="48" fill="${color}" fill-opacity="${opacity}"/></pattern>`
+      : kind === "grid"
+        ? `<pattern id="d" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="${color}" stroke-opacity="${opacity}" stroke-width="2"/></pattern>`
+        : kind === "hairline"
+          ? `<pattern id="d" width="30" height="30" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect width="2" height="30" fill="${color}" fill-opacity="${opacity}"/></pattern>`
+          : `<pattern id="d" width="88" height="88" patternUnits="userSpaceOnUse"><g fill="${color}" fill-opacity="${opacity}"><circle cx="22" cy="22" r="5"/><circle cx="66" cy="66" r="5"/></g></pattern>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height}" viewBox="0 0 1080 ${height}"><defs>${tile}</defs><rect width="1080" height="${height}" fill="url(#d)"/></svg>`;
 }
 
 // ── shared pieces ───────────────────────────────────────────────────────────
@@ -294,7 +426,7 @@ export function brandBlock(
             width: size + 12,
             height: size + 12,
             borderRadius: 999,
-            backgroundColor: options.ring ?? PALETTE.white,
+            backgroundColor: options.ring ?? WHITE,
             alignItems: "center",
             justifyContent: "center",
             marginRight: 22,
@@ -344,11 +476,12 @@ export function ctaBlock(
           img(svgDataUri(whatsappGlyphSvg()), { width: 88, height: 88, marginRight: 22 }),
           text(
             {
-              fontFamily: DISPLAY_FONT,
-              fontSize: 74,
+              fontFamily: activeTheme.display.family,
+              fontWeight: activeTheme.display.weight,
+              fontSize: Math.round(74 * Math.min(1, activeTheme.display.sizeScale + 0.05)),
               lineHeight: 1,
               color: colors.text,
-              textTransform: "uppercase"
+              textTransform: activeTheme.display.transform
             },
             "Order on WhatsApp"
           )
@@ -368,7 +501,7 @@ export function ctaBlock(
       qr
         ? box(
             {
-              backgroundColor: PALETTE.white,
+              backgroundColor: WHITE,
               padding: 12,
               borderRadius: 18,
               flexShrink: 0,
@@ -393,6 +526,9 @@ export function stamp(
   }
 ): PosterNode {
   const { size } = options;
+  const shape = activeTheme.stamp;
+  // Quiet themes keep stamps nearly level; loud ones tilt them.
+  const rotate = shape === "badge" || shape === "seal" ? Math.sign(options.rotate) * 4 : options.rotate;
   const bigSize = fitFont(lines.big, {
     width: size * 0.62,
     maxLines: 2,
@@ -406,11 +542,11 @@ export function stamp(
       height: size,
       alignItems: "center",
       justifyContent: "center",
-      transform: `rotate(${options.rotate}deg)`,
+      transform: `rotate(${rotate}deg)`,
       ...options.position
     },
     [
-      img(svgDataUri(starburstSvg(options.fill, options.color)), {
+      img(svgDataUri(stampShapeSvg(shape, options.fill, options.color)), {
         position: "absolute",
         top: 0,
         left: 0,
@@ -489,7 +625,7 @@ export function arch(
       height,
       borderRadius: radius,
       overflow: "hidden",
-      backgroundColor: content.fill ?? PALETTE.charcoal,
+      backgroundColor: content.fill ?? "#1c1714",
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
@@ -510,10 +646,18 @@ export function arch(
   );
 }
 
-/** Solid circle decoration. */
+/** Circle decoration — filled, or an outline in outline-ornament themes. */
 export function disc(size: number, color: string, position: PosterStyle): PosterNode {
+  const outline = activeTheme.ornament === "outline";
   return box(
-    { position: "absolute", width: size, height: size, borderRadius: 999, backgroundColor: color, ...position },
+    {
+      position: "absolute",
+      width: size,
+      height: size,
+      borderRadius: 999,
+      ...(outline ? { border: `${Math.max(6, Math.round(size / 60))}px solid ${color}` } : { backgroundColor: color }),
+      ...position
+    },
     []
   );
 }
@@ -528,12 +672,15 @@ export function rings(
   let node: PosterNode | null = null;
   for (let i = colors.length - 1; i >= 0; i--) {
     const ringSize = Math.round(size * (1 - step * i));
+    const outline = activeTheme.ornament === "outline";
     node = box(
       {
         width: ringSize,
         height: ringSize,
         borderRadius: 999,
-        backgroundColor: colors[i],
+        ...(outline
+          ? { border: `${i % 2 === 0 ? 8 : 3}px solid ${colors[i]}` }
+          : { backgroundColor: colors[i] }),
         alignItems: "center",
         justifyContent: "center"
       },
@@ -543,12 +690,18 @@ export function rings(
   return box({ position: "absolute", ...position }, node ? [node] : []);
 }
 
-/** Wide diagonal band crossing the canvas. */
+/**
+ * Wide diagonal band crossing the canvas. Outline-ornament themes draw it as
+ * a pair of rules instead of a solid fill (its lettering becomes outlined —
+ * see outlineLettering).
+ */
 export function band(
   color: string,
   options: { top: number; height: number; rotate: number; left?: number; width?: number },
   children: PosterNode[] = []
 ): PosterNode {
+  const outline = activeTheme.ornament === "outline";
+  const rule = Math.max(3, Math.min(8, Math.round(options.height / 12)));
   return box(
     {
       position: "absolute",
@@ -556,7 +709,9 @@ export function band(
       left: options.left ?? -300,
       width: options.width ?? POSTER_WIDTH + 600,
       height: options.height,
-      backgroundColor: color,
+      ...(outline
+        ? { borderTop: `${rule}px solid ${color}`, borderBottom: `${rule}px solid ${color}` }
+        : { backgroundColor: color }),
       transform: `rotate(${options.rotate}deg)`,
       alignItems: "center",
       justifyContent: "center",
@@ -588,15 +743,13 @@ export function giantLettering(
   );
 }
 
-/** Repeating dot texture over the canvas (or a horizontal strip of it). */
-export function dotTexture(
+/** The theme's background texture over the canvas (or a horizontal strip). */
+export function texture(
   color: string,
-  opacity = 0.18,
-  region: { top: number; height: number } = { top: 0, height: 1920 },
-  spacing = 44,
-  radius = 5
+  opacity = 0.14,
+  region: { top: number; height: number } = { top: 0, height: 1920 }
 ): PosterNode {
-  return img(svgDataUri(dotGridSvg(color, opacity, spacing, radius, region.height)), {
+  return img(svgDataUri(textureSvg(activeTheme.texture, color, opacity, region.height)), {
     position: "absolute",
     top: region.top,
     left: 0,
@@ -605,8 +758,30 @@ export function dotTexture(
   });
 }
 
-/** Root canvas: relative, clipped, flex column. */
-export function canvas(background: string, children: (PosterNode | null)[]): PosterNode {
+/**
+ * Root canvas: relative, clipped, flex column. Themes with a frame get an
+ * inset hairline border drawn last, over everything.
+ */
+export function canvas(
+  background: string,
+  children: (PosterNode | null)[],
+  frameColor?: string
+): PosterNode {
+  const frame =
+    activeTheme.frame && frameColor
+      ? box(
+          {
+            position: "absolute",
+            top: 30,
+            left: 30,
+            right: 30,
+            bottom: 30,
+            border: `2px solid ${frameColor}`,
+            borderRadius: 6
+          },
+          []
+        )
+      : null;
   return box(
     {
       position: "relative",
@@ -616,7 +791,7 @@ export function canvas(background: string, children: (PosterNode | null)[]): Pos
       overflow: "hidden",
       backgroundColor: background
     },
-    children
+    [...children, frame]
   );
 }
 
@@ -682,10 +857,11 @@ export function fade(
 export const FULL_BLEED_PHOTO_HEIGHT = 1340;
 export const FULL_BLEED_FADE_TOP = 1000;
 
-export function fullBleedPhoto(photo: string): PosterNode[] {
+export function fullBleedPhoto(photo: string, scheme: PosterScheme): PosterNode[] {
+  const dark = rgbList(scheme.base);
   return [
-    // Texture only on the solid charcoal below the photo, never over the dish.
-    dotTexture(PALETTE.cream, 0.07, {
+    // Texture only on the solid base below the photo, never over the dish.
+    texture(scheme.onBase, 0.08, {
       top: FULL_BLEED_PHOTO_HEIGHT,
       height: 1920 - FULL_BLEED_PHOTO_HEIGHT
     }),
@@ -697,7 +873,7 @@ export function fullBleedPhoto(photo: string): PosterNode[] {
       height: FULL_BLEED_PHOTO_HEIGHT,
       objectFit: "cover"
     }),
-    fade("28,23,20", { top: 0, height: 200, from: 0.35, to: 0, direction: "down" }),
+    fade(dark, { top: 0, height: 200, from: 0.35, to: 0, direction: "down" }),
     // Eased multi-stop fade: no visible seam where it meets solid charcoal.
     box(
       {
@@ -706,10 +882,33 @@ export function fullBleedPhoto(photo: string): PosterNode[] {
         top: FULL_BLEED_FADE_TOP,
         width: "100%",
         height: FULL_BLEED_PHOTO_HEIGHT - FULL_BLEED_FADE_TOP,
-        backgroundImage:
-          "linear-gradient(180deg, rgba(28,23,20,0) 0%, rgba(28,23,20,0.35) 25%, rgba(28,23,20,0.72) 52%, rgba(28,23,20,0.92) 76%, rgba(28,23,20,1) 100%)"
+        backgroundImage: `linear-gradient(180deg, rgba(${dark},0) 0%, rgba(${dark},0.35) 25%, rgba(${dark},0.72) 52%, rgba(${dark},0.92) 76%, rgba(${dark},1) 100%)`
       },
       []
     )
   ];
+}
+
+/**
+ * Lettering inside a band: solid text on a filled band, or a faint watermark
+ * between the rules when the theme draws bands as rules (satori has no text
+ * stroke, so "outlined" lettering is a low-opacity fill).
+ */
+export function bandLettering(
+  value: string,
+  size: number,
+  colors: { fill: string; stroke: string }
+): PosterNode {
+  const outline = activeTheme.ornament === "outline";
+  return displayText(
+    value,
+    size,
+    outline ? colors.stroke : colors.fill,
+    { maxWidth: 6000 },
+    {
+      whiteSpace: "nowrap",
+      lineHeight: 0.9,
+      ...(outline ? { opacity: 0.16 } : {})
+    }
+  );
 }
