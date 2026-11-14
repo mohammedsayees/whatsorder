@@ -3,6 +3,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   ClipboardList,
+  CreditCard,
   LogOut,
   Landmark,
   Megaphone,
@@ -22,6 +23,7 @@ import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 import { isGuidedAdminSetup } from "@/lib/admin-shell";
+import { BILLING_PAGE_HREF, canViewBilling } from "@/lib/owner-billing";
 
 const setupNavHrefs = new Set([
   "/admin",
@@ -42,7 +44,9 @@ const navItems = [
   { href: "/admin/reports", label: "Reports", icon: PieChart, staff: false },
   { href: "/admin/finance", label: "Finance", icon: Landmark, staff: true, finance: true },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquareText, staff: false },
-  { href: "/admin/settings", label: "Settings", icon: Settings, staff: false }
+  { href: "/admin/settings", label: "Settings", icon: Settings, staff: false },
+  // Restaurant admins/owners only (not managers or staff): see canViewBilling.
+  { href: BILLING_PAGE_HREF, label: "Billing", icon: CreditCard, staff: false, billing: true }
 ];
 
 export function AdminShell({
@@ -64,10 +68,12 @@ export function AdminShell({
 }) {
   const jobsOnly = session.restaurant.jobs_only === true;
   const guidedSetup = isGuidedAdminSetup(session.restaurant, session.role);
+  const billingVisible = canViewBilling(session.role);
   const visibleNavItems = navItems.filter((item) => {
     if (jobsOnly) return item.href === "/admin/jobs";
     if (guidedSetup && !setupNavHrefs.has(item.href)) return false;
     if (item.finance && !financeVisible) return false;
+    if (item.billing && !billingVisible) return false;
     return session.role !== "staff" || item.staff;
   });
 
@@ -124,6 +130,7 @@ export function AdminShell({
 
   return (
     <AdminShellFrame
+      billingHref={billingVisible ? BILLING_PAGE_HREF : null}
       billingStatus={billingStatus}
       initialNewOrderAlertState={initialNewOrderAlertState}
       jobsOnly={jobsOnly}

@@ -1,10 +1,18 @@
+import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import type { SubscriptionStatus } from "@/lib/billing";
 
 // Non-destructive billing notice for the staff dashboard. past_due shows an
 // amber warning (no loss of function); suspended shows a red "paused" notice.
 // Customer ordering is never affected by this banner.
-export function BillingBanner({ status }: { status: SubscriptionStatus | null }) {
+export function BillingBanner({
+  billingHref,
+  status
+}: {
+  /** Set for roles that can open /admin/billing; staff get no link. */
+  billingHref?: string | null;
+  status: SubscriptionStatus | null;
+}) {
   if (status !== "past_due" && status !== "suspended") {
     return null;
   }
@@ -21,6 +29,14 @@ export function BillingBanner({ status }: { status: SubscriptionStatus | null })
         {isSuspended
           ? "Subscription paused — management features are limited. Settle the outstanding invoice to restore full access. Your customer ordering page stays live."
           : "Payment overdue — please settle your latest invoice to avoid interruption to management features. Your customer ordering page is unaffected."}
+        {billingHref ? (
+          <>
+            {" "}
+            <Link className="underline" href={billingHref}>
+              View invoice and pay
+            </Link>
+          </>
+        ) : null}
       </p>
     </div>
   );

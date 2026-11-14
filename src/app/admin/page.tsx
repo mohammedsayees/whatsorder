@@ -6,6 +6,7 @@ import { CommissionKeptCard } from "@/components/admin/CommissionKeptCard";
 import { DailySummaryCard } from "@/components/admin/DailySummaryCard";
 import { DashboardAttentionStrip } from "@/components/admin/DashboardAttentionStrip";
 import { OnboardingProgressCard } from "@/components/admin/OnboardingProgressCard";
+import { TrialEndingNotice } from "@/components/admin/TrialEndingNotice";
 import {
   DashboardTrendCard,
   type DashboardTrendMetric
@@ -14,6 +15,7 @@ import {
   getAdminDashboardSnapshot
 } from "@/lib/data";
 import type { DashboardTrendRange } from "@/lib/types";
+import { canViewBilling } from "@/lib/owner-billing";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getOnboardingProgress } from "@/lib/onboarding-progress";
 import { recordOnboardingEvent } from "@/lib/onboarding-events";
@@ -38,7 +40,7 @@ export default async function AdminDashboardPage({
     metric?: string;
   }>;
 }) {
-  const [query, { restaurant }] = await Promise.all([
+  const [query, { restaurant, role }] = await Promise.all([
     searchParams,
     requireRestaurantAdmin()
   ]);
@@ -75,6 +77,7 @@ export default async function AdminDashboardPage({
           <Link className="mt-2 inline-block font-bold underline" href="/admin/integrations/whatsapp">Check connection and reconnect</Link>
         </section>
       ) : null}
+      {canViewBilling(role) ? <TrialEndingNotice restaurantId={restaurant.id} /> : null}
       {query.welcome ? (
         <section className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-900">
           <h2 className="text-lg font-black">You&apos;re live. Welcome to WhatsOrder.</h2>
