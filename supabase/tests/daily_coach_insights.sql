@@ -275,7 +275,7 @@ values
     '26000000-0000-0000-0000-000000000001',
     'Unfinished one',
     '',
-    'dine_in',
+    'takeaway',
     '',
     '',
     'Cash on Delivery',
