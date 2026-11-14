@@ -351,11 +351,17 @@ export async function createOrderAction(
     };
   }
 
-  const cap = await checkPendingOrderCaps(supabase, {
-    restaurantId: restaurant.id,
-    customerPhone,
-    submissionToken
-  });
+  // The cap check and the stamp-card line are independent reads, so they share
+  // one round trip instead of two. The loyalty read returns no PII and is only
+  // used once the caps allow the order (it is "" when loyalty is disabled).
+  const [cap, loyaltyLine] = await Promise.all([
+    checkPendingOrderCaps(supabase, {
+      restaurantId: restaurant.id,
+      customerPhone,
+      submissionToken
+    }),
+    loyaltyLineForOrder(supabase, restaurant.id, customerPhone)
+  ]);
   if (cap === "phone_limit") {
     return {
       ok: false,
@@ -375,8 +381,7 @@ export async function createOrderAction(
   }
 
   // Stamp-card progress line for the confirmation message — free-form, inside the 24h
-  // WhatsApp service window. Returns "" when the restaurant's loyalty program is disabled.
-  const loyaltyLine = await loyaltyLineForOrder(supabase, restaurant.id, customerPhone);
+  // WhatsApp service window.
   const whatsappMessage = loyaltyLine ? `${message}\n\n${loyaltyLine}` : message;
 
   const { data, error } = await supabase.rpc("create_order_with_customer_v5", {
