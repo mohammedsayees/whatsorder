@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { JobActions } from "@/components/jobs/JobActions";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 import { buildJobPostingSchema, formatJobSalary } from "@/lib/jobs";
 import { getPublicJob } from "@/lib/jobs-data";
 import { publicAppUrl } from "@/lib/public-app-url";
@@ -62,7 +63,7 @@ export default async function JobDetailsPage({ params }: { params: Promise<{ job
         }}
         type="application/ld+json"
       />
-      <header className="border-b border-stone-200 bg-white"><div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4"><Link className="text-xl font-black text-leaf" href="/">WhatsOrder</Link><Link className="text-sm font-bold text-stone-600" href="/jobs">Browse jobs</Link></div></header>
+      <header className="border-b border-stone-200 bg-white"><div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4"><Link className="text-xl font-black text-leaf" href="/"><WhatsOrderBrand imageClassName="h-9 w-9" /></Link><Link className="text-sm font-bold text-stone-600" href="/jobs">Browse jobs</Link></div></header>
       <div className="mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <Link className="text-sm font-bold text-leaf" href="/jobs">← Back to all jobs</Link>
         <article className="mt-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">

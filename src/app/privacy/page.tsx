@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 
 export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <p className="text-sm font-black uppercase tracking-wide text-leaf">WhatsOrder</p>
+      <WhatsOrderBrand
+        className="text-sm font-black uppercase tracking-wide text-leaf"
+        imageClassName="h-9 w-9"
+      />
       <h1 className="mt-2 text-3xl font-black">Customer privacy notice</h1>
       <p className="mt-4 leading-7 text-stone-600">
         WhatsOrder helps the restaurant receive and manage your order. The restaurant is

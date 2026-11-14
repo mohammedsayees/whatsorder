@@ -1,12 +1,9 @@
 import Link from "next/link";
-import {
-  LogOut,
-  PlusCircle,
-  ShieldCheck
-} from "lucide-react";
+import { LogOut, PlusCircle } from "lucide-react";
 import { logoutSuperAdminAction } from "@/app/super-admin/actions";
 import type { SuperAdminSession } from "@/lib/super-admin-auth";
 import { SuperAdminNavLinks } from "@/components/super-admin/SuperAdminNavLinks";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 
 export function SuperAdminShell({
   children,
@@ -20,11 +17,11 @@ export function SuperAdminShell({
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-stone-200 bg-[#173d2f] text-white lg:flex lg:flex-col">
         <div className="border-b border-white/10 px-6 py-6">
           <Link className="inline-flex items-center gap-3" href="/super-admin">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-white/10">
-              <ShieldCheck size={21} />
-            </span>
             <span>
-              <span className="block text-lg font-black">WhatsOrder</span>
+              <WhatsOrderBrand
+                imageClassName="h-10 w-10 rounded-lg"
+                labelClassName="block text-lg font-black"
+              />
               <span className="block text-xs font-bold text-white/55">Super Admin</span>
             </span>
           </Link>
@@ -51,7 +48,7 @@ export function SuperAdminShell({
         <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4">
             <Link className="font-black text-[#173d2f] lg:hidden" href="/super-admin">
-              WhatsOrder Admin
+              <WhatsOrderBrand imageClassName="h-8 w-8" label="WhatsOrder Admin" />
             </Link>
             <p className="hidden text-sm font-semibold text-stone-500 lg:block">
               Multi-restaurant operations

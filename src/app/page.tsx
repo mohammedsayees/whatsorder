@@ -87,7 +87,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   header{position:sticky;top:0;z-index:50;background:rgba(253,253,251,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
   .nav{display:flex;align-items:center;justify-content:space-between;gap:20px;height:68px}
   .brand{display:flex;align-items:center;gap:.6rem;font-family:"Bricolage Grotesque";font-weight:700;font-size:1.18rem;letter-spacing:-.02em;color:var(--pine);white-space:nowrap;flex:0 0 auto}
-  .brand-mark{width:30px;height:30px;flex:0 0 auto}
+  .brand-mark{width:36px;height:36px;flex:0 0 auto;object-fit:contain}
   .nav-links{display:flex;align-items:center;flex-wrap:nowrap;gap:1.3rem;font-size:.95rem;color:var(--ink-soft);font-weight:500}
   .nav-links a{white-space:nowrap}
   .nav-links a:hover{color:var(--pine)}
@@ -479,11 +479,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <header>
   <div class="wrap nav">
     <a class="brand" href="#top" aria-label="WhatsOrder home">
-      <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect width="32" height="32" rx="9" fill="#0FA36B"/>
-        <path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FFFFFF"/>
-        <path d="M13.2 15.6l2 2 3.8-4.2" stroke="#0FA36B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+      <img class="brand-mark" src="/icons/whatsorder-mark.png" alt="" width="36" height="36">
       WhatsOrder
     </a>
     <nav class="nav-links" aria-label="Primary">
@@ -906,7 +902,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="foot-grid">
       <div>
         <div class="foot-brand">
-          <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0FA36B"/><path d="M9 22.5 10.4 19A7 7 0 1 1 13 21.6L9 22.5Z" fill="#FFFFFF"/><path d="m13.2 15.6 2 2 3.8-4.2" stroke="#0FA36B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <img src="/icons/whatsorder-mark.png" alt="" width="32" height="32">
           WhatsOrder
         </div>
         <p class="foot-tag">Commission-free WhatsApp ordering for cafes and small restaurants. Built in Ajman.</p>

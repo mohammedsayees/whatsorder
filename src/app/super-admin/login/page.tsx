@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
 import { loginSuperAdminAction } from "@/app/super-admin/actions";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 import { getSuperAdminSession } from "@/lib/super-admin-auth";
 
 export default async function SuperAdminLoginPage({
@@ -17,9 +17,10 @@ export default async function SuperAdminLoginPage({
   return (
     <main className="grid min-h-screen place-items-center bg-[#173d2f] px-4 py-10">
       <section className="w-full max-w-md rounded-lg border border-white/10 bg-white p-6 shadow-2xl sm:p-8">
-        <div className="grid h-12 w-12 place-items-center rounded-lg bg-mint text-leaf">
-          <ShieldCheck size={24} />
-        </div>
+        <WhatsOrderBrand
+          imageClassName="h-12 w-12"
+          labelClassName="text-xl font-black text-ink"
+        />
         <h1 className="mt-5 text-2xl font-black">WhatsOrder Super Admin</h1>
         <p className="mt-2 text-sm leading-6 text-stone-600">
           Sign in with a Supabase Auth account whose profile role is set to{" "}

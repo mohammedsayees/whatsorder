@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Store } from "lucide-react";
 import { loginRestaurantAdminAction } from "@/app/admin-login/actions";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 
 export default async function RestaurantAdminLoginPage({
@@ -18,9 +18,10 @@ export default async function RestaurantAdminLoginPage({
   return (
     <main className="grid min-h-screen place-items-center bg-stone-100 px-4 py-10">
       <section className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-6 shadow-xl sm:p-8">
-        <div className="grid h-12 w-12 place-items-center rounded-lg bg-mint text-leaf">
-          <Store size={24} />
-        </div>
+        <WhatsOrderBrand
+          imageClassName="h-12 w-12"
+          labelClassName="text-xl font-black text-ink"
+        />
         <h1 className="mt-5 text-2xl font-black">Restaurant admin</h1>
         <p className="mt-2 text-sm leading-6 text-stone-600">
           Sign in with the account assigned to your WhatsOrder restaurant.

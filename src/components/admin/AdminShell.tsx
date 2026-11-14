@@ -17,6 +17,7 @@ import {
 import { logoutRestaurantAdminAction } from "@/app/admin-login/actions";
 import { AdminShellFrame } from "@/components/admin/AdminShellFrame";
 import { ChatUnreadNavBadge } from "@/components/admin/ChatUnreadNavBadge";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
@@ -74,7 +75,7 @@ export function AdminShell({
       <aside className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white print:hidden lg:inset-y-0 lg:left-0 lg:right-auto lg:flex lg:h-dvh lg:w-64 lg:flex-col lg:overflow-hidden lg:border-r lg:border-t-0">
         <div className="hidden shrink-0 px-6 py-6 lg:block">
           <Link className="text-xl font-black text-ink" href={jobsOnly ? "/admin/jobs" : "/admin"}>
-            WhatsOrder
+            <WhatsOrderBrand imageClassName="h-10 w-10" />
           </Link>
           <p className="mt-1 truncate text-sm font-bold text-stone-700">{session.restaurant.name}</p>
           <p className="mt-0.5 text-xs capitalize text-stone-500">
