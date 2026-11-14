@@ -26,7 +26,7 @@ import {
   type PosterUrls
 } from "@/lib/poster/store";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
-import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
+import { posterSendAvailability } from "@/lib/marketing/send-availability";
 
 const MARKETING_ROLES = ["restaurant_admin", "owner", "manager"] as const;
 
@@ -104,11 +104,9 @@ async function sendPoster(
     return { error: "Poster not found." };
   }
 
-  if (!(await restaurantOwnsCloudNumber(session.restaurantId))) {
-    return {
-      error:
-        "Sharing posters needs your own WhatsApp Business number, which isn't set up yet. Download the poster and post it as your WhatsApp status instead."
-    };
+  const availability = await posterSendAvailability(session.restaurantId);
+  if (!availability.ok) {
+    return { error: availability.reason };
   }
 
   const store = createMarketingSendStore(session.restaurantId, posterId);

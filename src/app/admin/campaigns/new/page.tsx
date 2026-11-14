@@ -7,7 +7,7 @@ import { SEGMENT_TABS, isSegmentFilter } from "@/lib/customer-insights";
 import { CAMPAIGN_CHANNELS, getCampaignBreakdown } from "@/lib/marketing/campaign";
 import { getPosterHistory } from "@/lib/poster/store";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
-import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
+import { posterSendAvailability } from "@/lib/marketing/send-availability";
 
 export const dynamic = "force-dynamic";
 // The campaign send action runs inside this page's request (40 s send budget).
@@ -34,13 +34,14 @@ export default async function NewCampaignPage({
   const segmentLabel =
     SEGMENT_TABS.find((tab) => tab.value === activeSegment)?.label ?? "All customers";
 
-  const ownsCloudNumber = await restaurantOwnsCloudNumber(session.restaurantId);
+  const sendAvailability = await posterSendAvailability(session.restaurantId);
+  const ownsCloudNumber = sendAvailability.ok;
   const [breakdown, history] = await Promise.all([
     ownsCloudNumber ? getCampaignBreakdown(session.restaurantId, activeSegment) : Promise.resolve(null),
     getPosterHistory(session.restaurantId, 12)
   ]);
-  const blockedReason = !ownsCloudNumber
-    ? "Sending needs your own WhatsApp Business number, which isn't set up yet."
+  const blockedReason = !sendAvailability.ok
+    ? sendAvailability.reason
     : breakdown?.readFailed
       ? "Couldn't check who can be reached right now. Try again shortly."
       : null;

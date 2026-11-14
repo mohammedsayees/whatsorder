@@ -21,7 +21,7 @@ import {
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
-import { restaurantOwnsCloudNumber } from "@/lib/whatsapp-cloud-tenant";
+import { posterSendAvailability } from "@/lib/marketing/send-availability";
 
 export const dynamic = "force-dynamic";
 // The poster send action runs inside this page's request; its loop keeps a
@@ -130,13 +130,14 @@ export default async function MarketingPage() {
     "manager"
   ]);
 
-  const [bestsellers, newItems, allOffers, history, ownsCloudNumber] = await Promise.all([
+  const [bestsellers, newItems, allOffers, history, sendAvailability] = await Promise.all([
     getBestsellerOptions(session.restaurantId, session.restaurant),
     getNewItemOptions(session.restaurantId, session.restaurant),
     getMenuOffers(session.restaurantId, { admin: true }),
     getPosterHistory(session.restaurantId),
-    restaurantOwnsCloudNumber(session.restaurantId)
+    posterSendAvailability(session.restaurantId)
   ]);
+  const ownsCloudNumber = sendAvailability.ok;
   // Only the owner of the shared Cloud number can send at all; skip the
   // audience reads otherwise.
   const audience = ownsCloudNumber
@@ -188,11 +189,7 @@ export default async function MarketingPage() {
         }
         themeLabels={Object.fromEntries(POSTER_THEME_IDS.map((id) => [id, POSTER_THEMES[id].label]))}
         frequencyCappedCount={audience.frequencyCapped}
-        sendBlockedReason={
-          ownsCloudNumber
-            ? null
-            : "Sharing to customers needs your own WhatsApp Business number, which isn't set up yet. Download the poster and post it as your WhatsApp status instead."
-        }
+        sendBlockedReason={sendAvailability.ok ? null : sendAvailability.reason}
         history={history.map((entry) => ({
           id: entry.id,
           templateId: entry.template_id,

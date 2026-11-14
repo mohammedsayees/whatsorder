@@ -61,12 +61,21 @@ describe("hasMarketingConsent", () => {
 
 describe("getInWindowRecipients", () => {
   it("keeps only in-window customers of this restaurant who consented", async () => {
+    tables.whatsapp_service_windows = {
+      data: [
+        { phone: "971500000001", last_inbound_at: recent },
+        { phone: "971500000002", last_inbound_at: recent },
+        { phone: "971500000003", last_inbound_at: recent },
+        { phone: "971500000004", last_inbound_at: recent }
+      ],
+      error: null
+    };
     tables.whatsapp_conversations = {
       data: [
-        { id: "c1", customer_phone: "971500000001", last_inbound_at: recent },
-        { id: "c2", customer_phone: "971500000002", last_inbound_at: recent },
-        { id: "c3", customer_phone: "971500000003", last_inbound_at: recent },
-        { id: "c4", customer_phone: "971500000004", last_inbound_at: recent }
+        { id: "c1", customer_phone: "971500000001" },
+        { id: "c2", customer_phone: "971500000002" },
+        { id: "c3", customer_phone: "971500000003" },
+        { id: "c4", customer_phone: "971500000004" }
       ],
       error: null
     };
@@ -83,12 +92,21 @@ describe("getInWindowRecipients", () => {
       { conversationId: "c1", phone: "971500000001" }
     ]);
     expect(filters.customers).toContainEqual(["eq", "restaurant_id", "rest-1"]);
+    expect(filters.whatsapp_service_windows).toContainEqual(["eq", "restaurant_id", "rest-1"]);
     expect(filters.whatsapp_conversations).toContainEqual(["eq", "restaurant_id", "rest-1"]);
   });
 
   it("sends to nobody if consent cannot be read", async () => {
+    tables.whatsapp_service_windows = {
+      data: [
+        { phone: "971500000001", last_inbound_at: recent }
+      ],
+      error: null
+    };
     tables.whatsapp_conversations = {
-      data: [{ id: "c1", customer_phone: "971500000001", last_inbound_at: recent }],
+      data: [
+        { id: "c1", customer_phone: "971500000001" }
+      ],
       error: null
     };
     tables.customers = { data: null, error: { code: "500" } };
@@ -101,10 +119,17 @@ describe("getInWindowRecipients", () => {
 
 describe("frequency cap", () => {
   beforeEach(() => {
+    tables.whatsapp_service_windows = {
+      data: [
+        { phone: "971500000001", last_inbound_at: recent },
+        { phone: "971500000002", last_inbound_at: recent }
+      ],
+      error: null
+    };
     tables.whatsapp_conversations = {
       data: [
-        { id: "c1", customer_phone: "971500000001", last_inbound_at: recent },
-        { id: "c2", customer_phone: "971500000002", last_inbound_at: recent }
+        { id: "c1", customer_phone: "971500000001" },
+        { id: "c2", customer_phone: "971500000002" }
       ],
       error: null
     };
@@ -155,3 +180,25 @@ describe("frequency cap", () => {
     });
   });
 });
+
+describe("Cloud-only audience", () => {
+  it("counts only customers with an open window on the Cloud API number", async () => {
+    // A WhatsApp Web connector chat has a conversation but no service window.
+    tables.whatsapp_service_windows = { data: [], error: null };
+    tables.whatsapp_conversations = {
+      data: [{ id: "web-thread", customer_phone: "971500000001" }],
+      error: null
+    };
+    tables.customers = { data: [consenting("971500000001")], error: null };
+    await expect(getMarketingAudience("rest-1")).resolves.toEqual({ recipients: [], frequencyCapped: 0 });
+  });
+
+  it("still sends when the customer has no inbox thread (recorded by phone)", async () => {
+    tables.whatsapp_service_windows = { data: [{ phone: "971500000009", last_inbound_at: recent }], error: null };
+    tables.whatsapp_conversations = { data: [], error: null };
+    tables.customers = { data: [consenting("971500000009")], error: null };
+    const audience = await getMarketingAudience("rest-1");
+    expect(audience.recipients).toEqual([{ conversationId: null, phone: "971500000009" }]);
+  });
+});
+
