@@ -326,7 +326,7 @@ unfinished_overall as (
   from public.orders o
   cross join bounds b
   where o.restaurant_id = rid
-    and coalesce(o.status, '') not in ('Completed', 'Cancelled')
+    and o.status not in ('Completed', 'Cancelled')
     and o.created_at >= b.day_start
     and o.created_at < b.day_end
 ),

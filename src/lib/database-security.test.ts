@@ -503,9 +503,10 @@ describe("public order database boundary", () => {
     expect(migration).toContain("'baseline_trading_days'");
     expect(migration).toContain("'same_weekday_trading_days'");
     expect(migration).not.toContain("same_weekday as (");
-    expect(migration).toContain(
-      "coalesce(o.status, '') not in ('Completed', 'Cancelled')"
-    );
+    // orders.status is the not-null order_status enum: compare it directly
+    // (coalescing to '' is an invalid enum value and fails at apply time).
+    expect(migration).toContain("and o.status not in ('Completed', 'Cancelled')");
+    expect(migration).not.toMatch(/coalesce\(o\.status/);
     expect(migration).toContain("current_tagged.source = 'customer'");
     // No policy or grant on tables is changed by this migration.
     expect(migration).not.toMatch(/\b(create|alter|drop) policy\b/i);
