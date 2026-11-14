@@ -79,6 +79,9 @@ describe("public order database boundary", () => {
   const dailyCoachIntegrationTest = readProjectFile(
     "supabase/tests/daily_coach_insights.sql"
   );
+  const dailyCoachTradingDayMigration = readProjectFile(
+    "supabase/migrations/20261118090000_daily_coach_trading_day_baselines.sql"
+  );
   const inviteActions = readProjectFile("src/app/auth/invite/actions.ts");
   const readme = readProjectFile("README.md");
   const setupGuide = readProjectFile("SUPABASE_SETUP.md");
@@ -471,5 +474,51 @@ describe("public order database boundary", () => {
       "Cross-tenant order must never affect Tenant A"
     );
     expect(dailyCoachIntegrationTest).toContain("rollback;");
+  });
+
+  it("keeps the trading-day Daily Coach revision tenant-scoped and service-role only", () => {
+    const migration = dailyCoachTradingDayMigration;
+    expect(migration).toContain(
+      "create or replace function public.daily_coach_insights("
+    );
+    expect(migration).toContain("security definer");
+    expect(migration).toContain("set search_path = public");
+    // Every orders read in the function is scoped to the requested tenant.
+    const ordersReads = migration.match(/from public\.orders \w+/g) ?? [];
+    const tenantScopes = migration.match(/\.restaurant_id = rid/g) ?? [];
+    expect(ordersReads.length).toBeGreaterThan(0);
+    expect(tenantScopes.length).toBeGreaterThanOrEqual(ordersReads.length);
+    expect(migration).toContain("and o.status = 'Completed'");
+    expect(migration).toMatch(
+      /revoke all on function public\.daily_coach_insights\(uuid, date\)[\s\S]*?from public, anon, authenticated;/
+    );
+    expect(migration).toMatch(
+      /grant execute on function public\.daily_coach_insights\(uuid, date\)[\s\S]*?to service_role;/
+    );
+    expect(migration).not.toMatch(/grant execute[\s\S]*?to (anon|authenticated|public)/);
+    // Privacy threshold for delivery areas is unchanged.
+    expect(migration.match(/having count\(\*\) >= 3/g)?.length).toBe(2);
+    // Baselines use trading days only; the unused CTE is gone.
+    expect(migration).toContain("trading_days as (");
+    expect(migration).toContain("'baseline_trading_days'");
+    expect(migration).toContain("'same_weekday_trading_days'");
+    expect(migration).not.toContain("same_weekday as (");
+    expect(migration).toContain(
+      "coalesce(o.status, '') not in ('Completed', 'Cancelled')"
+    );
+    expect(migration).toContain("current_tagged.source = 'customer'");
+    // No policy or grant on tables is changed by this migration.
+    expect(migration).not.toMatch(/\b(create|alter|drop) policy\b/i);
+    expect(migration).not.toMatch(/grant [a-z, ]+ on table/i);
+
+    expect(dailyCoachIntegrationTest).toContain(
+      "Same-weekday average must use trading days only"
+    );
+    expect(dailyCoachIntegrationTest).toContain(
+      "Unfinished order count is incorrect"
+    );
+    expect(dailyCoachIntegrationTest).toContain(
+      "Cross-tenant unfinished order must never affect Tenant A"
+    );
   });
 });
