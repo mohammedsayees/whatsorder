@@ -37,6 +37,7 @@ import type {
   FeatureOverrideChoice,
   PlanFeatureFlag
 } from "@/lib/billing";
+import { readBankTransferDetails, type BankTransferDetails } from "@/lib/owner-billing";
 
 type Admin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 
@@ -373,6 +374,183 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
     featureEvents: featureEventResult.error
       ? []
       : ((featureEventResult.data as FeatureEvent[] | null) ?? [])
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Owner-facing reads (/admin/billing). Read-only and always scoped by the
+// restaurant id from the caller's session. Deliberately narrower than
+// getBillingDetail: no audit history, internal discount reasons or drafts.
+// ---------------------------------------------------------------------------
+export type OwnerInvoice = Pick<
+  Invoice,
+  | "id"
+  | "invoice_number"
+  | "period_start"
+  | "period_end"
+  | "subtotal"
+  | "vat_rate"
+  | "vat_amount"
+  | "total"
+  | "currency"
+  | "status"
+  | "issued_at"
+  | "due_at"
+  | "paid_at"
+  | "created_at"
+> & { paid_to_date: number };
+
+export type OwnerInvoiceLineItem = Pick<
+  InvoiceLineItem,
+  "id" | "description" | "quantity" | "unit_amount" | "line_total"
+>;
+
+export type OwnerBillingSubscription = Pick<
+  Subscription,
+  | "status"
+  | "billing_interval"
+  | "price_override"
+  | "price_override_ends_at"
+  | "billing_cycle_start"
+  | "billing_cycle_end"
+  | "trial_ends_at"
+  | "grace_until"
+  | "cancel_at_period_end"
+>;
+
+export type OwnerBillingPlan = Pick<
+  Plan,
+  "name" | "code" | "monthly_price" | "annual_price" | "currency"
+>;
+
+const OWNER_INVOICE_COLUMNS =
+  "id,invoice_number,period_start,period_end,subtotal,vat_rate,vat_amount,total,currency,status,issued_at,due_at,paid_at,created_at";
+const OWNER_SUBSCRIPTION_COLUMNS =
+  "plan_id,status,billing_interval,price_override,price_override_ends_at,billing_cycle_start,billing_cycle_end,trial_ends_at,grace_until,cancel_at_period_end";
+const OWNER_PLAN_COLUMNS = "name,code,monthly_price,annual_price,currency";
+
+// Owners never see drafts; void invoices stay visible so numbering has no gaps.
+const OWNER_VISIBLE_INVOICE_STATUSES = ["issued", "paid", "void"];
+
+/** The restaurant's subscription and plan, or nulls for an un-enrolled pilot. */
+/** Bank transfer details from server-side env; null when not configured. */
+export function getBankTransferDetails(): BankTransferDetails | null {
+  return readBankTransferDetails(process.env);
+}
+
+export async function getOwnerSubscription(restaurantId: string): Promise<{
+  subscription: OwnerBillingSubscription | null;
+  plan: OwnerBillingPlan | null;
+}> {
+  const admin = getAdmin();
+  const { data, error } = await admin
+    .from("subscriptions")
+    .select(OWNER_SUBSCRIPTION_COLUMNS)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Subscription could not be loaded: ${error.message}`);
+  }
+  if (!data) {
+    return { subscription: null, plan: null };
+  }
+  const { plan_id: planId, ...subscription } = data as OwnerBillingSubscription & {
+    plan_id: string;
+  };
+  const { data: plan, error: planError } = await admin
+    .from("plans")
+    .select(OWNER_PLAN_COLUMNS)
+    .eq("id", planId)
+    .maybeSingle();
+  if (planError) {
+    throw new Error(`Plan could not be loaded: ${planError.message}`);
+  }
+  return { subscription, plan: (plan as OwnerBillingPlan | null) ?? null };
+}
+
+async function paidToDateByInvoice(
+  admin: Admin,
+  restaurantId: string,
+  invoiceIds: string[]
+): Promise<Map<string, number>> {
+  const paid = new Map<string, number>();
+  if (invoiceIds.length === 0) {
+    return paid;
+  }
+  const { data, error } = await admin
+    .from("payments")
+    .select("invoice_id,amount")
+    .eq("restaurant_id", restaurantId)
+    .in("invoice_id", invoiceIds);
+  if (error) {
+    throw new Error(`Billing payments could not be loaded: ${error.message}`);
+  }
+  for (const row of (data as Array<{ invoice_id: string; amount: number }> | null) ?? []) {
+    paid.set(row.invoice_id, (paid.get(row.invoice_id) ?? 0) + Number(row.amount));
+  }
+  return paid;
+}
+
+export async function listOwnerInvoices(restaurantId: string): Promise<OwnerInvoice[]> {
+  const admin = getAdmin();
+  const { data, error } = await admin
+    .from("invoices")
+    .select(OWNER_INVOICE_COLUMNS)
+    .eq("restaurant_id", restaurantId)
+    .in("status", OWNER_VISIBLE_INVOICE_STATUSES)
+    .order("period_start", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) {
+    throw new Error(`Invoices could not be loaded: ${error.message}`);
+  }
+  const invoices = (data as Omit<OwnerInvoice, "paid_to_date">[] | null) ?? [];
+  const paid = await paidToDateByInvoice(
+    admin,
+    restaurantId,
+    invoices.map((invoice) => invoice.id)
+  );
+  return invoices.map((invoice) => ({ ...invoice, paid_to_date: paid.get(invoice.id) ?? 0 }));
+}
+
+/**
+ * One invoice with its line items, only if it belongs to `restaurantId`.
+ * Returns null for another tenant's invoice, so callers 404 rather than leak.
+ */
+export async function getOwnerInvoice(
+  restaurantId: string,
+  invoiceId: string
+): Promise<(OwnerInvoice & { line_items: OwnerInvoiceLineItem[] }) | null> {
+  const admin = getAdmin();
+  const { data, error } = await admin
+    .from("invoices")
+    .select(OWNER_INVOICE_COLUMNS)
+    .eq("restaurant_id", restaurantId)
+    .eq("id", invoiceId)
+    .in("status", OWNER_VISIBLE_INVOICE_STATUSES)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Invoice could not be loaded: ${error.message}`);
+  }
+  if (!data) {
+    return null;
+  }
+  const invoice = data as Omit<OwnerInvoice, "paid_to_date">;
+  const [lineItemResult, paid] = await Promise.all([
+    admin
+      .from("invoice_line_items")
+      .select("id,description,quantity,unit_amount,line_total")
+      .eq("restaurant_id", restaurantId)
+      .eq("invoice_id", invoice.id)
+      .order("created_at", { ascending: true }),
+    paidToDateByInvoice(admin, restaurantId, [invoice.id])
+  ]);
+  if (lineItemResult.error) {
+    throw new Error(`Invoice lines could not be loaded: ${lineItemResult.error.message}`);
+  }
+  return {
+    ...invoice,
+    paid_to_date: paid.get(invoice.id) ?? 0,
+    line_items: (lineItemResult.data as OwnerInvoiceLineItem[] | null) ?? []
   };
 }
 

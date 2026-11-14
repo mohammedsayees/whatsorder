@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 
 import { isPlanFeatureFlag } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
+import { BILLING_PAGE_HREF, canViewBilling } from "@/lib/owner-billing";
 import { GATED_FEATURE_LABELS } from "@/lib/plan-gates";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -45,11 +46,23 @@ export default async function UpgradePage({
           ))}
         </ul>
         <p className="mt-6 rounded-lg bg-mint px-4 py-3 text-sm font-bold text-leaf">
-          Contact WhatsOrder support to upgrade. Your customer ordering page is unaffected.
+          {canViewBilling(session.role)
+            ? "Message WhatsOrder support from your Billing page to upgrade. Your plan, invoices and payment details are all there. Your customer ordering page is unaffected."
+            : "Ask your restaurant owner to upgrade from the Billing page. Your customer ordering page is unaffected."}
         </p>
-        <Link className="mt-6 inline-block text-sm font-bold text-leaf underline" href="/admin">
-          Back to dashboard
-        </Link>
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          {canViewBilling(session.role) ? (
+            <Link
+              className="focus-ring inline-flex items-center rounded-full bg-ink px-5 py-2.5 text-sm font-black text-white"
+              href={BILLING_PAGE_HREF}
+            >
+              Go to Billing
+            </Link>
+          ) : null}
+          <Link className="inline-block text-sm font-bold text-leaf underline" href="/admin">
+            Back to dashboard
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -8,6 +8,7 @@ import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 
 export function AdminShellFrame({
+  billingHref,
   billingStatus,
   children,
   initialNewOrderAlertState,
@@ -16,6 +17,7 @@ export function AdminShellFrame({
   restaurantId,
   sidebar
 }: {
+  billingHref?: string | null;
   billingStatus?: SubscriptionStatus | null;
   children: React.ReactNode;
   initialNewOrderAlertState: NewOrderAlertState;
@@ -41,7 +43,7 @@ export function AdminShellFrame({
             realtimeAccessToken={realtimeAccessToken}
             restaurantId={restaurantId}
           >
-            <BillingBanner status={billingStatus ?? null} />
+            <BillingBanner billingHref={billingHref} status={billingStatus ?? null} />
             {children}
           </AdminAlertsProvider>
         )}
