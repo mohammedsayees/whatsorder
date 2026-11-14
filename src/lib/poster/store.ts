@@ -259,7 +259,8 @@ export async function setPosterStatus(
 }
 
 export type InWindowRecipient = {
-  conversationId: string;
+  /** Chat-inbox thread, when one exists. */
+  conversationId: string | null;
   phone: string;
 };
 
@@ -305,10 +306,14 @@ export async function getMarketingAudience(
   if (!admin || !restaurantId) {
     return FAILED_AUDIENCE;
   }
+  // Open 24h windows on the Cloud API number only. The Cloud webhook records
+  // these in whatsapp_service_windows; WhatsApp Web connector chats are not
+  // there, because a Cloud API send can't reach a customer who only messaged
+  // the Web-connected number.
   const cutoffIso = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await admin
-    .from("whatsapp_conversations")
-    .select("id, customer_phone, last_inbound_at")
+    .from("whatsapp_service_windows")
+    .select("phone, last_inbound_at")
     .eq("restaurant_id", restaurantId)
     .gte("last_inbound_at", cutoffIso)
     .order("last_inbound_at", { ascending: false })
@@ -319,14 +324,29 @@ export async function getMarketingAudience(
   }
   // The cutoff is re-checked with the shared window math so a stale row
   // can't slip through.
-  const inWindow = ((data ?? []) as {
-    id: string;
-    customer_phone: string;
-    last_inbound_at: string | null;
-  }[]).filter((row) => isWithinServiceWindow(row.last_inbound_at));
-  if (inWindow.length === 0) {
+  const windows = ((data ?? []) as { phone: string; last_inbound_at: string | null }[]).filter((row) =>
+    isWithinServiceWindow(row.last_inbound_at)
+  );
+  if (windows.length === 0) {
     return EMPTY_AUDIENCE;
   }
+  // Chat-inbox thread per phone, when there is one (best-effort: the send
+  // records the outbound message by phone otherwise).
+  const { data: threads } = await admin
+    .from("whatsapp_conversations")
+    .select("id, customer_phone")
+    .eq("restaurant_id", restaurantId)
+    .in(
+      "customer_phone",
+      windows.map((row) => row.phone)
+    );
+  const threadByPhone = new Map(
+    ((threads ?? []) as { id: string; customer_phone: string }[]).map((row) => [row.customer_phone, row.id])
+  );
+  const inWindow = windows.map((row) => ({
+    id: threadByPhone.get(row.phone) ?? null,
+    customer_phone: row.phone
+  }));
 
   // A poster is marketing: an open chat window is not consent. Keep only
   // customers of THIS restaurant with a live marketing opt-in.

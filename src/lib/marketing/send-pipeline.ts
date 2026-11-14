@@ -33,7 +33,7 @@ export type MarketingSendRow = {
 };
 
 export type MarketingRecipient = {
-  conversationId: string;
+  conversationId: string | null;
   phone: string;
 };
 
