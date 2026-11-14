@@ -53,6 +53,14 @@ $feature_overrides_constraint$;
 comment on column public.subscriptions.feature_overrides is
   'Per-contract entitlement overrides merged over the plan: boolean plan flags, plus optional monthly_ai_image_limit (number, or null for no monthly cap).';
 
+-- (0) restaurants.plan mirrors the subscription's plan code (sync trigger),
+--     but its check never allowed 'multi_branch', so assigning that plan
+--     failed. Allow it so Personalised contracts can be created.
+alter table public.restaurants drop constraint if exists restaurants_plan_check;
+alter table public.restaurants
+add constraint restaurants_plan_check
+check (plan in ('trial', 'starter', 'growth', 'pro', 'multi_branch', 'custom'));
+
 -- (1) Grandfather prices: pin today's price on every live subscription that is
 --     not already on an active override. Runs before the plan prices change.
 with grandfathered as (

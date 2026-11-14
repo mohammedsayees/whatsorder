@@ -21,6 +21,8 @@ merging. It:
   the new `subscriptions.feature_overrides`;
 - then sets the new plan prices, names, flags (`chat_inbox`, `finance`) and
   `plans.monthly_ai_image_limit`;
+- allows `multi_branch` in `restaurants.plan` (assigning that plan used to fail
+  in the plan-sync trigger);
 - fails if any live subscription is left without a pinned price. It is safe to
   re-run and changes no RLS or policies.
 
