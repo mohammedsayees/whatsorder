@@ -8,13 +8,24 @@ import {
 } from "@/components/super-admin/BillingBadges";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate, formatUaeShortDateTime } from "@/lib/date-time";
-import { PAYMENT_METHODS, priceForBillingInterval, priceForSubscription } from "@/lib/billing";
-import { getBillingDetail, listActivePlans } from "@/lib/billing-data";
+import {
+  OVERRIDABLE_FEATURES,
+  PAYMENT_METHODS,
+  aiImageOverrideChoice,
+  featureOverrideChoice,
+  priceForBillingInterval,
+  priceForSubscription,
+  resolveEntitlements,
+  type PlanFeatureFlag
+} from "@/lib/billing";
+import { getBillingDetail, listActivePlans, type FeatureEvent } from "@/lib/billing-data";
+import type { Plan, SubscriptionStatus } from "@/lib/billing";
 import {
   assignPlanAction,
   changeStatusAction,
   issueInvoiceAction,
   recordPaymentAction,
+  updateFeatureOverridesAction,
   voidInvoiceAction
 } from "../actions";
 
@@ -50,7 +61,7 @@ export default async function BillingDetailPage({
     notFound();
   }
 
-  const { restaurant, subscription, plan, invoices, payments, statusEvents, priceEvents } = detail;
+  const { restaurant, subscription, plan, invoices, payments, statusEvents, priceEvents, featureEvents } = detail;
   const openInvoices = invoices.filter((invoice) => invoice.status === "issued");
   const today = new Date().toISOString().slice(0, 10);
   const listPrice = plan && subscription
@@ -277,6 +288,14 @@ export default async function BillingDetailPage({
               </form>
             </article>
           </section>
+
+          <PlanFeaturesPanel
+            featureEvents={featureEvents}
+            overrides={subscription.feature_overrides ?? {}}
+            plan={plan}
+            restaurantId={restaurant.id}
+            status={subscription.status}
+          />
 
           <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black">Issue an invoice</h2>
@@ -554,4 +573,163 @@ function ContractPriceFields({
       </div>
     </details>
   );
+}
+
+function PlanFeaturesPanel({
+  restaurantId,
+  plan,
+  status,
+  overrides,
+  featureEvents
+}: {
+  restaurantId: string;
+  plan: Plan | null;
+  status: SubscriptionStatus;
+  overrides: Record<string, unknown>;
+  featureEvents: FeatureEvent[];
+}) {
+  const planOnly = resolveEntitlements({
+    planFeatures: plan?.features ?? null,
+    planMonthlyAiImageLimit: plan?.monthly_ai_image_limit ?? null,
+    overrides: {},
+    status
+  });
+  const effective = resolveEntitlements({
+    planFeatures: plan?.features ?? null,
+    planMonthlyAiImageLimit: plan?.monthly_ai_image_limit ?? null,
+    overrides,
+    status
+  });
+  const ai = aiImageOverrideChoice(overrides);
+  const planDefaultLabel = (flag: PlanFeatureFlag) =>
+    `Follow plan (${planOnly.features[flag] ? "included" : "not included"}${status === "trialing" ? " during trial" : ""})`;
+  const aiLabel = (limit: number | null) => (limit === null ? "No monthly cap" : `${limit} a month`);
+
+  return (
+    <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-black">Plan features</h2>
+      <p className="mt-1 text-sm text-stone-600">
+        Customise what this restaurant gets on top of its plan, for custom deals or
+        grandfathered customers. Changes apply immediately and are recorded below.
+        Customer ordering is never affected.
+      </p>
+      <form action={updateFeatureOverridesAction} className="mt-4 space-y-3">
+        <input name="restaurant_id" type="hidden" value={restaurantId} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-stone-50 text-xs uppercase text-stone-500">
+              <tr>
+                <th className="px-3 py-2 font-black">Feature</th>
+                <th className="px-3 py-2 font-black">Setting</th>
+                <th className="px-3 py-2 font-black">Right now</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {OVERRIDABLE_FEATURES.map(({ flag, label }) => (
+                <tr key={flag}>
+                  <td className="px-3 py-2 font-bold">{label}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      aria-label={`${label} setting`}
+                      className="focus-ring w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm"
+                      defaultValue={featureOverrideChoice(overrides, flag)}
+                      name={`feature_${flag}`}
+                    >
+                      <option value="plan">{planDefaultLabel(flag)}</option>
+                      <option value="on">Always include</option>
+                      <option value="off">Always exclude</option>
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    {effective.features[flag] ? (
+                      <span className="font-bold text-leaf">Included</span>
+                    ) : (
+                      <span className="font-bold text-stone-400">Not included</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td className="px-3 py-2 font-bold">AI images (menu photos + posters)</td>
+                <td className="px-3 py-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <select
+                      aria-label="AI image allowance setting"
+                      className="focus-ring w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm"
+                      defaultValue={ai.choice}
+                      name="ai_images"
+                    >
+                      <option value="plan">Follow plan ({aiLabel(planOnly.monthlyAiImages)})</option>
+                      <option value="custom">Custom amount</option>
+                      <option value="unlimited">No monthly cap</option>
+                    </select>
+                    <input
+                      aria-label="Custom AI images a month"
+                      className="focus-ring w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm sm:w-32"
+                      defaultValue={ai.limit ?? ""}
+                      inputMode="numeric"
+                      min="0"
+                      name="ai_image_limit"
+                      placeholder="e.g. 500"
+                      step="1"
+                      type="number"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-stone-500">
+                    The amount is used only with &ldquo;Custom amount&rdquo;. Daily limits still apply.
+                  </p>
+                </td>
+                <td className="px-3 py-2 font-bold">{aiLabel(effective.monthlyAiImages)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2 text-sm"
+            name="reason"
+            placeholder="Reason (required, e.g. Personalised deal: 3 branches, 500 AI images)"
+            required
+          />
+          <button
+            className="focus-ring shrink-0 rounded-lg bg-ink px-4 py-2 text-sm font-black text-white"
+            type="submit"
+          >
+            Save features
+          </button>
+        </div>
+      </form>
+
+      <div className="mt-5 border-t border-stone-100 pt-4">
+        <p className="text-sm font-bold text-stone-700">Feature change history</p>
+        {featureEvents.length === 0 ? (
+          <p className="mt-2 text-sm text-stone-500">No feature changes recorded.</p>
+        ) : (
+          <ul className="mt-2 space-y-2 text-sm">
+            {featureEvents.map((event) => (
+              <li key={event.id} className="text-stone-600">
+                <span className="text-xs text-stone-400">{formatUaeShortDateTime(event.created_at)}</span>{" "}
+                <span className="font-bold">{describeOverrides(event.new_overrides)}</span>
+                <span> · {event.reason}</span>
+                {event.actor_role ? <span className="text-xs text-stone-400"> ({event.actor_role})</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function describeOverrides(overrides: Record<string, unknown> | null): string {
+  if (!overrides || Object.keys(overrides).length === 0) return "Back to plan defaults";
+  const parts: string[] = [];
+  for (const { flag, label } of OVERRIDABLE_FEATURES) {
+    if (overrides[flag] === true) parts.push(`${label}: on`);
+    if (overrides[flag] === false) parts.push(`${label}: off`);
+  }
+  const ai = aiImageOverrideChoice(overrides);
+  if (ai.choice === "unlimited") parts.push("AI images: no monthly cap");
+  if (ai.choice === "custom") parts.push(`AI images: ${ai.limit} a month`);
+  return parts.length > 0 ? parts.join(", ") : "Back to plan defaults";
 }

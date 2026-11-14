@@ -9,12 +9,16 @@ import type { ReactNode } from "react";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 
+import { themeOf, withPosterContext } from "./design";
 import { getPosterFonts } from "./fonts";
 import { bestsellerTemplate } from "./templates/bestseller";
+import { festivalTemplate } from "./templates/festival";
+import { loyaltyTemplate } from "./templates/loyalty";
+import { newItemTemplate } from "./templates/new-item";
 import { offerTemplate } from "./templates/offer";
 import type { PosterNode } from "./templates/node";
 import {
-  POSTER_HEIGHT,
+  POSTER_FORMAT_SIZES,
   POSTER_MAX_BYTES,
   POSTER_WIDTH,
   type PosterProps,
@@ -23,11 +27,20 @@ import {
 
 const TEMPLATES: Record<PosterTemplateId, (props: PosterProps) => PosterNode> = {
   bestseller: bestsellerTemplate,
-  offer: offerTemplate
+  offer: offerTemplate,
+  new_item: newItemTemplate,
+  loyalty: loyaltyTemplate,
+  festival: festivalTemplate
 };
 
 export function buildPosterTree(props: PosterProps): PosterNode {
-  return TEMPLATES[props.templateId](props);
+  return withPosterContext(themeOf(props.branding), props.format ?? "story", () =>
+    TEMPLATES[props.templateId](props)
+  );
+}
+
+export function posterSize(props: PosterProps): { width: number; height: number } {
+  return POSTER_FORMAT_SIZES[props.format ?? "story"];
 }
 
 /** Satori layout+shaping step, exposed separately for snapshot tests. */
@@ -35,11 +48,8 @@ export async function renderPosterSvg(props: PosterProps): Promise<string> {
   const fonts = await getPosterFonts();
   // Satori's signature is typed for React elements; it equally accepts
   // React-element-like plain objects (documented satori behavior).
-  return satori(buildPosterTree(props) as unknown as ReactNode, {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    fonts
-  });
+  const { width, height } = posterSize(props);
+  return satori(buildPosterTree(props) as unknown as ReactNode, { width, height, fonts });
 }
 
 export function rasterizePosterSvg(svg: string): Buffer {

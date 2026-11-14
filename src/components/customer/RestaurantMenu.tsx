@@ -163,6 +163,8 @@ export function RestaurantMenu({
     recentOrders: CustomerRecentOrder[];
   }>({ loyalty: null, recentOrders: [] });
   const [tableNumber, setTableNumber] = useState("");
+  // Marketing link source (e.g. ?src=poster-<id>), carried to checkout only.
+  const [attributionSource, setAttributionSource] = useState("");
   const [onboardingTest, setOnboardingTest] = useState(false);
   const hasReturningCustomerContent =
     Boolean(
@@ -192,6 +194,7 @@ export function RestaurantMenu({
       ?.trim()
       .slice(0, 40);
     setTableNumber(queryTableNumber ?? "");
+    setAttributionSource(currentQuery.get("src")?.trim().slice(0, 64) ?? "");
     setOnboardingTest(currentQuery.get("onboarding") === "test-order");
 
     const controller = new AbortController();
@@ -357,7 +360,8 @@ export function RestaurantMenu({
   const etaText = "25-35 min";
   const checkoutQuery = [
     tableNumber ? `table=${encodeURIComponent(tableNumber)}` : "",
-    onboardingTest ? "onboarding=test-order" : ""
+    onboardingTest ? "onboarding=test-order" : "",
+    attributionSource ? `src=${encodeURIComponent(attributionSource)}` : ""
   ].filter(Boolean);
   const checkoutHref = `/r/${restaurant.slug}/checkout${
     checkoutQuery.length > 0 ? `?${checkoutQuery.join("&")}` : ""

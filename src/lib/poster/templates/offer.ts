@@ -1,376 +1,160 @@
 // lib/poster/templates/offer.ts
 //
-// Offer / promo template — highest order intent. The price block is rendered
-// verbatim from the offers table (priceLine / originalPriceLine are formatted
-// server-side); the LLM contributes headline/subline only and never touches a
-// price.
+// Offer / promo template — highest order intent. Price text is rendered
+// verbatim from the offers table (formatted server-side) and the saving stamp
+// is computed in code from the real regular and promotional prices
+// (offer-math.ts); the AI contributes headline/subline only.
 //
-// Three compositions (one per generated variant, see layoutForVariant):
-//   photo_hero — photo window on cream, price card below (fallback: amber type)
-//   full_bleed — photo covers the frame, price over a scrim (fallback: pine type)
-//   stat_led   — the price itself is the hero on ink (photo-less by design)
+//   photo_hero → archFrame: dish in an arch (or the cut-out bursting out of
+//                it); no photo: the arch holds the giant price
+//   full_bleed → bleedFrame: price is the hero on the base colour
+//   stat_led   → statFrame: the price itself is the hero
 
-import { POSTER_COLORS } from "../types";
+import { bodyText, displayText, fitFont, pick, posterScheme, priceRow } from "../design";
 import type { PosterProps } from "../types";
-import {
-  FIELD_STYLES,
-  fullBleedBackdrop,
-  headerBar,
-  footerBar,
-  photoWindow,
-  type PosterField
-} from "./chrome";
-import { box, fitFontSize, text, type PosterNode } from "./node";
-
-const { ink, cream, mint, pine, amber } = POSTER_COLORS;
+import { gap, headline, subline } from "./blocks";
+import { archFrame, bleedFrame, statFrame, type StampLines } from "./frames";
+import type { PosterNode } from "./node";
 
 export function offerTemplate(props: PosterProps): PosterNode {
-  const photo = props.subject.photoDataUri;
   switch (props.layout) {
     case "full_bleed":
-      return photo ? fullBleedVariant(props, photo) : typographicVariant(props, "pine");
+      return fullBleed(props);
     case "stat_led":
-      return priceLedVariant(props);
+      return priceLed(props);
     default:
-      return photo ? photoVariant(props, photo) : typographicVariant(props, "amber");
+      return archHero(props);
   }
 }
 
-/** Card: offer title + struck original price + big promotional price. */
-function priceCard(
-  props: PosterProps,
-  background: "pine" | "cream" = "pine"
-): PosterNode {
-  const onPine = background === "pine";
-  return box(
-    {
-      flexDirection: "column",
-      backgroundColor: onPine ? pine : cream,
-      borderRadius: 32,
-      padding: "44px 48px",
-      width: "100%"
-    },
-    [
-      text(
-        {
-          fontFamily: "Bricolage Grotesque",
-          fontWeight: 700,
-          fontSize: fitFontSize(52, props.subject.title, 26),
-          color: onPine ? cream : ink,
-          lineClamp: 2
-        },
-        props.subject.title
-      ),
-      box(
-        {
-          flexDirection: "row",
-          alignItems: "flex-end",
-          marginTop: 28
-        },
-        [
-          props.subject.priceLine
-            ? text(
-                {
-                  fontFamily: "Bricolage Grotesque",
-                  fontWeight: 700,
-                  fontSize: 96,
-                  lineHeight: 1,
-                  color: onPine ? amber : pine
-                },
-                props.subject.priceLine
-              )
-            : null,
-          props.subject.originalPriceLine
-            ? text(
-                {
-                  fontFamily: "Geist Mono",
-                  fontSize: 40,
-                  color: onPine ? mint : ink,
-                  opacity: onPine ? 0.8 : 0.5,
-                  textDecoration: "line-through",
-                  marginLeft: 32,
-                  marginBottom: 10
-                },
-                props.subject.originalPriceLine
-              )
-            : null
-        ]
-      )
-    ]
-  );
+/** "25% OFF" → big "25%" + small "off"; "SAVE AED 4" → big "AED 4" + small "you save". */
+export function savingStampLines(label: string | null | undefined): StampLines | null {
+  if (!label) return null;
+  const percent = label.match(/^(\d+%)\s+OFF$/i);
+  const save = label.match(/^SAVE\s+(.+)$/i);
+  return percent ? { big: percent[1], small: "off" } : save ? { big: save[1], small: "you save" } : { big: label };
 }
 
-// ── photo_hero ──────────────────────────────────────────────────────────────
-
-function photoVariant(props: PosterProps, photoDataUri: string): PosterNode {
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: cream
-    },
-    [
-      headerBar(props.branding, "LIMITED OFFER", "light"),
-      photoWindow(photoDataUri, 800, []),
-      box(
-        {
-          flexDirection: "column",
-          padding: "56px 64px 48px 64px",
-          width: "100%"
-        },
-        [
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(88, props.copy.headline, 24),
-              lineHeight: 1.05,
-              color: ink,
-              lineClamp: 2
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 42,
-              lineHeight: 1.3,
-              color: ink,
-              opacity: 0.75,
-              marginTop: 24,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: 44, width: "100%" }, [priceCard(props)])
-        ]
-      ),
-      footerBar(props.branding, "light")
-    ]
-  );
+function priceSize(price: string | null, width: number, max: number): number {
+  return price ? fitFont(price, { width, maxLines: 1, max, min: 72 }) : 0;
 }
 
-// ── full_bleed ──────────────────────────────────────────────────────────────
-
-function fullBleedVariant(props: PosterProps, photoDataUri: string): PosterNode {
-  return box(
-    {
-      position: "relative",
-      width: "100%",
-      height: "100%",
-      flexDirection: "column"
-    },
-    [
-      ...fullBleedBackdrop(photoDataUri),
-      headerBar(props.branding, "LIMITED OFFER", "dark"),
-      box(
-        {
-          flexDirection: "column",
-          padding: "0 64px 56px 64px",
-          width: "100%",
-          marginTop: "auto"
-        },
-        [
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(104, props.copy.headline, 22),
-              lineHeight: 1.03,
-              color: cream,
-              lineClamp: 3,
-              // See bestseller full_bleed: guarantees contrast where the
-              // scrim has faded but the photo is bright.
-              textShadow: "0 4px 36px rgba(23,32,27,0.95)"
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 44,
-              lineHeight: 1.3,
-              color: mint,
-              marginTop: 28,
-              lineClamp: 2,
-              textShadow: "0 3px 24px rgba(23,32,27,0.95)"
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: 52, width: "100%" }, [priceCard(props)])
-        ]
+function archHero(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "arch");
+  const { priceLine, originalPriceLine, photoDataUri: photo } = props.subject;
+  return archFrame(props, s, {
+    stamp: savingStampLines(props.subject.savingLabel),
+    archContent: (archWidth) => [
+      bodyText(
+        props.subject.title,
+        pick({ story: 48, portrait: 40, square: 32 }),
+        s.onDecoA,
+        { maxWidth: archWidth - 120, marginTop: pick({ story: 200, portrait: 150, square: 190 }) },
+        { textAlign: "center", lineClamp: 2 }
       ),
-      footerBar(props.branding, "light")
+      priceLine
+        ? displayText(
+            priceLine,
+            priceSize(priceLine, archWidth - 100, pick({ story: 300, portrait: 220, square: 170 })),
+            s.onDecoA,
+            gap({ story: 18, portrait: 14, square: 10 }),
+            { lineHeight: 0.9 }
+          )
+        : null,
+      originalPriceLine
+        ? bodyText(originalPriceLine, pick({ story: 54, portrait: 44, square: 36 }), s.accentOnDecoA, gap({ story: 12, portrait: 10, square: 8 }), {
+            textDecoration: "line-through"
+          })
+        : null
+    ],
+    content: (width) => [
+      headline(props.copy.headline, s.text, width, {
+        max: { story: photo ? 128 : 170, portrait: photo ? 104 : 130, square: photo ? 84 : 100 },
+        min: { story: 88, portrait: 72, square: 56 },
+        lines: { story: photo ? 2 : 3, portrait: 2, square: 3 }
+      }),
+      photo
+        ? priceRow(priceLine, originalPriceLine, {
+            size: priceSize(priceLine, width - (width < 600 ? 0 : 300), pick({ story: 210, portrait: 170, square: 120 })),
+            color: s.accent,
+            strikeColor: s.text,
+            layout: gap({ story: 22, portrait: 16, square: 12 })
+          })
+        : subline(props.copy.subline, s.text, gap({ story: 24, portrait: 18, square: 14 })),
+      photo
+        ? bodyText(props.subject.title, pick({ story: 44, portrait: 38, square: 30 }), s.text, gap({ story: 14, portrait: 10, square: 8 }), {
+            lineClamp: 1
+          })
+        : null
     ]
-  );
+  });
 }
 
-// ── stat_led (price hero) ───────────────────────────────────────────────────
-
-/** Fit a short data string (the price) to the content width. */
-function heroFontSize(value: string, base: number): number {
-  const maxWidth = 952; // 1080 − 2×64 padding
-  const approxCharWidth = 0.62;
-  return Math.min(base, Math.floor(maxWidth / (approxCharWidth * value.length)));
+function fullBleed(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "bleed");
+  const { priceLine, originalPriceLine } = props.subject;
+  const hasVisual = Boolean(props.subject.photoDataUri ?? props.subject.backgroundDataUri);
+  return bleedFrame(props, s, {
+    stamp: savingStampLines(props.subject.savingLabel),
+    content: (width, colors) => [
+      priceRow(priceLine, originalPriceLine, {
+        size: priceSize(priceLine, width - (width < 600 ? 0 : 300), pick({ story: 190, portrait: 160, square: 120 })),
+        color: colors.accent,
+        strikeColor: colors.text
+      }),
+      bodyText(props.subject.title, pick({ story: 40, portrait: 36, square: 30 }), colors.text, gap({ story: 10, portrait: 8, square: 6 }), {
+        lineClamp: 1
+      }),
+      headline(props.copy.headline, colors.text, width, {
+        max: { story: hasVisual ? 100 : 140, portrait: hasVisual ? 86 : 110, square: 72 },
+        min: { story: 64, portrait: 56, square: 48 },
+        lines: { story: hasVisual ? 1 : 2, portrait: hasVisual ? 1 : 2, square: 2 }
+      }, gap({ story: 18, portrait: 14, square: 10 }))
+    ]
+  });
 }
 
-function priceLedVariant(props: PosterProps): PosterNode {
-  const price = props.subject.priceLine;
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: ink
+function priceLed(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "price");
+  const { priceLine, originalPriceLine } = props.subject;
+  const hasStamp = Boolean(props.subject.savingLabel);
+  return statFrame(props, s, {
+    stamp: savingStampLines(props.subject.savingLabel),
+    top: (width) => {
+      const titleWidth = hasStamp ? width - pick({ story: 300, portrait: 240, square: 200 }) : width;
+      return [
+        displayText(
+          props.subject.title,
+          fitFont(props.subject.title, {
+            width: titleWidth,
+            maxLines: 3,
+            max: pick({ story: 120, portrait: 92, square: 64 }),
+            min: pick({ story: 76, portrait: 60, square: 44 })
+          }),
+          s.text,
+          { maxWidth: titleWidth }
+        ),
+        priceLine
+          ? displayText(priceLine, priceSize(priceLine, width, pick({ story: 360, portrait: 260, square: 170 })), s.accent, gap({ story: 24, portrait: 16, square: 12 }), {
+              lineHeight: 0.86
+            })
+          : null,
+        originalPriceLine
+          ? bodyText(`Was ${originalPriceLine}`, pick({ story: 52, portrait: 44, square: 36 }), s.text, gap({ story: 18, portrait: 12, square: 8 }), {
+              textDecoration: "line-through"
+            })
+          : null
+      ];
     },
-    [
-      headerBar(props.branding, "LIMITED OFFER", "dark"),
-      box(
-        {
-          flexDirection: "column",
-          padding: "110px 64px 0 64px",
-          width: "100%",
-          flexGrow: 1
-        },
-        [
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(72, props.subject.title, 24),
-              lineHeight: 1.08,
-              color: cream,
-              lineClamp: 2
-            },
-            props.subject.title
-          ),
-          price
-            ? text(
-                {
-                  fontFamily: "Bricolage Grotesque",
-                  fontWeight: 700,
-                  fontSize: heroFontSize(price, 240),
-                  lineHeight: 1,
-                  color: amber,
-                  marginTop: 48
-                },
-                price
-              )
-            : null,
-          props.subject.originalPriceLine
-            ? text(
-                {
-                  fontFamily: "Geist Mono",
-                  fontSize: 44,
-                  color: mint,
-                  opacity: 0.75,
-                  textDecoration: "line-through",
-                  marginTop: 24
-                },
-                props.subject.originalPriceLine
-              )
-            : null,
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 44,
-              lineHeight: 1.35,
-              color: mint,
-              marginTop: 48,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: "auto", width: "100%", paddingBottom: 72 }, [
-            box(
-              {
-                backgroundColor: cream,
-                borderRadius: 32,
-                padding: "36px 44px",
-                width: "100%"
-              },
-              [
-                text(
-                  {
-                    fontFamily: "Bricolage Grotesque",
-                    fontWeight: 700,
-                    fontSize: fitFontSize(48, props.copy.headline, 26),
-                    color: ink,
-                    lineClamp: 2
-                  },
-                  props.copy.headline
-                )
-              ]
-            )
-          ])
-        ]
-      ),
-      footerBar(props.branding, "light")
+    lower: (width) => [
+      headline(props.copy.headline, s.text, width, {
+        max: { story: 104, portrait: 84, square: 64 },
+        min: { story: 72, portrait: 60, square: 48 },
+        lines: { story: 3, portrait: 2, square: 2 }
+      }),
+      pick({ story: true, portrait: true, square: false })
+        ? subline(props.copy.subline, s.accent, gap({ story: 20, portrait: 14, square: 10 }))
+        : null
     ]
-  );
-}
-
-// ── typographic fallbacks (field-parameterized) ─────────────────────────────
-
-function typographicVariant(props: PosterProps, field: PosterField): PosterNode {
-  const styles = FIELD_STYLES[field];
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: styles.background
-    },
-    [
-      headerBar(props.branding, "LIMITED OFFER", styles.headerTone, styles.chip),
-      box(
-        {
-          flexDirection: "column",
-          padding: "110px 64px 0 64px",
-          width: "100%",
-          flexGrow: 1
-        },
-        [
-          box(
-            {
-              width: 220,
-              height: 16,
-              backgroundColor: styles.accent,
-              borderRadius: 8
-            },
-            []
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(116, props.copy.headline, 20),
-              lineHeight: 1.02,
-              color: styles.headline,
-              marginTop: 52,
-              lineClamp: 3
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 46,
-              lineHeight: 1.35,
-              color: styles.subline,
-              opacity: field === "amber" ? 0.8 : 1,
-              marginTop: 40,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: "auto", width: "100%", paddingBottom: 72 }, [
-            priceCard(props, styles.card)
-          ])
-        ]
-      ),
-      footerBar(props.branding, styles.footerTone)
-    ]
-  );
+  });
 }

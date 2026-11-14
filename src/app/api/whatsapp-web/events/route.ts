@@ -13,8 +13,14 @@ import {
   getWhatsAppChatbotSettings,
   shouldSendWhatsAppWelcome
 } from "@/lib/whatsapp-ai";
+import { withdrawMarketingConsentByPhone } from "@/lib/marketing/consent";
+import {
+  isMarketingOptOutKeyword,
+  optOutConfirmationMessage
+} from "@/lib/marketing/opt-out";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { handleWhatsAppOrderMessage } from "@/lib/whatsapp-ordering";
+import { planAllowsOrFalse } from "@/lib/plan-gates";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   CONNECTOR_SIGNATURE_HEADER,
@@ -55,6 +61,9 @@ async function runReceptionist(input: {
   audioBase64?: string;
   audioMime?: string;
 }) {
+  // AI replies are a Growth feature (pricing v2); fail closed — no paid AI
+  // call when the plan can't be confirmed. Order intake is never gated.
+  if (!(await planAllowsOrFalse(input.restaurantId, "chat_inbox"))) return;
   const settings = await getWhatsAppChatbotSettings(input.restaurantId);
   if (
     !settings.enabled ||
@@ -236,6 +245,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
   // Persist a pilot command and its reply before acknowledging the connector.
   // Retried inbound IDs may still need processing after a previous failed attempt.
+  // Marketing opt-out keyword: withdraw consent for this restaurant only,
+  // confirm once, and never hand the message to ordering or the AI.
+  if (type === "text" && isMarketingOptOutKeyword(body)) {
+    const restaurantId = event.restaurantId;
+    const withdrawn = await withdrawMarketingConsentByPhone(
+      restaurantId,
+      phone,
+      "customer_replied_stop"
+    );
+    if (!withdrawn) {
+      return NextResponse.json({ ok: false }, { status: 503 });
+    }
+    if (!existing) {
+      const { data: restaurant } = await admin
+        .from("restaurants")
+        .select("name")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      const reply = optOutConfirmationMessage(
+        (restaurant as { name?: string } | null)?.name ?? ""
+      );
+      const sent = await sendRestaurantWhatsAppText(restaurantId, phone, reply);
+      if (sent) {
+        await recordOutboundChatMessage({
+          restaurantId,
+          phone,
+          body: reply,
+          waMessageId: sent,
+          senderType: "system"
+        });
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
   if (type === "text") {
     try {
       // Order-intent messages go to chat ordering before the receptionist's

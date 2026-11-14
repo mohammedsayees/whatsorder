@@ -6,6 +6,9 @@ import {
   DEFAULT_AI_IMAGE_STYLE_PRESET,
   isAiImageStylePreset
 } from "@/lib/ai/image-style-presets";
+import { aiImageAllowanceMessage, aiImagesUsedThisMonth } from "@/lib/ai/image-allowance";
+import { aiImageAllowanceRemaining } from "@/lib/billing";
+import { getTenantAccess } from "@/lib/billing-data";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
@@ -166,6 +169,8 @@ export async function generateMenuItemImageAction(input: {
     .from("ai_image_generations")
     .select("id", { count: "exact", head: true })
     .eq("restaurant_id", restaurant.id)
+    // Poster artwork has its own cap (lib/poster/art.ts).
+    .eq("purpose", "menu_photo")
     .neq("status", "failed")
     .gte("created_at", uaeDayStartIso());
 
@@ -174,6 +179,16 @@ export async function generateMenuItemImageAction(input: {
       ok: false,
       error: "Daily AI image generation limit reached. Try again tomorrow."
     };
+  }
+
+  // Monthly plan allowance (pricing v2), shared with poster artwork.
+  // Fails closed when usage can't be read and the plan has a cap.
+  const monthlyLimit = (await getTenantAccess(restaurant.id)).limits.monthly_ai_images;
+  if (monthlyLimit !== null) {
+    const used = await aiImagesUsedThisMonth(supabase, restaurant.id);
+    if (!aiImageAllowanceRemaining(monthlyLimit, used)) {
+      return { ok: false, error: aiImageAllowanceMessage(monthlyLimit) };
+    }
   }
 
   let generated;

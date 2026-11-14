@@ -1,4 +1,5 @@
 import { LoyaltySettingsForm } from "@/components/admin/LoyaltySettingsForm";
+import { PosterBrandingForm } from "@/components/admin/PosterBrandingForm";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
 import { RiderSettings } from "@/components/admin/RiderSettings";
@@ -6,6 +7,7 @@ import { StoreLinkForm } from "@/components/admin/StoreLinkForm";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
 import { getCountryProfile } from "@/lib/localization";
+import { previewPosterPalette } from "@/lib/poster/subjects";
 import { getDeliveryRiders } from "@/lib/rider-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -13,15 +15,22 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 export default async function AdminSettingsPage({
   searchParams
 }: {
-  searchParams: Promise<{ slug_saved?: string; slug_error?: string }>;
+  searchParams: Promise<{
+    slug_saved?: string;
+    slug_error?: string;
+    branding_saved?: string;
+    branding_error?: string;
+  }>;
 }) {
   const query = await searchParams;
   const session = await requireRestaurantAdmin();
   const restaurant = session.restaurant;
 
-  const [access, riders] = await Promise.all([
+  const canEditPosterBranding = ["owner", "restaurant_admin", "manager"].includes(session.role);
+  const [access, riders, posterPalette] = await Promise.all([
     getTenantAccess(session.restaurantId),
-    getDeliveryRiders(session.restaurantId)
+    getDeliveryRiders(session.restaurantId),
+    canEditPosterBranding ? previewPosterPalette(restaurant) : Promise.resolve(null)
   ]);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Restaurant settings" />;
@@ -67,6 +76,18 @@ export default async function AdminSettingsPage({
       {canEditLoyalty ? (
         <div className="mt-6">
           <LoyaltySettingsForm restaurant={restaurant} canWrite={canWrite} />
+        </div>
+      ) : null}
+      {canEditPosterBranding && posterPalette ? (
+        <div className="mt-6">
+          <PosterBrandingForm
+            brandColor={restaurant.poster_brand_color ?? null}
+            canWrite={canWrite}
+            failed={query.branding_error === "1"}
+            preview={posterPalette}
+            saved={query.branding_saved === "1"}
+            theme={restaurant.poster_theme ?? null}
+          />
         </div>
       ) : null}
     </main>

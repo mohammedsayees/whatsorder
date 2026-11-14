@@ -74,7 +74,9 @@ describe("resolvePlanFeatures", () => {
       scheduled_orders: false,
       multi_branch: false,
       group_reporting: false,
-      shared_menu: false
+      shared_menu: false,
+      chat_inbox: false,
+      finance: false
     });
   });
 

@@ -7,6 +7,7 @@
 import "server-only";
 
 import { isWithinServiceWindow } from "@/lib/chat-inbox";
+import { posterAttributionSource } from "@/lib/attribution";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 import { POSTER_BUCKET, type PosterRow } from "./types";
@@ -88,6 +89,139 @@ export async function getPosterHistory(
   );
 }
 
+/**
+ * Removes posters (rows, then PNGs) created by a generation that failed part
+ * way. Scoped to this restaurant; only status `rendered` rows are touched so
+ * a poster that was somehow already sent is never removed. Best-effort: a
+ * leftover object is invisible to owners and caught by retention.
+ */
+export async function discardPosterArtifacts(
+  restaurantId: string,
+  artifacts: { posterIds: string[]; storagePaths: string[] }
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    return;
+  }
+  if (artifacts.posterIds.length > 0) {
+    const { error } = await admin
+      .from("posters")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "rendered")
+      .in("id", artifacts.posterIds);
+    if (error) {
+      console.error("WhatsOrder poster: discard rows failed", error.code);
+    }
+  }
+  // Only ever remove objects under this restaurant's own prefix.
+  const paths = artifacts.storagePaths.filter((path) =>
+    path.startsWith(`${restaurantId}/`)
+  );
+  if (paths.length > 0) {
+    const { error } = await admin.storage.from(POSTER_BUCKET).remove(paths);
+    if (error) {
+      console.error("WhatsOrder poster: discard objects failed", error.message);
+    }
+  }
+}
+
+export type PosterUrls = {
+  posterId: string;
+  previewUrl: string | null;
+  downloadUrl: string | null;
+};
+
+/** Fresh signed URLs for this restaurant's posters (signed URLs expire after an hour). */
+export async function getFreshPosterUrls(
+  restaurantId: string,
+  posterIds: string[]
+): Promise<PosterUrls[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin || posterIds.length === 0) {
+    return [];
+  }
+  const { data, error } = await admin
+    .from("posters")
+    .select("id, template_id, storage_path")
+    .eq("restaurant_id", restaurantId)
+    .in("id", posterIds);
+  if (error) {
+    console.error("WhatsOrder poster: url refresh read failed", error.code);
+    return [];
+  }
+  return Promise.all(
+    ((data ?? []) as Pick<PosterRow, "id" | "template_id" | "storage_path">[]).map(
+      async (row) => ({
+        posterId: row.id,
+        previewUrl: await signPosterUrl(row.storage_path),
+        downloadUrl: await signPosterUrl(row.storage_path, {
+          download: `${row.template_id}-poster.png`
+        })
+      })
+    )
+  );
+}
+
+export type PosterPerformance = {
+  /** Customers this poster was actually delivered to (status sent). */
+  sentCount: number;
+  /** Non-cancelled orders placed through this poster's tracked link. */
+  orderCount: number;
+};
+
+/**
+ * Per-poster sent count and attributed orders for this restaurant's posters.
+ * Read failures yield zeros (display only — nothing acts on these numbers).
+ */
+export async function getPosterPerformance(
+  restaurantId: string,
+  posterIds: string[]
+): Promise<Map<string, PosterPerformance>> {
+  const result = new Map<string, PosterPerformance>(
+    posterIds.map((id) => [id, { sentCount: 0, orderCount: 0 }])
+  );
+  const admin = getSupabaseAdmin();
+  if (!admin || posterIds.length === 0) {
+    return result;
+  }
+  const sources = new Map(
+    posterIds.map((id) => [posterAttributionSource(id), id])
+  );
+  const [sends, orders] = await Promise.all([
+    admin
+      .from("marketing_sends")
+      .select("poster_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "sent")
+      .in("poster_id", posterIds),
+    admin
+      .from("orders")
+      .select("attribution_source")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "Cancelled")
+      .in("attribution_source", [...sources.keys()])
+  ]);
+  if (sends.error) {
+    console.error("WhatsOrder poster: send counts failed", sends.error.code);
+  } else {
+    for (const row of (sends.data ?? []) as { poster_id: string }[]) {
+      const entry = result.get(row.poster_id);
+      if (entry) entry.sentCount += 1;
+    }
+  }
+  if (orders.error) {
+    console.error("WhatsOrder poster: attributed orders failed", orders.error.code);
+  } else {
+    for (const row of (orders.data ?? []) as { attribution_source: string }[]) {
+      const posterId = sources.get(row.attribution_source);
+      const entry = posterId ? result.get(posterId) : undefined;
+      if (entry) entry.orderCount += 1;
+    }
+  }
+  return result;
+}
+
 export async function downloadPosterBytes(
   storagePath: string
 ): Promise<Uint8Array | null> {
@@ -125,7 +259,8 @@ export async function setPosterStatus(
 }
 
 export type InWindowRecipient = {
-  conversationId: string;
+  /** Chat-inbox thread, when one exists. */
+  conversationId: string | null;
   phone: string;
 };
 
@@ -133,41 +268,88 @@ export type InWindowRecipient = {
 const MAX_IN_WINDOW_RECIPIENTS = 100;
 
 /**
- * Customers whose 24h service window is currently open — the only audience a
- * free-form image send is allowed (and free) for. The cutoff is re-checked
- * with the shared window math so a stale row can't slip through.
+ * Frequency cap: a customer gets at most one marketing send from a restaurant
+ * per this window, whichever poster it was.
  */
-export async function getInWindowRecipients(
-  restaurantId: string
-): Promise<InWindowRecipient[]> {
+export const MARKETING_FREQUENCY_CAP_MS = 24 * 60 * 60 * 1000;
+
+export type MarketingAudience = {
+  /** Who a send would actually go to right now. */
+  recipients: InWindowRecipient[];
+  /** In-window, consented customers held back by the frequency cap. */
+  frequencyCapped: number;
+  /** Phones of those held back by the frequency cap (for campaign breakdowns). */
+  cappedPhones?: string[];
+  /** A read failed: the audience is empty because we fail closed, not because nobody is eligible. */
+  readFailed?: true;
+};
+
+const EMPTY_AUDIENCE: MarketingAudience = { recipients: [], frequencyCapped: 0 };
+const FAILED_AUDIENCE: MarketingAudience = {
+  recipients: [],
+  frequencyCapped: 0,
+  readFailed: true
+};
+
+/**
+ * The marketing audience: customers of THIS restaurant whose 24h service
+ * window is open (the only audience a free-form image send is allowed for),
+ * who have a live marketing opt-in, and who have not had a marketing send in
+ * the last MARKETING_FREQUENCY_CAP_MS. Every read fails closed — any error
+ * yields an empty audience.
+ */
+export async function getMarketingAudience(
+  restaurantId: string,
+  now: number = Date.now()
+): Promise<MarketingAudience> {
   const admin = getSupabaseAdmin();
-  if (!admin) {
-    return [];
+  if (!admin || !restaurantId) {
+    return FAILED_AUDIENCE;
   }
-  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Open 24h windows on the Cloud API number only. The Cloud webhook records
+  // these in whatsapp_service_windows; WhatsApp Web connector chats are not
+  // there, because a Cloud API send can't reach a customer who only messaged
+  // the Web-connected number.
+  const cutoffIso = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await admin
-    .from("whatsapp_conversations")
-    .select("id, customer_phone, last_inbound_at")
+    .from("whatsapp_service_windows")
+    .select("phone, last_inbound_at")
     .eq("restaurant_id", restaurantId)
     .gte("last_inbound_at", cutoffIso)
     .order("last_inbound_at", { ascending: false })
     .limit(MAX_IN_WINDOW_RECIPIENTS);
   if (error) {
     console.error("WhatsOrder poster: recipients read failed", error.code);
-    return [];
+    return FAILED_AUDIENCE;
   }
-  const inWindow = ((data ?? []) as {
-    id: string;
-    customer_phone: string;
-    last_inbound_at: string | null;
-  }[]).filter((row) => isWithinServiceWindow(row.last_inbound_at));
-  if (inWindow.length === 0) {
-    return [];
+  // The cutoff is re-checked with the shared window math so a stale row
+  // can't slip through.
+  const windows = ((data ?? []) as { phone: string; last_inbound_at: string | null }[]).filter((row) =>
+    isWithinServiceWindow(row.last_inbound_at)
+  );
+  if (windows.length === 0) {
+    return EMPTY_AUDIENCE;
   }
+  // Chat-inbox thread per phone, when there is one (best-effort: the send
+  // records the outbound message by phone otherwise).
+  const { data: threads } = await admin
+    .from("whatsapp_conversations")
+    .select("id, customer_phone")
+    .eq("restaurant_id", restaurantId)
+    .in(
+      "customer_phone",
+      windows.map((row) => row.phone)
+    );
+  const threadByPhone = new Map(
+    ((threads ?? []) as { id: string; customer_phone: string }[]).map((row) => [row.customer_phone, row.id])
+  );
+  const inWindow = windows.map((row) => ({
+    id: threadByPhone.get(row.phone) ?? null,
+    customer_phone: row.phone
+  }));
 
   // A poster is marketing: an open chat window is not consent. Keep only
-  // customers of THIS restaurant with a live marketing opt-in. Fails closed —
-  // a consent read error sends to nobody.
+  // customers of THIS restaurant with a live marketing opt-in.
   const { data: customers, error: consentError } = await admin
     .from("customers")
     .select(
@@ -180,17 +362,58 @@ export async function getInWindowRecipients(
     );
   if (consentError) {
     console.error("WhatsOrder poster: consent read failed", consentError.code);
-    return [];
+    return FAILED_AUDIENCE;
   }
   const consented = new Set(
     ((customers ?? []) as MarketingConsentRow[])
       .filter(hasMarketingConsent)
       .map((row) => row.phone)
   );
+  const consentedInWindow = inWindow.filter((row) =>
+    consented.has(row.customer_phone)
+  );
+  if (consentedInWindow.length === 0) {
+    return EMPTY_AUDIENCE;
+  }
 
-  return inWindow
-    .filter((row) => consented.has(row.customer_phone))
+  // Frequency cap. A row still `sending` (outcome unknown) counts as sent.
+  const capCutoffIso = new Date(now - MARKETING_FREQUENCY_CAP_MS).toISOString();
+  const { data: recentSends, error: capError } = await admin
+    .from("marketing_sends")
+    .select("customer_phone")
+    .eq("restaurant_id", restaurantId)
+    .in(
+      "customer_phone",
+      consentedInWindow.map((row) => row.customer_phone)
+    )
+    .or(`sent_at.gte.${capCutoffIso},status.eq.sending`);
+  if (capError) {
+    console.error("WhatsOrder poster: frequency cap read failed", capError.code);
+    return FAILED_AUDIENCE;
+  }
+  const recentlyMarketed = new Set(
+    ((recentSends ?? []) as { customer_phone: string }[]).map(
+      (row) => row.customer_phone
+    )
+  );
+
+  const recipients = consentedInWindow
+    .filter((row) => !recentlyMarketed.has(row.customer_phone))
     .map((row) => ({ conversationId: row.id, phone: row.customer_phone }));
+  return {
+    recipients,
+    frequencyCapped: consentedInWindow.length - recipients.length,
+    cappedPhones: consentedInWindow
+      .filter((row) => recentlyMarketed.has(row.customer_phone))
+      .map((row) => row.customer_phone)
+  };
+}
+
+/** Recipients a marketing send would reach right now (see getMarketingAudience). */
+export async function getInWindowRecipients(
+  restaurantId: string
+): Promise<InWindowRecipient[]> {
+  return (await getMarketingAudience(restaurantId)).recipients;
 }
 
 export type MarketingConsentRow = {

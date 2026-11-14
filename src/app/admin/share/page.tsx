@@ -1,3 +1,4 @@
+import { MarketingTabs } from "@/components/admin/MarketingTabs";
 import { StoreShareKit } from "@/components/admin/StoreShareKit";
 import { getStoreShareAssets } from "@/lib/store-share-assets";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
@@ -11,12 +12,17 @@ export default async function StoreSharePage() {
   const assets = await getStoreShareAssets(restaurant.slug);
 
   return (
-    <StoreShareKit
-      menuUrl={assets.menuUrl}
-      qrDataUrl={assets.qrDataUrl}
-      restaurantId={restaurant.id}
-      restaurantName={restaurant.name}
-      restaurantSlug={restaurant.slug}
-    />
+    <>
+      <div className="mx-auto max-w-5xl px-4 pt-6 lg:px-8">
+        <MarketingTabs active="share" />
+      </div>
+      <StoreShareKit
+        menuUrl={assets.menuUrl}
+        qrDataUrl={assets.qrDataUrl}
+        restaurantId={restaurant.id}
+        restaurantName={restaurant.name}
+        restaurantSlug={restaurant.slug}
+      />
+    </>
   );
 }

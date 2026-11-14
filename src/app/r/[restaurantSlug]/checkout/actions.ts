@@ -3,6 +3,8 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { after } from "next/server";
+import { sanitizeAttributionSource } from "@/lib/attribution";
 import {
   getMenu,
   getMenuOffers,
@@ -229,6 +231,7 @@ export async function createOrderAction(
   const notes = limitedStringValue(formData, "notes", 1000);
   const paymentMethod = stringValue(formData, "payment_method") as PaymentMethod;
   const orderLanguage = getCustomerLanguage(formData.get("order_language"));
+  const attributionSource = sanitizeAttributionSource(formData.get("attribution_source"));
   const consentOrderProcessing = formData.get("consent_order_processing") === "on";
   const consentMarketing = formData.get("consent_marketing") === "on";
   const submissionToken = limitedStringValue(formData, "submission_token", 100);
@@ -449,6 +452,12 @@ export async function createOrderAction(
       error: "This order was saved, but its confirmation could not be loaded. Please contact the restaurant."
     };
   }
+  if (attributionSource) {
+    // Marketing attribution (e.g. a poster link). Deliberately outside the
+    // order RPC: it runs after the response, is first-touch only (never
+    // overwrites), and can never fail or slow the order.
+    after(() => recordOrderAttribution(restaurant.id, orderId, attributionSource));
+  }
   const confirmationAuthorized = await setOrderPushAuthorization({
     orderId,
     restaurantId: restaurant.id
@@ -483,4 +492,27 @@ export async function createOrderAction(
       restaurant.phone_country_code
     )
   };
+}
+
+async function recordOrderAttribution(
+  restaurantId: string,
+  orderId: string,
+  source: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return;
+  }
+  const { error } = await supabase
+    .from("orders")
+    .update({ attribution_source: source })
+    .eq("restaurant_id", restaurantId)
+    .eq("id", orderId)
+    .is("attribution_source", null);
+  if (error) {
+    console.error("WhatsOrder order attribution failed", {
+      code: error.code,
+      restaurantId
+    });
+  }
 }

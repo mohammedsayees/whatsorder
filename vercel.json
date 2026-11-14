@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/notifications",
       "schedule": "5 3 * * *"
+    },
+    {
+      "path": "/api/cron/poster-cleanup",
+      "schedule": "50 2 * * *"
     }
   ]
 }

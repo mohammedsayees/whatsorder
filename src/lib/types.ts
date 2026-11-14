@@ -102,6 +102,10 @@ export type Restaurant = PublicRestaurant & {
   // kept". NULL/undefined → the app's labelled default applies.
   commission_rate?: number | null;
   is_active: boolean;
+  /** Poster Studio brand colour (#rrggbb); null → derived from the logo. */
+  poster_brand_color?: string | null;
+  /** Poster Studio default theme (lib/poster/themes.ts); null → street_food. */
+  poster_theme?: string | null;
   loyalty_enabled?: boolean;
   loyalty_stamps_required?: number;
   loyalty_reward_description?: string | null;

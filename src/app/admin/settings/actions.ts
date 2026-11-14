@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { parsePosterBrandingForm } from "@/lib/poster/branding-input";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { normalizeStoreSlug, storeSlugError } from "@/lib/store-slug";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -61,4 +62,25 @@ export async function updateStoreSlugAction(formData: FormData) {
   revalidatePath(`/r/${slug}`);
   revalidatePath("/admin", "layout");
   back("slug_saved=1");
+}
+
+// Poster branding (colour + default theme). Marketing roles, own restaurant
+// only; service-role write; invalid input is stored as NULL (derive/default).
+export async function updatePosterBrandingAction(formData: FormData) {
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    redirect("/admin/settings?branding_error=1#poster-branding");
+  }
+  const { error } = await supabase
+    .from("restaurants")
+    .update(parsePosterBrandingForm(formData))
+    .eq("id", session.restaurantId);
+  if (error) {
+    console.error("WhatsOrder poster branding update failed", error.code);
+    redirect("/admin/settings?branding_error=1#poster-branding");
+  }
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/marketing");
+  redirect("/admin/settings?branding_saved=1#poster-branding");
 }

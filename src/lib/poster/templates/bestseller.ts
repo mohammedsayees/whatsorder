@@ -1,403 +1,118 @@
 // lib/poster/templates/bestseller.ts
 //
-// Bestseller / social-proof template — the anti-silence template: with
-// get_bestsellers' cold-start fallback it always has something to say.
+// Bestseller / social-proof template. With get_bestsellers' cold-start
+// fallback it always has something to say. One composition per generated
+// variant (layoutForVariant), each laid out per format by templates/frames.ts:
 //
-// Three compositions (one per generated variant, see layoutForVariant):
-//   photo_hero — photo window on cream, headline below (fallback: pine type)
-//   full_bleed — photo covers the frame, content over a scrim (fallback: ink type)
-//   stat_led   — the sold count is the hero on amber (photo-less by design)
-// Fallback fields differ (pine / ink / amber) so photo-less tenants still
-// get three visually distinct posters.
+//   photo_hero → heroFrame: dish (or AI cut-out) with the sold-count stamp
+//   full_bleed → bleedFrame: dish fills the frame, type on the base colour
+//   stat_led   → statFrame: the sold count is the hero
+//
+// The sold count appears exactly once; the café name exactly once.
 
-import { POSTER_COLORS } from "../types";
+import { bodyText, displayText, fitFont, pick, posterScheme } from "../design";
 import type { PosterProps } from "../types";
-import {
-  FIELD_STYLES,
-  fullBleedBackdrop,
-  headerBar,
-  footerBar,
-  photoWindow,
-  type PosterField
-} from "./chrome";
-import { box, fitFontSize, text, type PosterNode } from "./node";
-
-const { ink, cream, mint, pine, amber } = POSTER_COLORS;
+import { HERO_HEADLINE, gap, headline, itemLine, subline } from "./blocks";
+import { bleedFrame, heroFrame, statFrame, type StampLines } from "./frames";
+import { box, type PosterNode } from "./node";
 
 export function bestsellerTemplate(props: PosterProps): PosterNode {
-  const photo = props.subject.photoDataUri;
   switch (props.layout) {
     case "full_bleed":
-      return photo ? fullBleedVariant(props, photo) : typographicVariant(props, "ink");
+      return fullBleed(props);
     case "stat_led":
-      return statLedVariant(props);
+      return statLed(props);
     default:
-      return photo ? photoVariant(props, photo) : typographicVariant(props, "pine");
+      return photoHero(props);
   }
 }
 
-function soldChip(
-  soldQty: number | null,
-  colors: { background: string; color: string },
-  extraStyle: Record<string, string | number> = {}
-): PosterNode | null {
-  if (!soldQty || soldQty <= 0) {
-    return null;
-  }
-  return box(
-    {
-      backgroundColor: colors.background,
-      borderRadius: 999,
-      padding: "18px 32px",
-      alignSelf: "flex-start",
-      ...extraStyle
-    },
-    [
-      text(
-        { fontFamily: "Geist Mono", fontSize: 30, color: colors.color },
-        `${soldQty}+ sold this month`
-      )
+function soldStamp(props: PosterProps): StampLines {
+  const sold = props.subject.soldQty;
+  return sold && sold > 0 ? { big: `${sold}+`, small: "sold this month" } : { big: "Must try" };
+}
+
+function photoHero(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "hero");
+  return heroFrame(props, s, {
+    stamp: soldStamp(props),
+    content: (width) => [
+      headline(props.copy.headline, s.text, width, HERO_HEADLINE),
+      subline(props.copy.subline, s.text, gap({ story: 22, portrait: 18, square: 14 })),
+      box({ ...gap({ story: 30, portrait: 24, square: 18 }), width }, [
+        itemLine(props, { name: s.text, price: s.accent }, width)
+      ])
     ]
-  );
+  });
 }
 
-function itemCard(props: PosterProps, background: string): PosterNode {
-  const onPine = background === pine;
-  return box(
-    {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      backgroundColor: background,
-      borderRadius: 32,
-      padding: "36px 44px",
-      width: "100%"
-    },
-    [
-      text(
-        {
-          fontFamily: "Bricolage Grotesque",
-          fontWeight: 700,
-          fontSize: fitFontSize(52, props.subject.title, 22),
-          color: onPine ? cream : ink,
-          maxWidth: props.subject.priceLine ? 640 : 900,
-          lineClamp: 2
-        },
-        props.subject.title
-      ),
-      props.subject.priceLine
-        ? box(
-            {
-              backgroundColor: amber,
-              borderRadius: 999,
-              padding: "20px 36px"
-            },
-            [
-              text(
-                {
-                  fontFamily: "Bricolage Grotesque",
-                  fontWeight: 700,
-                  fontSize: 44,
-                  color: ink
-                },
-                props.subject.priceLine
-              )
-            ]
-          )
-        : null
-    ]
-  );
-}
-
-// ── photo_hero ──────────────────────────────────────────────────────────────
-
-function photoVariant(props: PosterProps, photoDataUri: string): PosterNode {
-  const badge = soldChip(props.subject.soldQty, {
-    background: pine,
-    color: cream
-  }, { position: "absolute", left: 64, bottom: 48 });
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: cream
-    },
-    [
-      headerBar(props.branding, "BESTSELLER", "light"),
-      photoWindow(photoDataUri, 900, badge ? [badge] : []),
-      box(
-        {
-          flexDirection: "column",
-          padding: "64px 64px 48px 64px",
-          width: "100%"
-        },
-        [
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(92, props.copy.headline, 24),
-              lineHeight: 1.05,
-              color: ink,
-              lineClamp: 2
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 44,
-              lineHeight: 1.3,
-              color: ink,
-              opacity: 0.75,
-              marginTop: 28,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: 48, width: "100%" }, [itemCard(props, pine)])
-        ]
-      ),
-      footerBar(props.branding, "light")
-    ]
-  );
-}
-
-// ── full_bleed ──────────────────────────────────────────────────────────────
-
-function fullBleedVariant(props: PosterProps, photoDataUri: string): PosterNode {
-  return box(
-    {
-      position: "relative",
-      width: "100%",
-      height: "100%",
-      flexDirection: "column"
-    },
-    [
-      ...fullBleedBackdrop(photoDataUri),
-      headerBar(props.branding, "BESTSELLER", "dark"),
-      box(
-        {
-          flexDirection: "column",
-          padding: "0 64px 56px 64px",
-          width: "100%",
-          marginTop: "auto"
-        },
-        [
-          soldChip(props.subject.soldQty, { background: amber, color: ink }),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(104, props.copy.headline, 22),
-              lineHeight: 1.03,
-              color: cream,
-              marginTop: 40,
-              lineClamp: 3,
-              // The headline can land over the photo's brightest region;
-              // the scrim alone can't guarantee contrast there.
-              textShadow: "0 4px 36px rgba(23,32,27,0.95)"
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 44,
-              lineHeight: 1.3,
-              color: mint,
-              marginTop: 28,
-              lineClamp: 2,
-              textShadow: "0 3px 24px rgba(23,32,27,0.95)"
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: 52, width: "100%" }, [itemCard(props, pine)])
-        ]
-      ),
-      footerBar(props.branding, "light")
-    ]
-  );
-}
-
-// ── stat_led ────────────────────────────────────────────────────────────────
-
-/** Fit a short data string (the stat) to the content width. */
-function heroFontSize(value: string, base: number): number {
-  const maxWidth = 952; // 1080 − 2×64 padding
-  const approxCharWidth = 0.62;
-  return Math.min(base, Math.floor(maxWidth / (approxCharWidth * value.length)));
-}
-
-function statLedVariant(props: PosterProps): PosterNode {
-  const soldQty = props.subject.soldQty;
-  const stat = soldQty && soldQty > 0 ? `${soldQty}+` : null;
-
-  const hero = stat
-    ? [
-        text(
-          {
-            fontFamily: "Bricolage Grotesque",
-            fontWeight: 700,
-            fontSize: heroFontSize(stat, 330),
-            lineHeight: 1,
-            color: ink
-          },
-          stat
-        ),
-        text(
-          {
-            fontFamily: "Geist Mono",
-            fontSize: 34,
-            letterSpacing: 4,
-            color: pine,
-            marginTop: 16
-          },
-          "SOLD THIS MONTH"
-        ),
-        text(
-          {
-            fontFamily: "Bricolage Grotesque",
-            fontWeight: 700,
-            fontSize: fitFontSize(76, props.copy.headline, 26),
-            lineHeight: 1.08,
-            color: ink,
-            marginTop: 56,
-            lineClamp: 2
-          },
-          props.copy.headline
-        )
-      ]
-    : [
-        // Cold start: no number to lead with — the headline is the hero.
-        text(
-          {
-            fontFamily: "Bricolage Grotesque",
-            fontWeight: 700,
-            fontSize: fitFontSize(116, props.copy.headline, 20),
-            lineHeight: 1.03,
-            color: ink,
-            lineClamp: 3
-          },
-          props.copy.headline
-        )
-      ];
-
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: amber
-    },
-    [
-      headerBar(props.branding, "BESTSELLER", "light", {
-        background: pine,
-        color: cream
+function fullBleed(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "bleed");
+  return bleedFrame(props, s, {
+    stamp: soldStamp(props),
+    // The subline is left out: the dish carries this layout.
+    content: (width, colors) => [
+      headline(props.copy.headline, colors.text, width, {
+        max: { story: 132, portrait: 108, square: 88 },
+        min: { story: 88, portrait: 72, square: 60 },
+        lines: { story: 2, portrait: 2, square: 3 }
       }),
-      box(
-        {
-          flexDirection: "column",
-          padding: "110px 64px 0 64px",
-          width: "100%",
-          flexGrow: 1
-        },
-        [
-          box(
-            { width: 220, height: 16, backgroundColor: pine, borderRadius: 8 },
-            []
-          ),
-          box({ flexDirection: "column", marginTop: 52, width: "100%" }, hero),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 44,
-              lineHeight: 1.35,
-              color: ink,
-              opacity: 0.8,
-              marginTop: 36,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          box({ marginTop: "auto", width: "100%", paddingBottom: 72 }, [
-            itemCard(props, pine)
-          ])
-        ]
-      ),
-      footerBar(props.branding, "dark")
+      box({ ...gap({ story: 20, portrait: 16, square: 14 }), width }, [
+        itemLine(props, { name: colors.text, price: colors.accent }, width, pick({ story: 92, portrait: 80, square: 66 }))
+      ])
     ]
-  );
+  });
 }
 
-// ── typographic fallbacks (field-parameterized) ─────────────────────────────
-
-function typographicVariant(props: PosterProps, field: PosterField): PosterNode {
-  const styles = FIELD_STYLES[field];
-  return box(
-    {
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      backgroundColor: styles.background
-    },
-    [
-      headerBar(props.branding, "BESTSELLER", styles.headerTone, styles.chip),
-      box(
-        {
-          flexDirection: "column",
-          padding: "120px 64px 0 64px",
-          width: "100%",
-          flexGrow: 1
-        },
-        [
-          box(
-            {
-              width: 220,
-              height: 16,
-              backgroundColor: styles.accent,
-              borderRadius: 8
-            },
-            []
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontWeight: 700,
-              fontSize: fitFontSize(120, props.copy.headline, 20),
-              lineHeight: 1.02,
-              color: styles.headline,
-              marginTop: 56,
-              lineClamp: 3
-            },
-            props.copy.headline
-          ),
-          text(
-            {
-              fontFamily: "Bricolage Grotesque",
-              fontSize: 46,
-              lineHeight: 1.35,
-              color: styles.subline,
-              marginTop: 44,
-              opacity: field === "amber" ? 0.8 : 1,
-              lineClamp: 2
-            },
-            props.copy.subline
-          ),
-          soldChip(
-            props.subject.soldQty,
-            field === "ink"
-              ? { background: "rgba(246, 182, 66, 0.18)", color: amber }
-              : { background: "rgba(232, 247, 239, 0.16)", color: cream },
-            { marginTop: 56 }
-          ),
-          box({ marginTop: "auto", width: "100%", paddingBottom: 72 }, [
-            itemCard(props, styles.card === "pine" ? pine : cream)
-          ])
-        ]
-      ),
-      footerBar(props.branding, styles.footerTone)
+function statLed(props: PosterProps): PosterNode {
+  const s = posterScheme(props.branding, "stat");
+  const sold = props.subject.soldQty;
+  const stat = sold && sold > 0 ? `${sold}+` : null;
+  return statFrame(props, s, {
+    stamp: null,
+    top: (width) =>
+      stat
+        ? [
+            displayText(
+              stat,
+              fitFont(stat, { width, maxLines: 1, max: pick({ story: 600, portrait: 420, square: 260 }), min: 160 }),
+              s.accent,
+              {},
+              { lineHeight: 0.84 }
+            ),
+            displayText("sold this month", pick({ story: 92, portrait: 72, square: 58 }), s.text, gap({ story: 18, portrait: 12, square: 10 })),
+            // Square has no room for the headline up here; it moves below.
+            pick({ story: true, portrait: true, square: false })
+              ? headline(props.copy.headline, s.text, width, {
+                  max: { story: 120, portrait: 92, square: 72 },
+                  min: { story: 84, portrait: 64, square: 52 },
+                  lines: { story: 2, portrait: 2, square: 2 }
+                }, gap({ story: 46, portrait: 30, square: 22 }))
+              : null
+          ]
+        : [
+            // Cold start: no number to lead with, so the headline is the hero.
+            headline(props.copy.headline, s.text, width, {
+              max: { story: 230, portrait: 150, square: 120 },
+              min: { story: 120, portrait: 90, square: 72 },
+              lines: { story: 4, portrait: 3, square: 3 }
+            }),
+            displayText("Must try", pick({ story: 92, portrait: 72, square: 58 }), s.accent, gap({ story: 30, portrait: 20, square: 16 }))
+          ],
+    lower: (width) => [
+      pick({ story: false, portrait: false, square: Boolean(stat) })
+        ? headline(props.copy.headline, s.text, width, {
+            max: { story: 0, portrait: 0, square: 64 },
+            min: { story: 0, portrait: 0, square: 46 },
+            lines: { story: 2, portrait: 2, square: 2 }
+          })
+        : subline(props.copy.subline, s.text, {}, 3),
+      box({ ...gap({ story: 34, portrait: 24, square: 18 }), flexDirection: "column", width }, [
+        bodyText(props.subject.title, pick({ story: 46, portrait: 40, square: 34 }), s.text, {}, { lineClamp: 2 }),
+        props.subject.priceLine
+          ? displayText(props.subject.priceLine, pick({ story: 120, portrait: 96, square: 76 }), s.accent, { marginTop: 8 }, { lineHeight: 0.9 })
+          : null
+      ])
     ]
-  );
+  });
 }

@@ -28,6 +28,7 @@ import {
 import { getChatMediaSignedUrl } from "@/lib/chat-media";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDate, formatRestaurantDateTime } from "@/lib/date-time";
+import { requirePlanFeature } from "@/lib/plan-gates";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
 
@@ -154,6 +155,7 @@ export default async function AdminChatsPage({
     cookies(),
     searchParams
   ]);
+  await requirePlanFeature(session.restaurantId, "chat_inbox");
   const { restaurant } = session;
   const realtimeAccessToken =
     cookieStore.get(accessTokenCookieName)?.value ?? null;

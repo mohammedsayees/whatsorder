@@ -16,6 +16,11 @@ import { isOfferOrderable } from "@/lib/order-pricing";
 import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 import type { PosterCopyFacts } from "./copy";
+import { dominantLogoColor } from "./logo-color";
+import { posterPriceText, savingStampLabel } from "./offer-math";
+import { buildPalette, normalizeHex, type PosterPalette } from "./palette";
+import { DEFAULT_POSTER_THEME, isPosterThemeId } from "./themes";
+import { FESTIVALS, festivalsForCountry, isFestivalId } from "./festivals";
 import type {
   PosterBranding,
   PosterSubject,
@@ -32,16 +37,32 @@ const EMBED_MAX_EDGE = 1200;
 export type PosterSubjectBundle = {
   subject: PosterSubject;
   facts: Omit<PosterCopyFacts, "templateId">;
+  /** What AI artwork (art.ts) would be made from (null: no dish). Never sent to the copy model. */
+  art: null | {
+    menuItemId: string;
+    imageUrl: string | null;
+    productName: string;
+    categoryName: string;
+    hasPhoto: boolean;
+  };
 };
 
-/**
- * Fetch an image URL and re-encode it as a JPEG data URI sized for embedding.
- * Returns null on any failure (missing, unreachable, low-res, not an image) —
- * null is a designed-for state, not an error.
- */
-export async function imageUrlToDataUri(
-  url: string | null | undefined
-): Promise<string | null> {
+async function categoryName(
+  admin: SupabaseClient,
+  restaurantId: string,
+  categoryId: string | null | undefined
+): Promise<string> {
+  if (!categoryId) return "Menu";
+  const { data } = await admin
+    .from("menu_categories")
+    .select("name")
+    .eq("restaurant_id", restaurantId)
+    .eq("id", categoryId)
+    .maybeSingle();
+  return (data as { name?: string } | null)?.name ?? "Menu";
+}
+
+export async function fetchImageBytes(url: string | null | undefined): Promise<Buffer | null> {
   if (!url || !/^https?:\/\//.test(url)) {
     return null;
   }
@@ -54,6 +75,80 @@ export async function imageUrlToDataUri(
     if (source.byteLength === 0 || source.byteLength > MAX_SOURCE_BYTES) {
       return null;
     }
+    return source;
+  } catch {
+    return null;
+  }
+}
+
+// Food-photo treatment: a modest saturation/contrast lift so dishes read as
+// appetising on a phone screen, never a filter look.
+const PHOTO_SATURATION = 1.15;
+const PHOTO_BRIGHTNESS = 1.03;
+const PHOTO_CONTRAST = 1.08;
+
+export type PosterPhotoSet = { square: string; tall: string };
+
+/**
+ * Owner photo → two smart-cropped, lightly enhanced JPEG data URIs: a square
+ * one (circle / arch / window layouts) and a tall one (full-bleed). Cropping
+ * uses sharp's attention strategy, which centres on the most salient region
+ * (usually the dish) instead of the geometric centre. Null on any failure.
+ */
+export async function preparePosterPhoto(
+  source: Buffer | null
+): Promise<PosterPhotoSet | null> {
+  if (!source) {
+    return null;
+  }
+  try {
+    const base = sharp(source, { limitInputPixels: 40_000_000 }).rotate();
+    const metadata = await base.metadata();
+    if (
+      !metadata.width ||
+      !metadata.height ||
+      Math.min(metadata.width, metadata.height) < MIN_PHOTO_EDGE
+    ) {
+      return null;
+    }
+    const enhanced = base
+      .clone()
+      .modulate({ saturation: PHOTO_SATURATION, brightness: PHOTO_BRIGHTNESS })
+      .linear(PHOTO_CONTRAST, -128 * (PHOTO_CONTRAST - 1));
+    const crop = (width: number, height: number) =>
+      enhanced
+        .clone()
+        .resize({
+          width,
+          height,
+          fit: "cover",
+          position: sharp.strategy.attention
+        })
+        .jpeg({ quality: 84 })
+        .toBuffer();
+    const [square, tall] = await Promise.all([crop(1080, 1080), crop(1080, 1400)]);
+    return {
+      square: `data:image/jpeg;base64,${square.toString("base64")}`,
+      tall: `data:image/jpeg;base64,${tall.toString("base64")}`
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch an image URL (logos) and re-encode it as a JPEG data URI sized for
+ * embedding, untouched otherwise. Returns null on any failure (missing,
+ * unreachable, low-res, not an image) — null is a designed-for state.
+ */
+export async function imageUrlToDataUri(
+  url: string | null | undefined
+): Promise<string | null> {
+  const source = await fetchImageBytes(url);
+  if (!source) {
+    return null;
+  }
+  try {
     const image = sharp(source, { limitInputPixels: 40_000_000 });
     const metadata = await image.metadata();
     if (
@@ -79,13 +174,63 @@ export async function imageUrlToDataUri(
   }
 }
 
+/** Logo for posters: PNG (keeps transparency), at most 480px on an edge. */
+async function logoUrlToDataUri(url: string | null | undefined): Promise<string | null> {
+  const source = await fetchImageBytes(url);
+  if (!source) {
+    return null;
+  }
+  try {
+    const png = await sharp(source, { limitInputPixels: 40_000_000 })
+      .rotate()
+      .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+export type PaletteSource = "brand_color" | "logo" | "default";
+
+/**
+ * The restaurant's poster palette: its chosen brand colour, else its logo's
+ * dominant colour, else the default food palette.
+ */
+export async function resolvePosterPalette(
+  restaurant: Pick<Restaurant, "poster_brand_color">,
+  logoDataUri: string | null
+): Promise<{ palette: PosterPalette; source: PaletteSource; seed: string | null }> {
+  const chosen = normalizeHex(restaurant.poster_brand_color);
+  if (chosen) {
+    return { palette: buildPalette(chosen), source: "brand_color", seed: chosen };
+  }
+  const fromLogo = await dominantLogoColor(logoDataUri);
+  if (fromLogo) {
+    return { palette: buildPalette(fromLogo), source: "logo", seed: fromLogo };
+  }
+  return { palette: buildPalette(null), source: "default", seed: null };
+}
+
 export async function buildPosterBranding(
   restaurant: Restaurant
 ): Promise<PosterBranding> {
+  const logoDataUri = await logoUrlToDataUri(restaurant.logo_url);
+  const { palette } = await resolvePosterPalette(restaurant, logoDataUri);
   return {
     restaurantName: restaurant.name,
-    logoDataUri: await imageUrlToDataUri(restaurant.logo_url)
+    logoDataUri,
+    palette,
+    theme: isPosterThemeId(restaurant.poster_theme) ? restaurant.poster_theme : DEFAULT_POSTER_THEME
   };
+}
+
+/** For the settings preview: the palette posters will use right now. */
+export async function previewPosterPalette(
+  restaurant: Pick<Restaurant, "poster_brand_color" | "logo_url">
+) {
+  return resolvePosterPalette(restaurant, await logoUrlToDataUri(restaurant.logo_url));
 }
 
 function marketLabel(restaurant: Restaurant): string {
@@ -139,12 +284,25 @@ async function buildBestsellerSubject(
   }
 
   const priceLine = formatCurrency(item.price, restaurant);
+  const [photo, category] = await Promise.all([
+    fetchImageBytes(item.image_url).then(preparePosterPhoto),
+    categoryName(admin, restaurant.id, item.category_id)
+  ]);
   return {
+    art: {
+      menuItemId: item.id,
+      imageUrl: photo ? item.image_url : null,
+      productName: item.name,
+      categoryName: category,
+      hasPhoto: Boolean(photo)
+    },
     subject: {
       title: item.name,
-      priceLine,
+      priceLine: posterPriceText(priceLine),
       originalPriceLine: null,
-      photoDataUri: await imageUrlToDataUri(item.image_url),
+      savingLabel: null,
+      photoDataUri: photo?.square ?? null,
+      photoTallDataUri: photo?.tall ?? null,
       soldQty
     },
     facts: {
@@ -192,12 +350,27 @@ async function buildOfferSubject(
       ? formatCurrency(item.price, restaurant)
       : null;
 
+  const [photo, category] = await Promise.all([
+    fetchImageBytes(item.image_url).then(preparePosterPhoto),
+    categoryName(admin, restaurant.id, item.category_id)
+  ]);
   return {
+    art: {
+      menuItemId: item.id,
+      imageUrl: photo ? item.image_url : null,
+      productName: item.name,
+      categoryName: category,
+      hasPhoto: Boolean(photo)
+    },
     subject: {
       title: offer.title || item.name,
-      priceLine,
-      originalPriceLine,
-      photoDataUri: await imageUrlToDataUri(item.image_url),
+      priceLine: posterPriceText(priceLine),
+      originalPriceLine: originalPriceLine ? posterPriceText(originalPriceLine) : null,
+      savingLabel: savingStampLabel(item.price, offer.promotional_price, (amount) =>
+        formatCurrency(amount, restaurant)
+      ),
+      photoDataUri: photo?.square ?? null,
+      photoTallDataUri: photo?.tall ?? null,
       soldQty: null
     },
     facts: {
@@ -217,17 +390,118 @@ async function buildOfferSubject(
  * Null → the subject doesn't exist for this tenant (or isn't currently
  * sellable), which the API surfaces as a 404.
  */
+/** A dish poster without sales claims (new item, festival feature). */
+async function buildItemSubject(
+  admin: SupabaseClient,
+  restaurant: Restaurant,
+  menuItemId: string
+): Promise<PosterSubjectBundle | null> {
+  const bundle = await buildBestsellerSubject(admin, restaurant, menuItemId);
+  if (!bundle) return null;
+  bundle.subject.soldQty = null;
+  bundle.facts.soldQty = null;
+  return bundle;
+}
+
+function buildLoyaltySubject(restaurant: Restaurant): PosterSubjectBundle | null {
+  if (restaurant.loyalty_enabled === false) {
+    return null;
+  }
+  const stamps = Math.max(1, Math.round(Number(restaurant.loyalty_stamps_required ?? 10)));
+  const reward = (restaurant.loyalty_reward_description ?? "").trim() || "a free treat";
+  return {
+    art: null,
+    subject: {
+      title: reward,
+      priceLine: null,
+      originalPriceLine: null,
+      savingLabel: null,
+      photoDataUri: null,
+      photoTallDataUri: null,
+      soldQty: null,
+      loyalty: { stamps, reward }
+    },
+    facts: {
+      restaurantName: restaurant.name,
+      itemName: reward,
+      priceLines: [],
+      soldQty: null,
+      market: marketLabel(restaurant),
+      loyaltyStamps: stamps,
+      loyaltyReward: reward
+    }
+  };
+}
+
+async function buildFestivalSubject(
+  admin: SupabaseClient,
+  restaurant: Restaurant,
+  festivalId: string,
+  menuItemId: string | undefined
+): Promise<PosterSubjectBundle | null> {
+  if (!isFestivalId(festivalId)) return null;
+  const offered = festivalsForCountry(getRestaurantLocalization(restaurant).country_code);
+  if (!offered.some((festival) => festival.id === festivalId)) return null;
+  const festival = FESTIVALS[festivalId];
+  if (menuItemId) {
+    const bundle = await buildItemSubject(admin, restaurant, menuItemId);
+    if (!bundle) return null;
+    bundle.subject.festival = festivalId;
+    bundle.facts.occasion = festival.label;
+    return bundle;
+  }
+  return {
+    art: null,
+    subject: {
+      title: festival.greeting,
+      priceLine: null,
+      originalPriceLine: null,
+      savingLabel: null,
+      photoDataUri: null,
+      photoTallDataUri: null,
+      soldQty: null,
+      festival: festivalId
+    },
+    facts: {
+      restaurantName: restaurant.name,
+      itemName: restaurant.name,
+      priceLines: [],
+      soldQty: null,
+      market: marketLabel(restaurant),
+      occasion: festival.label
+    }
+  };
+}
+
+/**
+ * Resolve the owner's template + subject pick into render-ready subject data.
+ * Null → the subject doesn't exist for this tenant (or isn't currently
+ * sellable / enabled), which the API surfaces as a 404.
+ */
 export async function buildPosterSubjectBundle(
   admin: SupabaseClient,
   restaurant: Restaurant,
   templateId: PosterTemplateId,
   subjectRef: PosterSubjectRef
 ): Promise<PosterSubjectBundle | null> {
-  if (templateId === "bestseller" && "menu_item_id" in subjectRef) {
-    return buildBestsellerSubject(admin, restaurant, subjectRef.menu_item_id);
+  switch (templateId) {
+    case "bestseller":
+      return "menu_item_id" in subjectRef && subjectRef.menu_item_id && !("festival" in subjectRef)
+        ? buildBestsellerSubject(admin, restaurant, subjectRef.menu_item_id)
+        : null;
+    case "new_item":
+      return "menu_item_id" in subjectRef && subjectRef.menu_item_id && !("festival" in subjectRef)
+        ? buildItemSubject(admin, restaurant, subjectRef.menu_item_id)
+        : null;
+    case "offer":
+      return "offer_id" in subjectRef ? buildOfferSubject(admin, restaurant, subjectRef.offer_id) : null;
+    case "loyalty":
+      return "loyalty" in subjectRef ? buildLoyaltySubject(restaurant) : null;
+    case "festival":
+      return "festival" in subjectRef
+        ? buildFestivalSubject(admin, restaurant, subjectRef.festival, subjectRef.menu_item_id)
+        : null;
+    default:
+      return null;
   }
-  if (templateId === "offer" && "offer_id" in subjectRef) {
-    return buildOfferSubject(admin, restaurant, subjectRef.offer_id);
-  }
-  return null;
 }
