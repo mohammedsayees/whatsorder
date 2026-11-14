@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { updateOrderStatusAction } from "@/app/actions";
 import { collectPaymentAndCompleteAction } from "@/app/admin/orders/actions";
+import { useSetPendingOrderStatus } from "@/components/admin/OptimisticOrderStatus";
 import {
   canCancelOrder,
   getNextOrderActionLabel,
@@ -45,6 +46,7 @@ export function OrderStatusActions({
   showCancel?: boolean;
 }) {
   const router = useRouter();
+  const setPendingStatus = useSetPendingOrderStatus();
   const [error, setError] = useState<string | null>(null);
   const [submittingStatus, setSubmittingStatus] = useState<OrderStatus | null>(null);
   const [collecting, setCollecting] = useState<PaymentMethod | null>(null);
@@ -84,7 +86,7 @@ export function OrderStatusActions({
       }
     }
     catch { setError("The change could not be saved. Please retry."); }
-    finally { setCollecting(null); setSubmittingStatus(null); }
+    finally { setCollecting(null); setSubmittingStatus(null); setPendingStatus(orderId, null); }
   }
 
   if (!nextStatus && !cancellable) {
@@ -109,7 +111,10 @@ export function OrderStatusActions({
               <form
                 action={(data) => runAction(collectPaymentAndCompleteAction, data)}
                 key={option.value}
-                onSubmit={() => setCollecting(option.value)}
+                onSubmit={() => {
+                  setCollecting(option.value);
+                  setPendingStatus(orderId, "Completed");
+                }}
               >
                 <input name="order_id" type="hidden" value={orderId} />
                 <input name="payment_method" type="hidden" value={option.value} />
@@ -143,7 +148,10 @@ export function OrderStatusActions({
       ) : nextStatus ? (
         <form
           action={(data) => runAction(updateOrderStatusAction, data)}
-          onSubmit={() => setSubmittingStatus(nextStatus)}
+          onSubmit={() => {
+            setSubmittingStatus(nextStatus);
+            setPendingStatus(orderId, nextStatus);
+          }}
         >
           <input name="order_id" type="hidden" value={orderId} />
           <input name="status" type="hidden" value={nextStatus} />
@@ -168,6 +176,7 @@ export function OrderStatusActions({
 }
 
 export function CancelOrderAction({ orderId }: { orderId: string }) {
+  const setPendingStatus = useSetPendingOrderStatus();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -182,6 +191,7 @@ export function CancelOrderAction({ orderId }: { orderId: string }) {
           setError("The order could not be cancelled. Please retry.");
         } finally {
           setSubmitting(false);
+          setPendingStatus(orderId, null);
         }
       }}
       onSubmit={(event) => {
@@ -197,6 +207,7 @@ export function CancelOrderAction({ orderId }: { orderId: string }) {
         const reasonInput = event.currentTarget.elements.namedItem("reason");
         if (reasonInput instanceof HTMLInputElement) reasonInput.value = reason.trim();
         setSubmitting(true);
+        setPendingStatus(orderId, "Cancelled");
       }}
     >
       <input name="order_id" type="hidden" value={orderId} />

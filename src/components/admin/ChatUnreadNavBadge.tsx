@@ -1,17 +1,14 @@
 "use client";
 
-import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
-import {
-  getRealtimeAccessTokenAction,
-  getUnreadChatConversationIdsAction
-} from "@/app/admin/alerts/actions";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import { useEffect, useState } from "react";
+import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import { updateUnreadConversationIds } from "@/lib/chat-unread";
 
 const fallbackRefreshIntervalMs = 60 * 1_000;
 const realtimeTokenRefreshIntervalMs = 30 * 60 * 1_000;
 
-function createBrowserSupabaseClient() {
+async function createBrowserSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
@@ -20,6 +17,11 @@ function createBrowserSupabaseClient() {
   if (!url || !anonKey) {
     return null;
   }
+
+  // This badge sits in the admin layout, so a static import would put the
+  // Supabase SDK in every admin route's critical bundle. Load it after
+  // hydration instead; the server-rendered count is already on screen.
+  const { createClient } = await import("@supabase/supabase-js");
 
   return createClient(url, anonKey, {
     auth: {
@@ -38,16 +40,44 @@ export function ChatUnreadNavBadge({
   realtimeAccessToken: string | null;
   restaurantId: string;
 }) {
-  const supabase = useMemo(createBrowserSupabaseClient, []);
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [activeToken, setActiveToken] = useState(realtimeAccessToken);
   const [unreadConversationIds, setUnreadConversationIds] = useState(
     initialUnreadConversationIds
   );
 
   useEffect(() => {
+    let active = true;
+    void createBrowserSupabaseClient()
+      .then((client) => {
+        if (active) {
+          setSupabase(client);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // A plain GET, not a server action: actions run one at a time per tab and
+    // this poll must never hold up a button staff just tapped.
     const refresh = () => {
-      void getUnreadChatConversationIdsAction()
-        .then(setUnreadConversationIds)
+      void fetch("/admin/alerts/unread-chats", {
+        cache: "no-store",
+        credentials: "same-origin"
+      })
+        .then((response) =>
+          response.ok
+            ? (response.json() as Promise<{ conversationIds?: string[] }>)
+            : null
+        )
+        .then((payload) => {
+          if (payload && Array.isArray(payload.conversationIds)) {
+            setUnreadConversationIds(payload.conversationIds);
+          }
+        })
         .catch(() => undefined);
     };
     const interval = window.setInterval(refresh, fallbackRefreshIntervalMs);
