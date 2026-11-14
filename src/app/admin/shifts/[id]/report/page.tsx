@@ -15,6 +15,8 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
+import { getShiftPaidOutBills } from "@/lib/finance-paid-out-data";
+import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
@@ -88,7 +90,11 @@ export default async function ShiftCloseReportPage({
     notFound();
   }
 
-  const lateReceipts = await getLateShiftReceipts(session, id);
+  const [lateReceipts, paidOutBills] = await Promise.all([
+    getLateShiftReceipts(session, id),
+    // Live Finance status, shown outside the immutable report snapshot.
+    getShiftPaidOutBills(session, id).catch(() => null)
+  ]);
 
   if (view.reports.length === 0) {
     return (
@@ -311,6 +317,25 @@ export default async function ShiftCloseReportPage({
           Report generated {dateTime(report.report_generated_at)} · Shift ID {report.shift_id}
         </footer>
       </article>
+
+      {paidOutBills && paidOutBills.length > 0 ? (
+        <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4 print:hidden">
+          <h2 className="text-lg font-black">Paid-out bills</h2>
+          <p className="mt-1 text-xs text-stone-500">Live from Finance. Not part of the close report and never changes its totals.</p>
+          <ul className="mt-3 space-y-2">
+            {paidOutBills.map((paidOut) => (
+              <li className="flex items-start justify-between gap-3 rounded-lg bg-stone-50 p-3" key={paidOut.id}>
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-bold">{paidOut.reason}</p>
+                  <p className="text-xs text-stone-500">{dateTime(paidOut.recorded_at)}</p>
+                  <PaidOutBillBadge status={paidOut.status} />
+                </div>
+                <span className="shrink-0 text-sm font-black">{money(paidOut.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {view.reports.length > 1 ? (
         <nav aria-label="Report versions" className="mt-4 flex flex-wrap gap-2 print:hidden">

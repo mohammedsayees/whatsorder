@@ -22,6 +22,8 @@ import {
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
+import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
+import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -57,6 +59,10 @@ export default async function AdminShiftsPage() {
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
     ]);
+  // Finance bill status per paid-out; null (no badges) unless Finance applies.
+  const paidOutBillStatuses = currentShift
+    ? await getPaidOutBillStatuses(session, currentShift.paidOuts.map((paidOut) => paidOut.id)).catch(() => null)
+    : null;
 
   const lateReceipts = await getLateShiftReceipts(session);
 
@@ -290,6 +296,9 @@ export default async function AdminShiftsPage() {
                         <p className="text-xs text-stone-500">
                           {formatDateTime(paidOut.recorded_at)}
                         </p>
+                        {paidOutBillStatuses ? (
+                          <PaidOutBillBadge status={paidOutBillStatuses.get(paidOut.id) ?? "none"} />
+                        ) : null}
                       </div>
                       <p className="shrink-0 font-black text-rose-700">
                         −{money(Number(paidOut.amount))}

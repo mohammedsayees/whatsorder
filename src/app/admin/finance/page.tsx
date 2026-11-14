@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChartNoAxesCombined, CookingPot, Plus, Repeat2, Settings2, WalletCards, Wheat } from "lucide-react";
+import { Banknote, ChartNoAxesCombined, CookingPot, Plus, Repeat2, Settings2, WalletCards, Wheat } from "lucide-react";
 import {
   createFinanceCategoryAction,
   transitionFinanceExpenseAction
@@ -18,6 +18,7 @@ import {
   getFinanceRecurringCosts
 } from "@/lib/finance-data";
 import { getFinanceDocuments } from "@/lib/finance-document-data";
+import { getUnbilledPaidOuts, paidOutLinkingAvailable } from "@/lib/finance-paid-out-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -70,11 +71,17 @@ export default async function AdminFinancePage({
     );
   }
 
-  const [categories, expenses, recurring, documents] = await Promise.all([
+  const [categories, expenses, recurring, documents, unbilledPaidOutCount] = await Promise.all([
     getFinanceCategories(session.restaurantId),
     getFinanceExpenses(session.restaurantId),
     getFinanceRecurringCosts(session.restaurantId),
-    getFinanceDocuments(session.restaurantId)
+    getFinanceDocuments(session.restaurantId),
+    access.approve
+      ? paidOutLinkingAvailable(session)
+        .then((available) => available ? getUnbilledPaidOuts(session.restaurantId, 500) : null)
+        .then((rows) => rows?.length ?? null)
+        .catch(() => null)
+      : Promise.resolve(null)
   ]);
   const approved = expenses.filter((expense) => expense.status === "approved");
   const totals = approved.reduce(
@@ -105,6 +112,7 @@ export default async function AdminFinancePage({
           {access.manage_costing ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/ingredients"><Wheat size={17} /> Ingredients</Link> : null}
           {access.manage_costing ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/recipes"><CookingPot size={17} /> Recipes</Link> : null}
           {access.view_reports ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/overview"><ChartNoAxesCombined size={17} /> Insights</Link> : null}
+          {unbilledPaidOutCount !== null ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/paid-outs"><Banknote size={17} /> Cash paid-outs{unbilledPaidOutCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-800">{unbilledPaidOutCount >= 500 ? "500+" : unbilledPaidOutCount} without a bill</span> : null}</Link> : null}
           {access.create ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" href="/admin/finance/new"><Plus size={17} /> Add expense</Link> : null}
         </div>
       </div>
