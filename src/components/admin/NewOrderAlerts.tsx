@@ -4,10 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { Bell, BellRing, Radio, Volume2, VolumeX } from "lucide-react";
-import {
-  getNewOrderAlertStateAction,
-  getRealtimeAccessTokenAction
-} from "@/app/admin/alerts/actions";
+import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import type { NewOrderAlertState } from "@/lib/data";
 import {
   createInitialSeenOrderIds,
@@ -67,6 +64,43 @@ async function createBrowserSupabaseClient() {
       persistSession: false
     }
   });
+}
+
+// Background reads use a plain GET instead of a server action: Next.js runs a
+// tab's server actions one at a time, so a poll would delay the status button
+// staff just tapped.
+async function fetchNewOrderAlertState(): Promise<NewOrderAlertState> {
+  const response = await fetch("/admin/alerts/state", {
+    cache: "no-store",
+    credentials: "same-origin"
+  });
+
+  if (!response.ok) {
+    throw new Error("New-order alert state is unavailable");
+  }
+
+  return (await response.json()) as NewOrderAlertState;
+}
+
+// Mirrors the server's refresh threshold in alerts/actions.ts. A token with
+// more life than this would be handed straight back, so asking is wasted work.
+const realtimeTokenRefreshLeadSeconds = 35 * 60;
+
+function realtimeTokenNeedsRefresh(token: string | null) {
+  if (!token) {
+    return true;
+  }
+
+  try {
+    const segment = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(window.atob(segment)) as { exp?: number };
+    return (
+      !payload.exp ||
+      payload.exp <= Math.floor(Date.now() / 1000) + realtimeTokenRefreshLeadSeconds
+    );
+  } catch {
+    return true;
+  }
 }
 
 function storageBoolean(key: string) {
@@ -170,6 +204,8 @@ export function NewOrderAlertsProvider({
     state: NewOrderAlertState;
     surfacedOrderCount: number;
   }> | null>(null);
+  const realtimeAccessRefreshRef = useRef<Promise<void> | null>(null);
+  const activeRealtimeAccessTokenRef = useRef(realtimeAccessToken);
   const toastSequenceRef = useRef(0);
   const [highlightedOrderIds, setHighlightedOrderIds] = useState<Set<string>>(new Set());
   const [newOrderCount, setNewOrderCount] = useState(
@@ -219,7 +255,7 @@ export function NewOrderAlertsProvider({
       setSoundEnabled(storedSoundEnabled);
       setRepeatEnabled(storageBoolean(repeatStorageKey));
     }, 0);
-    audioRef.current = new Audio("/sounds/new-order.wav");
+    audioRef.current = new Audio("/sounds/new-order.mp3");
     audioRef.current.preload = "auto";
 
     return () => {
@@ -291,7 +327,12 @@ export function NewOrderAlertsProvider({
           ? "New order received"
           : `${unseenOrderIds.length} new orders received`
       );
-      router.refresh();
+      // The punch screen shows no order list, so re-rendering it (and
+      // re-sending the whole menu) for someone else's order only interrupts
+      // the ticket being built. The badge, toast and sound still fire.
+      if (!compact) {
+        router.refresh();
+      }
 
       for (const orderId of unseenOrderIds) {
         const existingTimer = highlightTimersRef.current.get(orderId);
@@ -321,7 +362,7 @@ export function NewOrderAlertsProvider({
 
       return unseenOrderIds.length;
     },
-    [playAlertSound, restaurantId, router, showToast]
+    [compact, playAlertSound, restaurantId, router, showToast]
   );
 
   const refreshAlertState = useCallback(() => {
@@ -331,7 +372,7 @@ export function NewOrderAlertsProvider({
       return alertRefreshPromiseRef.current;
     }
 
-    const refreshPromise = getNewOrderAlertStateAction()
+    const refreshPromise = fetchNewOrderAlertState()
       .then((state) => {
         const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
         pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
@@ -349,19 +390,36 @@ export function NewOrderAlertsProvider({
     return refreshPromise;
   }, [surfaceNewOrders]);
 
-  const refreshRealtimeAccess = useCallback(async () => {
-    try {
-      const access = await getRealtimeAccessTokenAction();
-
-      if (!access || access.restaurantId !== restaurantId) {
-        setConnectionState("offline");
-        return;
-      }
-
-      setActiveRealtimeAccessToken(access.accessToken);
-    } catch {
-      setConnectionState("offline");
+  const refreshRealtimeAccess = useCallback(() => {
+    // Focus and visibilitychange fire together when staff return to the tab.
+    // Share one in-flight call so the action queue is not filled ahead of
+    // whatever they tap next.
+    if (realtimeAccessRefreshRef.current) {
+      return realtimeAccessRefreshRef.current;
     }
+
+    const refreshPromise = (async () => {
+      try {
+        const access = await getRealtimeAccessTokenAction();
+
+        if (!access || access.restaurantId !== restaurantId) {
+          setConnectionState("offline");
+          return;
+        }
+
+        activeRealtimeAccessTokenRef.current = access.accessToken;
+        setActiveRealtimeAccessToken(access.accessToken);
+      } catch {
+        setConnectionState("offline");
+      }
+    })().finally(() => {
+      if (realtimeAccessRefreshRef.current === refreshPromise) {
+        realtimeAccessRefreshRef.current = null;
+      }
+    });
+
+    realtimeAccessRefreshRef.current = refreshPromise;
+    return refreshPromise;
   }, [restaurantId]);
 
   useEffect(() => {
@@ -389,7 +447,14 @@ export function NewOrderAlertsProvider({
       void refreshAlertState().catch(() => {
         // A stale/expired login should not crash the dashboard alert UI.
       });
-      void refreshRealtimeAccess();
+      // A live channel with a fresh token needs nothing; the 30-minute
+      // interval below still re-validates access on its own schedule.
+      if (
+        connectionState !== "live" ||
+        realtimeTokenNeedsRefresh(activeRealtimeAccessTokenRef.current)
+      ) {
+        void refreshRealtimeAccess();
+      }
     };
     window.addEventListener("focus", handleWake);
     document.addEventListener("visibilitychange", handleWake);

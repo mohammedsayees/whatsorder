@@ -11,7 +11,10 @@ import type {
   OrderRiderAssignment,
   Restaurant
 } from "@/lib/types";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  OptimisticOrderStatusProvider,
+  OrderStatusBadge
+} from "@/components/admin/OptimisticOrderStatus";
 import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
 import {
   CancelOrderAction,
@@ -59,6 +62,7 @@ export function OrderList({
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
 
   return (
+    <OptimisticOrderStatusProvider>
     <div className="space-y-3">
       {orders.map((order) => {
         const customer = customersByPhone.get(order.customer_phone);
@@ -111,7 +115,7 @@ export function OrderList({
                     <FulfilmentIcon size={13} />
                     {fulfilment.label}
                   </span>
-                  <StatusBadge status={order.status} />
+                  <OrderStatusBadge orderId={order.id} status={order.status} />
                   <OrderTimer order={order} target={target} />
                   {order.parent_order_id ? (
                     <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-black text-violet-800">
@@ -270,5 +274,6 @@ export function OrderList({
         );
       })}
     </div>
+    </OptimisticOrderStatusProvider>
   );
 }

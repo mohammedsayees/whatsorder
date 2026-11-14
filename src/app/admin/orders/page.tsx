@@ -1,5 +1,6 @@
 import { NotificationDeliveryStatus } from "@/components/admin/NotificationDeliveryStatus";
 import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
 import { OrderList } from "@/components/admin/OrderList";
@@ -114,7 +115,9 @@ export default async function AdminOrdersPage({
   const isOperational = status !== "completed" && status !== "cancelled";
   const primaryStatus = isOperational ? "active" : status;
 
-  const [ordersPage, currentShift] = await Promise.all([
+  // Riders do not depend on which orders are on the page, so they load with
+  // the first batch instead of waiting for it.
+  const [ordersPage, currentShift, riders] = await Promise.all([
     getAdminOrdersPage(restaurant.id, {
       fulfilment,
       search: q,
@@ -124,7 +127,8 @@ export default async function AdminOrdersPage({
       pageSize: 25,
       status
     }),
-    getCurrentShiftView(session)
+    getCurrentShiftView(session),
+    getDeliveryRiders(restaurant.id)
   ]);
   if (ordersPage.totalPages > 0 && requestedPage > ordersPage.totalPages) {
     redirect(
@@ -133,7 +137,7 @@ export default async function AdminOrdersPage({
   }
 
   const orderIds = ordersPage.items.map((order) => order.id);
-  const [customers, paymentChanges, riders, riderAssignments, customerCredit] = await Promise.all([
+  const [customers, paymentChanges, riderAssignments, customerCredit] = await Promise.all([
     getCustomersByPhones(
       restaurant.id,
       ordersPage.items.map((order) => order.customer_phone)
@@ -142,7 +146,6 @@ export default async function AdminOrdersPage({
       restaurant.id,
       orderIds
     ),
-    getDeliveryRiders(restaurant.id),
     getLatestOrderRiderAssignments(restaurant.id, orderIds),
     getCustomerCreditSummariesForOrders(restaurant, ordersPage.items)
   ]);
@@ -169,7 +172,11 @@ export default async function AdminOrdersPage({
           New order
         </Link>
       </div>
-      <NotificationDeliveryStatus restaurantId={restaurant.id} />
+      {/* Rarely shows anything; streaming it keeps its query from holding
+          back the order list. */}
+      <Suspense fallback={null}>
+        <NotificationDeliveryStatus restaurantId={restaurant.id} />
+      </Suspense>
       <CurrentShiftBanner currentShift={currentShift} restaurant={restaurant} />
 
       {query.onboarding === "test-order" && visibleHighlightedOrderId ? (

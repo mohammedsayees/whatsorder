@@ -1,25 +1,17 @@
 "use server";
 
-import { scheduleOrderNotifications } from "@/lib/notification-jobs";
-
 import { cookies } from "next/headers";
 import {
   accessTokenCookieName,
   activeRestaurantCookieName,
   refreshTokenCookieName
 } from "@/lib/auth-cookies";
-import {
-  getNewOrderAlertState,
-  type NewOrderAlertState
-} from "@/lib/data";
-import { getUnreadChatConversationIds } from "@/lib/chat-inbox";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
 import {
   createEphemeralAuthClient,
   getSupabase,
   getSupabaseAdmin
 } from "@/lib/supabase";
-import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export type RealtimeAccess = {
   accessToken: string;
@@ -148,19 +140,4 @@ export async function getRealtimeAccessTokenAction(): Promise<RealtimeAccess | n
     accessToken: data.session.access_token,
     restaurantId
   };
-}
-
-export async function getNewOrderAlertStateAction(): Promise<NewOrderAlertState> {
-  const session = await requireRestaurantAdmin();
-  scheduleOrderNotifications(session.restaurantId);
-  return getNewOrderAlertState(session.restaurantId);
-}
-
-export async function getUnreadChatConversationIdsAction(): Promise<string[]> {
-  const session = await requireRestaurantAdmin();
-  if (session.role === "staff") {
-    return [];
-  }
-
-  return getUnreadChatConversationIds(session.restaurantId);
 }
