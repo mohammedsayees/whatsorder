@@ -1,5 +1,6 @@
 "use server";
 
+import { planAllows, planUpgradeMessage } from "@/lib/plan-gates";
 import { revalidatePath } from "next/cache";
 import {
   assignChatConversation,
@@ -41,6 +42,9 @@ async function sendStaffReply(input: {
   conversationId: string;
   body: string;
 }): Promise<string | null> {
+  if (!(await planAllows(input.restaurantId, "chat_inbox"))) {
+    return planUpgradeMessage("chat_inbox");
+  }
   const conversation = await getChatConversation(
     input.restaurantId,
     input.conversationId
@@ -183,6 +187,9 @@ export async function sendChatTemplateAction(
   const conversationId = String(formData.get("conversationId") ?? "");
   if (!conversationId) {
     return { error: "Missing conversation." };
+  }
+  if (!(await planAllows(session.restaurantId, "chat_inbox"))) {
+    return { error: planUpgradeMessage("chat_inbox") };
   }
 
   const conversation = await getChatConversation(

@@ -1,5 +1,6 @@
 "use server";
 
+import { planAllows, planUpgradeMessage } from "@/lib/plan-gates";
 import { revalidatePath } from "next/cache";
 
 import { recordOutboundChatMessage } from "@/lib/chat-inbox";
@@ -97,6 +98,9 @@ async function sendPoster(
 ): Promise<SendPosterState> {
   if (!posterId) {
     return { error: "Missing poster." };
+  }
+  if (!(await planAllows(session.restaurantId, "campaigns"))) {
+    return { error: planUpgradeMessage("campaigns") };
   }
 
   const poster = await getPosterForRestaurant(session.restaurantId, posterId);

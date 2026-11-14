@@ -20,6 +20,7 @@ import {
 } from "@/lib/marketing/opt-out";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { handleWhatsAppOrderMessage } from "@/lib/whatsapp-ordering";
+import { planAllowsOrFalse } from "@/lib/plan-gates";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   CONNECTOR_SIGNATURE_HEADER,
@@ -60,6 +61,9 @@ async function runReceptionist(input: {
   audioBase64?: string;
   audioMime?: string;
 }) {
+  // AI replies are a Growth feature (pricing v2); fail closed — no paid AI
+  // call when the plan can't be confirmed. Order intake is never gated.
+  if (!(await planAllowsOrFalse(input.restaurantId, "chat_inbox"))) return;
   const settings = await getWhatsAppChatbotSettings(input.restaurantId);
   if (
     !settings.enabled ||

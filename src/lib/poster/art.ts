@@ -28,6 +28,8 @@ import {
   posterCutoutPrompt,
   type GeminiImageResult
 } from "@/lib/ai/google-image";
+import { aiImagesUsedThisMonth } from "@/lib/ai/image-allowance";
+import { aiImageAllowanceRemaining } from "@/lib/billing";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 import { keyOutBackground } from "./cutout";
@@ -308,6 +310,8 @@ export async function planPosterArt(
     restaurantId: string;
     userId: string;
     art: { menuItemId: string; imageUrl: string | null; productName: string; categoryName: string; hasPhoto: boolean };
+    /** Plan's monthly AI image allowance (pricing v2); null/omitted = no monthly cap. */
+    monthlyAiImageLimit?: number | null;
   },
   deps: PosterArtDeps & {
     fetchSource?: (url: string) => Promise<Buffer | null>;
@@ -336,6 +340,13 @@ export async function planPosterArt(
   const used = await posterArtUsedToday(admin, input.restaurantId);
   if (used === null || used >= POSTER_ART_DAILY_LIMIT) {
     return { status: "limit", kind, dataUri: null };
+  }
+  const monthlyLimit = input.monthlyAiImageLimit ?? null;
+  if (monthlyLimit !== null) {
+    const usedThisMonth = await aiImagesUsedThisMonth(admin, input.restaurantId);
+    if (!aiImageAllowanceRemaining(monthlyLimit, usedThisMonth)) {
+      return { status: "limit", kind, dataUri: null };
+    }
   }
   if (!(await claimPosterArt(admin, target, row, deps.now))) {
     return { status: "preparing", kind, dataUri: null };

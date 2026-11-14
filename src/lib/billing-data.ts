@@ -19,7 +19,9 @@ import {
   invoiceIdempotencyKey,
   priceForBillingInterval,
   priceForSubscription,
-  resolvePlanFeatures,
+  resolveEntitlements,
+  buildFeatureOverrides,
+  sameFeatureOverrides,
   toDateString
 } from "@/lib/billing";
 import type {
@@ -30,7 +32,10 @@ import type {
   Subscription,
   SubscriptionStatus,
   BillingInterval,
-  TenantAccess
+  TenantAccess,
+  AiImageOverrideChoice,
+  FeatureOverrideChoice,
+  PlanFeatureFlag
 } from "@/lib/billing";
 
 type Admin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -122,15 +127,23 @@ export const getTenantAccess = cache(async function getTenantAccess(
   }
   const plan = snapshot.plan ?? null;
 
+  const entitlements = resolveEntitlements({
+    planFeatures: plan?.features ?? null,
+    planMonthlyAiImageLimit: plan?.monthly_ai_image_limit ?? null,
+    overrides: subscription.feature_overrides ?? null,
+    status: subscription.status
+  });
+
   return {
     access: deriveAccessLevel(subscription.status),
     status: subscription.status,
     plan_code: plan?.code ?? null,
     plan_name: plan?.name ?? null,
-    plan_features: resolvePlanFeatures(plan?.features ?? null),
+    plan_features: entitlements.features,
     limits: {
       max_branches: plan?.max_branches ?? null,
-      max_staff: plan?.max_staff ?? null
+      max_staff: plan?.max_staff ?? null,
+      monthly_ai_images: entitlements.monthlyAiImages
     }
   };
 });
@@ -240,6 +253,16 @@ export type BillingDetail = {
   payments: Payment[];
   statusEvents: StatusEvent[];
   priceEvents: PriceEvent[];
+  featureEvents: FeatureEvent[];
+};
+
+export type FeatureEvent = {
+  id: string;
+  previous_overrides: Record<string, unknown> | null;
+  new_overrides: Record<string, unknown> | null;
+  reason: string;
+  actor_role: string | null;
+  created_at: string;
 };
 
 export type PriceEvent = {
@@ -270,7 +293,7 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
   const subscription = await fetchSubscription(admin, restaurantId);
   const plan = subscription ? await fetchPlan(admin, subscription.plan_id) : null;
 
-  const [invoiceResult, lineItemResult, paymentResult, statusEventResult, priceEventResult] = await Promise.all([
+  const [invoiceResult, lineItemResult, paymentResult, statusEventResult, priceEventResult, featureEventResult] = await Promise.all([
       admin
         .from("invoices")
         .select("*")
@@ -291,14 +314,21 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
         .from("subscription_price_events")
         .select("id,previous_price,new_price,reason,ends_at,actor_role,created_at")
         .eq("restaurant_id", restaurantId)
+        .order("created_at", { ascending: false }),
+      admin
+        .from("subscription_feature_events")
+        .select("id,previous_overrides,new_overrides,reason,actor_role,created_at")
+        .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false })
+        .limit(50)
     ]);
   const detailError =
     invoiceResult.error ??
     lineItemResult.error ??
     paymentResult.error ??
     statusEventResult.error ??
-    priceEventResult.error;
+    priceEventResult.error ??
+    featureEventResult.error;
   if (detailError) {
     throw new Error(`Billing history could not be loaded: ${detailError.message}`);
   }
@@ -335,7 +365,8 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
     })),
     payments: paymentRows,
     statusEvents: (statusEvents as StatusEvent[] | null) ?? [],
-    priceEvents: (priceEvents as PriceEvent[] | null) ?? []
+    priceEvents: (priceEvents as PriceEvent[] | null) ?? [],
+    featureEvents: (featureEventResult.data as FeatureEvent[] | null) ?? []
   };
 }
 
@@ -476,6 +507,58 @@ function periodLabel(periodStart: string): string {
 
 // Put a new tenant on a plan, or update the commercial terms of an existing
 // contract. Existing contracts keep their status, cycle, and current invoice.
+// Per-contract feature overrides (super-admin only). Writes the new overrides
+// and an audit row; a no-op change writes nothing.
+export async function updateFeatureOverrides(
+  restaurantId: string,
+  input: {
+    features: Partial<Record<PlanFeatureFlag, FeatureOverrideChoice>>;
+    aiImages: AiImageOverrideChoice;
+    aiImageLimit: number | null;
+    reason: string;
+    actor: BillingActor;
+  }
+): Promise<BillingResult> {
+  const reason = input.reason.trim();
+  if (!reason) {
+    return { ok: false, error: "Add a reason for the feature change." };
+  }
+  const admin = getAdmin();
+  const existing = await fetchSubscription(admin, restaurantId);
+  if (!existing) {
+    return { ok: false, error: "Enrol this restaurant on a plan first." };
+  }
+  const built = buildFeatureOverrides(existing.feature_overrides ?? {}, input);
+  if (!built.ok) {
+    return built;
+  }
+  if (sameFeatureOverrides(existing.feature_overrides ?? {}, built.overrides)) {
+    return { ok: true };
+  }
+
+  const { error } = await admin
+    .from("subscriptions")
+    .update({ feature_overrides: built.overrides })
+    .eq("id", existing.id)
+    .eq("restaurant_id", restaurantId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  const { error: eventError } = await admin.from("subscription_feature_events").insert({
+    restaurant_id: restaurantId,
+    subscription_id: existing.id,
+    previous_overrides: existing.feature_overrides ?? {},
+    new_overrides: built.overrides,
+    reason,
+    actor_user_id: input.actor.userId,
+    actor_role: input.actor.role
+  });
+  if (eventError) {
+    return { ok: false, error: eventError.message };
+  }
+  return { ok: true };
+}
+
 export async function assignPlan(
   restaurantId: string,
   planId: string,
@@ -509,7 +592,9 @@ export async function assignPlan(
   if (priceOverride !== null && (!Number.isFinite(priceOverride) || priceOverride < 0)) {
     return { ok: false, error: "Contract price must be zero or greater." };
   }
-  if (priceOverride !== null && priceOverride > listPrice) {
+  // Personalised (multi_branch) is "from" pricing: extra branches and custom
+  // work are priced above list. Every other plan only allows discounts.
+  if (priceOverride !== null && priceOverride > listPrice && plan.code !== "multi_branch") {
     return { ok: false, error: "Contract price cannot exceed the selected plan price." };
   }
   if (priceOverride !== null && !priceOverrideReason) {
