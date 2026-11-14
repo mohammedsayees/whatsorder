@@ -4,7 +4,7 @@ import Script from "next/script";
 export const metadata: Metadata = {
   title: "WhatsOrder — Commission-free WhatsApp ordering for cafes and restaurants",
   description:
-    "Take orders on WhatsApp with your own menu link, a live order board, customer loyalty and shift cash-up. AED 2 a day, no commission, free for 14 days.",
+    "Take orders on WhatsApp with your own menu link, a live order board, customer loyalty and shift cash-up. No commission. Founding offer: AED 2 a day for your first year. Free for 14 days.",
   applicationName: "WhatsOrder",
 };
 
@@ -420,6 +420,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .rc-head span{font-size:.8rem;color:var(--karak-deep)}
   .rc-row{display:flex;justify-content:space-between;gap:16px;padding:.55rem 0;border-bottom:1px dashed var(--line)}
   .rc-row span:first-child{color:var(--ink-soft)}
+  .rc-row span:last-child{white-space:nowrap}
   .rc-total{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-top:14px;padding-top:14px;border-top:2px solid var(--ink);font-weight:600;color:var(--pine)}
   .rc-total span:last-child{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:2rem;line-height:1}
   .price-side h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:700;font-size:1.3rem;color:var(--pine);margin:0 0 1rem}
@@ -428,6 +429,24 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .price-side .incl svg{margin-top:.15rem}
   .price-cta{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:2rem}
   .pricing .btn-ghost{background:#fff}
+  .hero-offer{display:inline-block;margin:1.1rem 0 0;padding:.45rem .8rem;border-radius:14px;background:#FDF1E2;color:var(--karak-deep);font-weight:600;font-size:.95rem}
+  .tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-top:56px}
+  .tier{position:relative;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);padding:28px 26px}
+  .tier.featured{border:2px solid var(--pine);box-shadow:var(--shadow)}
+  .tier-badge{position:absolute;top:-13px;left:26px;background:var(--pine);color:#fff;font-size:.78rem;font-weight:700;padding:.25rem .7rem;border-radius:999px}
+  .tier h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:700;font-size:1.25rem;color:var(--pine);margin:0}
+  .tier-for{margin:.3rem 0 0;color:var(--ink-soft);font-size:.92rem}
+  .tier-price{margin:1rem 0 0;font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:2rem;line-height:1;color:var(--ink)}
+  .tier-price small{font-size:.95rem;font-weight:500;color:var(--ink-soft)}
+  .tier-from{font-size:1.1rem;font-weight:600}
+  .tier-sub{margin:.45rem 0 0;font-size:.88rem;color:var(--ink-soft)}
+  .tier-sub.offer{color:var(--karak-deep);font-weight:600}
+  .tier ul{list-style:none;padding:0;margin:1.2rem 0 0;display:grid;gap:.55rem;font-size:.95rem}
+  .tier li{display:flex;gap:.5rem;align-items:flex-start;line-height:1.4}
+  .tier li svg{flex:none;width:18px;height:18px;margin-top:.12rem;color:var(--emerald)}
+  .tier ul{margin-bottom:1.6rem}
+  .tier .btn{margin-top:auto;justify-content:center}
+  .tiers-note{margin:1.2rem 0 0;font-size:.9rem;color:var(--ink-soft);text-align:center}
 
   .faq-wrap{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:56px;align-items:start}
   .faq-wrap .faq-list{margin-top:0}
@@ -442,7 +461,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
   .mobile-cta{transform:translateY(110%);transition:transform .25s ease}
   .mobile-cta.show{transform:none}
 
-  body.lang-ar :is(.facts dt,.steps3 .n,.rc-head b,.rc-total span){font-family:"IBM Plex Sans Arabic",system-ui,sans-serif}
+  body.lang-ar :is(.facts dt,.steps3 .n,.rc-head b,.rc-total span,.tier h3,.tier-price){font-family:"IBM Plex Sans Arabic",system-ui,sans-serif}
   body.lang-ml :is(.facts dt,.rc-head b){font-family:"Noto Sans Malayalam",system-ui,sans-serif}
   body.lang-ar .hero h1,body.lang-ml .hero h1{max-width:16ch;letter-spacing:0}
   body.lang-ar .hero h1{line-height:1.25}
@@ -462,6 +481,7 @@ const landingStyles = String.raw`@import url("https://fonts.googleapis.com/css2?
     .pricing .price-wrap{grid-template-columns:1fr;gap:44px}
     .receipt{max-width:420px}
     .faq-wrap{grid-template-columns:1fr;gap:30px}
+    .tiers{grid-template-columns:1fr;gap:28px}
   }
   @media(max-width:560px){
     .hero{padding-top:40px}
@@ -512,12 +532,13 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="hero-copy">
       <p class="kicker">For cafes and small restaurants in the UAE</p>
       <h1><span>Take orders on WhatsApp.</span> <span>Keep every dirham.</span></h1>
-      <p class="lede">WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.</p>
+      <p class="lede">WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. No commission, ever.</p>
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="/try">Start 14-day free trial</a>
         <a class="btn btn-ghost btn-lg" href="/r/chaixpress">Order from the live demo</a>
       </div>
       <p class="hero-note">Build your menu from a photo in about 2 minutes. No card needed.</p>
+      <p class="hero-offer">Founding offer: AED 2 a day for your first year. First 50 restaurants.</p>
     </div>
 
     <!-- signature device -->
@@ -563,7 +584,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
   <div class="wrap">
     <dl class="facts">
       <div><dt>0%</dt><dd>commission on every order</dd></div>
-      <div><dt>AED 2</dt><dd>a day, one flat price</dd></div>
+      <div><dt>AED 2</dt><dd>a day in your first year (founding offer)</dd></div>
       <div><dt>14 days</dt><dd>free to try with your real menu</dd></div>
       <div><dt>2 min</dt><dd>to build a menu from a photo</dd></div>
     </dl>
@@ -584,6 +605,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         <input type="range" id="vol" min="5000" max="100000" step="5000" value="20000" aria-describedby="volOut">
         <div class="rng-scale" data-no-i18n><span>AED 5k</span><span>AED 50k</span><span>AED 100k</span></div>
         <p class="calc-foot">Assumes about 27% delivery-app commission. Real rates vary by platform and plan.</p>
+        <p class="calc-foot">After the founding year, Starter is AED 149 a month.</p>
       </div>
       <div class="calc-out" aria-live="polite">
         <div class="breakdown">
@@ -592,7 +614,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
             <span class="v" id="commOut">−AED 5,400</span>
           </div>
           <div class="brk flat">
-            <span class="k">WhatsOrder Starter (AED 2 a day)</span>
+            <span class="k">WhatsOrder Starter, founding offer (AED 2 a day)</span>
             <span class="v" id="flatOut">AED 60</span>
           </div>
         </div>
@@ -673,7 +695,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <li>Stamp-card loyalty</li>
           <li>Feedback request after each order</li>
           <li>AI daily recap with one move for today</li>
-          <li>Marketing posters made from your menu</li>
+          <li>Marketing posters made from your menu (Growth)</li>
           <li class="is-soon">WhatsApp campaigns, coming soon</li>
         </ul>
       </div>
@@ -778,7 +800,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <div class="crow">
         <div class="cc feat-lbl">What it costs you</div>
         <div class="cc mkt"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> A cut of all sales</div>
-        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> ≈ AED 60 flat / month</div>
+        <div class="cc wo"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> From AED 60 flat / month</div>
       </div>
     </div>
   </div>
@@ -788,24 +810,25 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <section class="pricing" id="pricing">
   <div class="wrap">
     <div class="sec-head">
-      <h2>AED 2 a day. Free for the first 14 days.</h2>
-      <p>One flat price, about the cost of a karak a day. We never take a percentage of your sales.</p>
+      <h2>Simple flat plans. Free for the first 14 days.</h2>
+      <p>One flat monthly price, never a percentage of your sales. Founding restaurants pay about the cost of a karak a day for their first year.</p>
     </div>
     <div class="price-wrap">
       <div class="receipt" aria-label="Starter plan price summary">
         <div class="rc-head">
           <b>WhatsOrder Starter</b>
-          <span>Founding offer</span>
+          <span>Founding offer · first 50 restaurants</span>
         </div>
-        <div class="rc-row"><span>Per day</span><span data-no-i18n>AED 2</span></div>
-        <div class="rc-row"><span>Per month, about</span><span data-no-i18n>AED 60</span></div>
+        <div class="rc-row"><span>Per day, first year</span><span data-no-i18n>AED 2</span></div>
+        <div class="rc-row"><span>Per month, first year</span><span data-no-i18n>AED 60</span></div>
+        <div class="rc-row"><span>Per month, from year two</span><span data-no-i18n>AED 149</span></div>
         <div class="rc-row"><span>Commission on orders</span><span data-no-i18n>AED 0</span></div>
         <div class="rc-row"><span>Setup help</span><span>Free</span></div>
         <div class="rc-row"><span>First 14 days</span><span>Free</span></div>
         <div class="rc-total"><span>Due today</span><span data-no-i18n>AED 0</span></div>
       </div>
       <div class="price-side">
-        <h3>What you get</h3>
+        <h3>Starter includes</h3>
         <ul class="incl">
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Menu link and QR code</li>
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> WhatsApp ordering and live order board</li>
@@ -822,6 +845,55 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         </div>
       </div>
     </div>
+    <div class="tiers">
+      <article class="tier">
+        <h3>Starter</h3>
+        <p class="tier-for">For a single cafe starting direct orders</p>
+        <p class="tier-price"><span data-no-i18n>AED 149</span> <small>/ month</small></p>
+        <p class="tier-sub">or AED 1,490 a year</p>
+        <p class="tier-sub offer">Founding offer: AED 60 a month in your first year</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Everything listed above</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 3 staff accounts</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 10 AI images a month</li>
+        </ul>
+        <a class="btn btn-ghost" href="/try">Start 14-day free trial</a>
+      </article>
+      <article class="tier featured">
+        <span class="tier-badge">Most popular</span>
+        <h3>Growth</h3>
+        <p class="tier-for">For restaurants moving orders off delivery apps</p>
+        <p class="tier-price"><span data-no-i18n>AED 299</span> <small>/ month</small></p>
+        <p class="tier-sub">or AED 2,990 a year (2 months free)</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Everything in Starter</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Marketing posters with AI artwork</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Share posters with your customers on WhatsApp</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> WhatsApp chat inbox with AI replies</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Finance, recipe costing and bill scanning</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Scheduled orders</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 10 staff accounts</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 100 AI images a month</li>
+        </ul>
+        <a class="btn btn-primary" href="/try">Start 14-day free trial</a>
+      </article>
+      <article class="tier">
+        <h3>Personalised</h3>
+        <p class="tier-for">For groups, cloud kitchens and several branches</p>
+        <p class="tier-price"><span class="tier-from">From</span> <span data-no-i18n>AED 599</span> <small>/ month</small></p>
+        <p class="tier-sub">Priced for the branches you run</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Everything in Growth</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Custom pricing for more branches</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Up to 50 staff accounts</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 300 or more AI images a month</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Setup done for you</li>
+          <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Priority support on WhatsApp</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20talk%20about%20the%20Personalised%20plan." target="_blank" rel="noopener">Talk to us on WhatsApp</a>
+      </article>
+    </div>
+    <p class="tiers-note">Your 14-day free trial includes every Growth feature. No card needed.</p>
   </div>
 </section>
 
@@ -835,7 +907,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <div class="faq-list">
       <details open>
         <summary>How does the 14-day free trial work? <span class="chev"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
-        <p>Build your menu, share your link and take real orders for 14 days at no cost. If you want to carry on, Starter is AED 2 a day, about AED 60 a month. If not, you stop. There is no commission either way.</p>
+        <p>Build your menu, share your link and take real orders for 14 days at no cost, with every Growth feature switched on. If you carry on, pick a plan. Founding restaurants on Starter pay AED 2 a day, about AED 60 a month, for their first year, then AED 149 a month. If not, you stop. There is no commission either way.</p>
       </details>
       <details>
         <summary>What do I need to get started? <span class="chev"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
@@ -973,6 +1045,53 @@ const landingScript = String.raw`// year
   // ===== i18n (EN / AR / ML) =====
   (function(){
     var AR = {
+      "From": "ابتداءً من",
+      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. No commission, ever.": "واتس أوردر يمنح مقهاك رابط قائمة خاصاً به، ويحوّل كل محادثة إلى تذكرة طلب واضحة، ويتذكّر كل عميل. من دون أي عمولة، أبداً.",
+      "Founding offer: AED 2 a day for your first year. First 50 restaurants.": "عرض المؤسسين: درهمان في اليوم خلال سنتك الأولى. لأول 50 مطعماً.",
+      "a day in your first year (founding offer)": "في اليوم خلال سنتك الأولى (عرض المؤسسين)",
+      "WhatsOrder Starter, founding offer (AED 2 a day)": "باقة ستارتر من واتس أوردر، عرض المؤسسين (درهمان في اليوم)",
+      "After the founding year, Starter is AED 149 a month.": "بعد سنة المؤسسين، باقة ستارتر بسعر 149 درهماً شهرياً.",
+      "Marketing posters made from your menu (Growth)": "ملصقات تسويقية من قائمتك (باقة النمو)",
+      "From AED 60 flat / month": "من 60 درهماً ثابتة شهرياً",
+      "Simple flat plans. Free for the first 14 days.": "باقات بسيطة بسعر ثابت. مجاناً أول 14 يوماً.",
+      "One flat monthly price, never a percentage of your sales. Founding restaurants pay about the cost of a karak a day for their first year.": "سعر شهري ثابت واحد، ولا نسبة من مبيعاتك أبداً. المطاعم المؤسِّسة تدفع ما يعادل كوب كرك في اليوم خلال سنتها الأولى.",
+      "Founding offer · first 50 restaurants": "عرض المؤسسين · لأول 50 مطعماً",
+      "Per day, first year": "في اليوم، السنة الأولى",
+      "Per month, first year": "في الشهر، السنة الأولى",
+      "Per month, from year two": "في الشهر، من السنة الثانية",
+      "Starter includes": "تشمل باقة ستارتر",
+      "Starter": "ستارتر",
+      "For a single cafe starting direct orders": "لمقهى واحد يبدأ بالطلبات المباشرة",
+      "/ month": "/ شهرياً",
+      "or AED 1,490 a year": "أو 1,490 درهماً سنوياً",
+      "Founding offer: AED 60 a month in your first year": "عرض المؤسسين: 60 درهماً شهرياً في سنتك الأولى",
+      "Everything listed above": "كل ما سبق ذكره",
+      "3 staff accounts": "3 حسابات للموظفين",
+      "10 AI images a month": "10 صور بالذكاء الاصطناعي شهرياً",
+      "Most popular": "الأكثر طلباً",
+      "Growth": "النمو",
+      "For restaurants moving orders off delivery apps": "للمطاعم التي تنقل طلباتها بعيداً عن تطبيقات التوصيل",
+      "or AED 2,990 a year (2 months free)": "أو 2,990 درهماً سنوياً (شهران مجاناً)",
+      "Everything in Starter": "كل ما في باقة ستارتر",
+      "Marketing posters with AI artwork": "ملصقات تسويقية برسومات الذكاء الاصطناعي",
+      "Share posters with your customers on WhatsApp": "شارك الملصقات مع عملائك على واتساب",
+      "WhatsApp chat inbox with AI replies": "صندوق محادثات واتساب مع ردود بالذكاء الاصطناعي",
+      "Finance, recipe costing and bill scanning": "المالية وتكلفة الوصفات ومسح الفواتير",
+      "Scheduled orders": "الطلبات المجدولة",
+      "10 staff accounts": "10 حسابات للموظفين",
+      "100 AI images a month": "100 صورة بالذكاء الاصطناعي شهرياً",
+      "Personalised": "مخصص",
+      "For groups, cloud kitchens and several branches": "للمجموعات والمطابخ السحابية والفروع المتعددة",
+      "Priced for the branches you run": "بسعر يناسب عدد فروعك",
+      "Everything in Growth": "كل ما في باقة النمو",
+      "Custom pricing for more branches": "تسعير خاص للفروع الإضافية",
+      "Up to 50 staff accounts": "حتى 50 حساباً للموظفين",
+      "300 or more AI images a month": "300 صورة أو أكثر بالذكاء الاصطناعي شهرياً",
+      "Setup done for you": "نتولّى الإعداد عنك",
+      "Priority support on WhatsApp": "دعم ذو أولوية على واتساب",
+      "Talk to us on WhatsApp": "تحدّث معنا على واتساب",
+      "Your 14-day free trial includes every Growth feature. No card needed.": "تجربتك المجانية لمدة 14 يوماً تشمل كل مزايا باقة النمو. لا حاجة إلى بطاقة.",
+      "Build your menu, share your link and take real orders for 14 days at no cost, with every Growth feature switched on. If you carry on, pick a plan. Founding restaurants on Starter pay AED 2 a day, about AED 60 a month, for their first year, then AED 149 a month. If not, you stop. There is no commission either way.": "أنشئ قائمتك، شارك رابطك واستقبل طلبات حقيقية لمدة 14 يوماً من دون أي تكلفة، مع تفعيل كل مزايا باقة النمو. إن أردت الاستمرار، اختر باقة. المطاعم المؤسِّسة على باقة ستارتر تدفع درهمين في اليوم، أي نحو 60 درهماً شهرياً، خلال سنتها الأولى، ثم 149 درهماً شهرياً. وإن لم ترد، تتوقف. لا عمولة في الحالتين.",
       "How it works": "كيف يعمل",
       "Features": "المزايا",
       "Pricing": "الأسعار",
@@ -982,13 +1101,11 @@ const landingScript = String.raw`// year
       "For cafés and small restaurants in the UAE": "للمقاهي والمطاعم الصغيرة في الإمارات",
       "Take orders on WhatsApp.": "استقبل الطلبات على واتساب.",
       "Keep every dirham.": "واحتفظ بكل درهم.",
-      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "واتس أوردر يمنح مقهاك رابط قائمة خاصاً به، ويحوّل كل محادثة إلى تذكرة طلب واضحة، ويتذكّر كل عميل. بدرهمين في اليوم، ومن دون عمولة.",
       "Start 14-day free trial": "ابدأ تجربة مجانية لمدة 14 يوماً",
       "Order from the live demo": "اطلب من العرض المباشر",
       "Build your menu from a photo in about 2 minutes. No card needed.": "أنشئ قائمتك من صورة في نحو دقيقتين. لا حاجة إلى بطاقة.",
       "The same order, before and after WhatsOrder.": "الطلب نفسه، قبل واتس أوردر وبعده.",
       "commission on every order": "عمولة على كل طلب",
-      "a day, one flat price": "في اليوم، بسعر ثابت واحد",
       "14 days": "14 يوماً",
       "free to try with your real menu": "تجربة مجانية بقائمتك الحقيقية",
       "2 min": "دقيقتان",
@@ -998,7 +1115,6 @@ const landingScript = String.raw`// year
       "Monthly orders you move to direct": "الطلبات الشهرية التي تنقلها إلى الطلب المباشر",
       "Assumes about 27% delivery-app commission. Real rates vary by platform and plan.": "بافتراض عمولة تطبيقات توصيل بنحو 27%. النسب الفعلية تختلف حسب المنصة والباقة.",
       "Delivery-app commission on those orders (27%)": "عمولة تطبيق التوصيل على تلك الطلبات (27%)",
-      "WhatsOrder Starter (AED 2 a day)": "واتس أوردر ستارتر (درهمان في اليوم)",
       "You keep, every month": "يبقى لك كل شهر",
       "Three steps from paper menu to first order.": "ثلاث خطوات من القائمة الورقية إلى أول طلب.",
       "Your customers keep ordering on WhatsApp, exactly as they do now. You get the order in a form your kitchen can use.": "يواصل عملاؤك الطلب عبر واتساب تماماً كما يفعلون الآن. ويصلك الطلب بصيغة يستطيع مطبخك العمل بها.",
@@ -1028,7 +1144,6 @@ const landingScript = String.raw`// year
       "Stamp-card loyalty": "ولاء ببطاقة الأختام",
       "Feedback request after each order": "طلب تقييم بعد كل طلب",
       "AI daily recap with one move for today": "ملخص يومي بالذكاء الاصطناعي مع خطوة واحدة لليوم",
-      "Marketing posters made from your menu": "ملصقات تسويقية تُصنع من قائمتك",
       "WhatsApp campaigns, coming soon": "حملات واتساب، قريباً",
       "Close the day": "أقفل اليوم",
       "Shift open and cash-up": "فتح الوردية وجرد النقد",
@@ -1063,19 +1178,12 @@ const landingScript = String.raw`// year
       "Not included": "غير متوفرة",
       "What it costs you": "ماذا يكلفك",
       "A cut of all sales": "نسبة من كل مبيعاتك",
-      "≈ AED 60 flat / month": "≈ 60 درهماً ثابتة شهرياً",
-      "AED 2 a day. Free for the first 14 days.": "درهمان في اليوم. مجاناً لأول 14 يوماً.",
-      "One flat price, about the cost of a karak a day. We never take a percentage of your sales.": "سعر ثابت واحد، بنحو ثمن كوب كرك يومياً. لا نأخذ أبداً نسبة من مبيعاتك.",
       "WhatsOrder Starter": "واتس أوردر ستارتر",
-      "Founding offer": "عرض التأسيس",
-      "Per day": "في اليوم",
-      "Per month, about": "في الشهر، تقريباً",
       "Commission on orders": "العمولة على الطلبات",
       "Setup help": "المساعدة في الإعداد",
       "Free": "مجاناً",
       "First 14 days": "أول 14 يوماً",
       "Due today": "المستحق اليوم",
-      "What you get": "ما تحصل عليه",
       "WhatsApp ordering and live order board": "طلبات واتساب ولوحة طلبات مباشرة",
       "Customer list, groups and stamp-card loyalty": "قائمة العملاء والمجموعات وولاء بطاقة الأختام",
       "Feedback after every order": "تقييم بعد كل طلب",
@@ -1087,7 +1195,6 @@ const landingScript = String.raw`// year
       "The questions owners ask first.": "الأسئلة التي يطرحها المُلّاك أولاً.",
       "Still unsure about something? Message us on WhatsApp and a person will answer.": "ما زال لديك استفسار؟ راسلنا على واتساب وسيجيبك شخص حقيقي.",
       "How does the 14-day free trial work?": "كيف تعمل التجربة المجانية لمدة 14 يوماً؟",
-      "Build your menu, share your link and take real orders for 14 days at no cost. If you want to carry on, Starter is AED 2 a day, about AED 60 a month. If not, you stop. There is no commission either way.": "أنشئ قائمتك، شارك رابطك واستقبل طلبات حقيقية لمدة 14 يوماً من دون أي تكلفة. إن أردت الاستمرار فباقة ستارتر بدرهمين في اليوم، أي نحو 60 درهماً في الشهر. وإن لم ترد، تتوقف. لا عمولة في الحالتين.",
       "What do I need to get started?": "ماذا أحتاج لأبدأ؟",
       "A phone or tablet and your WhatsApp number. There are no terminals to buy. A printer is optional, for kitchen tickets and receipts.": "هاتف أو جهاز لوحي ورقم واتساب الخاص بك. لا أجهزة تشتريها. الطابعة اختيارية، لتذاكر المطبخ والإيصالات.",
       "How long does setup take?": "كم يستغرق الإعداد؟",
@@ -1121,6 +1228,53 @@ const landingScript = String.raw`// year
       "WhatsApp": "واتساب"
     };
     var ML = {
+      "From": "മുതൽ",
+      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. No commission, ever.": "WhatsOrder നിങ്ങളുടെ കഫേക്ക് സ്വന്തം മെനു ലിങ്ക് നൽകുന്നു, ഓരോ ചാറ്റും വ്യക്തമായ ഓർഡർ ടിക്കറ്റാക്കുന്നു, ഓരോ ഉപഭോക്താവിനെയും ഓർക്കുന്നു. ഒരിക്കലും കമ്മീഷൻ ഇല്ല.",
+      "Founding offer: AED 2 a day for your first year. First 50 restaurants.": "ഫൗണ്ടിംഗ് ഓഫർ: ആദ്യ വർഷം ദിവസം AED 2. ആദ്യ 50 റെസ്റ്ററന്റുകൾക്ക് മാത്രം.",
+      "a day in your first year (founding offer)": "ആദ്യ വർഷം ദിവസം (ഫൗണ്ടിംഗ് ഓഫർ)",
+      "WhatsOrder Starter, founding offer (AED 2 a day)": "WhatsOrder സ്റ്റാർട്ടർ, ഫൗണ്ടിംഗ് ഓഫർ (ദിവസം AED 2)",
+      "After the founding year, Starter is AED 149 a month.": "ഫൗണ്ടിംഗ് വർഷത്തിന് ശേഷം സ്റ്റാർട്ടർ മാസം AED 149.",
+      "Marketing posters made from your menu (Growth)": "നിങ്ങളുടെ മെനുവിൽ നിന്ന് മാർക്കറ്റിംഗ് പോസ്റ്ററുകൾ (ഗ്രോത്ത്)",
+      "From AED 60 flat / month": "മാസം AED 60 ഫ്ലാറ്റ് മുതൽ",
+      "Simple flat plans. Free for the first 14 days.": "ലളിതമായ ഫ്ലാറ്റ് പ്ലാനുകൾ. ആദ്യ 14 ദിവസം സൗജന്യം.",
+      "One flat monthly price, never a percentage of your sales. Founding restaurants pay about the cost of a karak a day for their first year.": "ഒരു ഫ്ലാറ്റ് മാസ വില, വിൽപ്പനയുടെ ശതമാനം ഒരിക്കലുമില്ല. ഫൗണ്ടിംഗ് റെസ്റ്ററന്റുകൾ ആദ്യ വർഷം ദിവസം ഒരു കരക് ചായയുടെ വില മാത്രം നൽകുന്നു.",
+      "Founding offer · first 50 restaurants": "ഫൗണ്ടിംഗ് ഓഫർ · ആദ്യ 50 റെസ്റ്ററന്റുകൾ",
+      "Per day, first year": "ദിവസം, ആദ്യ വർഷം",
+      "Per month, first year": "മാസം, ആദ്യ വർഷം",
+      "Per month, from year two": "മാസം, രണ്ടാം വർഷം മുതൽ",
+      "Starter includes": "സ്റ്റാർട്ടറിൽ ഉൾപ്പെടുന്നത്",
+      "Starter": "സ്റ്റാർട്ടർ",
+      "For a single cafe starting direct orders": "നേരിട്ടുള്ള ഓർഡറുകൾ തുടങ്ങുന്ന ഒരു കഫേക്ക്",
+      "/ month": "/ മാസം",
+      "or AED 1,490 a year": "അല്ലെങ്കിൽ വർഷം AED 1,490",
+      "Founding offer: AED 60 a month in your first year": "ഫൗണ്ടിംഗ് ഓഫർ: ആദ്യ വർഷം മാസം AED 60",
+      "Everything listed above": "മുകളിൽ പറഞ്ഞതെല്ലാം",
+      "3 staff accounts": "3 സ്റ്റാഫ് അക്കൗണ്ടുകൾ",
+      "10 AI images a month": "മാസം 10 AI ചിത്രങ്ങൾ",
+      "Most popular": "ഏറ്റവും ജനപ്രിയം",
+      "Growth": "ഗ്രോത്ത്",
+      "For restaurants moving orders off delivery apps": "ഡെലിവറി ആപ്പുകളിൽ നിന്ന് ഓർഡറുകൾ മാറ്റുന്ന റെസ്റ്ററന്റുകൾക്ക്",
+      "or AED 2,990 a year (2 months free)": "അല്ലെങ്കിൽ വർഷം AED 2,990 (2 മാസം സൗജന്യം)",
+      "Everything in Starter": "സ്റ്റാർട്ടറിലുള്ളതെല്ലാം",
+      "Marketing posters with AI artwork": "AI ആർട്ട്‌വർക്കോടെ മാർക്കറ്റിംഗ് പോസ്റ്ററുകൾ",
+      "Share posters with your customers on WhatsApp": "പോസ്റ്ററുകൾ ഉപഭോക്താക്കളുമായി WhatsApp-ൽ പങ്കിടാം",
+      "WhatsApp chat inbox with AI replies": "AI മറുപടികളോടെ WhatsApp ചാറ്റ് ഇൻബോക്സ്",
+      "Finance, recipe costing and bill scanning": "ഫിനാൻസ്, റെസിപ്പി കോസ്റ്റിംഗ്, ബിൽ സ്കാനിംഗ്",
+      "Scheduled orders": "ഷെഡ്യൂൾ ചെയ്ത ഓർഡറുകൾ",
+      "10 staff accounts": "10 സ്റ്റാഫ് അക്കൗണ്ടുകൾ",
+      "100 AI images a month": "മാസം 100 AI ചിത്രങ്ങൾ",
+      "Personalised": "പേഴ്സണലൈസ്ഡ്",
+      "For groups, cloud kitchens and several branches": "ഗ്രൂപ്പുകൾക്കും ക്ലൗഡ് കിച്ചണുകൾക്കും ഒന്നിലധികം ബ്രാഞ്ചുകൾക്കും",
+      "Priced for the branches you run": "നിങ്ങളുടെ ബ്രാഞ്ചുകൾക്കനുസരിച്ചുള്ള വില",
+      "Everything in Growth": "ഗ്രോത്തിലുള്ളതെല്ലാം",
+      "Custom pricing for more branches": "കൂടുതൽ ബ്രാഞ്ചുകൾക്ക് പ്രത്യേക വില",
+      "Up to 50 staff accounts": "50 വരെ സ്റ്റാഫ് അക്കൗണ്ടുകൾ",
+      "300 or more AI images a month": "മാസം 300-ഓ അതിലധികമോ AI ചിത്രങ്ങൾ",
+      "Setup done for you": "സെറ്റപ്പ് ഞങ്ങൾ ചെയ്തുതരും",
+      "Priority support on WhatsApp": "WhatsApp-ൽ മുൻഗണനാ പിന്തുണ",
+      "Talk to us on WhatsApp": "WhatsApp-ൽ ഞങ്ങളോട് സംസാരിക്കൂ",
+      "Your 14-day free trial includes every Growth feature. No card needed.": "നിങ്ങളുടെ 14 ദിവസത്തെ സൗജന്യ ട്രയലിൽ എല്ലാ ഗ്രോത്ത് ഫീച്ചറുകളും ഉൾപ്പെടുന്നു. കാർഡ് വേണ്ട.",
+      "Build your menu, share your link and take real orders for 14 days at no cost, with every Growth feature switched on. If you carry on, pick a plan. Founding restaurants on Starter pay AED 2 a day, about AED 60 a month, for their first year, then AED 149 a month. If not, you stop. There is no commission either way.": "മെനു തയ്യാറാക്കി ലിങ്ക് പങ്കിട്ട് 14 ദിവസം ചെലവില്ലാതെ യഥാർത്ഥ ഓർഡറുകൾ എടുക്കൂ, എല്ലാ ഗ്രോത്ത് ഫീച്ചറുകളും ഓണാക്കി. തുടരണമെങ്കിൽ ഒരു പ്ലാൻ തിരഞ്ഞെടുക്കൂ. സ്റ്റാർട്ടറിലെ ഫൗണ്ടിംഗ് റെസ്റ്ററന്റുകൾ ആദ്യ വർഷം ദിവസം AED 2, മാസം ഏകദേശം AED 60, പിന്നീട് മാസം AED 149. വേണ്ടെങ്കിൽ നിർത്താം. രണ്ടായാലും കമ്മീഷൻ ഇല്ല.",
       "How it works": "എങ്ങനെ പ്രവർത്തിക്കുന്നു",
       "Features": "ഫീച്ചറുകൾ",
       "Pricing": "വില",
@@ -1130,13 +1284,11 @@ const landingScript = String.raw`// year
       "For cafes and small restaurants in the UAE": "യുഎഇയിലെ കഫേകൾക്കും ചെറുകിട റെസ്റ്ററന്റുകൾക്കും",
       "Take orders on WhatsApp.": "വാട്ട്സ്ആപ്പിൽ ഓർഡർ എടുക്കൂ.",
       "Keep every dirham.": "ഓരോ ദിർഹവും നിങ്ങൾക്കു തന്നെ.",
-      "WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. AED 2 a day, with no commission.": "WhatsOrder നിങ്ങളുടെ കഫേയ്ക്ക് സ്വന്തം മെനു ലിങ്ക് നൽകുന്നു, ഓരോ ചാറ്റും വ്യക്തമായ ഓർഡർ ടിക്കറ്റാക്കുന്നു, ഓരോ കസ്റ്റമറെയും ഓർത്തുവയ്ക്കുന്നു. ദിവസം AED 2, കമ്മീഷൻ ഇല്ല.",
       "Start 14-day free trial": "14 ദിവസത്തെ സൗജന്യ ട്രയൽ തുടങ്ങൂ",
       "Order from the live demo": "ലൈവ് ഡെമോയിൽ ഓർഡർ ചെയ്തു നോക്കൂ",
       "Build your menu from a photo in about 2 minutes. No card needed.": "ഒരു ഫോട്ടോയിൽ നിന്ന് ഏകദേശം 2 മിനിറ്റിൽ മെനു തയ്യാറാക്കാം. കാർഡ് വേണ്ട.",
       "The same order, before and after WhatsOrder.": "ഒരേ ഓർഡർ, WhatsOrder-നു മുമ്പും ശേഷവും.",
       "commission on every order": "ഓരോ ഓർഡറിലും കമ്മീഷൻ",
-      "a day, one flat price": "ദിവസം, ഒറ്റ നിശ്ചിത വില",
       "14 days": "14 ദിവസം",
       "free to try with your real menu": "നിങ്ങളുടെ യഥാർത്ഥ മെനുവുമായി സൗജന്യമായി പരീക്ഷിക്കാം",
       "2 min": "2 മിനിറ്റ്",
@@ -1146,7 +1298,6 @@ const landingScript = String.raw`// year
       "Monthly orders you move to direct": "നേരിട്ടുള്ള ഓർഡറിലേക്ക് മാറ്റുന്ന മാസ വിൽപ്പന",
       "Assumes about 27% delivery-app commission. Real rates vary by platform and plan.": "ഏകദേശം 27% ഡെലിവറി ആപ്പ് കമ്മീഷൻ കണക്കാക്കിയിരിക്കുന്നു. യഥാർത്ഥ നിരക്ക് പ്ലാറ്റ്ഫോമും പ്ലാനും അനുസരിച്ച് മാറും.",
       "Delivery-app commission on those orders (27%)": "ആ ഓർഡറുകളിലെ ഡെലിവറി ആപ്പ് കമ്മീഷൻ (27%)",
-      "WhatsOrder Starter (AED 2 a day)": "WhatsOrder സ്റ്റാർട്ടർ (ദിവസം AED 2)",
       "You keep, every month": "ഓരോ മാസവും നിങ്ങൾക്കു കിട്ടുന്നത്",
       "Three steps from paper menu to first order.": "പേപ്പർ മെനുവിൽ നിന്ന് ആദ്യ ഓർഡറിലേക്ക് മൂന്ന് ഘട്ടങ്ങൾ.",
       "Your customers keep ordering on WhatsApp, exactly as they do now. You get the order in a form your kitchen can use.": "കസ്റ്റമർമാർ ഇപ്പോഴത്തെപ്പോലെ തന്നെ വാട്ട്സ്ആപ്പിൽ ഓർഡർ ചെയ്യും. അടുക്കളയ്ക്ക് ഉപയോഗിക്കാവുന്ന രൂപത്തിൽ ഓർഡർ നിങ്ങൾക്കു കിട്ടും.",
@@ -1176,7 +1327,6 @@ const landingScript = String.raw`// year
       "Stamp-card loyalty": "സ്റ്റാമ്പ് കാർഡ് ലോയൽറ്റി",
       "Feedback request after each order": "ഓരോ ഓർഡറിനു ശേഷവും ഫീഡ്ബാക്ക് അഭ്യർത്ഥന",
       "AI daily recap with one move for today": "ഇന്നത്തേക്ക് ഒരു നീക്കം നിർദേശിക്കുന്ന AI പ്രതിദിന റീക്യാപ്പ്",
-      "Marketing posters made from your menu": "നിങ്ങളുടെ മെനുവിൽ നിന്ന് തയ്യാറാക്കുന്ന മാർക്കറ്റിംഗ് പോസ്റ്ററുകൾ",
       "WhatsApp campaigns, coming soon": "വാട്ട്സ്ആപ്പ് ക്യാമ്പെയ്നുകൾ, ഉടൻ വരുന്നു",
       "Close the day": "ദിവസം ക്ലോസ് ചെയ്യാൻ",
       "Shift open and cash-up": "ഷിഫ്റ്റ് ഓപ്പണും ക്യാഷ്-അപ്പും",
@@ -1211,19 +1361,12 @@ const landingScript = String.raw`// year
       "Not included": "ഉൾപ്പെടുന്നില്ല",
       "What it costs you": "നിങ്ങൾക്കുള്ള ചെലവ്",
       "A cut of all sales": "എല്ലാ വിൽപ്പനയുടെയും വിഹിതം",
-      "≈ AED 60 flat / month": "മാസം ≈ AED 60 ഫ്ലാറ്റ്",
-      "AED 2 a day. Free for the first 14 days.": "ദിവസം AED 2. ആദ്യ 14 ദിവസം സൗജന്യം.",
-      "One flat price, about the cost of a karak a day. We never take a percentage of your sales.": "ഒറ്റ നിശ്ചിത വില, ദിവസം ഒരു കരക്കിന്റെ വില മാത്രം. വിൽപ്പനയുടെ ശതമാനം ഞങ്ങൾ ഒരിക്കലും എടുക്കില്ല.",
       "WhatsOrder Starter": "WhatsOrder സ്റ്റാർട്ടർ",
-      "Founding offer": "ഫൗണ്ടിംഗ് ഓഫർ",
-      "Per day": "ദിവസം",
-      "Per month, about": "മാസം, ഏകദേശം",
       "Commission on orders": "ഓർഡറുകളിലെ കമ്മീഷൻ",
       "Setup help": "സെറ്റപ്പ് സഹായം",
       "Free": "സൗജന്യം",
       "First 14 days": "ആദ്യ 14 ദിവസം",
       "Due today": "ഇന്ന് അടയ്ക്കേണ്ടത്",
-      "What you get": "നിങ്ങൾക്കു കിട്ടുന്നത്",
       "WhatsApp ordering and live order board": "വാട്ട്സ്ആപ്പ് ഓർഡറിംഗും ലൈവ് ഓർഡർ ബോർഡും",
       "Customer list, groups and stamp-card loyalty": "കസ്റ്റമർ ലിസ്റ്റ്, ഗ്രൂപ്പുകൾ, സ്റ്റാമ്പ് കാർഡ് ലോയൽറ്റി",
       "Feedback after every order": "ഓരോ ഓർഡറിനു ശേഷവും ഫീഡ്ബാക്ക്",
@@ -1235,7 +1378,6 @@ const landingScript = String.raw`// year
       "The questions owners ask first.": "ഉടമകൾ ആദ്യം ചോദിക്കുന്ന ചോദ്യങ്ങൾ.",
       "Still unsure about something? Message us on WhatsApp and a person will answer.": "ഇനിയും സംശയമുണ്ടോ? വാട്ട്സ്ആപ്പിൽ മെസേജ് ചെയ്യൂ; ഒരാൾ നേരിട്ട് മറുപടി തരും.",
       "How does the 14-day free trial work?": "14 ദിവസത്തെ സൗജന്യ ട്രയൽ എങ്ങനെയാണ്?",
-      "Build your menu, share your link and take real orders for 14 days at no cost. If you want to carry on, Starter is AED 2 a day, about AED 60 a month. If not, you stop. There is no commission either way.": "മെനു തയ്യാറാക്കി ലിങ്ക് പങ്കിട്ട് 14 ദിവസം ചെലവില്ലാതെ യഥാർത്ഥ ഓർഡറുകൾ എടുക്കൂ. തുടരണമെങ്കിൽ സ്റ്റാർട്ടർ ദിവസം AED 2, മാസം ഏകദേശം AED 60. വേണ്ടെങ്കിൽ നിർത്താം. രണ്ടായാലും കമ്മീഷൻ ഇല്ല.",
       "What do I need to get started?": "തുടങ്ങാൻ എന്തൊക്കെ വേണം?",
       "A phone or tablet and your WhatsApp number. There are no terminals to buy. A printer is optional, for kitchen tickets and receipts.": "ഒരു ഫോണോ ടാബ്ലെറ്റോ, നിങ്ങളുടെ വാട്ട്സ്ആപ്പ് നമ്പറും. വാങ്ങേണ്ട ടെർമിനലുകളില്ല. കിച്ചൻ ടിക്കറ്റിനും രസീതിനും പ്രിന്റർ വേണമെങ്കിൽ മാത്രം.",
       "How long does setup take?": "സെറ്റപ്പിന് എത്ര സമയമെടുക്കും?",
