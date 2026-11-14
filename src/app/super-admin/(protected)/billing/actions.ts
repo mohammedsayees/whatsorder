@@ -8,11 +8,16 @@ import {
   changeStatusManually,
   issueCurrentPeriodInvoice,
   recordPayment,
+  updateFeatureOverrides,
   voidInvoice,
   type BillingActor
 } from "@/lib/billing-data";
 import {
+  OVERRIDABLE_FEATURES,
   PAYMENT_METHODS,
+  type AiImageOverrideChoice,
+  type FeatureOverrideChoice,
+  type PlanFeatureFlag,
   type BillingInterval,
   type PaymentMethod,
   type SubscriptionStatus
@@ -178,4 +183,34 @@ export async function changeStatusAction(formData: FormData) {
 
   const result = await changeStatusManually(restaurantId, statusRaw, reason, actor);
   finish(restaurantId, result, "status");
+}
+
+const FEATURE_CHOICES: FeatureOverrideChoice[] = ["plan", "on", "off"];
+const AI_IMAGE_CHOICES: AiImageOverrideChoice[] = ["plan", "custom", "unlimited"];
+
+export async function updateFeatureOverridesAction(formData: FormData) {
+  const actor = await actorFromSession();
+  const restaurantId = field(formData, "restaurant_id");
+  if (!restaurantId) {
+    return;
+  }
+
+  const features: Partial<Record<PlanFeatureFlag, FeatureOverrideChoice>> = {};
+  for (const { flag } of OVERRIDABLE_FEATURES) {
+    const value = field(formData, `feature_${flag}`) as FeatureOverrideChoice;
+    features[flag] = FEATURE_CHOICES.includes(value) ? value : "plan";
+  }
+  const aiValue = field(formData, "ai_images") as AiImageOverrideChoice;
+  const aiImages = AI_IMAGE_CHOICES.includes(aiValue) ? aiValue : "plan";
+  const aiLimitRaw = field(formData, "ai_image_limit");
+  const aiImageLimit = aiLimitRaw ? Number(aiLimitRaw) : null;
+
+  const result = await updateFeatureOverrides(restaurantId, {
+    features,
+    aiImages,
+    aiImageLimit,
+    reason: field(formData, "reason"),
+    actor
+  });
+  finish(restaurantId, result, "features");
 }

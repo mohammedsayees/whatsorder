@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   NO_SUBSCRIPTION_ACCESS,
+  aiImageOverrideChoice,
+  buildFeatureOverrides,
+  featureOverrideChoice,
+  sameFeatureOverrides,
   aiImageAllowanceRemaining,
   isPlanFeatureFlag,
   resolveEntitlements,
@@ -138,7 +142,67 @@ describe("pricing v2 migration", () => {
     expect(migration).toContain("a live subscription was left without a pinned price");
   });
 
-  it("does not touch RLS or policies", () => {
-    expect(migration).not.toMatch(/row level security|create policy|drop policy|grant /i);
+  it("keeps existing RLS and makes the new audit table read-only", () => {
+    expect(migration).not.toMatch(/disable row level security/i);
+    expect(migration).toContain(
+      "alter table public.subscription_feature_events enable row level security;"
+    );
+    const policies = migration.match(/create policy[\s\S]*?;/gi) ?? [];
+    expect(policies).toHaveLength(2);
+    for (const policy of policies) {
+      expect(policy).toContain("on public.subscription_feature_events for select");
+    }
+    expect(migration).not.toMatch(/grant (insert|update|delete|all)/i);
+    expect(migration).toContain("grant select on table public.subscription_feature_events to authenticated;");
+  });
+
+  it("logs grandfathered features once and lets Personalised be assigned", () => {
+    expect(migration).toContain("'Grandfathered: all features kept from pre-November 2026 pricing'");
+    expect(migration).toContain("and subscription.feature_overrides = '{}'::jsonb");
+    expect(migration).toContain("'pro', 'multi_branch', 'custom'");
+  });
+});
+
+describe("feature override panel helpers", () => {
+  it("reads current choices from stored overrides", () => {
+    const stored = { chat_inbox: true, finance: false, monthly_ai_image_limit: 500 };
+    expect(featureOverrideChoice(stored, "chat_inbox")).toBe("on");
+    expect(featureOverrideChoice(stored, "finance")).toBe("off");
+    expect(featureOverrideChoice(stored, "campaigns")).toBe("plan");
+    expect(aiImageOverrideChoice(stored)).toEqual({ choice: "custom", limit: 500 });
+    expect(aiImageOverrideChoice({ monthly_ai_image_limit: null })).toEqual({ choice: "unlimited", limit: null });
+    expect(aiImageOverrideChoice({})).toEqual({ choice: "plan", limit: null });
+  });
+
+  it("builds overrides, drops 'follow plan' keys and keeps unmanaged keys", () => {
+    const result = buildFeatureOverrides(
+      { campaigns: true, multi_branch: true, monthly_ai_image_limit: null },
+      { features: { campaigns: "plan", finance: "on", chat_inbox: "off" }, aiImages: "custom", aiImageLimit: 500 }
+    );
+    expect(result).toEqual({
+      ok: true,
+      overrides: { multi_branch: true, finance: true, chat_inbox: false, monthly_ai_image_limit: 500 }
+    });
+
+    const reset = buildFeatureOverrides(
+      { campaigns: true, monthly_ai_image_limit: 50 },
+      { features: {}, aiImages: "plan", aiImageLimit: null }
+    );
+    expect(reset).toEqual({ ok: true, overrides: {} });
+
+    const unlimited = buildFeatureOverrides({}, { features: {}, aiImages: "unlimited", aiImageLimit: 3 });
+    expect(unlimited).toEqual({ ok: true, overrides: { monthly_ai_image_limit: null } });
+  });
+
+  it("rejects an invalid custom AI image amount", () => {
+    for (const limit of [null, -1, 2.5, 10001, Number.NaN]) {
+      expect(buildFeatureOverrides({}, { features: {}, aiImages: "custom", aiImageLimit: limit }).ok).toBe(false);
+    }
+  });
+
+  it("compares overrides regardless of key order", () => {
+    expect(sameFeatureOverrides({ a: true, b: false }, { b: false, a: true })).toBe(true);
+    expect(sameFeatureOverrides({ a: true }, { a: false })).toBe(false);
+    expect(sameFeatureOverrides(null, {})).toBe(true);
   });
 });

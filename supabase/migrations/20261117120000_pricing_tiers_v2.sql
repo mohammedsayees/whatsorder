@@ -14,7 +14,8 @@
 --   (a) the price it pays today, pinned via price_override (audited in
 --       subscription_price_events), and
 --   (b) every feature, via the new subscriptions.feature_overrides column.
--- A super admin can remove either later. No RLS or policy changes.
+-- A super admin can remove either later. Existing RLS is unchanged; the new
+-- audit table is read-only (select policies only) for authenticated users.
 
 alter table public.plans
 add column if not exists monthly_ai_image_limit integer;
@@ -49,6 +50,44 @@ begin
   end if;
 end;
 $feature_overrides_constraint$;
+
+-- Audit trail for super-admin feature override changes (writes: service role
+-- only; reads: the tenant's members and super admins, like price events).
+create table if not exists public.subscription_feature_events (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  subscription_id uuid not null,
+  previous_overrides jsonb,
+  new_overrides jsonb,
+  reason text not null check (nullif(btrim(reason), '') is not null),
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_role text,
+  created_at timestamptz not null default now(),
+  constraint subscription_feature_events_subscription_tenant_fkey
+    foreign key (subscription_id, restaurant_id)
+    references public.subscriptions(id, restaurant_id)
+    on delete cascade
+);
+
+create index if not exists idx_subscription_feature_events_created
+on public.subscription_feature_events(restaurant_id, created_at desc);
+
+alter table public.subscription_feature_events enable row level security;
+
+drop policy if exists "Restaurant members can read own feature events"
+on public.subscription_feature_events;
+create policy "Restaurant members can read own feature events"
+on public.subscription_feature_events for select
+using (public.is_restaurant_member(subscription_feature_events.restaurant_id));
+
+drop policy if exists "Super admins can read all feature events"
+on public.subscription_feature_events;
+create policy "Super admins can read all feature events"
+on public.subscription_feature_events for select
+using (public.is_super_admin());
+
+revoke all on table public.subscription_feature_events from anon, authenticated;
+grant select on table public.subscription_feature_events to authenticated;
 
 comment on column public.subscriptions.feature_overrides is
   'Per-contract entitlement overrides merged over the plan: boolean plan flags, plus optional monthly_ai_image_limit (number, or null for no monthly cap).';
@@ -96,17 +135,33 @@ select
   billing_interval, 'Grandfathered: pre-November 2026 pricing', null, null, 'migration'
 from grandfathered;
 
--- (2) Grandfather features: existing subscriptions keep everything.
-update public.subscriptions
-set feature_overrides = feature_overrides || jsonb_build_object(
-  'campaigns', true,
-  'advanced_analytics', true,
-  'scheduled_orders', true,
-  'chat_inbox', true,
-  'finance', true,
-  'monthly_ai_image_limit', null
+-- (2) Grandfather features: existing subscriptions keep everything. Only
+--     subscriptions not already grandfathered are touched, so a re-run never
+--     undoes a later super-admin change or writes duplicate audit rows.
+with grandfathered_features as (
+  update public.subscriptions subscription
+  set feature_overrides = subscription.feature_overrides || jsonb_build_object(
+    'campaigns', true,
+    'advanced_analytics', true,
+    'scheduled_orders', true,
+    'chat_inbox', true,
+    'finance', true,
+    'monthly_ai_image_limit', null
+  )
+  where subscription.status <> 'cancelled'
+    and subscription.feature_overrides = '{}'::jsonb
+    and not exists (
+      select 1 from public.subscription_feature_events event
+      where event.subscription_id = subscription.id
+    )
+  returning subscription.id, subscription.restaurant_id, subscription.feature_overrides
 )
-where status <> 'cancelled';
+insert into public.subscription_feature_events (
+  restaurant_id, subscription_id, previous_overrides, new_overrides, reason, actor_role
+)
+select restaurant_id, id, '{}'::jsonb, feature_overrides,
+  'Grandfathered: all features kept from pre-November 2026 pricing', 'migration'
+from grandfathered_features;
 
 -- (3) New plan prices, names, flags and AI allowances.
 update public.plans

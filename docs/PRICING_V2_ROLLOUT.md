@@ -23,6 +23,8 @@ merging. It:
   `plans.monthly_ai_image_limit`;
 - allows `multi_branch` in `restaurants.plan` (assigning that plan used to fail
   in the plan-sync trigger);
+- adds the read-only `subscription_feature_events` audit table and logs the
+  grandfathered features there;
 - fails if any live subscription is left without a pinned price. It is safe to
   re-run and changes no RLS or policies.
 
@@ -49,9 +51,18 @@ discount ends it moves to the **new** plan price.
 
 Gated restaurants are sent to `/admin/upgrade`.
 
-## Removing grandfathering for one restaurant
+## Customising one restaurant (super admin)
 
-Super admin: clear the price override on the contract, and reset
-`subscriptions.feature_overrides` to `{}` for that restaurant. Moving a
+**Super admin → Billing → restaurant → Plan features.** For each gated feature
+choose *Follow plan*, *Always include* or *Always exclude*; set the AI image
+allowance to follow the plan, a custom amount, or no monthly cap. A reason is
+required. Changes apply immediately and are logged in
+`subscription_feature_events` (shown as "Feature change history").
+
+Personalised contracts may set a contract price **above** list (extra
+branches, custom work); other plans only allow discounts.
+
+To remove grandfathering for one restaurant: set every feature back to
+*Follow plan*, and clear the contract price under **Update contract**. Moving a
 grandfathered restaurant to another plan keeps its pinned price until the
-override is cleared.
+contract price is cleared.

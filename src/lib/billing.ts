@@ -330,6 +330,100 @@ export function aiImageAllowanceRemaining(
   return usedThisMonth !== null && usedThisMonth < monthlyLimit;
 }
 
+// ---------------------------------------------------------------------------
+// Per-contract feature overrides (super-admin "Plan features" panel).
+// ---------------------------------------------------------------------------
+export const OVERRIDABLE_FEATURES: Array<{ flag: PlanFeatureFlag; label: string }> = [
+  { flag: "campaigns", label: "Marketing & campaigns" },
+  { flag: "chat_inbox", label: "WhatsApp chat inbox & AI replies" },
+  { flag: "finance", label: "Finance & costing" },
+  { flag: "advanced_analytics", label: "Advanced analytics" },
+  { flag: "scheduled_orders", label: "Scheduled orders" }
+];
+
+export type FeatureOverrideChoice = "plan" | "on" | "off";
+export type AiImageOverrideChoice = "plan" | "custom" | "unlimited";
+export const MAX_AI_IMAGE_OVERRIDE = 10000;
+
+export function featureOverrideChoice(
+  overrides: Record<string, unknown> | null | undefined,
+  flag: PlanFeatureFlag
+): FeatureOverrideChoice {
+  const value = overrides?.[flag];
+  return value === true ? "on" : value === false ? "off" : "plan";
+}
+
+export function aiImageOverrideChoice(
+  overrides: Record<string, unknown> | null | undefined
+): { choice: AiImageOverrideChoice; limit: number | null } {
+  if (!overrides || !("monthly_ai_image_limit" in overrides)) {
+    return { choice: "plan", limit: null };
+  }
+  const value = overrides.monthly_ai_image_limit;
+  if (value === null) return { choice: "unlimited", limit: null };
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return { choice: "custom", limit: Math.floor(value) };
+  }
+  return { choice: "plan", limit: null };
+}
+
+/**
+ * Builds the new feature_overrides object from the panel's choices. Keys the
+ * panel does not manage (e.g. multi_branch) are carried over unchanged.
+ */
+export function buildFeatureOverrides(
+  current: Record<string, unknown> | null | undefined,
+  choices: {
+    features: Partial<Record<PlanFeatureFlag, FeatureOverrideChoice>>;
+    aiImages: AiImageOverrideChoice;
+    aiImageLimit: number | null;
+  }
+): { ok: true; overrides: Record<string, unknown> } | { ok: false; error: string } {
+  const next: Record<string, unknown> =
+    current && typeof current === "object" && !Array.isArray(current) ? { ...current } : {};
+
+  for (const { flag } of OVERRIDABLE_FEATURES) {
+    const choice = choices.features[flag] ?? "plan";
+    if (choice === "on") next[flag] = true;
+    else if (choice === "off") next[flag] = false;
+    else delete next[flag];
+  }
+
+  if (choices.aiImages === "unlimited") {
+    next.monthly_ai_image_limit = null;
+  } else if (choices.aiImages === "custom") {
+    const limit = choices.aiImageLimit;
+    if (
+      limit === null ||
+      !Number.isInteger(limit) ||
+      limit < 0 ||
+      limit > MAX_AI_IMAGE_OVERRIDE
+    ) {
+      return {
+        ok: false,
+        error: `Enter a whole number of AI images between 0 and ${MAX_AI_IMAGE_OVERRIDE}.`
+      };
+    }
+    next.monthly_ai_image_limit = limit;
+  } else {
+    delete next.monthly_ai_image_limit;
+  }
+
+  return { ok: true, overrides: next };
+}
+
+/** Stable comparison of two overrides objects (key order independent). */
+export function sameFeatureOverrides(
+  a: Record<string, unknown> | null | undefined,
+  b: Record<string, unknown> | null | undefined
+): boolean {
+  const normalize = (value: Record<string, unknown> | null | undefined) =>
+    JSON.stringify(
+      Object.entries(value ?? {}).sort(([left], [right]) => left.localeCompare(right))
+    );
+  return normalize(a) === normalize(b);
+}
+
 // Resolve a plan's jsonb feature flags into a fully-typed object with safe
 // false defaults, so callers never branch on an undefined flag.
 export function resolvePlanFeatures(
