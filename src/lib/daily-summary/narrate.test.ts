@@ -193,6 +193,119 @@ describe("buildTemplateMessage", () => {
       }
     }
   });
+
+  it("sends a neutral closed line instead of the alert on a scheduled closed day", () => {
+    const closedHours = Object.fromEntries(
+      ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map(
+        (day) => [day, { closed: day === "thursday", open: "07:00", close: "23:00" }]
+      )
+    );
+    const restaurant = { opening_hours_enabled: true, opening_hours: closedHours };
+    // 2026-06-25 is a Thursday; Wednesday's hours do not run past midnight.
+    const n = withDailyCoach(
+      numbers({ order_count: 0, gross_revenue: 0, last_week_count: 30 }),
+      restaurant
+    );
+    const message = buildTemplateMessage(n, "Chai Xpress", restaurant);
+    expect(message).toContain("Closed per your opening hours");
+    expect(message).not.toContain("Alert");
+    expect(message).not.toContain("Comparison:");
+  });
+
+  it("keeps the zero-sales alert for a day that should have been open", () => {
+    const openHours = Object.fromEntries(
+      ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map(
+        (day) => [day, { closed: false, open: "07:00", close: "23:00" }]
+      )
+    );
+    const restaurant = { opening_hours_enabled: true, opening_hours: openHours };
+    const n = withDailyCoach(numbers({ order_count: 0, gross_revenue: 0 }), restaurant);
+    const message = buildTemplateMessage(n, "Chai Xpress", restaurant);
+    expect(message).toContain("Alert: no completed sales");
+    expect(message).not.toContain("Closed per your opening hours");
+  });
+
+  it("keeps the zero-sales alert when opening hours are not enabled", () => {
+    const n = withDailyCoach(numbers({ order_count: 0, gross_revenue: 0 }));
+    const message = buildTemplateMessage(n, "Chai Xpress", { opening_hours_enabled: false });
+    expect(message).toContain("Alert: no completed sales");
+  });
+
+  it("shows unfinished orders and renders day-level actions without a period label", () => {
+    const n = withDailyCoach(
+      numbers({
+        order_count: 4,
+        unfinished_order_count: 2,
+        periods: []
+      })
+    );
+    const message = buildTemplateMessage(n, "Chai Xpress");
+    expect(message).toContain("Unfinished: 2");
+    expect(message).toContain(
+      "1. 2 orders from the day were never completed or cancelled"
+    );
+    expect(message).not.toContain("null");
+    expect(message).not.toContain("undefined");
+  });
+
+  it("shows unfinished orders on a zero-completed day", () => {
+    const n = withDailyCoach(
+      numbers({ order_count: 0, gross_revenue: 0, unfinished_order_count: 1 })
+    );
+    const message = buildTemplateMessage(n, "Chai Xpress");
+    expect(message).toContain("Unfinished: 1 order was never completed or cancelled");
+  });
+
+  it("explains thin history for a new restaurant instead of inventing a trend", () => {
+    const n = withDailyCoach(
+      numbers({
+        order_count: 9,
+        last_week_count: 0,
+        dow_avg_count: 0,
+        dow_trading_days: 0,
+        top_combo: null,
+        item_riser: null,
+        item_faller: null,
+        periods: [
+          {
+            key: "morning",
+            label: "Morning",
+            start_hour: 7,
+            end_hour: 11,
+            order_count: 9,
+            sales: 180,
+            avg_order_value: 20,
+            baseline_order_count: 0,
+            baseline_avg_order_value: 0,
+            baseline_trading_days: 0,
+            cancelled_count: 0,
+            contact_count: 9,
+            marketable_count: 3,
+            repeat_customer_orders: 0,
+            new_customer_orders: 9,
+            delivery_order_count: 0,
+            checkout_order_count: 9,
+            checkout_contact_count: 9,
+            fulfilment_breakdown: { takeaway: { orders: 9, sales: 180 } },
+            top_item: { name: "Karak Tea", qty: 9 },
+            top_delivery_area: null
+          }
+        ]
+      })
+    );
+    const message = buildTemplateMessage(n, "Chai Xpress");
+    expect(message).not.toContain("Comparison:");
+    expect(message).toContain("not enough same-weekday trading history");
+  });
+
+  it("names the trading days behind a same-weekday average comparison", () => {
+    const n = withDailyCoach(
+      numbers({ last_week_count: 0, dow_avg_count: 100, dow_trading_days: 3, periods: [] })
+    );
+    expect(buildTemplateMessage(n, "Chai Xpress")).toContain(
+      "than the same-weekday average (3 trading days)"
+    );
+  });
 });
 
 describe("narrate (fallback behaviour)", () => {

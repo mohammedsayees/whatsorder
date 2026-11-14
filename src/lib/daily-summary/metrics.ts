@@ -102,7 +102,11 @@ export async function computeDailyNumbers(
     delta_vs_prev: coach.completed_order_count - coach.previous_day_count,
     delta_vs_last_week: coach.completed_order_count - coach.last_week_count,
     dow_avg_count: coach.same_weekday_average,
+    // Optional until the trading-day migration is applied; undefined is
+    // handled by the coach and message builder.
+    dow_trading_days: coach.same_weekday_trading_days,
     cancelled_count: coach.cancelled_count,
+    unfinished_order_count: coach.unfinished_order_count ?? 0,
     contact_capture_rate: contactCaptureRate,
     marketable_count: coach.marketable_count,
     repeat_customer_orders: coach.repeat_customer_orders,

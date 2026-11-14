@@ -105,7 +105,7 @@ export function DailySummaryCard({
                 ))}
               </div>
               <p className="mt-3 text-xs text-stone-500">
-                Period comparisons use completed orders from the same weekday over the previous four weeks. Delivery areas appear only with at least three orders.
+                Period comparisons use completed orders from the same weekday over the previous four weeks, counting only days the restaurant traded; at least two such days are needed. Delivery areas appear only with at least three orders.
               </p>
             </details>
           ) : null}

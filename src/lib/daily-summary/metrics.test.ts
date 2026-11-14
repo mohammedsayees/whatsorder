@@ -43,7 +43,9 @@ describe("computeDailyNumbers", () => {
             previous_day_count: 3,
             last_week_count: 5,
             same_weekday_average: 4,
+            same_weekday_trading_days: 3,
             cancelled_count: 1,
+            unfinished_order_count: 2,
             contact_count: 2,
             marketable_count: 1,
             repeat_customer_orders: 2,
@@ -80,6 +82,9 @@ describe("computeDailyNumbers", () => {
 
     expect(result).toMatchObject({
       order_count: 4,
+      dow_avg_count: 4,
+      dow_trading_days: 3,
+      unfinished_order_count: 2,
       cancelled_count: 1,
       repeat_customer_orders: 2,
       new_customer_orders: 1,
@@ -102,5 +107,41 @@ describe("computeDailyNumbers", () => {
       rid: "restaurant-1",
       target_day: "2026-11-09"
     });
+  });
+
+  it("tolerates a coach payload from before the trading-day migration", async () => {
+    const rpc = vi.fn(async (name: string) => {
+      if (name === "daily_summary_numbers") {
+        return { data: legacyNumbers, error: null };
+      }
+      if (name === "daily_coach_insights") {
+        return {
+          data: {
+            summary_date: "2026-11-09",
+            completed_order_count: 4,
+            completed_sales: 80,
+            avg_order_value: 20,
+            previous_day_count: 3,
+            last_week_count: 5,
+            same_weekday_average: 4,
+            cancelled_count: 0,
+            contact_count: 2,
+            marketable_count: 1,
+            repeat_customer_orders: 2,
+            new_customer_orders: 1,
+            periods: [],
+            location_insights: []
+          },
+          error: null
+        };
+      }
+      return { data: { top_items: [], payment_breakdown: {} }, error: null };
+    });
+    const admin = { rpc } as unknown as SupabaseClient;
+
+    const result = await computeDailyNumbers(admin, "restaurant-1", "2026-11-09");
+
+    expect(result.unfinished_order_count).toBe(0);
+    expect(result.dow_trading_days).toBeUndefined();
   });
 });

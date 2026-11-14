@@ -225,12 +225,123 @@ values
     true,
     '2026-07-13 05:00:00+00',
     '2026-07-13 05:00:00+00'
+  ),
+  -- Two Mondays ago: one completed lunch order makes it a second trading day.
+  (
+    '46000000-0000-0000-0000-000000000010',
+    '26000000-0000-0000-0000-000000000001',
+    'Earlier customer',
+    '971500000098',
+    'takeaway',
+    '',
+    '',
+    'Cash on Delivery',
+    '[{"item_id":"tea","name":"Karak Tea","quantity":1,"price":5}]'::jsonb,
+    5,
+    0,
+    5,
+    'Completed',
+    'test',
+    true,
+    false,
+    '2026-06-29 08:00:00+00',
+    '2026-06-29 08:00:00+00'
+  ),
+  -- Three Mondays ago: only a cancelled order, so not a trading day. Four
+  -- Mondays ago has no orders at all (closed). Neither may dilute baselines.
+  (
+    '46000000-0000-0000-0000-000000000011',
+    '26000000-0000-0000-0000-000000000001',
+    'Cancelled earlier',
+    '971500000099',
+    'takeaway',
+    '',
+    '',
+    'Cash on Delivery',
+    '[]'::jsonb,
+    5,
+    0,
+    5,
+    'Cancelled',
+    'test',
+    true,
+    false,
+    '2026-06-22 08:00:00+00',
+    '2026-06-22 08:00:00+00'
+  ),
+  -- Current Monday: two orders staff never closed out.
+  (
+    '46000000-0000-0000-0000-000000000012',
+    '26000000-0000-0000-0000-000000000001',
+    'Unfinished one',
+    '',
+    'takeaway',
+    '',
+    '',
+    'Cash on Delivery',
+    '[{"item_id":"tea","name":"Karak Tea","quantity":1,"price":5}]'::jsonb,
+    5,
+    0,
+    5,
+    'Preparing',
+    'test',
+    true,
+    false,
+    '2026-07-13 09:00:00+00',
+    '2026-07-13 09:00:00+00'
+  ),
+  (
+    '46000000-0000-0000-0000-000000000013',
+    '26000000-0000-0000-0000-000000000001',
+    'Unfinished two',
+    '971500000100',
+    'takeaway',
+    '',
+    '',
+    'Cash on Delivery',
+    '[{"item_id":"tea","name":"Karak Tea","quantity":1,"price":5}]'::jsonb,
+    5,
+    0,
+    5,
+    'New',
+    'test',
+    true,
+    false,
+    '2026-07-13 10:00:00+00',
+    '2026-07-13 10:00:00+00'
+  ),
+  -- Cross-tenant unfinished order must never affect Tenant A either.
+  (
+    '46000000-0000-0000-0000-000000000014',
+    '26000000-0000-0000-0000-000000000002',
+    'Other tenant unfinished',
+    '971500000101',
+    'takeaway',
+    '',
+    '',
+    'Cash on Delivery',
+    '[]'::jsonb,
+    5,
+    0,
+    5,
+    'Preparing',
+    'test',
+    true,
+    false,
+    '2026-07-13 10:00:00+00',
+    '2026-07-13 10:00:00+00'
   );
+
+-- The anonymous morning delivery was punched in by staff, not a checkout.
+update public.orders
+set source = 'staff'
+where id = '46000000-0000-0000-0000-000000000006';
 
 do $daily_coach_checks$
 declare
   insight jsonb;
   morning jsonb;
+  lunch jsonb;
   owner_report jsonb;
 begin
   insight := public.daily_coach_insights(
@@ -258,6 +369,42 @@ begin
      or (morning->'top_delivery_area'->>'area') <> 'Al Rawda 3'
      or (morning->>'repeat_customer_orders')::integer <> 1 then
     raise exception 'Morning period insight is incorrect: %', morning;
+  end if;
+
+  -- Trading-day baselines: only 2026-07-06 and 2026-06-29 had completed
+  -- orders. 2026-06-22 (cancelled only) and 2026-06-15 (no orders) are excluded
+  -- rather than averaged in as zero.
+  if (insight->>'same_weekday_trading_days')::integer <> 2
+     or (insight->>'same_weekday_average')::numeric <> 1.5 then
+    raise exception 'Same-weekday average must use trading days only: %', insight;
+  end if;
+
+  if (morning->>'baseline_trading_days')::integer <> 2
+     or (morning->>'baseline_order_count')::numeric <> 1.0 then
+    raise exception 'Morning baseline must average over trading days: %', morning;
+  end if;
+
+  select period
+  into lunch
+  from jsonb_array_elements(insight->'periods') period
+  where period->>'key' = 'lunch';
+
+  if (lunch->>'baseline_trading_days')::integer <> 2
+     or (lunch->>'baseline_order_count')::numeric <> 0.5 then
+    raise exception 'Lunch baseline must average over trading days: %', lunch;
+  end if;
+
+  -- Unfinished: 'Preparing' + 'New' today; completed, cancelled and the other
+  -- tenant's order are excluded, and none of them change completed sales.
+  if (insight->>'unfinished_order_count')::integer <> 2 then
+    raise exception 'Unfinished order count is incorrect: %', insight;
+  end if;
+
+  -- Checkout contact capture ignores the staff-entered order.
+  if (morning->>'checkout_order_count')::integer <> 2
+     or (morning->>'checkout_contact_count')::integer <> 2
+     or (morning->>'contact_count')::integer <> 2 then
+    raise exception 'Checkout contact counts are incorrect: %', morning;
   end if;
 
   if jsonb_array_length(insight->'location_insights') <> 1 then

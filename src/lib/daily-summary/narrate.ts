@@ -4,6 +4,12 @@ import { formatCurrency } from "@/lib/currency";
 import { getRestaurantLocalization } from "@/lib/localization";
 import type { RestaurantLocalization } from "@/lib/types";
 
+import {
+  dailyPeriodKeys,
+  isDailyPeriodOpen,
+  MIN_BASELINE_TRADING_DAYS,
+  type CoachRestaurant
+} from "./coach";
 import type { DailyNumbers } from "./types";
 
 // Narration provider is Gemini today (same key/harness as menu extraction in
@@ -175,7 +181,7 @@ export function currencyAmountsGrounded(
 export function buildTemplateMessage(
   numbers: DailyNumbers,
   name: string,
-  restaurant?: Partial<RestaurantLocalization> | null
+  restaurant?: CoachRestaurant | null
 ): string {
   if (numbers.coach) {
     return buildDailyCoachMessage(numbers, name, restaurant);
@@ -297,7 +303,13 @@ function comparisonLine(numbers: DailyNumbers) {
 
   const difference = numbers.order_count - baseline;
   const percentage = Math.round((difference / baseline) * 100);
-  const source = numbers.last_week_count > 0 ? "last week" : "the four-week weekday average";
+  const tradingDays = numbers.dow_trading_days;
+  const source =
+    numbers.last_week_count > 0
+      ? "last week"
+      : typeof tradingDays === "number"
+        ? `the same-weekday average (${tradingDays} trading day${tradingDays === 1 ? "" : "s"})`
+        : "the four-week weekday average";
   if (difference === 0) {
     return `Comparison: level with ${source}.`;
   }
@@ -391,17 +403,58 @@ function topItemsLine(numbers: DailyNumbers) {
     : null;
 }
 
+/** True when opening hours are enabled and no trading period was open. */
+function closedAllDay(isoDate: string, restaurant?: CoachRestaurant | null) {
+  if (!restaurant?.opening_hours_enabled) {
+    return false;
+  }
+  return dailyPeriodKeys.every(
+    (periodKey) => !isDailyPeriodOpen(periodKey, isoDate, restaurant)
+  );
+}
+
+function unfinishedLine(numbers: DailyNumbers) {
+  const unfinished = Number(numbers.unfinished_order_count) || 0;
+  if (unfinished <= 0) {
+    return null;
+  }
+  return `Unfinished: ${unfinished} order${unfinished === 1 ? " was" : "s were"} never completed or cancelled and ${
+    unfinished === 1 ? "is" : "are"
+  } not in these figures. Close out or cancel ${
+    unfinished === 1 ? "it" : "them"
+  } in the dashboard.`;
+}
+
 function buildDailyCoachMessage(
   numbers: DailyNumbers,
   name: string,
-  restaurant?: Partial<RestaurantLocalization> | null
+  restaurant?: CoachRestaurant | null
 ) {
   const coach = numbers.coach;
   if (!coach) {
     return "";
   }
+  const heading = `Daily Coach — ${summaryDay(numbers.summary_date, restaurant)}`;
+
+  if (numbers.order_count === 0 && closedAllDay(numbers.summary_date, restaurant)) {
+    // A scheduled closed day is not an alert, and comparing it to an open
+    // weekday would read as a collapse in sales.
+    const lines = [
+      heading,
+      name,
+      "Closed per your opening hours — no sales were expected."
+    ];
+    const unfinished = unfinishedLine(numbers);
+    if (unfinished) lines.push(unfinished);
+    const credit = creditLine(numbers, restaurant);
+    if (credit) lines.push(credit);
+    const link = dashboardUrl();
+    if (link) lines.push(`Open dashboard: ${link}`);
+    return lines.join("\n");
+  }
+
   const lines = [
-    `Daily Coach — ${summaryDay(numbers.summary_date, restaurant)}`,
+    heading,
     name,
     `Performance: ${formatCurrency(numbers.gross_revenue, restaurant)} sales • ${numbers.order_count} completed order${
       numbers.order_count === 1 ? "" : "s"
@@ -419,6 +472,8 @@ function buildDailyCoachMessage(
     lines.push(
       "Alert: no completed sales were recorded. Confirm ordering was enabled, opening hours were correct, and feature one available item during the first open period today."
     );
+    const unfinished = unfinishedLine(numbers);
+    if (unfinished) lines.push(unfinished);
     const credit = creditLine(numbers, restaurant);
     if (credit) lines.push(credit);
     const link = dashboardUrl();
@@ -446,6 +501,10 @@ function buildDailyCoachMessage(
     ? Math.round((numbers.cancelled_count / totalAttempts) * 100)
     : 0;
   facts.push(`Cancellations: ${numbers.cancelled_count} (${cancellationRate}%)`);
+  const unfinishedCount = Number(numbers.unfinished_order_count) || 0;
+  if (unfinishedCount > 0) {
+    facts.push(`Unfinished: ${unfinishedCount}`);
+  }
   if ((numbers.repeat_customer_orders ?? 0) > 0) {
     facts.push(`Returning-customer orders: ${numbers.repeat_customer_orders}`);
   }
@@ -456,12 +515,27 @@ function buildDailyCoachMessage(
   if (coach.top_actions.length) {
     lines.push("Today's priorities:");
     coach.top_actions.forEach((recommendation, index) => {
+      const label = recommendation.period_label
+        ? `${recommendation.period_label}: `
+        : "";
       lines.push(
-        `${index + 1}. ${recommendation.period_label}: ${recommendation.evidence} ${recommendation.action}`
+        `${index + 1}. ${label}${recommendation.evidence} ${recommendation.action}`
       );
     });
+  } else if (
+    coach.periods.length > 0 &&
+    coach.periods.every((period) => period.status === "insufficient_data") &&
+    coach.periods.some(
+      (period) =>
+        typeof period.baseline_trading_days === "number" &&
+        period.baseline_trading_days < MIN_BASELINE_TRADING_DAYS
+    )
+  ) {
+    lines.push(
+      "Today: there is not enough same-weekday trading history yet for trend advice; comparisons start once this weekday has traded at least twice in the last four weeks."
+    );
   } else {
-    lines.push("Today: no material period-level problem was detected; keep the current operation consistent.");
+    lines.push("Today: no material problem was detected; keep the current operation consistent.");
   }
 
   const link = dashboardUrl();
@@ -478,7 +552,7 @@ function buildDailyCoachMessage(
 export async function narrate(
   numbers: DailyNumbers,
   name: string,
-  restaurant?: Partial<RestaurantLocalization> | null
+  restaurant?: CoachRestaurant | null
 ): Promise<string> {
   const localization = getRestaurantLocalization(restaurant);
   const template = buildTemplateMessage(numbers, name, restaurant);
