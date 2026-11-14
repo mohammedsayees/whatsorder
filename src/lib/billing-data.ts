@@ -327,10 +327,12 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
     lineItemResult.error ??
     paymentResult.error ??
     statusEventResult.error ??
-    priceEventResult.error ??
-    featureEventResult.error;
+    priceEventResult.error;
   if (detailError) {
     throw new Error(`Billing history could not be loaded: ${detailError.message}`);
+  }
+  if (featureEventResult.error) {
+    console.error("WhatsOrder billing: feature history unavailable", featureEventResult.error.code);
   }
   const invoices = invoiceResult.data;
   const lineItems = lineItemResult.data;
@@ -366,7 +368,11 @@ export async function getBillingDetail(restaurantId: string): Promise<BillingDet
     payments: paymentRows,
     statusEvents: (statusEvents as StatusEvent[] | null) ?? [],
     priceEvents: (priceEvents as PriceEvent[] | null) ?? [],
-    featureEvents: (featureEventResult.data as FeatureEvent[] | null) ?? []
+    // History is informational: a missing table (migration not yet applied)
+    // or a failed read must never take the billing page down.
+    featureEvents: featureEventResult.error
+      ? []
+      : ((featureEventResult.data as FeatureEvent[] | null) ?? [])
   };
 }
 
