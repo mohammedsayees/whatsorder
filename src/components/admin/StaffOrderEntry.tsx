@@ -511,7 +511,7 @@ export function StaffOrderEntry({
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-3 pb-24 lg:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] lg:items-start lg:pb-0">
+      <div className="grid min-w-0 gap-3 pb-24 lg:grid-cols-[minmax(0,1.45fr)_minmax(26rem,1fr)] lg:items-start lg:pb-0">
       {/* Menu picker */}
       <section className="min-w-0 flex flex-col rounded-xl border border-stone-200 bg-white p-3 shadow-sm lg:h-[calc(100dvh-10.5rem)] lg:min-h-[36rem]">
         <label className="relative block">
@@ -718,10 +718,10 @@ export function StaffOrderEntry({
 
           {fulfilmentType === "delivery" ? (
             <div className="mt-3 space-y-3">
-              <label className="block text-sm font-bold text-stone-700">
+              <label className="block text-base font-bold text-stone-700">
                 Delivery area
                 <input
-                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                   maxLength={120}
                   name="delivery_area"
                 value={draft?.fields.delivery_area ?? addToOrder?.delivery_area ?? ""}
@@ -731,10 +731,10 @@ export function StaffOrderEntry({
                   type="text"
                 />
               </label>
-              <label className="block text-sm font-bold text-stone-700">
+              <label className="block text-base font-bold text-stone-700">
                 Delivery address
                 <input
-                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                   maxLength={500}
                   name="delivery_address"
                 value={draft?.fields.delivery_address ?? addToOrder?.delivery_address ?? ""}
@@ -744,10 +744,10 @@ export function StaffOrderEntry({
                   type="text"
                 />
               </label>
-              <label className="block text-sm font-bold text-stone-700">
+              <label className="block text-base font-bold text-stone-700">
                 Landmark <span className="font-normal text-stone-400">(optional)</span>
                 <input
-                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                   maxLength={250}
                   name="delivery_landmark"
                 value={draft?.fields.delivery_landmark ?? addToOrder?.delivery_landmark ?? ""}
@@ -761,10 +761,10 @@ export function StaffOrderEntry({
 
           {fulfilmentType === "car_pickup" ? (
             <div className="mt-3 space-y-3">
-              <label className="block text-sm font-bold text-stone-700">
+              <label className="block text-base font-bold text-stone-700">
                 Car plate number
                 <input
-                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                   maxLength={40}
                   name="car_plate_number"
                 value={draft?.fields.car_plate_number ?? addToOrder?.car_plate_number ?? ""}
@@ -774,11 +774,11 @@ export function StaffOrderEntry({
                   type="text"
                 />
               </label>
-              <label className="block text-sm font-bold text-stone-700">
+              <label className="block text-base font-bold text-stone-700">
                 Car colour / model{" "}
                 <span className="font-normal text-stone-400">(optional)</span>
                 <input
-                  className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                  className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                   maxLength={120}
                   name="car_description"
                 value={draft?.fields.car_description ?? addToOrder?.car_description ?? ""}
@@ -791,10 +791,10 @@ export function StaffOrderEntry({
           ) : null}
 
           {fulfilmentType === "dine_in" ? (
-            <label className="mt-3 block text-sm font-bold text-stone-700">
+            <label className="mt-3 block text-base font-bold text-stone-700">
               Table number
               <input
-                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                 maxLength={40}
                 name="table_number"
                 value={draft?.fields.table_number ?? addToOrder?.table_number ?? ""}
@@ -807,12 +807,12 @@ export function StaffOrderEntry({
           ) : null}
 
           {/* Optional customer + notes */}
-          <details className="mt-4 rounded-lg border border-stone-200 bg-stone-50">
-            <summary className="focus-ring flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-black text-stone-700">
+          <details className="mt-4 rounded-lg border-2 border-stone-200 bg-stone-50">
+            <summary className="focus-ring flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-base font-black text-stone-700">
               <span>Customer & notes <span className="font-semibold text-stone-400">(optional)</span></span>
               <ChevronDown size={15} />
             </summary>
-          <div className="space-y-3 border-t border-stone-200 p-3">
+          <div className="space-y-4 border-t border-stone-200 p-4">
             {!isAddingToOrder ? (
               <StaffCreditCustomerSelector
                 canManageCredit={canManageCredit}
@@ -843,10 +843,10 @@ export function StaffOrderEntry({
                 total={total}
               />
             ) : null}
-            <label className="block text-sm font-bold text-stone-700">
+            <label className="block text-base font-bold text-stone-700">
               Customer name <span className="font-normal text-stone-400">(optional)</span>
               <input
-                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                 maxLength={120}
                 name="customer_name"
                 value={draft?.fields.customer_name ?? addToOrder?.customer_name ?? ""}
@@ -856,10 +856,10 @@ export function StaffOrderEntry({
                 type="text"
               />
             </label>
-            <label className="block text-sm font-bold text-stone-700">
+            <label className="block text-base font-bold text-stone-700">
               Phone <span className="font-normal text-stone-400">(optional)</span>
               <input
-                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                 inputMode="tel"
                 maxLength={24}
                 name="customer_phone"
@@ -869,10 +869,10 @@ export function StaffOrderEntry({
                 type="tel"
               />
             </label>
-            <label className="block text-sm font-bold text-stone-700">
+            <label className="block text-base font-bold text-stone-700">
               Notes <span className="font-normal text-stone-400">(optional)</span>
               <input
-                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2"
+                className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
                 maxLength={1000}
                 readOnly={!!draft?.attempt}
                 name="notes"
