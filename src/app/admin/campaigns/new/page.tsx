@@ -6,6 +6,7 @@ import { MarketingTabs } from "@/components/admin/MarketingTabs";
 import { SEGMENT_TABS, isSegmentFilter } from "@/lib/customer-insights";
 import { CAMPAIGN_CHANNELS, getCampaignBreakdown } from "@/lib/marketing/campaign";
 import { getPosterHistory } from "@/lib/poster/store";
+import { requirePlanFeature } from "@/lib/plan-gates";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { posterSendAvailability } from "@/lib/marketing/send-availability";
 
@@ -30,6 +31,7 @@ export default async function NewCampaignPage({
     requireRestaurantRole(["restaurant_admin", "owner", "manager"]),
     searchParams
   ]);
+  await requirePlanFeature(session.restaurantId, "campaigns");
   const activeSegment = isSegmentFilter(query.segment) ? query.segment : "marketing_opt_in";
   const segmentLabel =
     SEGMENT_TABS.find((tab) => tab.value === activeSegment)?.label ?? "All customers";

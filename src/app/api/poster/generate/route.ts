@@ -35,6 +35,9 @@ import {
   type PosterCopy,
   type PosterSubjectRef
 } from "@/lib/poster/types";
+import { tenantHasFeature, type TenantAccess } from "@/lib/billing";
+import { getTenantAccess } from "@/lib/billing-data";
+import { planUpgradeMessage } from "@/lib/plan-gates";
 import { resolveRestaurantAdminSession } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -106,6 +109,19 @@ export async function POST(request: Request) {
     );
   }
   const { restaurant, restaurantId } = resolution.session;
+
+  let access: TenantAccess;
+  try {
+    access = await getTenantAccess(restaurantId);
+  } catch {
+    return NextResponse.json(
+      { error: "Couldn't check your plan right now. Try again shortly." },
+      { status: 503 }
+    );
+  }
+  if (!tenantHasFeature(access, "campaigns")) {
+    return NextResponse.json({ error: planUpgradeMessage("campaigns") }, { status: 403 });
+  }
 
   const admin = getSupabaseAdmin();
   if (!admin) {
@@ -185,7 +201,8 @@ export async function POST(request: Request) {
       : planPosterArt(admin, {
           restaurantId,
           userId: resolution.session.userId,
-          art: bundle.art!
+          art: bundle.art!,
+          monthlyAiImageLimit: access.limits.monthly_ai_images
         }).catch((error: unknown) => {
           console.error("WhatsOrder poster art plan failed", error);
           return null;

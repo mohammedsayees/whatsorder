@@ -53,6 +53,10 @@ export type PlanFeatures = {
   multi_branch: boolean;
   group_reporting: boolean;
   shared_menu: boolean;
+  // WhatsApp chat inbox + AI auto-reply (pricing v2, Growth and up).
+  chat_inbox: boolean;
+  // Finance, costing and the bill scanner (pricing v2, Growth and up).
+  finance: boolean;
 };
 
 export type PlanFeatureFlag = keyof PlanFeatures;
@@ -63,8 +67,21 @@ const DEFAULT_PLAN_FEATURES: PlanFeatures = {
   scheduled_orders: false,
   multi_branch: false,
   group_reporting: false,
-  shared_menu: false
+  shared_menu: false,
+  chat_inbox: false,
+  finance: false
 };
+
+// Trialing tenants try the Growth feature set whatever plan they signed up
+// for, so they see the full value before choosing (pricing v2).
+export const TRIAL_FEATURES: Partial<PlanFeatures> = {
+  campaigns: true,
+  advanced_analytics: true,
+  scheduled_orders: true,
+  chat_inbox: true,
+  finance: true
+};
+export const TRIAL_MONTHLY_AI_IMAGE_LIMIT = 100;
 
 // ---------------------------------------------------------------------------
 // Row types (match the migration columns).
@@ -79,6 +96,9 @@ export type Plan = {
   currency: string;
   max_branches: number | null;
   max_staff: number | null;
+  // AI images (menu editor + poster art) per UAE calendar month; null = no
+  // monthly cap (per-day caps still apply).
+  monthly_ai_image_limit?: number | null;
   features: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
@@ -102,6 +122,8 @@ export type Subscription = {
   grace_until: string | null;
   cancel_at_period_end: boolean;
   cancelled_at: string | null;
+  // Per-contract overrides merged over the plan (grandfathering, custom deals).
+  feature_overrides?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -162,7 +184,11 @@ export type TenantAccess = {
   plan_code: string | null;
   plan_name: string | null;
   plan_features: PlanFeatures;
-  limits: { max_branches: number | null; max_staff: number | null };
+  limits: {
+    max_branches: number | null;
+    max_staff: number | null;
+    monthly_ai_images: number | null;
+  };
 };
 
 export type ContractChangePatch = Pick<
@@ -230,9 +256,78 @@ export function isManagementBlocked(access: AccessLevel): boolean {
   return access === "soft_blocked";
 }
 
+export function isPlanFeatureFlag(value: string): value is PlanFeatureFlag {
+  return Object.prototype.hasOwnProperty.call(DEFAULT_PLAN_FEATURES, value);
+}
+
 // Whether a plan unlocks a gated feature flag.
 export function isFeatureEnabled(features: PlanFeatures, flag: PlanFeatureFlag): boolean {
   return features[flag] === true;
+}
+
+// The one gate check pages and actions use. A tenant with no plan on record
+// (an un-enrolled pilot) is never gated — billing must not break it.
+export function tenantHasFeature(
+  access: Pick<TenantAccess, "plan_code" | "plan_features">,
+  flag: PlanFeatureFlag
+): boolean {
+  return !access.plan_code || access.plan_features[flag] === true;
+}
+
+// Effective features: plan flags, then trial upgrades, then per-contract
+// overrides (which win, so a super admin can also switch a flag off).
+export function resolveEntitlements(input: {
+  planFeatures: Record<string, unknown> | null | undefined;
+  planMonthlyAiImageLimit: number | null | undefined;
+  overrides: Record<string, unknown> | null | undefined;
+  status: SubscriptionStatus | null;
+}): { features: PlanFeatures; monthlyAiImages: number | null } {
+  const features = resolvePlanFeatures(input.planFeatures);
+  let monthlyAiImages = normalizeLimit(input.planMonthlyAiImageLimit);
+
+  if (input.status === "trialing") {
+    Object.assign(features, TRIAL_FEATURES);
+    if (monthlyAiImages !== null) {
+      monthlyAiImages = Math.max(monthlyAiImages, TRIAL_MONTHLY_AI_IMAGE_LIMIT);
+    }
+  }
+
+  const overrides = input.overrides;
+  if (overrides && typeof overrides === "object" && !Array.isArray(overrides)) {
+    for (const key of Object.keys(features) as PlanFeatureFlag[]) {
+      if (typeof overrides[key] === "boolean") {
+        features[key] = overrides[key] as boolean;
+      }
+    }
+    if ("monthly_ai_image_limit" in overrides) {
+      const value = overrides.monthly_ai_image_limit;
+      if (value === null) {
+        monthlyAiImages = null;
+      } else if (typeof value === "number") {
+        monthlyAiImages = normalizeLimit(value);
+      }
+    }
+  }
+
+  return { features, monthlyAiImages };
+}
+
+function normalizeLimit(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+}
+
+// Whether another AI image may be generated this month. Fails closed when
+// usage could not be read (null) and a cap applies.
+export function aiImageAllowanceRemaining(
+  monthlyLimit: number | null,
+  usedThisMonth: number | null
+): boolean {
+  if (monthlyLimit === null) {
+    return true;
+  }
+  return usedThisMonth !== null && usedThisMonth < monthlyLimit;
 }
 
 // Resolve a plan's jsonb feature flags into a fully-typed object with safe
@@ -260,7 +355,7 @@ export const NO_SUBSCRIPTION_ACCESS: TenantAccess = {
   plan_code: null,
   plan_name: null,
   plan_features: { ...DEFAULT_PLAN_FEATURES },
-  limits: { max_branches: null, max_staff: null }
+  limits: { max_branches: null, max_staff: null, monthly_ai_images: null }
 };
 
 // ---------------------------------------------------------------------------

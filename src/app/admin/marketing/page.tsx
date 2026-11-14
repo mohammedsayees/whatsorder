@@ -18,6 +18,7 @@ import {
   POSTER_THEME_IDS,
   isPosterThemeId
 } from "@/lib/poster/themes";
+import { requirePlanFeature } from "@/lib/plan-gates";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
@@ -129,6 +130,7 @@ export default async function MarketingPage() {
     "owner",
     "manager"
   ]);
+  await requirePlanFeature(session.restaurantId, "campaigns");
 
   const [bestsellers, newItems, allOffers, history, sendAvailability] = await Promise.all([
     getBestsellerOptions(session.restaurantId, session.restaurant),

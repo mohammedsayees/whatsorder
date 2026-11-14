@@ -19,7 +19,7 @@ import {
   invoiceIdempotencyKey,
   priceForBillingInterval,
   priceForSubscription,
-  resolvePlanFeatures,
+  resolveEntitlements,
   toDateString
 } from "@/lib/billing";
 import type {
@@ -122,15 +122,23 @@ export const getTenantAccess = cache(async function getTenantAccess(
   }
   const plan = snapshot.plan ?? null;
 
+  const entitlements = resolveEntitlements({
+    planFeatures: plan?.features ?? null,
+    planMonthlyAiImageLimit: plan?.monthly_ai_image_limit ?? null,
+    overrides: subscription.feature_overrides ?? null,
+    status: subscription.status
+  });
+
   return {
     access: deriveAccessLevel(subscription.status),
     status: subscription.status,
     plan_code: plan?.code ?? null,
     plan_name: plan?.name ?? null,
-    plan_features: resolvePlanFeatures(plan?.features ?? null),
+    plan_features: entitlements.features,
     limits: {
       max_branches: plan?.max_branches ?? null,
-      max_staff: plan?.max_staff ?? null
+      max_staff: plan?.max_staff ?? null,
+      monthly_ai_images: entitlements.monthlyAiImages
     }
   };
 });

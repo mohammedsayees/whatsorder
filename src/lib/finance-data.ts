@@ -10,6 +10,7 @@ import {
   type FinanceRecurringCost,
   type FinanceRolePermissionRow
 } from "@/lib/finance";
+import { requirePlanFeature } from "@/lib/plan-gates";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   requireRestaurantAdmin,
@@ -40,6 +41,7 @@ export async function getFinanceAccess(session: RestaurantAdminSession): Promise
 
 export async function requireFinancePermission(permission: FinancePermission) {
   const session = await requireRestaurantAdmin();
+  await requirePlanFeature(session.restaurantId, "finance");
   const access = await getFinanceAccess(session);
   if (!access[permission]) {
     redirect("/admin?error=You%20do%20not%20have%20Finance%20permission.");
