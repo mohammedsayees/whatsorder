@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BriefcaseBusiness, MapPin } from "lucide-react";
+import { WhatsOrderBrand } from "@/components/shared/WhatsOrderBrand";
 import { FOUNDER_WHATSAPP_NUMBER } from "@/lib/demo-store";
 import { formatJobSalary, JOB_CATEGORIES, UAE_LOCATIONS } from "@/lib/jobs";
 import { getPublicJobs } from "@/lib/jobs-data";
@@ -53,7 +54,9 @@ export default async function JobsPage({
     <main className="min-h-screen bg-stone-50 text-ink">
       <header className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <Link className="text-xl font-black text-leaf" href="/">WhatsOrder</Link>
+          <Link className="text-xl font-black text-leaf" href="/">
+            <WhatsOrderBrand imageClassName="h-9 w-9" />
+          </Link>
           <Link className="text-sm font-bold text-stone-600" href="/jobs/post">Post a job free</Link>
         </div>
       </header>
