@@ -144,6 +144,34 @@ function kotTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
   `;
 }
 
+function kotCorrectionTicket(
+  restaurant: Restaurant,
+  order: Order,
+  removedItems: Order["items"],
+  reason: string,
+  printedAt: string
+) {
+  const correctionOrder: Order = {
+    ...order,
+    created_at: printedAt,
+    items: removedItems
+  };
+
+  return `
+    <section class="ticket">
+      ${ticketHeader(restaurant, correctionOrder, "KOT CORRECTION / REMOVE", false)}
+      <div class="correction">*** REMOVE THESE ITEMS ***</div>
+      <div class="section">
+        ${fulfilmentDetails(order, false)}
+        ${order.customer_name ? `<div>Customer: ${escapeHtml(order.customer_name)}</div>` : ""}
+      </div>
+      ${itemsTable(restaurant, correctionOrder, false)}
+      <div class="notes"><strong>REASON</strong><br>${escapeHtml(reason)}</div>
+      <footer>Kitchen correction · Remove only the quantities above</footer>
+    </section>
+  `;
+}
+
 function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
   return `
     <section class="ticket">
@@ -199,6 +227,7 @@ function printableDocument(content: string, title: string) {
           h1 { margin: 0 0 3px; font-size: 20px; }
           .ticket-title { margin: 4px 0; font-size: 16px; font-weight: 900; }
           .reprint { margin: 5px 0; border: 2px solid #000; padding: 3px; font-size: 15px; font-weight: 900; }
+          .correction { margin: 8px 0; border: 4px double #000; padding: 8px 4px; text-align: center; font-size: 18px; font-weight: 900; }
           .status { margin-top: 4px; font-weight: 800; }
           .section { border-bottom: 1px dashed #000; padding: 7px 0; }
           .important { font-size: 16px; font-weight: 900; }
@@ -245,5 +274,24 @@ export function renderOrderTickets({
   return printableDocument(
     content,
     `${restaurant.name} order ${orderReference(order.id)}`
+  );
+}
+
+export function renderKotCorrectionTicket({
+  order,
+  printedAt = new Date().toISOString(),
+  reason,
+  removedItems,
+  restaurant
+}: {
+  order: Order;
+  printedAt?: string;
+  reason: string;
+  removedItems: Order["items"];
+  restaurant: Restaurant;
+}): string {
+  return printableDocument(
+    kotCorrectionTicket(restaurant, order, removedItems, reason, printedAt),
+    `${restaurant.name} KOT correction ${orderReference(order.id)}`
   );
 }

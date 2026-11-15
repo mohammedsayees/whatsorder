@@ -45,6 +45,22 @@ export type AddOrderItemsPayload = {
   note?: string;
 };
 
+export type ReduceOrderItemsPayload = {
+  clientOrderId: string;
+  expectedItems: unknown[];
+  reductions: Array<{ lineIndex: number; quantity: number }>;
+  reason: string;
+};
+
+export type ReduceOrderItemsState = {
+  retryUnchanged?: boolean;
+  error?: string;
+  success?: string;
+  order?: Order;
+  removedItems?: CartLine[];
+  reason?: string;
+};
+
 // How the punch screen's buttons map to the new order. "kitchen" sends an
 // unpaid ticket to the kitchen (payment collected later, at completion); the
 // "paid now" shortcuts complete a prepaid sale immediately. The payment_method
@@ -516,6 +532,112 @@ export async function addItemsToOrderAction(
       mode === "amended"
         ? "Items added to the unpaid order. Print the add-on KOT."
         : "Payment was already recorded, so a separate unpaid add-on order was created."
+  };
+}
+
+export async function reduceItemsFromOrderAction(
+  orderId: string,
+  payload: ReduceOrderItemsPayload
+): Promise<ReduceOrderItemsState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return { retryUnchanged: true, error: "Order service is unavailable." };
+  }
+
+  if (!isClientOrderId(orderId) || !isClientOrderId(payload?.clientOrderId)) {
+    return { error: "The order change could not be read. Refresh and try again." };
+  }
+
+  const reason = payloadField(payload.reason, 300);
+  if (!reason) {
+    return { error: "Enter why the items are being removed." };
+  }
+
+  if (
+    !Array.isArray(payload.expectedItems) ||
+    payload.expectedItems.length === 0 ||
+    payload.expectedItems.length > 100 ||
+    JSON.stringify(payload.expectedItems).length > 100_000
+  ) {
+    return { error: "The original order items could not be read. Refresh and try again." };
+  }
+
+  const reductions = Array.isArray(payload.reductions)
+    ? payload.reductions
+        .filter(
+          (entry) =>
+            Number.isInteger(entry?.lineIndex) &&
+            entry.lineIndex >= 0 &&
+            Number.isInteger(entry?.quantity) &&
+            entry.quantity > 0
+        )
+        .slice(0, 100)
+        .map((entry) => ({
+          line_index: entry.lineIndex,
+          quantity: entry.quantity
+        }))
+    : [];
+
+  if (reductions.length === 0 || reductions.length !== payload.reductions.length) {
+    return { error: "Choose at least one valid item quantity to remove." };
+  }
+
+  const { data, error } = await supabase.rpc("reduce_restaurant_order_items", {
+    event_actor_role: session.role,
+    event_actor_user_id: session.userId,
+    expected_items: payload.expectedItems,
+    reduction_client_order_id: payload.clientOrderId,
+    reduction_reason: reason,
+    requested_reductions: reductions,
+    target_order_id: orderId,
+    target_restaurant_id: session.restaurantId
+  });
+
+  if (error) {
+    const knownMessages = [
+      "Order not found",
+      "Only staff-punched orders can be changed here",
+      "Paid orders require a refund and cannot be reduced",
+      "Completed or cancelled orders cannot be reduced",
+      "Orders with loyalty activity cannot be reduced here",
+      "The order items changed. Refresh before removing items",
+      "Cannot remove more than the ordered quantity",
+      "Cancel the order instead of removing every item",
+      "This reduction attempt belongs to another order"
+    ];
+    const known = knownMessages.find((message) => error.message.includes(message));
+
+    return {
+      retryUnchanged: !known,
+      error: known ?? "The order could not be changed. Refresh and try again."
+    };
+  }
+
+  const result = data as {
+    order?: Order;
+    removed_items?: CartLine[];
+    reason?: string;
+  } | null;
+
+  if (!result?.order || !Array.isArray(result.removed_items)) {
+    return {
+      retryUnchanged: true,
+      error: "The change was saved, but the corrected order could not be loaded. Retry unchanged."
+    };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/shifts");
+  revalidatePath(`/admin/orders/${orderId}/edit-items`);
+
+  return {
+    success: "Items removed. Print the KOT correction for the kitchen.",
+    order: result.order,
+    removedItems: result.removed_items,
+    reason: result.reason ?? reason
   };
 }
 
