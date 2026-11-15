@@ -22,4 +22,15 @@ describe("canReduceStaffOrderItems", () => {
     expect(canReduceStaffOrderItems({ ...eligible, source: "customer" })).toBe(false);
     expect(canReduceStaffOrderItems({ ...eligible, items: [{ ...eligible.items[0], quantity: 1 }] })).toBe(false);
   });
+
+  it("treats loyalty fields the orders page does not load as zero", () => {
+    // get_admin_orders_page_v4 returns no points_redeemed column.
+    const { points_redeemed: _omitted, ...fromOrdersPage } = eligible;
+    expect(
+      canReduceStaffOrderItems(fromOrdersPage as unknown as typeof eligible)
+    ).toBe(true);
+    expect(
+      canReduceStaffOrderItems({ ...fromOrdersPage, points_earned: 5 } as unknown as typeof eligible)
+    ).toBe(false);
+  });
 });

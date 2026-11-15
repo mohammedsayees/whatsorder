@@ -19,9 +19,12 @@ export function canReduceStaffOrderItems(
     order.payment_method === null &&
     order.status !== "Completed" &&
     order.status !== "Cancelled" &&
-    Number(order.loyalty_discount) === 0 &&
-    Number(order.points_redeemed) === 0 &&
-    Number(order.points_earned) === 0 &&
+    // The orders-page RPC does not return every loyalty column (e.g.
+    // points_redeemed). A missing value counts as 0 here; the database
+    // function re-checks loyalty on the saved order before any change.
+    Number(order.loyalty_discount ?? 0) === 0 &&
+    Number(order.points_redeemed ?? 0) === 0 &&
+    Number(order.points_earned ?? 0) === 0 &&
     quantity > 1
   );
 }
