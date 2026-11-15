@@ -130,8 +130,12 @@ const adminOrderListColumns = [
   "delivery_fee",
   "total",
   "points_earned",
+  "points_redeemed",
   "loyalty_discount",
   "status",
+  // Needed by the order card's source badge and canReduceStaffOrderItems
+  // (the "Remove items" button only shows for staff-punched orders).
+  "source",
   "created_at"
 ].join(", ");
 
