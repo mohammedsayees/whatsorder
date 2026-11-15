@@ -29,6 +29,7 @@ import {
   Gift,
   MapPin,
   MessageCircle,
+  MinusCircle,
   MoreHorizontal,
   PlusCircle,
   ShoppingBag,
@@ -38,6 +39,7 @@ import {
 import type { OrderPaymentChange } from "@/lib/data";
 import { RiderAssignmentControl } from "@/components/admin/RiderAssignmentControl";
 import type { CustomerCreditMaps } from "@/lib/customer-credit-data";
+import { canReduceStaffOrderItems } from "@/lib/order-item-reductions";
 import { orderSource } from "@/lib/order-source";
 
 export function OrderList({
@@ -96,6 +98,7 @@ export function OrderList({
         const canAddItems =
           order.status !== "Cancelled" &&
           !(order.status === "Completed" && order.payment_method === null);
+        const canRemoveItems = canReduceStaffOrderItems(order);
         const isOperational = !["Completed", "Cancelled"].includes(order.status);
 
         return (
@@ -252,6 +255,15 @@ export function OrderList({
                     >
                       <PlusCircle size={16} />
                       Add items
+                    </Link>
+                  ) : null}
+                  {canRemoveItems ? (
+                    <Link
+                      className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-300 px-4 py-2 text-sm font-black text-rose-700 hover:bg-rose-50"
+                      href={`/admin/orders/${order.id}/edit-items`}
+                    >
+                      <MinusCircle size={16} />
+                      Remove items
                     </Link>
                   ) : null}
                   {order.payment_method ? (

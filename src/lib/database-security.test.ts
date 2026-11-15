@@ -58,6 +58,12 @@ describe("public order database boundary", () => {
   const orderAdditionsIntegrationTest = readProjectFile(
     "supabase/tests/order_item_additions.sql"
   );
+  const orderReductionsMigration = readProjectFile(
+    "supabase/migrations/20261118100000_order_item_reductions.sql"
+  );
+  const orderReductionsIntegrationTest = readProjectFile(
+    "supabase/tests/order_item_reductions.sql"
+  );
   const orderOfferCapsMigration = readProjectFile(
     "supabase/migrations/20260714131000_enforce_order_offer_caps.sql"
   );
@@ -429,6 +435,37 @@ describe("public order database boundary", () => {
     expect(orderAdditionsIntegrationTest).toContain(
       "Combined offer cap unexpectedly succeeded"
     );
+  });
+
+  it("keeps KOT reductions tenant-consistent, audited, and service-role only", () => {
+    expect(orderReductionsMigration).toContain(
+      "order_item_reduction_order_tenant_fkey"
+    );
+    expect(orderReductionsMigration).toContain(
+      "unique (restaurant_id, client_order_id)"
+    );
+    expect(orderReductionsMigration).toContain(
+      "where id = target_order_id\n    and restaurant_id = target_restaurant_id\n  for update"
+    );
+    expect(orderReductionsMigration).toMatch(
+      /revoke all on function public\.reduce_restaurant_order_items\([\s\S]*?\) from public, anon, authenticated;/
+    );
+    expect(orderReductionsMigration).toMatch(
+      /grant execute on function public\.reduce_restaurant_order_items\([\s\S]*?\) to service_role;/
+    );
+    expect(orderReductionsMigration).toContain(
+      "public.is_restaurant_member(restaurant_id)"
+    );
+    expect(orderReductionsMigration).toContain(
+      "Paid orders require a refund and cannot be reduced"
+    );
+    expect(orderReductionsIntegrationTest).toContain(
+      "Idempotent replay changed the order twice"
+    );
+    expect(orderReductionsIntegrationTest).toContain(
+      "Cross-tenant reduction unexpectedly succeeded"
+    );
+    expect(orderReductionsIntegrationTest).toContain("rollback;");
   });
 
   it("constrains localization per tenant without expanding public access", () => {

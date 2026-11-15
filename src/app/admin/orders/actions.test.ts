@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { submitStaffOrderAction, addItemsToOrderAction, collectPaymentAndCompleteAction, changeOrderPaymentMethodAction } from "./actions";
+import { submitStaffOrderAction, addItemsToOrderAction, collectPaymentAndCompleteAction, changeOrderPaymentMethodAction, reduceItemsFromOrderAction } from "./actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getMenu } from "@/lib/data";
@@ -132,5 +132,52 @@ describe("transactional payment actions", () => {
     expect((await changeOrderPaymentMethodAction({}, form)).success).toContain("Cash");
     expect(rpc.mock.calls[0][1].complete_order).toBe(false);
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("order item reductions", () => {
+  it("delegates a tenant-scoped, idempotent reduction to the database", async () => {
+    const originalItems = [{ item_id: "tea", name: "Tea", price: 5, quantity: 2 }];
+    const removedItems = [{ ...originalItems[0], quantity: 1 }];
+    const order = { id: oid, items: [{ ...originalItems[0], quantity: 1 }], total: 5 };
+    const rpc = vi.fn().mockResolvedValue({
+      data: { order, removed_items: removedItems, reason: "Customer changed mind" },
+      error: null
+    });
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ rpc } as never);
+
+    const result = await reduceItemsFromOrderAction(oid, {
+      clientOrderId: "93000000-0000-0000-0000-000000000001",
+      expectedItems: originalItems,
+      reductions: [{ lineIndex: 0, quantity: 1 }],
+      reason: "Customer changed mind"
+    });
+
+    expect(result).toMatchObject({ order, removedItems, success: expect.stringContaining("removed") });
+    expect(rpc).toHaveBeenCalledWith("reduce_restaurant_order_items", {
+      event_actor_role: "staff",
+      event_actor_user_id: "actor",
+      expected_items: originalItems,
+      reduction_client_order_id: "93000000-0000-0000-0000-000000000001",
+      reduction_reason: "Customer changed mind",
+      requested_reductions: [{ line_index: 0, quantity: 1 }],
+      target_order_id: oid,
+      target_restaurant_id: rid
+    });
+  });
+
+  it("does not call the database for an empty reduction", async () => {
+    const rpc = vi.fn();
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ rpc } as never);
+
+    const result = await reduceItemsFromOrderAction(oid, {
+      clientOrderId: "93000000-0000-0000-0000-000000000001",
+      expectedItems: [{ item_id: "tea", name: "Tea", price: 5, quantity: 1 }],
+      reductions: [],
+      reason: "Customer changed mind"
+    });
+
+    expect(result.error).toContain("Choose at least one");
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
