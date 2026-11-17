@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { useState, useEffect } from "react";
 import { SavedOrderConfirmation } from "@/components/customer/SavedOrderConfirmation";
+import { RiderLocationSharer } from "@/components/rider/RiderLocationSharer";
 import { OrderStatusActions } from "@/components/admin/OrderStatusActions";
 import { useStaffOrderQueue } from "@/components/admin/StaffOrderQueue";
 import { demoRestaurant } from "@/lib/demo-data";
@@ -46,14 +47,19 @@ function Fixture() {
  if (mode === "payment") return <OrderStatusActions fulfilmentType="takeaway" orderId="saved-order" paymentMethod={null} status={completed ? "Completed" : "Preparing"} />;
  if (mode === "billing") return <><button onClick={()=>setRestaurantId(restaurantId === "restaurant-a" ? "restaurant-b" : "restaurant-a")}>Switch restaurant</button><StaffOrderEntry key={restaurantId} staffUserId="staff-a" restaurant={{ ...demoRestaurant, id: restaurantId }} menu={billingMenu} orderTypes={["takeaway", "delivery", "dine_in"]} deliveryFee={3} /></>;
  if (mode === "print-menu") return <MenuPrintDesigner categories={[printableCategory]} items={printableItems} menuUrl="https://example.com/r/demo" optionCatalog={printableOptions} qrDataUrl={printablePhoto} restaurant={{ ...demoRestaurant, id: "restaurant-a", name: "Fixture Cafe", slug: "fixture-cafe" }} />;
+ if (mode === "rider-page") return <RiderLocationSharer initialState="active" token="riderTrackingTokenAAAAAAAAAAAAAAAA" />;
+ if (mode === "status-rider" || mode === "status-rider-stale") {
+  const stale = mode === "status-rider-stale";
+  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000cc", status: "Out for Delivery", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Rider order", created_at: new Date(Date.now() - 25 * 60_000).toISOString(), fulfilment_type:"delivery", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: { name: "Ravi", phone: "971501234567", location: stale ? null : { distanceKm: 1.24, updatedAt: new Date(Date.now() - 30_000).toISOString(), mapsUrl: "https://www.google.com/maps?q=25.4,55.5" } } }} />;
+ }
  if (mode === "status-car") {
-  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000bb", status: "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Car order", created_at: new Date(Date.now() - 5 * 60_000).toISOString(), fulfilment_type:"car_pickup", status_events: [], customer_arrived_at: null, customer_arrival_note: null }} />;
+  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000bb", status: "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Car order", created_at: new Date(Date.now() - 5 * 60_000).toISOString(), fulfilment_type:"car_pickup", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: null }} />;
  }
  if (mode === "status-waiting" || mode === "status-live") {
   const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
   const waiting = mode === "status-waiting";
-  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} prepMinutes={waiting ? null : 12} order={{ id: "43000000-0000-4000-8000-0000000000aa", status: waiting ? "New" : "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Tracked order", created_at: minutesAgo(waiting ? 20 : 8), fulfilment_type:"delivery", status_events: waiting ? [] : [{ to_status:"Accepted", created_at: minutesAgo(6) }, { to_status:"Preparing", created_at: minutesAgo(4) }], customer_arrived_at: null, customer_arrival_note: null }} />;
+  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} prepMinutes={waiting ? null : 12} order={{ id: "43000000-0000-4000-8000-0000000000aa", status: waiting ? "New" : "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Tracked order", created_at: minutesAgo(waiting ? 20 : 8), fulfilment_type:"delivery", status_events: waiting ? [] : [{ to_status:"Accepted", created_at: minutesAgo(6) }, { to_status:"Preparing", created_at: minutesAgo(4) }], customer_arrived_at: null, customer_arrival_note: null, rider: null }} />;
  }
- return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "saved-order-12345678", status:"New", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Original saved order: 2 Tea, total 10", created_at:null, fulfilment_type:"takeaway", status_events:[], customer_arrived_at:null, customer_arrival_note:null }} />;
+ return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "saved-order-12345678", status:"New", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Original saved order: 2 Tea, total 10", created_at:null, fulfilment_type:"takeaway", status_events:[], customer_arrived_at:null, customer_arrival_note:null, rider:null }} />;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

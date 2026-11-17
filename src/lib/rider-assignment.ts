@@ -49,8 +49,10 @@ export function buildRiderAssignmentMessage(input: {
   order: Order;
   restaurant: Restaurant;
   rider: Pick<DeliveryRider, "name">;
+  /** Private link for sharing live location with the customer. */
+  trackingUrl?: string | null;
 }) {
-  const { order, restaurant, rider } = input;
+  const { order, restaurant, rider, trackingUrl } = input;
   const pickup = pickupAddress(restaurant);
   const lines = [
     `🚴 NEW DELIVERY — ${restaurant.name.toLocaleUpperCase()}`,
@@ -78,6 +80,14 @@ export function buildRiderAssignmentMessage(input: {
   }
 
   lines.push("", "💵 PAYMENT", ...paymentInstruction(order, restaurant));
+  if (trackingUrl) {
+    lines.push(
+      "",
+      "📡 LIVE LOCATION",
+      "When you set off, open this link and keep it open so the customer can see you're on the way:",
+      trackingUrl
+    );
+  }
   lines.push("");
   lines.push("Please contact the restaurant if anything is unclear.");
   return lines.join("\n");

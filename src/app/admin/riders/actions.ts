@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { newRiderTrackingToken } from "@/lib/rider-location-data";
 
 import { buildRiderAssignmentMessage } from "@/lib/rider-assignment";
 import { sendRiderWhatsApp } from "@/lib/rider-whatsapp";
@@ -140,6 +141,9 @@ export async function assignRiderToOrderAction(
     return { error: "This order is already closed and cannot be assigned." };
   }
 
+  // Private link the rider opens to share live location; only its hash is
+  // stored, so the link itself cannot be recovered from the database.
+  const tracking = newRiderTrackingToken();
   const assignment = await admin
     .from("order_rider_assignments")
     .insert({
@@ -147,7 +151,8 @@ export async function assignRiderToOrderAction(
       order_id: order.id,
       rider_id: rider.id,
       assigned_by_user_id: session.userId,
-      delivery_status: "sending"
+      delivery_status: "sending",
+      tracking_token_hash: tracking.hash
     })
     .select("id")
     .single();
@@ -158,7 +163,8 @@ export async function assignRiderToOrderAction(
   const message = buildRiderAssignmentMessage({
     order,
     restaurant: session.restaurant,
-    rider
+    rider,
+    trackingUrl: tracking.url
   });
   let delivery: Awaited<ReturnType<typeof sendRiderWhatsApp>>;
   try {

@@ -67,3 +67,21 @@ test("the arrival button is only offered for car pickup", async ({ page }) => {
   await page.goto("/?mode=status-live");
   await expect(page.getByText("Arrived at the restaurant?")).toHaveCount(0);
 });
+
+test("out-for-delivery orders show the rider, distance and a maps link", async ({ page }) => {
+  await page.route("**/api/customer/order-status**", route => route.fulfill({ status: 404, body: "{}" }));
+  await page.goto("/?mode=status-rider");
+  await expect(page.getByText("Ravi is on the way")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Call Ravi" })).toHaveAttribute("href", "tel:+971501234567");
+  await expect(page.getByText("About 1.2 km away")).toBeVisible();
+  await expect(page.getByText(/updated just now/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open in Google Maps" })).toHaveAttribute("href", /maps\?q=25\.4,55\.5/);
+});
+
+test("without a recent position the rider card says location is not shared yet", async ({ page }) => {
+  await page.route("**/api/customer/order-status**", route => route.fulfill({ status: 404, body: "{}" }));
+  await page.goto("/?mode=status-rider-stale");
+  await expect(page.getByText("Ravi is on the way")).toBeVisible();
+  await expect(page.getByText("Live location appears here once your rider shares it.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open in Google Maps" })).toHaveCount(0);
+});

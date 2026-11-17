@@ -4,6 +4,8 @@ import { getOrderPushAuthorization } from "@/lib/push-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isClientOrderId } from "@/lib/staff-order-payload";
 import type { StatusEvent } from "@/lib/order-progress";
+import type { CustomerRiderView } from "@/lib/rider-location";
+import { getCustomerRiderView } from "@/lib/rider-location-data";
 import type { CartLine, FulfilmentType, OrderStatus } from "@/lib/types";
 
 export type OrderConfirmation = {
@@ -19,6 +21,8 @@ export type OrderConfirmation = {
   /** Car pickup: when the customer said they arrived, and where they parked. */
   customer_arrived_at: string | null;
   customer_arrival_note: string | null;
+  /** Assigned rider (name, phone, recent position) while out for delivery. */
+  rider: CustomerRiderView | null;
 };
 
 // A URL reference alone never authorizes access to the order or its message.
@@ -63,7 +67,7 @@ export async function loadOrderConfirmation(
   if (!orderResult.data) return null;
   const order = orderResult.data as Omit<
     OrderConfirmation,
-    "status_events" | "customer_arrived_at" | "customer_arrival_note"
+    "status_events" | "customer_arrived_at" | "customer_arrival_note" | "rider"
   >;
   const arrival = arrivalResult.error
     ? null
@@ -81,7 +85,11 @@ export async function loadOrderConfirmation(
     fulfilment_type: order.fulfilment_type ?? null,
     status_events: statusEvents,
     customer_arrived_at: arrival?.customer_arrived_at ?? null,
-    customer_arrival_note: arrival?.customer_arrival_note ?? null
+    customer_arrival_note: arrival?.customer_arrival_note ?? null,
+    rider: await getCustomerRiderView(restaurantId, orderId, {
+      status: order.status,
+      fulfilment_type: order.fulfilment_type ?? null
+    })
   };
 }
 
