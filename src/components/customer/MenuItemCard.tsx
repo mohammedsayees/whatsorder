@@ -74,6 +74,11 @@ export const MenuItemCard = memo(function MenuItemCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-black text-ink">{itemName}</h3>
+            {activeOffer ? (
+              <span className="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-black text-white">
+                {t.offer}
+              </span>
+            ) : null}
             {item.is_featured ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700">
                 <Star className="fill-current" size={11} />
