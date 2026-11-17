@@ -23,15 +23,29 @@ describe("saved order confirmation", () => {
     expect(getOrderPushAuthorization).not.toHaveBeenCalled();
   });
 
-  it("loads the persisted message using both order and restaurant filters", async () => {
-    const saved = { id: orderId, whatsapp_message: "original order" };
-    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+  it("loads the order and its status history, both scoped to order and restaurant", async () => {
+    const saved = { id: orderId, whatsapp_message: "original order", status: "Accepted",
+      created_at: "2026-11-17T10:00:00Z", fulfilment_type: "delivery" };
+    const events = [{ to_status: "Accepted", created_at: "2026-11-17T10:02:00Z" }];
+    const orderQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: saved, error: null }) };
+    const eventsQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: events, error: null }) };
+    const from = vi.fn((table: string) => table === "orders" ? orderQuery : eventsQuery);
     vi.mocked(getOrderPushAuthorization).mockResolvedValue({ restaurantId: "restaurant", orderId });
-    vi.mocked(getSupabaseAdmin).mockReturnValue({ from: vi.fn(() => query) } as never);
-    expect(await loadOrderConfirmation("restaurant", orderId)).toEqual(saved);
-    expect(query.eq.mock.calls).toEqual([["restaurant_id", "restaurant"], ["id", orderId]]);
-    query.maybeSingle.mockResolvedValue({ data: null, error: { message: "offline" } } as never);
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
+
+    expect(await loadOrderConfirmation("restaurant", orderId)).toEqual({
+      ...saved, status_events: events });
+    expect(orderQuery.eq.mock.calls).toEqual([["restaurant_id", "restaurant"], ["id", orderId]]);
+    expect(eventsQuery.eq.mock.calls).toEqual([["restaurant_id", "restaurant"], ["order_id", orderId]]);
+    expect(eventsQuery.select).toHaveBeenCalledWith("to_status,created_at");
+
+    eventsQuery.limit.mockResolvedValue({ data: null, error: { message: "offline" } } as never);
+    expect((await loadOrderConfirmation("restaurant", orderId))?.status_events).toEqual([]);
+
+    orderQuery.maybeSingle.mockResolvedValue({ data: null, error: { message: "offline" } } as never);
     await expect(loadOrderConfirmation("restaurant", orderId)).rejects.toThrow("Please retry");
   });
 });

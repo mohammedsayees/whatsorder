@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,6 +19,13 @@ import {
 } from "lucide-react";
 import { createOrderAction } from "@/app/r/[restaurantSlug]/checkout/actions";
 import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
+import {
+  ADDRESS_LIMITS,
+  composeDeliveryAddress,
+  parseSavedDetails,
+  savedDetailsStorageKey,
+  type SavedCustomerDetails
+} from "@/lib/customer-address";
 import { formatCurrency } from "@/lib/currency";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
@@ -40,6 +47,34 @@ type CapturedLocation = {
   longitude: number;
   mapsUrl: string;
 };
+
+// Checkout-only copy, kept out of customer-i18n so the menu bundle stays small.
+const ADDRESS_COPY = {
+  en: {
+    building: "Building or villa",
+    buildingPlaceholder: "Al Noor Tower, Villa 12...",
+    flat: "Flat / floor (optional)",
+    flatPlaceholder: "1204, 12th floor",
+    details: "Street & directions (optional)",
+    detailsPlaceholder: "Street name, gate colour, entrance...",
+    remember: "Remember my details on this device for next time",
+    usingSaved: "Using details saved on this device.",
+    savedPin: "Using your saved location pin.",
+    forget: "Forget them"
+  },
+  ar: {
+    building: "المبنى أو الفيلا",
+    buildingPlaceholder: "برج النور، فيلا 12...",
+    flat: "الشقة / الطابق (اختياري)",
+    flatPlaceholder: "1204، الطابق 12",
+    details: "الشارع والاتجاهات (اختياري)",
+    detailsPlaceholder: "اسم الشارع، لون البوابة، المدخل...",
+    remember: "تذكر بياناتي على هذا الجهاز للمرة القادمة",
+    usingSaved: "نستخدم البيانات المحفوظة على هذا الجهاز.",
+    savedPin: "نستخدم موقعك المحفوظ.",
+    forget: "احذفها"
+  }
+} as const;
 
 type InstructionKey = "callOnArrival" | "dontRingBell" | "leaveAtDoor" | "noCutlery";
 
@@ -77,6 +112,22 @@ export function CheckoutForm({
   } = useFulfilmentPreference(restaurant, initialTableNumber);
   const [selectedInstructions, setSelectedInstructions] = useState<InstructionKey[]>([]);
   const [noteText, setNoteText] = useState("");
+  // Contact and address fields are controlled so details remembered on this
+  // device can fill them after mount. A signed-in profile seeds them first.
+  const [details, setDetails] = useState<SavedCustomerDetails>(() => ({
+    name: prefill?.name ?? "",
+    phone: prefill?.phone ?? "",
+    area: prefill?.delivery_area ?? "",
+    building: "",
+    flat: "",
+    details: prefill?.delivery_address ?? prefill?.default_address_text ?? "",
+    landmark: prefill?.default_landmark ?? "",
+    latitude: null,
+    longitude: null
+  }));
+  const [rememberDetails, setRememberDetails] = useState(true);
+  const [hasSavedDetails, setHasSavedDetails] = useState(false);
+  const detailsStorageKey = savedDetailsStorageKey(restaurant.slug);
   const [isPending, startTransition] = useTransition();
   const [submissionToken] = useState(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -114,6 +165,97 @@ export function CheckoutForm({
     deliveryRange.enforced &&
     !deliveryRange.withinRange;
   const deliveryRadiusKm = restaurant.delivery_radius_km ?? 0;
+  const addressCopy = ADDRESS_COPY[language];
+  const composedAddress = composeDeliveryAddress(details, language);
+
+  useEffect(() => {
+    let saved: SavedCustomerDetails | null = null;
+
+    try {
+      saved = parseSavedDetails(window.localStorage.getItem(detailsStorageKey));
+    } catch {
+      // Storage blocked: the form simply starts empty.
+    }
+
+    if (!saved) {
+      return;
+    }
+
+    const restored = saved;
+    setHasSavedDetails(true);
+    // Fill only what the signed-in profile left blank.
+    setDetails((current) => ({
+      name: current.name || restored.name,
+      phone: current.phone || restored.phone,
+      area: current.area || restored.area,
+      building: current.building || restored.building,
+      flat: current.flat || restored.flat,
+      details: current.details || restored.details,
+      landmark: current.landmark || restored.landmark,
+      latitude: restored.latitude,
+      longitude: restored.longitude
+    }));
+
+    if (restored.latitude !== null && restored.longitude !== null) {
+      const { latitude, longitude } = restored;
+      setLocationMessage(ADDRESS_COPY[language].savedPin);
+      setLocation((current) =>
+        current ?? {
+          latitude,
+          longitude,
+          mapsUrl: `https://www.google.com/maps?q=${latitude},${longitude}`
+        }
+      );
+    }
+    // Language only picks the one-off message; restoring must run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailsStorageKey]);
+
+  function updateDetail(field: keyof typeof ADDRESS_LIMITS, value: string) {
+    setDetails((current) => ({ ...current, [field]: value }));
+  }
+
+  function persistDetails() {
+    try {
+      if (!rememberDetails) {
+        window.localStorage.removeItem(detailsStorageKey);
+        return;
+      }
+
+      const toSave: SavedCustomerDetails = {
+        ...details,
+        latitude: location?.latitude ?? details.latitude,
+        longitude: location?.longitude ?? details.longitude
+      };
+      window.localStorage.setItem(detailsStorageKey, JSON.stringify(toSave));
+    } catch {
+      // Remembering is a convenience; the order itself is already saved.
+    }
+  }
+
+  function forgetDetails() {
+    try {
+      window.localStorage.removeItem(detailsStorageKey);
+    } catch {
+      // Nothing stored or storage blocked.
+    }
+
+    setHasSavedDetails(false);
+    setRememberDetails(false);
+    setLocation(null);
+    setLocationMessage(null);
+    setDetails({
+      name: "",
+      phone: "",
+      area: "",
+      building: "",
+      flat: "",
+      details: "",
+      landmark: "",
+      latitude: null,
+      longitude: null
+    });
+  }
   // One-tap instructions, written into the order notes in the customer's
   // language next to any free-text note.
   const instructionOptions: InstructionKey[] =
@@ -143,9 +285,18 @@ export function CheckoutForm({
 
   function selectFulfilment(type: FulfilmentType) {
     setFulfilmentType(type);
-    setLocation(null);
     setLocationError(null);
     setLocationMessage(null);
+    // Back to delivery: reuse the remembered pin instead of asking again.
+    setLocation(
+      type === "delivery" && details.latitude !== null && details.longitude !== null
+        ? {
+            latitude: details.latitude,
+            longitude: details.longitude,
+            mapsUrl: `https://www.google.com/maps?q=${details.latitude},${details.longitude}`
+          }
+        : null
+    );
   }
 
   function captureLocation() {
@@ -204,6 +355,8 @@ export function CheckoutForm({
         setFallbackWhatsappUrl(result.fallbackWhatsappUrl ?? null);
         return;
       }
+
+      persistDetails();
 
       if (result.confirmationUrl) {
         cart.clearCart();
@@ -496,9 +649,10 @@ export function CheckoutForm({
               <input
                 autoComplete="name"
                 className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                defaultValue={prefill?.name ?? ""}
-                maxLength={120}
+                maxLength={ADDRESS_LIMITS.name}
                 name="customer_name"
+                onChange={(event) => updateDetail("name", event.target.value)}
+                value={details.name}
                 required
               />
             </label>
@@ -507,12 +661,13 @@ export function CheckoutForm({
               <input
                 autoComplete="tel"
                 className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                defaultValue={prefill?.phone ?? ""}
                 inputMode="tel"
-                maxLength={24}
+                maxLength={ADDRESS_LIMITS.phone}
                 name="customer_phone"
+                onChange={(event) => updateDetail("phone", event.target.value)}
                 required
                 type="tel"
+                value={details.phone}
               />
             </label>
           </div>
@@ -579,29 +734,58 @@ export function CheckoutForm({
               ) : null}
 
               <div className="mt-4 space-y-4">
+                <input name="delivery_address" readOnly type="hidden" value={composedAddress} />
                 <label className="block">
                   <span className="text-sm font-bold">{t.deliveryArea}</span>
                   <input
+                    autoComplete="address-level2"
                     className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                    defaultValue={prefill?.delivery_area ?? ""}
+                    maxLength={ADDRESS_LIMITS.area}
                     name="delivery_area"
+                    onChange={(event) => updateDetail("area", event.target.value)}
                     placeholder={t.deliveryAreaPlaceholder}
                     required
+                    value={details.area}
                   />
                 </label>
+                <div className="grid grid-cols-[1fr_8.5rem] items-end gap-3">
+                  <label className="block min-w-0">
+                    <span className="text-sm font-bold">{addressCopy.building}</span>
+                    <input
+                      autoComplete="address-line1"
+                      className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
+                      maxLength={ADDRESS_LIMITS.building}
+                      onChange={(event) => updateDetail("building", event.target.value)}
+                      placeholder={addressCopy.buildingPlaceholder}
+                      // Older saved addresses live in the details field only.
+                      required={!details.details.trim()}
+                      value={details.building}
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-sm font-bold">{addressCopy.flat}</span>
+                    <input
+                      autoComplete="address-line2"
+                      className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
+                      maxLength={ADDRESS_LIMITS.flat}
+                      onChange={(event) => updateDetail("flat", event.target.value)}
+                      placeholder={addressCopy.flatPlaceholder}
+                      value={details.flat}
+                    />
+                  </label>
+                </div>
                 <label className="block">
-                  <span className="text-sm font-bold">{t.address}</span>
-                  <textarea
-                    className="focus-ring mt-1 min-h-20 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                    defaultValue={prefill?.delivery_address ?? prefill?.default_address_text ?? ""}
-                    maxLength={500}
-                    name="delivery_address"
-                    placeholder={t.addressPlaceholder}
-                    required
+                  <span className="text-sm font-bold">{addressCopy.details}</span>
+                  <input
+                    className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
+                    maxLength={ADDRESS_LIMITS.details}
+                    onChange={(event) => updateDetail("details", event.target.value)}
+                    placeholder={addressCopy.detailsPlaceholder}
+                    value={details.details}
                   />
                 </label>
                 {/* Closed <details> content stays in the form and submits. */}
-                <details className="group" open={Boolean(prefill?.default_landmark)}>
+                <details className="group" open={Boolean(details.landmark) || undefined}>
                   <summary className="focus-ring inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full text-sm font-black text-leaf">
                     <Plus className="transition group-open:rotate-45" size={15} />
                     {t.addLandmark}
@@ -609,9 +793,11 @@ export function CheckoutForm({
                   <input
                     aria-label={t.landmark}
                     className="focus-ring mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                    defaultValue={prefill?.default_landmark ?? ""}
+                    maxLength={ADDRESS_LIMITS.landmark}
                     name="delivery_landmark"
+                    onChange={(event) => updateDetail("landmark", event.target.value)}
                     placeholder={t.landmarkPlaceholder}
+                    value={details.landmark}
                   />
                 </details>
               </div>
@@ -755,6 +941,30 @@ export function CheckoutForm({
           </fieldset>
 
           <div className="space-y-3 text-sm leading-6 text-stone-700">
+            <label className="flex gap-3">
+              <input
+                checked={rememberDetails}
+                className="mt-1 h-4 w-4 shrink-0"
+                onChange={(event) => setRememberDetails(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                {addressCopy.remember}
+                {hasSavedDetails ? (
+                  <>
+                    {" "}
+                    <span className="text-stone-500">{addressCopy.usingSaved}</span>{" "}
+                    <button
+                      className="focus-ring rounded font-black text-leaf underline"
+                      onClick={forgetDetails}
+                      type="button"
+                    >
+                      {addressCopy.forget}
+                    </button>
+                  </>
+                ) : null}
+              </span>
+            </label>
             <label className="flex gap-3">
               <input className="mt-1 h-4 w-4 shrink-0" name="consent_order_processing" required type="checkbox" />
               <span>{t.consentOrder}</span>

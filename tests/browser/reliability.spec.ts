@@ -3,8 +3,8 @@ import { test, expect } from "@playwright/test";
 test("saved confirmation survives reload and resends the original order", async ({page}) => {
  await page.goto("/");
  await expect(page.getByRole("heading",{name:"Order saved"})).toBeVisible();
- await expect(page.getByText(/restaurant has not accepted/)).toBeVisible();
- const link=page.getByRole("link",{name:/Send \/ resend/});
+ await expect(page.getByText(/so they can confirm it/)).toBeVisible();
+ const link=page.getByRole("link",{name:/Send this order on WhatsApp/});
  const original=await link.getAttribute("href");
  expect(decodeURIComponent(original!)).toContain("Original saved order: 2 Tea, total 10");
  await page.reload();

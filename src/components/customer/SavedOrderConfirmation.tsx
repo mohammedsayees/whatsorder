@@ -1,12 +1,14 @@
 import type { OrderConfirmation } from "@/lib/order-confirmation";
+import { toOrderProgressSnapshot } from "@/lib/order-progress";
 import type { PublicRestaurant } from "@/lib/types";
 import Link from "next/link";
 import { CheckCircle2, MessageCircle } from "lucide-react";
-import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { buildWhatsAppUrl, normalizeCustomerPhone } from "@/lib/whatsapp";
 import { formatCurrency } from "@/lib/currency";
 import { formatOrderItemName } from "@/lib/cart-line";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
+import { OrderStatusTracker } from "@/components/customer/OrderStatusTracker";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 
 export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey }: {
@@ -15,58 +17,101 @@ export function SavedOrderConfirmation({ restaurant, order, language, onboarding
   const active = order.status !== "Cancelled" && order.status !== "Completed";
   const arabic = language === "ar";
   const t = (en: string, ar: string) => arabic ? ar : en;
+  const reference = order.id.slice(-8).toUpperCase();
+  const restaurantName = arabic && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
+  const whatsappUrl = buildWhatsAppUrl(restaurant.whatsapp_number,
+    active ? order.whatsapp_message : `Hi, I need help with order #${reference}.`,
+    restaurant.phone_country_code);
+  const callNumber = restaurant.whatsapp_number
+    ? normalizeCustomerPhone(restaurant.whatsapp_number, restaurant.phone_country_code)
+    : "";
+  const callHref = callNumber ? `tel:+${callNumber}` : null;
+  const awaitingSend = order.status === "New";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={arabic ? "rtl" : "ltr"} lang={arabic ? "ar" : "en"}>
-      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-mint text-leaf">
-        <CheckCircle2 size={34} />
-      </div>
-      <h1 className="mt-6 text-3xl font-black">{t("Order saved", "تم حفظ الطلب")}</h1>
-      <p className="mt-3 leading-7 text-stone-600">
-        {order.status === "New"
-          ? t("Your order is saved. Send it on WhatsApp below. The restaurant has not accepted it yet.", "تم حفظ طلبك. أرسله عبر واتساب أدناه. لم يقبل المطعم الطلب بعد.")
-          : `${t("Restaurant status", "حالة الطلب")}: ${order.status}.`}
-      </p>
-      <p className="mt-4 rounded-lg bg-stone-100 px-4 py-3 text-sm font-bold text-stone-700">
-        {t("Reference", "رقم الطلب")}: {order.id.slice(-8).toUpperCase()}
-      </p>
-      <ul className="mt-4 divide-y divide-stone-200 text-start">
-        {order.items.map((item, index) => (
-          <li className="flex justify-between gap-4 py-3" key={index}>
-            <span>{item.quantity} × {formatOrderItemName(item, arabic ? "ar" : "en")}</span>
-            <span>{formatCurrency(item.price * item.quantity, restaurant)}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-lg font-bold">{t("Total", "الإجمالي")}: {formatCurrency(order.total, restaurant)}</p>
-      <div className="mt-6 flex flex-col gap-3">
-        {onboardingTest ? (
-          <aside className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-start text-violet-950">
-            <p className="font-black">Test order saved · Final step</p>
-            <p className="mt-1 text-sm text-violet-900/75">
-              Return to Orders and accept the highlighted test order to finish setup.
-            </p>
-            <Link
-              className="focus-ring mt-3 inline-flex w-full items-center justify-center rounded-full bg-violet-700 px-5 py-3 font-black text-white"
-              href={onboardingOrdersHref(order.id)}
-            >
-              Go to dashboard and accept order
-            </Link>
-          </aside>
-        ) : null}
-        <a className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-bold text-white"
-          href={buildWhatsAppUrl(restaurant.whatsapp_number,
-            active ? order.whatsapp_message : `Hi, I need help with order #${order.id.slice(-8).toUpperCase()}.`,
-            restaurant.phone_country_code)} target="_blank" rel="noopener noreferrer">
-          <MessageCircle size={18} />
-          {active ? t("Send / resend this order on WhatsApp", "إرسال الطلب أو إعادة إرساله عبر واتساب") : t("Contact restaurant about this order", "تواصل مع المطعم بشأن هذا الطلب")}
-        </a>
-        <p className="text-sm text-stone-600">
-          {t("You can return to this page to reopen WhatsApp without placing another order.", "يمكنك العودة إلى هذه الصفحة لفتح واتساب دون إنشاء طلب جديد.")}
+    <main className="mx-auto min-h-screen max-w-xl px-4 py-8" dir={arabic ? "rtl" : "ltr"} lang={arabic ? "ar" : "en"}>
+      <div className="text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-mint text-leaf">
+          <CheckCircle2 size={30} />
+        </div>
+        <h1 className="mt-4 text-2xl font-black">
+          {awaitingSend ? t("Order saved", "تم حفظ الطلب") : restaurantName}
+        </h1>
+        <p className="mt-2 leading-7 text-stone-600">
+          {awaitingSend
+            ? t(`Send it to ${restaurantName} on WhatsApp so they can confirm it.`, `أرسله إلى ${restaurantName} عبر واتساب ليؤكده.`)
+            : t("Follow your order below.", "تابع طلبك أدناه.")}
         </p>
-        <InstallAppPrompt language={arabic ? "ar" : "en"} />
+        <p className="mt-3 inline-flex rounded-full bg-stone-100 px-3 py-1 text-sm font-bold text-stone-700">
+          {t("Reference", "رقم الطلب")}: {reference}
+        </p>
+      </div>
+
+      {onboardingTest ? (
+        <aside className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-start text-violet-950">
+          <p className="font-black">Test order saved · Final step</p>
+          <p className="mt-1 text-sm text-violet-900/75">
+            Return to Orders and accept the highlighted test order to finish setup.
+          </p>
+          <Link
+            className="focus-ring mt-3 inline-flex w-full items-center justify-center rounded-full bg-violet-700 px-5 py-3 font-black text-white"
+            href={onboardingOrdersHref(order.id)}
+          >
+            Go to dashboard and accept order
+          </Link>
+        </aside>
+      ) : null}
+
+      {awaitingSend ? (
+        <div className="mt-5 text-center">
+          <a className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
+            href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+            <MessageCircle size={18} />
+            {t("Send this order on WhatsApp", "أرسل هذا الطلب عبر واتساب")}
+          </a>
+          <p className="mt-2 text-xs text-stone-500">
+            {t("Already sent it? No need to send again. You can reopen WhatsApp from this page any time.", "أرسلته بالفعل؟ لا حاجة لإرساله مجدداً. يمكنك فتح واتساب من هذه الصفحة في أي وقت.")}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-5">
+        <OrderStatusTracker
+          callHref={callHref}
+          initial={toOrderProgressSnapshot(order)}
+          language={arabic ? "ar" : "en"}
+          orderId={order.id}
+          restaurantId={restaurant.id}
+          whatsappUrl={whatsappUrl}
+        />
+      </div>
+
+      <section className="mt-5 rounded-2xl border border-stone-200 bg-white p-4">
+        <ul className="divide-y divide-stone-100 text-start text-sm">
+          {order.items.map((item, index) => (
+            <li className="flex justify-between gap-4 py-2.5" key={index}>
+              <span>{item.quantity} × {formatOrderItemName(item, arabic ? "ar" : "en")}</span>
+              <span className="shrink-0 font-bold">{formatCurrency(item.price * item.quantity, restaurant)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 flex justify-between border-t border-stone-200 pt-3 text-base font-black">
+          <span>{t("Total", "الإجمالي")}</span>
+          <span>{formatCurrency(order.total, restaurant)}</span>
+        </p>
+      </section>
+
+      <div className="mt-5 flex flex-col gap-3 text-center">
+        {!awaitingSend ? (
+          <a className="focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-leaf px-5 py-3 font-black text-leaf"
+            href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+            <MessageCircle size={18} />
+            {active ? t("Message the restaurant on WhatsApp", "راسل المطعم عبر واتساب") : t("Contact restaurant about this order", "تواصل مع المطعم بشأن هذا الطلب")}
+          </a>
+        ) : null}
         {webPushPublicKey ? <OrderPushPrompt orderId={order.id} publicKey={webPushPublicKey}
           restaurantSlug={restaurant.slug} /> : null}
+        <InstallAppPrompt language={arabic ? "ar" : "en"} />
         <Link className="focus-ring rounded-full border border-stone-200 px-5 py-3 font-bold text-ink"
           href={`/r/${restaurant.slug}`}>{t("Back to menu", "العودة إلى القائمة")}</Link>
       </div>
