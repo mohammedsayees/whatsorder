@@ -10,7 +10,8 @@ import {
   OtherIncomeForm,
   PaidOutForm,
   VoidOtherIncomeForm,
-  VoidPaidOutForm
+  VoidPaidOutForm,
+  PaidOutReceiptForm
 } from "@/components/admin/ShiftForms";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import { getOpenBusinessDay, getPreviousBusinessDays } from "@/lib/business-day-data";
@@ -46,6 +47,9 @@ const fulfilmentLabels: Record<string, string> = {
   dine_in: "Dine-in",
   takeaway: "Takeaway"
 };
+
+// Attaching a receipt reads it with Gemini in after(), within this budget.
+export const maxDuration = 60;
 
 export default async function AdminShiftsPage() {
   const session = await requireRestaurantAdmin();
@@ -310,6 +314,10 @@ export default async function AdminShiftsPage() {
                             <>
                               {paidOutBillStatuses ? (
                                 <PaidOutBillBadge status={paidOutBillStatuses.get(paidOut.id) ?? "none"} />
+                              ) : null}
+                              {paidOutBillStatuses && currentShift.canManage &&
+                                (paidOutBillStatuses.get(paidOut.id) ?? "none") === "none" ? (
+                                <PaidOutReceiptForm paidOutId={paidOut.id} />
                               ) : null}
                               {currentShift.canManage ? (
                                 <VoidPaidOutForm paidOutId={paidOut.id} shiftId={currentShift.shift.id} />

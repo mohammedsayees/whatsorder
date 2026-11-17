@@ -6,6 +6,8 @@ import {
   formatDifference,
   paidOutAmountToFils,
   rankLinkCandidates,
+  receiptAttachError,
+  receiptPostingError,
   tillPaymentError
 } from "@/lib/finance-paid-outs";
 
@@ -148,6 +150,41 @@ describe("pay-bill-from-till migration", () => {
   it("is service-role only", () => {
     expect(sql).toMatch(/revoke all on function[\s\S]*from public, anon, authenticated;/);
     expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/);
+    expect(sql).not.toMatch(/to\s+authenticated/);
+  });
+});
+
+describe("receipt messages", () => {
+  it("maps attach and posting guards to plain words", () => {
+    expect(receiptAttachError("Receipts can be attached only while the shift is open")).toContain("only while the shift is open");
+    expect(receiptAttachError('duplicate key value violates unique constraint "finance_documents_active_paid_out_receipt"'))
+      .toBe("A receipt is already attached to this paid-out.");
+    expect(receiptPostingError("Amounts differ: confirm the mismatch and give a reason")).toContain("give a reason");
+    expect(receiptPostingError("Paid-out not found")).toContain("voided");
+  });
+
+  it("never echoes raw database errors", () => {
+    expect(receiptAttachError("permission denied for table x")).toBe("The receipt could not be attached. Try again.");
+    expect(receiptPostingError(undefined)).toContain("Nothing was saved");
+  });
+});
+
+describe("paid-out receipts migration", () => {
+  const sql = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20261120120000_finance_paid_out_receipts.sql"),
+    "utf8"
+  ).toLowerCase();
+
+  it("keeps one live receipt per paid-out with a tenant-consistent key", () => {
+    expect(sql).toContain("foreign key (shift_paid_out_id, restaurant_id)");
+    expect(sql).toContain("where shift_paid_out_id is not null and status <> 'deleted'");
+  });
+
+  it("reuses existing guards and never touches shift math", () => {
+    expect(sql).toContain("public.create_finance_document_job(");
+    expect(sql).toContain("public.link_finance_paid_out_to_expense(");
+    expect(sql).not.toContain("calculate_restaurant_shift_summary");
+    expect(sql).not.toMatch(/alter\s+table\s+public\.(shift_cash_paid_outs|restaurant_shifts)/);
     expect(sql).not.toMatch(/to\s+authenticated/);
   });
 });

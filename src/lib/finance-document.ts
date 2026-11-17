@@ -35,6 +35,8 @@ export type FinanceDocument = {
   file_hash: string;
   status: "queued" | "processing" | "extracted" | "failed" | "reviewed" | "deleted";
   duplicate_of_document_id: string | null;
+  /** Set when the bill was attached at the till to a shift cash paid-out. */
+  shift_paid_out_id?: string | null;
   confidence: "high" | "medium" | "low" | null;
   extracted_json: ReturnType<typeof financeExtractionToStorage> | null;
   extraction_warnings: string[];

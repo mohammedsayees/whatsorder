@@ -11,6 +11,7 @@ import {
   candidatesForPaidOut,
   getPaidOutLinkCandidatePool,
   getRecentPaidOutLinks,
+  getPendingPaidOutReceipts,
   getUnbilledPaidOuts,
   paidOutLinkingAvailable
 } from "@/lib/finance-paid-out-data";
@@ -46,6 +47,9 @@ export default async function FinancePaidOutsPage({
     getFinanceCategories(session.restaurantId),
     getRecentPaidOutLinks(session.restaurantId)
   ]);
+  const pendingReceipts = await getPendingPaidOutReceipts(
+    session.restaurantId, unbilled.map((paidOut) => paidOut.paidOutId)
+  ).catch(() => new Map<string, string>());
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, session.restaurant);
   const now = Date.now();
 
@@ -83,6 +87,15 @@ export default async function FinancePaidOutsPage({
                 </div>
               </div>
 
+              {pendingReceipts.has(paidOut.paidOutId) ? (
+                <Link
+                  className="focus-ring mt-3 flex items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-black text-sky-900"
+                  href={`/admin/finance/documents/${pendingReceipts.get(paidOut.paidOutId)}`}
+                >
+                  <span>Receipt attached at the till</span>
+                  <span>Review and post →</span>
+                </Link>
+              ) : null}
               <div className="mt-3 grid gap-2">
                 <details className="rounded-lg border border-stone-200 p-3">
                   <summary className="cursor-pointer text-sm font-black">Link a bill</summary>
