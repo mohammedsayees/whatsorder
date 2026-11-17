@@ -183,6 +183,19 @@ export async function approveFinanceDocumentAction(formData: FormData) {
     fail(path, "Subtotal plus VAT must exactly equal the total.");
   }
   if (!lines) fail(path, "Review the extracted line items and correct invalid amounts.");
+  const servicePeriodStart = String(formData.get("service_period_start") ?? "");
+  const servicePeriodEnd = String(formData.get("service_period_end") ?? "");
+  if ((servicePeriodStart || servicePeriodEnd) &&
+      (!isIsoDate(servicePeriodStart) || !isIsoDate(servicePeriodEnd) || servicePeriodEnd < servicePeriodStart)) {
+    fail(path, "Enter a valid service period, or leave both dates blank.");
+  }
+  const recurringCostId = String(formData.get("recurring_cost_id") ?? "");
+  if (recurringCostId && !/^[0-9a-f-]{36}$/i.test(recurringCostId)) fail(path, "Choose a valid recurring schedule.");
+  const allocation = {
+    requested_service_period_start: servicePeriodStart || null,
+    requested_service_period_end: servicePeriodEnd || null,
+    requested_recurring_cost_id: recurringCostId || null
+  };
   if (!["unpaid", "paid", "partial"].includes(paymentStatus)) fail(path, "Choose a valid payment status.");
   if (paymentMethod && !["cash", "card", "bank_transfer", "other"].includes(paymentMethod)) fail(path, "Choose a valid payment method.");
   if (paymentStatus === "paid" && !isIsoDate(paidOn)) fail(path, "Paid expenses require a paid date.");
@@ -221,7 +234,8 @@ export async function approveFinanceDocumentAction(formData: FormData) {
   if (document.shift_paid_out_id) {
     const mismatchReason = String(formData.get("mismatch_reason") ?? "").trim();
     if (mismatchReason.length > 300) fail(path, "The mismatch reason can be up to 300 characters.");
-    const { data: receiptExpenseId, error: receiptError } = await admin.rpc("approve_finance_paid_out_receipt", {
+    const { data: receiptExpenseId, error: receiptError } = await admin.rpc("approve_finance_paid_out_receipt_v2", {
+      ...allocation,
       target_restaurant_id: session.restaurantId,
       target_document_id: documentId,
       requested_category_id: categoryId,
@@ -248,7 +262,8 @@ export async function approveFinanceDocumentAction(formData: FormData) {
   if (formData.get("pay_from_till") === "on") {
     const tillShiftId = String(formData.get("till_shift_id") ?? "");
     if (!/^[0-9a-f-]{36}$/i.test(tillShiftId)) fail(path, "The open shift could not be found. Refresh and try again.");
-    const { data: tillExpenseId, error: tillError } = await admin.rpc("approve_finance_document_from_till", {
+    const { data: tillExpenseId, error: tillError } = await admin.rpc("approve_finance_document_from_till_v2", {
+      ...allocation,
       target_restaurant_id: session.restaurantId,
       target_document_id: documentId,
       requested_category_id: categoryId,
@@ -271,7 +286,16 @@ export async function approveFinanceDocumentAction(formData: FormData) {
     redirect(`/admin/finance?success=${encodeURIComponent("Bill posted and paid from the till. The shift's expected cash is updated.")}`);
   }
 
-  const { data: expenseId, error } = await admin.rpc("approve_finance_document", {
+  let paidAmountFils: number | null = null;
+  if (paymentStatus === "partial") {
+    paidAmountFils = parseAedToFils(formData.get("paid_amount"));
+    if (paidAmountFils === null || paidAmountFils >= totalFils) {
+      fail(path, "For a partial payment, enter the amount paid so far (less than the total).");
+    }
+  }
+  const { data: expenseId, error } = await admin.rpc("approve_finance_document_v2", {
+    ...allocation,
+    requested_paid_amount_fils: paidAmountFils,
     target_restaurant_id: session.restaurantId,
     target_document_id: documentId,
     requested_category_id: categoryId,
@@ -289,7 +313,13 @@ export async function approveFinanceDocumentAction(formData: FormData) {
     requested_lines: lines,
     event_actor_user_id: session.userId
   });
-  if (error || !expenseId) fail(path, "The reviewed bill could not be posted. Check the fields and try again.");
+  if (error || !expenseId) {
+    const text = error?.message ?? "";
+    fail(path, text.includes("Invalid service period") ? "Enter a valid service period, or leave both dates blank."
+      : text.includes("Invalid recurring schedule") ? "Choose an active recurring schedule."
+      : text.includes("Enter how much has been paid") ? "For a partial payment, enter the amount paid so far."
+      : "The reviewed bill could not be posted. Check the fields and try again.");
+  }
   revalidatePath("/admin/finance");
   redirect(`/admin/finance?success=${encodeURIComponent("Reviewed bill posted as an approved expense.")}`);
 }

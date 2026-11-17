@@ -132,7 +132,6 @@ export async function advanceFinancePilotAction(formData: FormData) {
   const admin = getSupabaseAdmin();
   const overviewPath = "/admin/finance/overview";
   if (!admin) fail(overviewPath, "Finance pilot controls are unavailable.");
-  if (session.restaurant.slug !== "chaixpress") fail(overviewPath, "Pilot controls are limited to Chai Xpress.");
   const status = String(formData.get("status") ?? "");
   const sampleStart = String(formData.get("sample_start") ?? "") || null;
   const sampleEnd = String(formData.get("sample_end") ?? "") || null;
@@ -149,4 +148,31 @@ export async function advanceFinancePilotAction(formData: FormData) {
   if (error) fail(overviewPath, error.message || "The pilot gate was not satisfied.");
   revalidatePath(overviewPath);
   redirect(`${overviewPath}?success=${encodeURIComponent(`Pilot moved to ${status}.`)}`);
+}
+
+// Builds food-cost snapshots for completed orders that don't have one yet, e.g.
+// orders completed before Finance was switched on. Up to 500 orders per click.
+export async function backfillFinanceCostsAction(formData: FormData) {
+  const { session } = await requireFinancePermission("manage_costing");
+  const admin = getSupabaseAdmin();
+  const overviewPath = "/admin/finance/overview";
+  if (!admin) fail(overviewPath, "Finance costing is unavailable.");
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  const back = `${overviewPath}?preset=custom&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  if (!isIsoDate(start) || !isIsoDate(end) || end < start) fail(overviewPath, "Choose a valid period first.");
+  const days = (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000;
+  if (days > 366) redirect(`${back}&error=${encodeURIComponent("Choose a period of a year or less.")}`);
+  const { data, error } = await admin.rpc("backfill_finance_cost_snapshots", {
+    target_restaurant_id: session.restaurantId, requested_start: start, requested_end: end,
+    requested_limit: 500
+  });
+  if (error) redirect(`${back}&error=${encodeURIComponent("Past order costs could not be calculated. Try a shorter period.")}`);
+  const result = (data ?? {}) as { orders_processed?: number; snapshots_created?: number };
+  revalidatePath(overviewPath);
+  const processed = Number(result.orders_processed ?? 0);
+  const message = processed >= 500
+    ? `Calculated ${Number(result.snapshots_created ?? 0)} item costs across 500 orders. Click again to continue.`
+    : `Calculated ${Number(result.snapshots_created ?? 0)} item costs across ${processed} orders.`;
+  redirect(`${back}&success=${encodeURIComponent(message)}`);
 }

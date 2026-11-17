@@ -31,7 +31,8 @@ export function FinanceBillReviewForm({
   till = null,
   tillOpenedAtLabel = "",
   receiptPaidOut = null,
-  receiptRecordedAtLabel = ""
+  receiptRecordedAtLabel = "",
+  recurringCosts = []
 }: {
   categories: FinanceCategory[];
   document: FinanceDocument;
@@ -40,6 +41,7 @@ export function FinanceBillReviewForm({
   tillOpenedAtLabel?: string;
   receiptPaidOut?: PaidOutReceiptContext | null;
   receiptRecordedAtLabel?: string;
+  recurringCosts?: { id: string; description: string }[];
 }) {
   const extracted = document.extracted_json!;
   const [lines, setLines] = useState<ReviewLine[]>(
@@ -81,6 +83,10 @@ export function FinanceBillReviewForm({
         <label className="text-sm font-bold">Payment status<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="partial">Partially paid</option></select></label>
         <label className="text-sm font-bold">Payment method<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_method"><option value="">Not recorded</option><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
         <label className="text-sm font-bold">Paid on<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="paid_on" type="date" /></label>
+        <label className="text-sm font-bold">Amount paid so far (AED, for partial payments)<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" inputMode="decimal" name="paid_amount" placeholder="0.00" /></label>
+        <label className="text-sm font-bold">Service period start<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="service_period_start" type="date" /><span className="mt-1 block text-xs font-normal text-stone-500">For bills covering a period, e.g. a monthly utility bill</span></label>
+        <label className="text-sm font-bold">Service period end<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="service_period_end" type="date" /></label>
+        {recurringCosts.length > 0 ? <label className="text-sm font-bold sm:col-span-2">Recurring schedule (optional)<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" defaultValue="" name="recurring_cost_id"><option value="">Not linked</option>{recurringCosts.map((cost) => <option key={cost.id} value={cost.id}>{cost.description}</option>)}</select><span className="mt-1 block text-xs font-normal text-stone-500">Link a bill that pays a scheduled cost (e.g. rent) so it isn&apos;t counted twice.</span></label> : null}
         {till ? <FinanceTillPaymentFields openedAtLabel={tillOpenedAtLabel} till={till} /> : null}
         {receiptPaidOut ? (
           <fieldset className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm sm:col-span-2">

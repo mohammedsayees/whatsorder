@@ -75,6 +75,8 @@ export type FinanceRecurringCost = {
   end_on: string | null;
   next_due_on: string;
   is_active: boolean;
+  paused_on?: string | null;
+  superseded_by?: string | null;
   finance_categories?: Pick<FinanceCategory, "name" | "classification"> | null;
 };
 

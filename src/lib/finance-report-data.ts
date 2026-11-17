@@ -4,6 +4,9 @@ import { parseAedToFilsAllowZero } from "@/lib/finance";
 import {
   allocatedExpenseForRange,
   buildFinanceOperatingReport,
+  expenseCashPaidFils,
+  expensePeriodFilter,
+  recurringEffectiveEnd,
   recurringAccrualForRange,
   type FinanceOperatingReport,
   type FinanceReportOrder,
@@ -71,14 +74,19 @@ async function buildPeriodReport(session: RestaurantAdminSession, range: ReportR
       .eq("restaurant_id", session.restaurantId).eq("status", "Completed")
       .gte("created_at", range.startIso).lt("created_at", range.endExclusiveIso)
       .order("created_at").limit(MAX_REPORT_ORDERS + 1),
+    // Only expenses that can affect this period: incurred in it, a service
+    // period overlapping it, or paid in it. History before that is never loaded.
     admin.from("finance_expenses")
-      .select("id,incurred_on,service_period_start,service_period_end,subtotal_fils,total_fils,payment_status,paid_on,recurring_cost_id,finance_categories!inner(classification)")
+      .select("id,incurred_on,service_period_start,service_period_end,subtotal_fils,total_fils,payment_status,paid_on,paid_amount_fils,recurring_cost_id,finance_categories!inner(classification)")
       .eq("restaurant_id", session.restaurantId).eq("status", "approved")
-      .lte("incurred_on", range.endDate).limit(5001),
+      .or(expensePeriodFilter(range.startDate, range.endDate))
+      .limit(5001),
+    // Paused schedules stay in past periods up to the day before they paused.
     admin.from("finance_recurring_costs")
-      .select("amount_fils,frequency,allocation_months,start_on,end_on,is_active,finance_categories!inner(classification)")
-      .eq("restaurant_id", session.restaurantId).eq("is_active", true)
-      .lte("start_on", range.endDate).limit(1000)
+      .select("amount_fils,frequency,allocation_months,start_on,end_on,paused_on,finance_categories!inner(classification)")
+      .eq("restaurant_id", session.restaurantId)
+      .lte("start_on", range.endDate)
+      .limit(1000)
   ]);
   if (!settings || (orderRows?.length ?? 0) > MAX_REPORT_ORDERS || (expenses?.length ?? 0) > 5000) {
     throw new Error("Finance report range is too large for a safe interactive report.");
@@ -126,11 +134,17 @@ async function buildPeriodReport(session: RestaurantAdminSession, range: ReportR
         serviceEnd: expense.service_period_end ? String(expense.service_period_end) : null
       });
     }
-    if (classification === "purchase" && String(expense.incurred_on) >= range.startDate) {
+    if (classification === "purchase" && String(expense.incurred_on) >= range.startDate
+        && String(expense.incurred_on) <= range.endDate) {
       purchaseSpendFils += Number(expense.subtotal_fils);
     }
     if (expense.paid_on && String(expense.paid_on) >= range.startDate && String(expense.paid_on) <= range.endDate) {
-      cashOutflowFils += Number(expense.total_fils);
+      cashOutflowFils += expenseCashPaidFils({
+        paymentStatus: String(expense.payment_status),
+        paidAmountFils: expense.paid_amount_fils === null || expense.paid_amount_fils === undefined
+          ? null : Number(expense.paid_amount_fils),
+        totalFils: Number(expense.total_fils)
+      });
     }
   }
   for (const cost of recurring ?? []) {
@@ -138,7 +152,10 @@ async function buildPeriodReport(session: RestaurantAdminSession, range: ReportR
     if (classification !== "operating") continue;
     accruedOperatingCostFils += recurringAccrualForRange({
       allocationMonths: Number(cost.allocation_months), amountFils: Number(cost.amount_fils),
-      endOn: cost.end_on ? String(cost.end_on) : null,
+      endOn: recurringEffectiveEnd(
+        cost.end_on ? String(cost.end_on) : null,
+        cost.paused_on ? String(cost.paused_on) : null
+      ),
       frequency: cost.frequency as "weekly" | "monthly" | "quarterly" | "yearly",
       rangeStart: range.startDate, rangeEnd: range.endDate, startOn: String(cost.start_on)
     });
@@ -164,7 +181,14 @@ export async function getFinanceReportBundle(session: RestaurantAdminSession, ra
   ]);
   if (!current || !prior) return null;
   const admin = getSupabaseAdmin();
-  if (admin) {
+  // Usage telemetry: at most one row per user, restaurant and period every 10 minutes.
+  const { data: recentRun } = admin
+    ? await admin.from("finance_report_runs").select("id")
+      .eq("restaurant_id", session.restaurantId).eq("generated_by", session.userId)
+      .eq("period_start", range.startDate).eq("period_end", range.endDate)
+      .gte("created_at", new Date(Date.now() - 10 * 60_000).toISOString()).limit(1)
+    : { data: null };
+  if (admin && (recentRun?.length ?? 0) === 0) {
     await admin.from("finance_report_runs").insert({
       restaurant_id: session.restaurantId, period_start: range.startDate, period_end: range.endDate,
       order_count: current.orderCount, coverage_bps: Math.round(current.coveragePct * 100),
