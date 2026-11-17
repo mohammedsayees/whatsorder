@@ -139,6 +139,15 @@ export async function createFinanceExpenseAction(formData: FormData) {
     redirect(`/admin/finance?success=${encodeURIComponent("Expense recorded and paid from the till. The shift's expected cash is updated.")}`);
   }
 
+  // A partial payment records how much was actually paid.
+  let paidAmountFils: number | null = null;
+  if (paymentStatus === "partial") {
+    paidAmountFils = parseAedToFils(formData.get("paid_amount"));
+    if (paidAmountFils === null || paidAmountFils >= totalFils) {
+      fail(path, "For a partial payment, enter the amount paid so far (less than the total).");
+    }
+  }
+
   const status = requestedStatus === "approved" && access.approve ? "approved" : "draft";
   const now = new Date().toISOString();
   const { error } = await admin.from("finance_expenses").insert({
@@ -155,6 +164,7 @@ export async function createFinanceExpenseAction(formData: FormData) {
     payment_status: paymentStatus,
     payment_method: paymentMethod || null,
     paid_on: paidOn || null,
+    paid_amount_fils: paidAmountFils,
     service_period_start: servicePeriodStart || null,
     service_period_end: servicePeriodEnd || null,
     recurring_cost_id: recurringCostId || null,
@@ -270,15 +280,25 @@ export async function toggleFinanceRecurringCostAction(formData: FormData) {
   const path = "/admin/finance/recurring";
   if (!admin) unavailable(path);
   const recurringId = String(formData.get("recurring_id") ?? "");
-  const isActive = formData.get("is_active") === "true";
-  const { error, count } = await admin
-    .from("finance_recurring_costs")
-    .update({ is_active: isActive, updated_by: session.userId }, { count: "exact" })
-    .eq("id", recurringId)
-    .eq("restaurant_id", session.restaurantId);
-  if (error || count !== 1) fail(path, "The recurring cost could not be updated.");
+  const resume = formData.get("is_active") === "true";
+  // Pausing dates the pause; resuming starts a new schedule from today, so
+  // past reports keep the cost for the time it was really running.
+  const { data, error } = resume
+    ? await admin.rpc("resume_finance_recurring_cost", {
+      target_restaurant_id: session.restaurantId, target_recurring_id: recurringId,
+      event_actor_user_id: session.userId
+    })
+    : await admin.rpc("pause_finance_recurring_cost", {
+      target_restaurant_id: session.restaurantId, target_recurring_id: recurringId,
+      event_actor_user_id: session.userId
+    });
+  if (error || !data) {
+    fail(path, error?.message.includes("already ended")
+      ? "That schedule has already ended. Add a new recurring cost instead."
+      : "The recurring cost could not be updated.");
+  }
   revalidatePath(path);
-  redirect(`${path}?success=${encodeURIComponent(isActive ? "Recurring cost resumed." : "Recurring cost paused.")}`);
+  redirect(`${path}?success=${encodeURIComponent(resume ? "Recurring cost resumed from today." : "Recurring cost paused.")}`);
 }
 
 export async function updateFinancePermissionsAction(formData: FormData) {

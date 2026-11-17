@@ -80,7 +80,7 @@ export async function getFinanceRecurringCosts(restaurantId: string) {
   if (!admin) return [];
   const { data } = await admin
     .from("finance_recurring_costs")
-    .select("id,restaurant_id,category_id,description,amount_fils,frequency,allocation_months,start_on,end_on,next_due_on,is_active,finance_categories(name,classification)")
+    .select("id,restaurant_id,category_id,description,amount_fils,frequency,allocation_months,start_on,end_on,next_due_on,is_active,paused_on,superseded_by,finance_categories(name,classification)")
     .eq("restaurant_id", restaurantId)
     .order("is_active", { ascending: false })
     .order("next_due_on");

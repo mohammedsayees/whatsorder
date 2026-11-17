@@ -81,6 +81,7 @@ export function tillPaymentError(message: string | undefined) {
   if (text.includes("already been posted")) return "This bill has already been posted.";
   if (text.includes("Invalid finance category")) return "Choose an active expense category.";
   if (text.includes("Invalid recurring schedule")) return "Choose an active recurring schedule.";
+  if (text.includes("Invalid service period")) return "Enter a valid service period, or leave both dates blank.";
   if (text.includes("Finance is not enabled") || text.includes("only available for AED")) return "Paying bills from the till isn't available for this restaurant.";
   return "The bill could not be paid from the till. Nothing was saved. Try again.";
 }
@@ -94,6 +95,8 @@ export function receiptPostingError(message: string | undefined) {
   if (text.includes("already been posted")) return "This bill has already been posted.";
   if (text.includes("Invalid finance category")) return "Choose an active expense category.";
   if (text.includes("Duplicate document")) return "This exact bill file has already been posted.";
+  if (text.includes("Invalid service period")) return "Enter a valid service period, or leave both dates blank.";
+  if (text.includes("Invalid recurring schedule")) return "Choose an active recurring schedule.";
   return "The receipt could not be posted. Nothing was saved. Try again.";
 }
 
