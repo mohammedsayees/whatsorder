@@ -23,6 +23,7 @@ import {
   Share2,
   ShoppingBag,
   Star,
+  Users,
   X
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
@@ -112,6 +113,20 @@ const OnboardingTestOrderGuide = dynamic(() =>
 );
 
 // Shown to repeat visitors only, so first visits never download it.
+// Group orders load only when a group is started or a group link is opened.
+const GroupOrderBar = dynamic(
+  () => import("@/components/customer/GroupOrder").then((module) => module.GroupOrderBar),
+  { ssr: false }
+);
+const GroupOrderStart = dynamic(
+  () => import("@/components/customer/GroupOrder").then((module) => module.GroupOrderStart),
+  { ssr: false }
+);
+
+// Same rule as isShareToken in lib/group-order, inlined so the menu chunk
+// doesn't pull in the group helpers.
+const GROUP_TOKEN = /^[A-Za-z0-9_-]{22,64}$/;
+
 const InstallAppPrompt = dynamic(
   () =>
     import("@/components/customer/InstallAppPrompt").then(
@@ -213,6 +228,8 @@ export function RestaurantMenu({
   const [showHours, setShowHours] = useState(false);
   // Install prompts only for repeat visitors; first visits are for ordering.
   const [isRepeatVisit, setIsRepeatVisit] = useState(false);
+  const [groupToken, setGroupToken] = useState<string | null>(null);
+  const [isGroupStartOpen, setIsGroupStartOpen] = useState(false);
   const fulfilment = useFulfilmentPreference(restaurant, tableNumber);
   const stickyBarRef = useRef<HTMLElement | null>(null);
   const menuStartRef = useRef<HTMLDivElement | null>(null);
@@ -236,6 +253,8 @@ export function RestaurantMenu({
     setTableNumber(queryTableNumber ?? "");
     setAttributionSource(currentQuery.get("src")?.trim().slice(0, 64) ?? "");
     setOnboardingTest(currentQuery.get("onboarding") === "test-order");
+    const queryGroup = currentQuery.get("group");
+    setGroupToken(queryGroup && GROUP_TOKEN.test(queryGroup) ? queryGroup : null);
     trackFunnel(restaurant.id, "menu_view");
 
     try {
@@ -588,6 +607,21 @@ export function RestaurantMenu({
     }
   };
 
+  // Keeps ?group= in the address bar in step with group mode, so a refresh
+  // or a shared link lands in the same group.
+  const setGroupLink = (token: string | null) => {
+    const url = new URL(window.location.href);
+
+    if (token) {
+      url.searchParams.set("group", token);
+    } else {
+      url.searchParams.delete("group");
+    }
+
+    window.history.replaceState(null, "", url.toString());
+    setGroupToken(token);
+  };
+
   const scrollToCategory = (categoryId: string) => {
     const element = document.getElementById(getCategorySectionId(categoryId));
 
@@ -766,6 +800,17 @@ export function RestaurantMenu({
                 {fulfilmentSummary}
               </p>
             </div>
+
+            {orderingAvailable && !groupToken ? (
+              <button
+                className="focus-ring mt-2 inline-flex items-center gap-1.5 rounded-full text-xs font-black text-leaf underline-offset-4 hover:underline"
+                onClick={() => setIsGroupStartOpen(true)}
+                type="button"
+              >
+                <Users aria-hidden size={14} />
+                {t.startGroupOrder}
+              </button>
+            ) : null}
 
             {isRepeatVisit ? <InstallAppPrompt language={language} /> : null}
           </div>
@@ -1084,7 +1129,29 @@ export function RestaurantMenu({
         </Link>
       </footer>
 
-      {cart.count > 0 ? (
+      {groupToken ? (
+        <GroupOrderBar
+          checkoutHref={checkoutHref}
+          language={language}
+          onLeave={() => setGroupLink(null)}
+          restaurant={restaurant}
+          token={groupToken}
+        />
+      ) : null}
+
+      {isGroupStartOpen ? (
+        <GroupOrderStart
+          language={language}
+          onClose={() => setIsGroupStartOpen(false)}
+          onCreated={(token) => {
+            setIsGroupStartOpen(false);
+            setGroupLink(token);
+          }}
+          restaurant={restaurant}
+        />
+      ) : null}
+
+      {cart.count > 0 && !groupToken ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-white">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10">

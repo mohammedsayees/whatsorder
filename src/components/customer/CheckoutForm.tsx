@@ -28,6 +28,7 @@ import {
 } from "@/lib/customer-address";
 import { formatCurrency } from "@/lib/currency";
 import { trackFunnel } from "@/lib/customer-funnel-client";
+import { groupCheckoutKey, type GroupCheckoutHandoff } from "@/lib/group-order";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
@@ -113,6 +114,22 @@ export function CheckoutForm({
   } = useFulfilmentPreference(restaurant, initialTableNumber);
   const [selectedInstructions, setSelectedInstructions] = useState<InstructionKey[]>([]);
   const [noteText, setNoteText] = useState("");
+  // Set when the organiser arrives from a locked office group order.
+  const [groupHandoff, setGroupHandoff] = useState<GroupCheckoutHandoff | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(groupCheckoutKey(restaurant.slug));
+      const handoff = raw ? (JSON.parse(raw) as GroupCheckoutHandoff) : null;
+
+      if (handoff?.token && typeof handoff.notes === "string") {
+        setGroupHandoff(handoff);
+        setNoteText((current) => current || handoff.notes);
+      }
+    } catch {
+      // No group handoff.
+    }
+  }, [restaurant.slug]);
   // Contact and address fields are controlled so details remembered on this
   // device can fill them after mount. A signed-in profile seeds them first.
   const [details, setDetails] = useState<SavedCustomerDetails>(() => ({
@@ -387,6 +404,24 @@ export function CheckoutForm({
       }
 
       persistDetails();
+
+      if (groupHandoff?.organiserToken) {
+        // Lets colleagues see "placed"; best-effort, never blocks the order.
+        void fetch(`/api/group-orders/${encodeURIComponent(groupHandoff.token)}/complete`, {
+          body: JSON.stringify({ organiserToken: groupHandoff.organiserToken, orderId: result.orderId }),
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          keepalive: true,
+          method: "POST"
+        }).catch(() => undefined);
+      }
+
+      try {
+        window.sessionStorage.removeItem(groupCheckoutKey(restaurant.slug));
+      } catch {
+        // Nothing to clear.
+      }
+
       trackFunnel(restaurant.id, "order_saved", { orderId: result.orderId, fulfilmentType });
 
       if (result.confirmationUrl) {
@@ -570,6 +605,13 @@ export function CheckoutForm({
             Complete checkout with your own details. Then return to the dashboard tab and accept this order.
           </p>
         </aside>
+      ) : null}
+      {groupHandoff ? (
+        <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+          {language === "ar"
+            ? `طلب جماعي لـ ${groupHandoff.people} أشخاص. أضفنا ما طلبه كل شخص إلى ملاحظات الطلب للمطبخ. ستدفع عن المجموعة كاملة.`
+            : `Group order for ${groupHandoff.people} ${groupHandoff.people === 1 ? "person" : "people"}. Each person's items are in the order notes for the kitchen. You're paying for the whole group.`}
+        </p>
       ) : null}
       {prefill ? (
         <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-mint/20 px-3 py-1.5 text-sm font-bold text-leaf">
@@ -931,7 +973,7 @@ export function CheckoutForm({
                 </div>
               </>
             ) : null}
-            <details className="group mt-3">
+            <details className="group mt-3" open={Boolean(groupHandoff) || undefined}>
               <summary className="focus-ring inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full text-sm font-black text-leaf">
                 <Plus className="transition group-open:rotate-45" size={15} />
                 {t.addNote}
@@ -939,7 +981,7 @@ export function CheckoutForm({
               <textarea
                 aria-label={t.notes}
                 className="focus-ring mt-2 min-h-20 w-full rounded-xl border border-stone-200 bg-white px-4 py-3"
-                maxLength={600}
+                maxLength={950}
                 onChange={(event) => setNoteText(event.target.value)}
                 placeholder={t.notesPlaceholder}
                 value={noteText}
