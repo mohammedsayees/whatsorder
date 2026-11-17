@@ -173,35 +173,3 @@ export async function getPaidOutBillStatuses(
   return statuses;
 }
 
-export type ShiftPaidOutBill = {
-  id: string;
-  reason: string;
-  amount: number;
-  recorded_at: string;
-  status: PaidOutBillStatus;
-};
-
-/** Paid-outs of one shift with their bill status, or null when linking doesn't apply. */
-export async function getShiftPaidOutBills(
-  session: RestaurantAdminSession,
-  shiftId: string
-): Promise<ShiftPaidOutBill[] | null> {
-  if (!(await paidOutLinkingAvailable(session))) return null;
-  const admin = getSupabaseAdmin();
-  if (!admin) return null;
-  const { data, error } = await admin.from("shift_cash_paid_outs")
-    .select("id,reason,amount,recorded_at")
-    .eq("restaurant_id", session.restaurantId).eq("shift_id", shiftId)
-    .order("recorded_at").limit(200);
-  if (error) return null;
-  const rows = (data ?? []) as Array<{ id: string; reason: string; amount: number; recorded_at: string }>;
-  const statuses = await getPaidOutBillStatuses(session, rows.map((row) => row.id));
-  if (!statuses) return null;
-  return rows.map((row) => ({
-    id: String(row.id),
-    reason: String(row.reason),
-    amount: Number(row.amount),
-    recorded_at: String(row.recorded_at),
-    status: statuses.get(String(row.id)) ?? "none"
-  }));
-}

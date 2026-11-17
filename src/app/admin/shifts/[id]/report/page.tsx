@@ -15,8 +15,10 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
-import { getShiftPaidOutBills } from "@/lib/finance-paid-out-data";
+import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
+import { VoidPaidOutForm } from "@/components/admin/ShiftForms";
+import { getClosedShiftPaidOuts } from "@/lib/shift-data";
 
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
@@ -90,11 +92,16 @@ export default async function ShiftCloseReportPage({
     notFound();
   }
 
-  const [lateReceipts, paidOutBills] = await Promise.all([
+  const [lateReceipts, shiftPaidOuts] = await Promise.all([
     getLateShiftReceipts(session, id),
-    // Live Finance status, shown outside the immutable report snapshot.
-    getShiftPaidOutBills(session, id).catch(() => null)
+    getClosedShiftPaidOuts(session, id)
   ]);
+  // Live Finance status, shown outside the immutable report snapshot.
+  const paidOutBillStatuses = await getPaidOutBillStatuses(
+    session,
+    shiftPaidOuts.paidOuts.filter((paidOut) => !paidOut.voided_at).map((paidOut) => paidOut.id)
+  ).catch(() => null);
+  const canVoidPaidOuts = view.canCorrect && !shiftPaidOuts.businessDayClosed;
 
   if (view.reports.length === 0) {
     return (
@@ -318,21 +325,39 @@ export default async function ShiftCloseReportPage({
         </footer>
       </article>
 
-      {paidOutBills && paidOutBills.length > 0 ? (
+      {shiftPaidOuts.paidOuts.length > 0 ? (
         <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4 print:hidden">
-          <h2 className="text-lg font-black">Paid-out bills</h2>
-          <p className="mt-1 text-xs text-stone-500">Live from Finance. Not part of the close report and never changes its totals.</p>
+          <h2 className="text-lg font-black">Cash paid-outs</h2>
+          <p className="mt-1 text-xs text-stone-500">
+            {canVoidPaidOuts
+              ? "Void a paid-out entered by mistake (for example the same bill twice). This saves a new report version."
+              : shiftPaidOuts.businessDayClosed
+                ? "This shift's business day is closed, so its paid-outs can no longer be changed."
+                : "Only restaurant management can void a paid-out after the shift is closed."}
+          </p>
           <ul className="mt-3 space-y-2">
-            {paidOutBills.map((paidOut) => (
-              <li className="flex items-start justify-between gap-3 rounded-lg bg-stone-50 p-3" key={paidOut.id}>
-                <div className="min-w-0">
-                  <p className="break-words text-sm font-bold">{paidOut.reason}</p>
-                  <p className="text-xs text-stone-500">{dateTime(paidOut.recorded_at)}</p>
-                  <PaidOutBillBadge status={paidOut.status} />
-                </div>
-                <span className="shrink-0 text-sm font-black">{money(paidOut.amount)}</span>
-              </li>
-            ))}
+            {shiftPaidOuts.paidOuts.map((paidOut) => {
+              const voided = Boolean(paidOut.voided_at);
+              return (
+                <li className={`flex items-start justify-between gap-3 rounded-lg p-3 ${voided ? "bg-stone-100 opacity-70" : "bg-stone-50"}`} key={paidOut.id}>
+                  <div className="min-w-0">
+                    <p className={`break-words text-sm font-bold ${voided ? "line-through" : ""}`}>{paidOut.reason}</p>
+                    <p className="text-xs text-stone-500">{dateTime(paidOut.recorded_at)}</p>
+                    {voided ? (
+                      <p className="mt-1 text-xs font-bold text-stone-600">
+                        Voided {paidOut.voided_at ? dateTime(paidOut.voided_at) : ""}{paidOut.void_reason ? `: ${paidOut.void_reason}` : ""}
+                      </p>
+                    ) : (
+                      <>
+                        {paidOutBillStatuses ? <PaidOutBillBadge status={paidOutBillStatuses.get(paidOut.id) ?? "none"} /> : null}
+                        {canVoidPaidOuts ? <VoidPaidOutForm closedShift paidOutId={paidOut.id} shiftId={id} /> : null}
+                      </>
+                    )}
+                  </div>
+                  <span className={`shrink-0 text-sm font-black ${voided ? "text-stone-500 line-through" : ""}`}>{money(Number(paidOut.amount))}</span>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}

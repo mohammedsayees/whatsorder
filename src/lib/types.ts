@@ -501,6 +501,9 @@ export type ShiftCashPaidOut = {
   reason: string;
   recorded_by_user_id: string;
   recorded_at: string;
+  voided_at?: string | null;
+  voided_by_user_id?: string | null;
+  void_reason?: string | null;
 };
 
 export type OtherIncomeCategory =
