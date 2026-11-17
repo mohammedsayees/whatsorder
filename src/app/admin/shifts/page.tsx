@@ -9,7 +9,8 @@ import {
   OpenShiftForm,
   OtherIncomeForm,
   PaidOutForm,
-  VoidOtherIncomeForm
+  VoidOtherIncomeForm,
+  VoidPaidOutForm
 } from "@/components/admin/ShiftForms";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import { getOpenBusinessDay, getPreviousBusinessDays } from "@/lib/business-day-data";
@@ -22,6 +23,8 @@ import {
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
+import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
+import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -57,6 +60,13 @@ export default async function AdminShiftsPage() {
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
     ]);
+  // Finance bill status per paid-out; null (no badges) unless Finance applies.
+  const paidOutBillStatuses = currentShift
+    ? await getPaidOutBillStatuses(
+      session,
+      currentShift.paidOuts.filter((paidOut) => !paidOut.voided_at).map((paidOut) => paidOut.id)
+    ).catch(() => null)
+    : null;
 
   const lateReceipts = await getLateShiftReceipts(session);
 
@@ -280,22 +290,39 @@ export default async function AdminShiftsPage() {
               ) : null}
               <div className="mt-5 space-y-2">
                 {currentShift.paidOuts.length > 0 ? (
-                  currentShift.paidOuts.map((paidOut) => (
-                    <div
-                      className="flex items-start justify-between gap-3 rounded-lg bg-stone-50 p-3"
-                      key={paidOut.id}
-                    >
-                      <div>
-                        <p className="font-bold">{paidOut.reason}</p>
-                        <p className="text-xs text-stone-500">
-                          {formatDateTime(paidOut.recorded_at)}
+                  currentShift.paidOuts.map((paidOut) => {
+                    const voided = Boolean(paidOut.voided_at);
+                    return (
+                      <div
+                        className={`flex items-start justify-between gap-3 rounded-lg p-3 ${voided ? "bg-stone-100 opacity-70" : "bg-stone-50"}`}
+                        key={paidOut.id}
+                      >
+                        <div className="min-w-0">
+                          <p className={`break-words font-bold ${voided ? "line-through" : ""}`}>{paidOut.reason}</p>
+                          <p className="text-xs text-stone-500">
+                            {formatDateTime(paidOut.recorded_at)}
+                          </p>
+                          {voided ? (
+                            <p className="mt-1 text-xs font-bold text-stone-600">
+                              Voided{paidOut.void_reason ? `: ${paidOut.void_reason}` : ""} — not counted in expected cash
+                            </p>
+                          ) : (
+                            <>
+                              {paidOutBillStatuses ? (
+                                <PaidOutBillBadge status={paidOutBillStatuses.get(paidOut.id) ?? "none"} />
+                              ) : null}
+                              {currentShift.canManage ? (
+                                <VoidPaidOutForm paidOutId={paidOut.id} shiftId={currentShift.shift.id} />
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                        <p className={`shrink-0 font-black ${voided ? "text-stone-500 line-through" : "text-rose-700"}`}>
+                          −{money(Number(paidOut.amount))}
                         </p>
                       </div>
-                      <p className="shrink-0 font-black text-rose-700">
-                        −{money(Number(paidOut.amount))}
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <p className="rounded-lg border border-dashed border-stone-200 p-5 text-center text-sm text-stone-500">
                     No cash paid-outs recorded.

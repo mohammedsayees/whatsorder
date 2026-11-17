@@ -10,6 +10,7 @@ import {
   closeShiftAction,
   openShiftAction,
   voidOtherIncomeAction,
+  voidShiftPaidOutAction,
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
@@ -149,6 +150,18 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
     addShiftPaidOutAction,
     initialState
   );
+  // Controlled so the values survive a duplicate warning round-trip (React
+  // resets uncontrolled form fields after every action).
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.success) {
+      setAmount("");
+      setReason("");
+    }
+  }
 
   return (
     <form action={action} className="flex flex-wrap items-end gap-3">
@@ -159,10 +172,12 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
           className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5"
           min="0.01"
           name="amount"
+          onChange={(event) => setAmount(event.target.value)}
           placeholder={restaurant.currency_code ?? "AED"}
           required
           step="0.01"
           type="number"
+          value={amount}
         />
       </label>
       <label className="min-w-[200px] flex-[2] text-sm font-bold text-stone-700">
@@ -171,10 +186,21 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
           className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5"
           maxLength={300}
           name="reason"
+          onChange={(event) => setReason(event.target.value)}
           placeholder="e.g. emergency milk purchase"
           required
+          value={reason}
         />
       </label>
+      {state.duplicateWarning ? (
+        <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+          <p className="font-bold">{state.duplicateWarning}</p>
+          <label className="mt-2 flex items-center gap-2 font-bold">
+            <input className="h-4 w-4" name="confirm_duplicate" type="checkbox" />
+            Yes, this is a separate payment
+          </label>
+        </div>
+      ) : null}
       <button
         className="focus-ring shrink-0 rounded-lg border border-ink px-4 py-2.5 text-sm font-black disabled:opacity-60"
         disabled={pending}
@@ -186,6 +212,33 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
         <ActionMessage state={state} />
       </div>
     </form>
+  );
+}
+
+export function VoidPaidOutForm({
+  paidOutId,
+  shiftId,
+  closedShift = false
+}: {
+  paidOutId: string;
+  shiftId: string;
+  closedShift?: boolean;
+}) {
+  const [state, action, pending] = useActionState(voidShiftPaidOutAction, initialState);
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="focus-ring cursor-pointer font-bold text-rose-700">Void incorrect paid-out</summary>
+      <form action={action} className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <input name="paid_out_id" type="hidden" value={paidOutId} />
+        <input name="shift_id" type="hidden" value={shiftId} />
+        <input className="focus-ring min-w-0 flex-1 rounded-lg border border-stone-200 px-2 py-2" maxLength={300} name="reason" placeholder="Reason, e.g. same bill entered twice" required />
+        <button className="focus-ring rounded-lg border border-rose-300 px-3 py-2 font-black text-rose-700 disabled:opacity-60" disabled={pending} type="submit">{pending ? "Voiding…" : "Confirm void"}</button>
+      </form>
+      {closedShift ? (
+        <p className="mt-1 text-stone-500">This saves a new version of the close report. Counted cash and notes stay as entered.</p>
+      ) : null}
+      <ActionMessage state={state} />
+    </details>
   );
 }
 

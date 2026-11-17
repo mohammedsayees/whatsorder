@@ -292,3 +292,28 @@ export async function getLateShiftReceipts(session: RestaurantAdminSession, shif
     return { ...receipt, included_in_report_version: included ? version : null };
   });
 }
+
+/**
+ * Every paid-out of a closed shift (voided ones included, for audit), plus
+ * whether its business day is closed (closed days are final: no voids).
+ * Callers must already have checked the viewer may see this shift's report.
+ */
+export async function getClosedShiftPaidOuts(session: RestaurantAdminSession, shiftId: string) {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Shift paid-outs could not be loaded.");
+  const [{ data: paidOuts, error }, { data: shift, error: shiftError }] = await Promise.all([
+    db.from("shift_cash_paid_outs").select("*")
+      .eq("restaurant_id", session.restaurantId).eq("shift_id", shiftId)
+      .order("recorded_at").limit(200),
+    db.from("restaurant_shifts").select("business_day_id")
+      .eq("restaurant_id", session.restaurantId).eq("id", shiftId).maybeSingle()
+  ]);
+  if (error || shiftError) throw new Error("Shift paid-outs could not be loaded.");
+  let businessDayClosed = false;
+  if (shift?.business_day_id) {
+    const { data: day } = await db.from("business_days").select("status")
+      .eq("restaurant_id", session.restaurantId).eq("id", shift.business_day_id).maybeSingle();
+    businessDayClosed = day?.status === "closed";
+  }
+  return { paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[], businessDayClosed };
+}

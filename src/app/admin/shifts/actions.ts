@@ -15,6 +15,8 @@ import {
 export type ShiftActionState = {
   error?: string;
   success?: string;
+  /** Set when a paid-out looks like a duplicate; the form asks to confirm. */
+  duplicateWarning?: string;
 };
 
 function formString(formData: FormData, key: string, maximumLength: number) {
@@ -62,7 +64,12 @@ function friendlyShiftError(message?: string) {
     "Close every shift before closing the business day",
     "The business day has no shifts",
     "Cannot close the business day while active orders remain",
-    "Assign completed orders before closing the business day"
+    "Assign completed orders before closing the business day",
+    "Only the shift opener or restaurant management can void a paid-out",
+    "Only restaurant management can void a paid-out after shift close",
+    "Paid-out not found or already voided",
+    "This shift belongs to a closed business day and can no longer be corrected",
+    "This shift has no close report to update"
   ];
 
   return (
@@ -188,6 +195,26 @@ export async function addShiftPaidOutAction(
     return { error: "Enter a paid-out amount and reason." };
   }
 
+  // The same bill entered twice inflates paid-outs and makes the drawer look
+  // over at close. Ask before saving a second paid-out of the same amount.
+  if (formData.get("confirm_duplicate") !== "on") {
+    const { data: sameAmount } = await supabase
+      .from("shift_cash_paid_outs")
+      .select("reason,recorded_at")
+      .eq("restaurant_id", session.restaurantId)
+      .eq("shift_id", shiftId)
+      .eq("amount", amount)
+      .is("voided_at", null)
+      .order("recorded_at", { ascending: false })
+      .limit(1);
+    const existing = sameAmount?.[0];
+    if (existing) {
+      return {
+        duplicateWarning: `A paid-out of the same amount is already recorded on this shift ("${String(existing.reason).slice(0, 80)}"). Is this a different payment?`
+      };
+    }
+  }
+
   const { error } = await supabase.rpc("add_shift_cash_paid_out", {
     event_actor_user_id: session.userId,
     requested_amount: amount,
@@ -202,6 +229,35 @@ export async function addShiftPaidOutAction(
 
   refreshShiftViews();
   return { success: "Cash paid-out recorded." };
+}
+
+export async function voidShiftPaidOutAction(
+  _previousState: ShiftActionState,
+  formData: FormData
+): Promise<ShiftActionState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const paidOutId = formString(formData, "paid_out_id", 80);
+  const shiftId = formString(formData, "shift_id", 80);
+  const reason = formString(formData, "reason", 300);
+  if (!supabase) return { error: "Shift service is unavailable." };
+  if (!paidOutId || !reason) return { error: "Enter a reason for voiding this paid-out." };
+
+  const { data: reportVersion, error } = await supabase.rpc("void_shift_cash_paid_out", {
+    event_actor_user_id: session.userId,
+    requested_reason: reason,
+    target_paid_out_id: paidOutId,
+    target_restaurant_id: session.restaurantId
+  });
+  if (error) return { error: friendlyShiftError(error.message) };
+  refreshShiftViews();
+  if (shiftId) revalidatePath(`/admin/shifts/${shiftId}/report`);
+  revalidatePath("/admin/finance/paid-outs");
+  return {
+    success: typeof reportVersion === "number"
+      ? `Paid-out voided. Shift report updated to version ${reportVersion}.`
+      : "Paid-out voided. Expected cash has been updated."
+  };
 }
 
 export async function assignUnassignedOrdersAction(
