@@ -5,6 +5,7 @@ import { CheckCircle2, MessageCircle } from "lucide-react";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { formatCurrency } from "@/lib/currency";
 import { formatOrderItemName } from "@/lib/cart-line";
+import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 
@@ -63,6 +64,7 @@ export function SavedOrderConfirmation({ restaurant, order, language, onboarding
         <p className="text-sm text-stone-600">
           {t("You can return to this page to reopen WhatsApp without placing another order.", "يمكنك العودة إلى هذه الصفحة لفتح واتساب دون إنشاء طلب جديد.")}
         </p>
+        <InstallAppPrompt language={arabic ? "ar" : "en"} />
         {webPushPublicKey ? <OrderPushPrompt orderId={order.id} publicKey={webPushPublicKey}
           restaurantSlug={restaurant.slug} /> : null}
         <Link className="focus-ring rounded-full border border-stone-200 px-5 py-3 font-bold text-ink"

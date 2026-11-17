@@ -13,11 +13,8 @@ import {
   useState
 } from "react";
 import {
-  Bike,
-  CarFront,
+  ChevronDown,
   ChevronLeft,
-  Clock3,
-  MapPin,
   Menu,
   Minus,
   Plus,
@@ -25,7 +22,7 @@ import {
   Share2,
   ShoppingBag,
   Star,
-  Utensils
+  X
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { minimumOrderRemaining } from "@/lib/security";
@@ -36,16 +33,16 @@ import {
   weekDayLabels,
   weekDays
 } from "@/lib/opening-hours";
-import {
-  customerTranslations,
-  getTextDirection,
-  type CustomerLanguage
-} from "@/lib/customer-i18n";
+import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
 import { useCart } from "@/components/customer/CartProvider";
-import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
+import {
+  FulfilmentSelector,
+  fulfilmentLabel
+} from "@/components/customer/FulfilmentSelector";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
+import { useFulfilmentPreference } from "@/components/customer/useFulfilmentPreference";
 import { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type {
@@ -58,7 +55,10 @@ import type {
   PublicRestaurant
 } from "@/lib/types";
 
-const CATEGORY_SCROLL_OFFSET = 172;
+// Fallback height of the sticky search + category bar until it is measured.
+const DEFAULT_STICKY_BAR_HEIGHT = 108;
+// Breathing room between the sticky bar and a section heading.
+const STICKY_GAP = 12;
 const BEST_SELLERS_CATEGORY_ID = "best-sellers";
 const EMPTY_MENU_ITEMS: CustomerMenuItem[] = [];
 
@@ -106,6 +106,15 @@ const OnboardingTestOrderGuide = dynamic(() =>
   import("@/components/customer/OnboardingTestOrderGuide").then(
     (module) => module.OnboardingTestOrderGuide
   )
+);
+
+// Shown to repeat visitors only, so first visits never download it.
+const InstallAppPrompt = dynamic(
+  () =>
+    import("@/components/customer/InstallAppPrompt").then(
+      (module) => module.InstallAppPrompt
+    ),
+  { ssr: false }
 );
 
 type CategoryWithItems = {
@@ -177,7 +186,14 @@ export function RestaurantMenu({
     hasBestSellers ? BEST_SELLERS_CATEGORY_ID : categories[0]?.id ?? null
   );
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showHours, setShowHours] = useState(false);
+  // Install prompts only for repeat visitors; first visits are for ordering.
+  const [isRepeatVisit, setIsRepeatVisit] = useState(false);
+  const fulfilment = useFulfilmentPreference(restaurant, tableNumber);
+  const stickyBarRef = useRef<HTMLElement | null>(null);
+  const menuStartRef = useRef<HTMLDivElement | null>(null);
+  const [stickyBarHeight, setStickyBarHeight] = useState(DEFAULT_STICKY_BAR_HEIGHT);
+  const scrollOffset = stickyBarHeight + STICKY_GAP;
   const [searchQuery, setSearchQuery] = useState("");
   const [optionsSheet, setOptionsSheet] = useState<{
     item: CustomerMenuItem;
@@ -196,6 +212,23 @@ export function RestaurantMenu({
     setTableNumber(queryTableNumber ?? "");
     setAttributionSource(currentQuery.get("src")?.trim().slice(0, 64) ?? "");
     setOnboardingTest(currentQuery.get("onboarding") === "test-order");
+
+    try {
+      // Count one visit per browser session, per store.
+      const visitsKey = `whatsorder-visits-v1-${restaurant.slug}`;
+      const sessionKey = `${visitsKey}-counted`;
+      let visits = Number(window.localStorage.getItem(visitsKey)) || 0;
+
+      if (!window.sessionStorage.getItem(sessionKey)) {
+        visits += 1;
+        window.localStorage.setItem(visitsKey, String(visits));
+        window.sessionStorage.setItem(sessionKey, "1");
+      }
+
+      setIsRepeatVisit(visits >= 2);
+    } catch {
+      // Storage blocked: skip the install prompt.
+    }
 
     const controller = new AbortController();
     const params = new URLSearchParams({
@@ -233,7 +266,27 @@ export function RestaurantMenu({
       window.clearInterval(clock);
       controller.abort();
     };
-  }, [restaurant.id]);
+  }, [restaurant.id, restaurant.slug]);
+
+  useEffect(() => {
+    const element = stickyBarRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const update = () =>
+      setStickyBarHeight(Math.round(element.getBoundingClientRect().height));
+    update();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   // Option groups attached to each item, in link order, with only available
   // options. Items with an entry here open the options sheet instead of the
@@ -299,7 +352,8 @@ export function RestaurantMenu({
             (availableCountByCategoryId.get(item.category_id) ?? 0) + 1
           );
 
-          if (item.is_featured) {
+          // While searching, matches already show in their own category.
+          if (item.is_featured && !normalizedSearch) {
             bestSellerItems.push(item);
           }
         }
@@ -357,7 +411,30 @@ export function RestaurantMenu({
     (language === "ar" && restaurant.subtitle_ar ? restaurant.subtitle_ar : null) ??
     restaurantAddress?.split(",").slice(0, 2).join(" • ") ??
     t.freshCafeFavourites;
-  const etaText = "25-35 min";
+  // Offers whose item is on sale right now; others are hidden from the rail.
+  const visibleOffers = offers.flatMap((offer) => {
+    const item = itemsById.get(offer.menu_item_id);
+    return item?.is_available ? [{ offer, item }] : [];
+  });
+  const fulfilmentSummary =
+    fulfilment.fulfilmentType === "delivery"
+      ? [
+          restaurant.delivery_fee > 0
+            ? `${t.deliveryFee} ${formatCurrency(restaurant.delivery_fee, restaurant)}`
+            : t.freeDelivery,
+          restaurant.minimum_order_amount > 0
+            ? `${t.minimumOrder} ${formatCurrency(restaurant.minimum_order_amount, restaurant)}`
+            : null
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : fulfilment.fulfilmentType === "takeaway"
+        ? `${t.pickupFrom} ${restaurantAddress || restaurantName}`
+        : fulfilment.fulfilmentType === "car_pickup"
+          ? t.carPickupHelp
+          : tableNumber
+            ? `${t.table} ${tableNumber}`
+            : t.dineInHelp;
   const checkoutQuery = [
     tableNumber ? `table=${encodeURIComponent(tableNumber)}` : "",
     onboardingTest ? "onboarding=test-order" : "",
@@ -377,7 +454,7 @@ export function RestaurantMenu({
     // furthest down the document (matching the old "last section whose top
     // passed the sticky offset" rule); an empty band (gap between sections)
     // keeps the previous selection.
-    const bandTop = CATEGORY_SCROLL_OFFSET + 16;
+    const bandTop = scrollOffset + 4;
     const indexById = new Map(
       categoriesWithItems.map((entry, index) => [entry.category.id, index])
     );
@@ -443,7 +520,7 @@ export function RestaurantMenu({
       observer?.disconnect();
       window.removeEventListener("resize", observe);
     };
-  }, [categoriesWithItems]);
+  }, [categoriesWithItems, scrollOffset]);
 
   useEffect(() => {
     if (!visibleActiveCategoryId) {
@@ -464,6 +541,23 @@ export function RestaurantMenu({
     []
   );
 
+  // Typing while scrolled deep into the menu would leave the customer
+  // looking at blank space as results shrink; bring the list start up.
+  const onSearchChange = (value: string) => {
+    setSearchQuery(value);
+    const marker = menuStartRef.current;
+
+    if (!marker) {
+      return;
+    }
+
+    const menuTop = marker.getBoundingClientRect().top + window.scrollY;
+
+    if (window.scrollY > menuTop) {
+      window.scrollTo({ top: menuTop });
+    }
+  };
+
   const scrollToCategory = (categoryId: string) => {
     const element = document.getElementById(getCategorySectionId(categoryId));
 
@@ -471,7 +565,7 @@ export function RestaurantMenu({
       return;
     }
 
-    const top = element.getBoundingClientRect().top + window.scrollY - CATEGORY_SCROLL_OFFSET;
+    const top = element.getBoundingClientRect().top + window.scrollY - scrollOffset;
 
     window.scrollTo({
       top,
@@ -485,11 +579,11 @@ export function RestaurantMenu({
   return (
     <div dir={direction}>
       <main className="mx-auto w-full max-w-3xl pb-32">
-        <section className="relative">
-          <div className="relative h-44 overflow-hidden bg-ink sm:h-56">
+        <header>
+          <div className="relative h-28 overflow-hidden bg-ink sm:h-36">
             {coverImageUrl ? (
               <Image
-                alt={restaurantName}
+                alt=""
                 className="object-cover"
                 fill
                 priority
@@ -500,43 +594,40 @@ export function RestaurantMenu({
             ) : (
               <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(52,211,153,0.35),_transparent_45%),linear-gradient(135deg,#0f172a_0%,#1f2937_48%,#111827_100%)]" />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/5 to-black/30" />
 
-            <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
+            <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 px-4 pt-3">
               <button
                 aria-label={t.goBack}
                 className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                 onClick={() => window.history.back()}
                 type="button"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft className={language === "ar" ? "rotate-180" : ""} size={18} />
               </button>
 
               <div className="flex items-center gap-2">
-                <button
-                  aria-label={t.searchMenu}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
-                  onClick={() => setIsSearchOpen((current) => !current)}
-                  type="button"
-                >
-                  <Search size={18} />
-                </button>
+                <LanguageToggle language={language} setLanguage={setLanguage} />
                 <button
                   aria-label={t.shareMenu}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                   onClick={async () => {
                     const shareUrl = window.location.href;
 
-                    if (navigator.share) {
-                      await navigator.share({
-                        title: restaurantName,
-                        text: `${t.whatsAppOrdering} - ${restaurantName}`,
-                        url: shareUrl
-                      });
-                      return;
-                    }
+                    try {
+                      if (navigator.share) {
+                        await navigator.share({
+                          title: restaurantName,
+                          text: `${t.whatsAppOrdering} - ${restaurantName}`,
+                          url: shareUrl
+                        });
+                        return;
+                      }
 
-                    await navigator.clipboard.writeText(shareUrl);
+                      await navigator.clipboard.writeText(shareUrl);
+                    } catch {
+                      // Dismissed share sheet or blocked clipboard: nothing to do.
+                    }
                   }}
                   type="button"
                 >
@@ -546,130 +637,99 @@ export function RestaurantMenu({
             </div>
           </div>
 
-          <div className="relative z-10 -mt-8 px-4">
-            <div className="rounded-[28px] bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.12)] ring-1 ring-black/5">
-              <div className="mb-3 flex justify-end">
-                <LanguageToggle language={language} setLanguage={setLanguage} />
-              </div>
-              <div className="flex items-start gap-3">
-                {restaurant.logo_url ? (
-                  <Image
-                    alt={`${restaurantName} logo`}
-                    className="h-16 w-16 rounded-2xl object-cover ring-1 ring-stone-200"
-                    height={64}
-                    src={restaurant.logo_url}
-                    unoptimized={!isOptimizableImageUrl(restaurant.logo_url)}
-                    width={64}
-                  />
-                ) : (
-                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-mint/20 text-lg font-black text-leaf">
-                    {restaurantName.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-leaf">
-                    {t.whatsAppOrdering}
-                  </p>
-                  <h1 className="mt-1 text-2xl font-black text-ink">{restaurantName}</h1>
-                  <p className="mt-1 text-sm text-stone-500">{cuisineLabel}</p>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
-                    {feedback.averageRating !== null ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                        <Star size={13} className="fill-current" />
-                        {feedback.averageRating.toFixed(1)} ({feedback.reviewCount})
-                      </span>
-                    ) : null}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
-                      <Clock3 size={13} />
-                      {etaText}
-                    </span>
-                    {restaurant.opening_hours_enabled ? (
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${
-                          scheduleOpen
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-rose-50 text-rose-700"
-                        }`}
-                      >
-                        <Clock3 size={13} />
-                        {scheduleOpen
-                          ? language === "ar"
-                            ? "مفتوح الآن"
-                            : "Open now"
-                          : language === "ar"
-                            ? "مغلق الآن"
-                            : "Closed now"}
-                      </span>
-                    ) : null}
-                    {restaurant.delivery_enabled !== false ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
-                        <Bike size={13} />
-                        {t.delivery} {formatCurrency(restaurant.delivery_fee, restaurant)}
-                      </span>
-                    ) : null}
-                    {restaurant.pickup_enabled === true ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
-                        <MapPin size={13} />
-                        {t.pickupAvailable}
-                      </span>
-                    ) : null}
-                    {restaurant.car_pickup_enabled === true ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">
-                        <CarFront size={13} />
-                        {t.carPickup}
-                      </span>
-                    ) : null}
-                    {restaurant.dine_in_enabled === true ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
-                        <Utensils size={13} />
-                        {t.dineIn}
-                      </span>
-                    ) : null}
-                  </div>
+          <div className="px-4">
+            <div className="flex items-end gap-3">
+              {restaurant.logo_url ? (
+                <Image
+                  alt={`${restaurantName} logo`}
+                  className="-mt-7 h-14 w-14 shrink-0 rounded-2xl bg-white object-cover ring-4 ring-white"
+                  height={56}
+                  src={restaurant.logo_url}
+                  unoptimized={!isOptimizableImageUrl(restaurant.logo_url)}
+                  width={56}
+                />
+              ) : (
+                <div className="-mt-7 grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-mint text-lg font-black text-leaf ring-4 ring-white">
+                  {restaurantName.slice(0, 2).toUpperCase()}
                 </div>
-              </div>
+              )}
+              <h1 className="min-w-0 flex-1 truncate pt-2 text-xl font-black text-ink">
+                {restaurantName}
+              </h1>
+            </div>
 
-              <InstallAppPrompt language={language} />
-
-              {!orderingAvailable ? (
-                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
-                  {restaurant.accepting_orders === false
-                    ? language === "ar"
-                      ? "المطعم لا يستقبل طلبات جديدة حالياً."
-                      : "This restaurant is temporarily not accepting new orders."
-                    : language === "ar"
-                      ? "المطعم مغلق حالياً. يرجى الطلب خلال ساعات العمل."
-                      : "The restaurant is currently closed. Please order during opening hours."}
-                </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-stone-500">
+              {feedback.averageRating !== null ? (
+                <span className="inline-flex items-center gap-1 text-amber-700">
+                  <Star size={12} className="fill-current" />
+                  {feedback.averageRating.toFixed(1)} ({feedback.reviewCount})
+                </span>
               ) : null}
               {restaurant.opening_hours_enabled ? (
-                <details className="mt-3 rounded-2xl border border-stone-200 px-4 py-3">
-                  <summary className="cursor-pointer text-sm font-black text-stone-700">
-                    {language === "ar" ? "ساعات العمل الأسبوعية" : "Weekly opening hours"}
-                  </summary>
-                  <div className="mt-3 space-y-2 text-sm">
-                    {weekDays.map((day) => (
-                      <div className="flex justify-between gap-4" key={day}>
-                        <span className="font-bold">{weekDayLabels[day]}</span>
-                        <span className="text-stone-500">
-                          {weeklyHours[day].closed
-                            ? language === "ar"
-                              ? "مغلق"
-                              : "Closed"
-                            : `${formatOpeningTime(
-                                weeklyHours[day].open
-                              )}–${formatOpeningTime(weeklyHours[day].close)}`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
+                <button
+                  aria-expanded={showHours}
+                  className={`focus-ring inline-flex items-center gap-1 rounded-full font-black ${
+                    scheduleOpen ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                  onClick={() => setShowHours((current) => !current)}
+                  type="button"
+                >
+                  {scheduleOpen ? t.openNow : t.closedNow}
+                  <ChevronDown
+                    className={`transition ${showHours ? "rotate-180" : ""}`}
+                    size={13}
+                  />
+                </button>
               ) : null}
+              <span className="min-w-0 truncate">{cuisineLabel}</span>
             </div>
+
+            {showHours && restaurant.opening_hours_enabled ? (
+              <div className="mt-2 space-y-1.5 rounded-2xl border border-stone-200 px-4 py-3 text-sm">
+                <p className="text-xs font-black uppercase tracking-wide text-stone-500">
+                  {t.openingHours}
+                </p>
+                {weekDays.map((day) => (
+                  <div className="flex justify-between gap-4" key={day}>
+                    <span className="font-bold">{weekDayLabels[day]}</span>
+                    <span className="text-stone-500">
+                      {weeklyHours[day].closed
+                        ? t.closed
+                        : `${formatOpeningTime(weeklyHours[day].open)}–${formatOpeningTime(
+                            weeklyHours[day].close
+                          )}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {!orderingAvailable ? (
+              <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
+                {restaurant.accepting_orders === false ? t.notAcceptingOrders : t.orderClosedHint}
+              </p>
+            ) : null}
+
+            <div className="mt-3">
+              <FulfilmentSelector
+                available={fulfilment.available}
+                language={language}
+                onChange={fulfilment.setFulfilmentType}
+                value={fulfilment.fulfilmentType}
+              />
+              <p className="mt-2 text-xs font-semibold text-stone-500">
+                {fulfilment.available.length < 2 ? (
+                  <strong className="font-black text-ink">
+                    {fulfilmentLabel(fulfilment.fulfilmentType, language)} ·{" "}
+                  </strong>
+                ) : null}
+                {fulfilmentSummary}
+              </p>
+            </div>
+
+            {isRepeatVisit ? <InstallAppPrompt language={language} /> : null}
           </div>
-        </section>
+        </header>
 
         {onboardingTest ? (
           <OnboardingTestOrderGuide
@@ -687,54 +747,13 @@ export function RestaurantMenu({
           />
         ) : null}
 
-        {isSearchOpen ? (
-          <section className="px-4 pt-4">
-            <label className="block">
-              <span className="sr-only">{t.searchMenu}</span>
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"
-                  size={18}
-                />
-                <input
-                  autoFocus
-                  className="focus-ring w-full rounded-2xl border border-stone-200 bg-white py-3 pl-11 pr-4"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={t.searchMenu}
-                  value={searchQuery}
-                />
-              </div>
-            </label>
-          </section>
-        ) : null}
-
-        {offers.length > 0 ? (
-          <section className="mt-5 px-4">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-leaf">
-                  {t.specialOffers}
-                </p>
-                <h2 className="mt-1 text-xl font-black text-ink">{t.offersForYou}</h2>
-              </div>
-              <p className="text-xs font-semibold text-stone-400">{t.swipeToExplore}</p>
-            </div>
-            <div className="no-scrollbar -mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
-              {offers.map((offer) => {
-                const item = itemsById.get(offer.menu_item_id);
-
-                if (!item?.is_available) {
-                  return null;
-                }
-
+        {visibleOffers.length > 0 ? (
+          <section className="mt-4">
+            <h2 className="px-4 text-base font-black text-ink">{t.specialOffers}</h2>
+            <div className="no-scrollbar mt-2 flex snap-x gap-3 overflow-x-auto px-4 pb-1">
+              {visibleOffers.map(({ offer, item }) => {
                 const title =
                   language === "ar" && offer.title_ar ? offer.title_ar : offer.title;
-                const description =
-                  language === "ar" && offer.description_ar
-                    ? offer.description_ar
-                    : offer.description;
-                const itemName =
-                  language === "ar" && item.name_ar ? item.name_ar : item.name;
                 const hasOptions = (resolvedGroupsByItemId.get(item.id) ?? []).length > 0;
                 const offerLineKey = cartLineKey({ item_id: item.id, offer_id: offer.id });
                 const offerQuantity = offerQuantityInCart(offer.id);
@@ -743,93 +762,89 @@ export function RestaurantMenu({
 
                 return (
                   <article
-                    className="w-[82%] shrink-0 snap-start overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-sm sm:w-[48%]"
+                    className="flex w-[78%] max-w-[300px] shrink-0 snap-start gap-3 rounded-2xl border border-stone-200 bg-white p-2.5 shadow-sm"
                     key={offer.id}
                   >
-                    <div className="relative aspect-square bg-linen">
+                    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-linen">
                       {item.image_url ? (
                         <Image
-                          alt={title}
+                          alt=""
                           className="object-cover"
                           fill
                           loading="lazy"
-                          sizes="(min-width: 640px) 360px, 82vw"
+                          sizes="80px"
                           src={item.image_url}
                           unoptimized={!isOptimizableImageUrl(item.image_url)}
                         />
                       ) : (
-                        <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.28),_transparent_48%),linear-gradient(135deg,#f7f4ec,#e7f6ee)] px-5 text-center text-lg font-black text-ink">
-                          {itemName}
-                        </div>
+                        <div className="h-full w-full bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.28),_transparent_48%),linear-gradient(135deg,#f7f4ec,#e7f6ee)]" />
                       )}
-                      <span className="absolute left-3 top-3 rounded-full bg-rose-600 px-3 py-1 text-xs font-black text-white shadow-sm">
+                      <span className="absolute start-1 top-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-black text-white">
                         {t.offer}
                       </span>
                     </div>
-                    <div className="p-4">
-                      <h3 className="text-lg font-black text-ink">{title}</h3>
-                      <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-stone-500">
-                        {description || itemName}
-                      </p>
-                      <div className="mt-3 flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold text-stone-400 line-through">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <h3 className="line-clamp-2 text-sm font-black leading-5 text-ink">{title}</h3>
+                      <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-stone-400 line-through">
                             {formatCurrency(item.price, restaurant)}
                           </p>
-                          <p className="text-xl font-black text-leaf">
+                          <p className="text-sm font-black text-leaf">
                             {formatCurrency(offer.promotional_price, restaurant)}
                           </p>
+                          {maximumReached ? (
+                            <p className="text-[11px] font-semibold text-stone-400">
+                              {t.offerMaximum} {offer.max_quantity_per_order}
+                            </p>
+                          ) : null}
                         </div>
                         {hasOptions ? (
                           <button
                             aria-label={`${t.customize} ${title}`}
-                            className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+                            className="focus-ring inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-leaf px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-stone-300"
                             disabled={!orderingAvailable || maximumReached}
                             onClick={() => setOptionsSheet({ item, offer })}
                             type="button"
                           >
-                            <Plus size={17} />
-                            {offerQuantity > 0 ? `${t.add} · ${offerQuantity}` : t.add}
+                            <Plus size={16} />
+                            {offerQuantity > 0 ? offerQuantity : null}
                           </button>
                         ) : offerQuantity > 0 ? (
-                          <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
+                          <div className="inline-flex shrink-0 items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                             <button
                               aria-label={`${t.remove} ${title}`}
-                              className="focus-ring grid h-10 w-10 place-items-center text-stone-700"
+                              className="focus-ring grid h-10 w-9 place-items-center text-stone-700"
                               onClick={() => cart.decrement(offerLineKey)}
                               type="button"
                             >
-                              <Minus size={16} />
+                              <Minus size={15} />
                             </button>
-                            <span className="w-9 text-center text-sm font-black">
+                            <span className="w-6 text-center text-sm font-black">
                               {offerQuantity}
                             </span>
                             <button
                               aria-label={`${t.addMore} ${title}`}
-                              className="focus-ring grid h-10 w-10 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
+                              className="focus-ring grid h-10 w-9 place-items-center text-stone-700 disabled:cursor-not-allowed disabled:text-stone-300"
                               disabled={maximumReached || !orderingAvailable}
                               onClick={() => cart.incrementOffer(offerLineKey, offer)}
                               type="button"
                             >
-                              <Plus size={16} />
+                              <Plus size={15} />
                             </button>
                           </div>
                         ) : (
                           <button
                             aria-label={`${t.add} ${title}`}
-                            className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2.5 text-sm font-black text-white"
+                            className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full bg-leaf text-white disabled:cursor-not-allowed disabled:bg-stone-300"
                             disabled={!orderingAvailable}
                             onClick={() => cart.addOffer(item, offer)}
                             type="button"
                           >
                             <Plus size={17} />
-                            {t.add}
                           </button>
                         )}
                       </div>
-                      <p className="mt-2 text-xs font-semibold text-stone-400">
-                        {t.offerMaximum}: {offer.max_quantity_per_order}
-                      </p>
                     </div>
                   </article>
                 );
@@ -838,8 +853,38 @@ export function RestaurantMenu({
           </section>
         ) : null}
 
-        <section className="sticky top-0 z-20 mt-4 border-y border-stone-200/80 bg-white/95 backdrop-blur">
-          <div className="flex items-center gap-3 px-4 py-3">
+        <div aria-hidden ref={menuStartRef} />
+        <section
+          className="sticky top-0 z-20 mt-4 border-y border-stone-200/80 bg-white/95 backdrop-blur"
+          ref={stickyBarRef}
+        >
+          <div className="flex items-center gap-2 px-4 pt-3">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">{t.searchMenu}</span>
+              <Search
+                className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-stone-400"
+                size={17}
+              />
+              <input
+                autoComplete="off"
+                className="focus-ring w-full rounded-full border border-stone-200 bg-stone-50 py-2.5 pe-10 ps-10 text-base sm:text-sm"
+                enterKeyHint="search"
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder={t.searchMenu}
+                type="text"
+                value={searchQuery}
+              />
+              {searchQuery ? (
+                <button
+                  aria-label={t.clearSearch}
+                  className="focus-ring absolute end-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-stone-500"
+                  onClick={() => setSearchQuery("")}
+                  type="button"
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
+            </label>
             <button
               aria-label={t.browseCategories}
               className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-ink"
@@ -848,35 +893,46 @@ export function RestaurantMenu({
             >
               <Menu size={18} />
             </button>
+          </div>
 
-            <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-5 overflow-x-auto scroll-smooth">
-              {categoriesWithItems.map(({ category }) => {
-                const isActive = visibleActiveCategoryId === category.id;
+          <div className="no-scrollbar flex min-w-0 items-center gap-5 overflow-x-auto scroll-smooth px-4 pb-3 pt-2">
+            {categoriesWithItems.map(({ category }) => {
+              const isActive = visibleActiveCategoryId === category.id;
 
-                return (
-                  <button
-                    key={category.id}
-                    ref={(element) => {
-                      tabRefs.current[category.id] = element;
-                    }}
-                    className={`focus-ring relative shrink-0 px-0 py-2 text-sm transition ${
-                      isActive
-                        ? "font-black text-ink after:absolute after:inset-x-0 after:-bottom-3 after:h-1 after:rounded-full after:bg-leaf"
-                        : "font-semibold text-stone-500"
-                    }`}
-                    onClick={() => scrollToCategory(category.id)}
-                    type="button"
-                  >
-                    {language === "ar" && category.name_ar ? category.name_ar : category.name}
-                  </button>
-                );
-              })}
-            </div>
+              return (
+                <button
+                  key={category.id}
+                  ref={(element) => {
+                    tabRefs.current[category.id] = element;
+                  }}
+                  className={`focus-ring relative shrink-0 px-0 py-2 text-sm transition ${
+                    isActive
+                      ? "font-black text-ink after:absolute after:inset-x-0 after:-bottom-3 after:h-1 after:rounded-full after:bg-leaf"
+                      : "font-semibold text-stone-500"
+                  }`}
+                  onClick={() => scrollToCategory(category.id)}
+                  type="button"
+                >
+                  {language === "ar" && category.name_ar ? category.name_ar : category.name}
+                </button>
+              );
+            })}
           </div>
         </section>
 
         <section className="space-y-8 px-4 pt-5">
-          {categoriesWithItems.length === 0 ? (
+          {categoriesWithItems.length === 0 && deferredSearchQuery.trim() ? (
+            <div className="rounded-3xl border border-dashed border-stone-300 bg-white px-6 py-10 text-center shadow-sm">
+              <h2 className="text-lg font-black text-ink">{t.noSearchResults}</h2>
+              <button
+                className="focus-ring mt-4 inline-flex rounded-full border border-stone-200 px-4 py-2 text-sm font-black text-leaf"
+                onClick={() => setSearchQuery("")}
+                type="button"
+              >
+                {t.clearSearch}
+              </button>
+            </div>
+          ) : categoriesWithItems.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-stone-300 bg-white px-6 py-12 text-center shadow-sm">
               <h2 className="text-lg font-black text-ink">{t.menuBeingPrepared}</h2>
               <p className="mt-2 text-sm text-stone-500">
