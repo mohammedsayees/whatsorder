@@ -17,6 +17,9 @@ export type OrderProgressSnapshot = {
   created_at: string | null;
   fulfilment_type: FulfilmentType | null;
   status_events: StatusEvent[];
+  /** Car pickup arrival, shown back to the customer who reported it. */
+  customer_arrived_at?: string | null;
+  customer_arrival_note?: string | null;
 };
 
 export function toOrderProgressSnapshot(order: OrderProgressSnapshot): OrderProgressSnapshot {
@@ -24,7 +27,9 @@ export function toOrderProgressSnapshot(order: OrderProgressSnapshot): OrderProg
     status: order.status,
     created_at: order.created_at,
     fulfilment_type: order.fulfilment_type,
-    status_events: order.status_events
+    status_events: order.status_events,
+    customer_arrived_at: order.customer_arrived_at ?? null,
+    customer_arrival_note: order.customer_arrival_note ?? null
   };
 }
 

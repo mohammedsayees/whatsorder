@@ -9,6 +9,7 @@ import {
   isSameUaeCalendarDay
 } from "@/lib/date-time";
 import { isOfferOrderable } from "@/lib/order-pricing";
+import { ARRIVAL_ACTIVE_STATUSES, type WaitingArrival } from "@/lib/car-arrival";
 import { orderSource, type OrderSourceView } from "@/lib/order-source";
 import {
   PUBLIC_CACHE_TTL_SECONDS,
@@ -1324,7 +1325,35 @@ export async function getNewOrderCount(restaurantId: string): Promise<number> {
 export type NewOrderAlertState = {
   newOrderCount: number;
   pendingOrderIds: string[];
+  /** Car-pickup customers who tapped "I've arrived" and are not served yet. */
+  waitingArrivals?: WaitingArrival[];
 };
+
+// Best-effort: a failure (or arrival columns not yet migrated) must never
+// break new-order alerts, so it degrades to "nobody waiting".
+async function getWaitingArrivals(restaurantId: string): Promise<WaitingArrival[]> {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id,car_plate_number,car_description,customer_arrival_note,customer_arrived_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("fulfilment_type", "car_pickup")
+      .in("status", [...ARRIVAL_ACTIVE_STATUSES])
+      .not("customer_arrived_at", "is", null)
+      .order("customer_arrived_at", { ascending: true })
+      .limit(20);
+
+    return error || !data ? [] : (data as WaitingArrival[]);
+  } catch {
+    return [];
+  }
+}
 
 export async function getNewOrderAlertState(
   restaurantId: string
@@ -1334,18 +1363,22 @@ export async function getNewOrderAlertState(
   if (supabase) {
     // Supabase returns the total count alongside the limited rows, so a
     // single request can power both the badge and the alert ID reconciliation.
-    const { count, data, error } = await supabase
-      .from("orders")
-      .select("id", { count: "exact" })
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "New")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const [{ count, data, error }, waitingArrivals] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id", { count: "exact" })
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "New")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      getWaitingArrivals(restaurantId)
+    ]);
 
     if (!error) {
       return {
         newOrderCount: count ?? 0,
-        pendingOrderIds: (data ?? []).map((order) => String(order.id))
+        pendingOrderIds: (data ?? []).map((order) => String(order.id)),
+        waitingArrivals
       };
     }
 

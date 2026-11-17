@@ -16,6 +16,9 @@ export type OrderConfirmation = {
   fulfilment_type: FulfilmentType | null;
   /** Status history for the customer timeline: statuses and times only. */
   status_events: StatusEvent[];
+  /** Car pickup: when the customer said they arrived, and where they parked. */
+  customer_arrived_at: string | null;
+  customer_arrival_note: string | null;
 };
 
 // A URL reference alone never authorizes access to the order or its message.
@@ -30,7 +33,7 @@ export async function loadOrderConfirmation(
   }
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error("Order confirmation is temporarily unavailable.");
-  const [orderResult, eventsResult] = await Promise.all([
+  const [orderResult, eventsResult, arrivalResult] = await Promise.all([
     admin
       .from("orders")
       .select("id,items,total,status,whatsapp_message,created_at,fulfilment_type")
@@ -44,13 +47,30 @@ export async function loadOrderConfirmation(
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .order("created_at", { ascending: true })
-      .limit(50)
+      .limit(50),
+    // Separate read so the page still loads if the arrival columns are not
+    // deployed yet (migration 20261119120000_car_pickup_arrivals).
+    admin
+      .from("orders")
+      .select("customer_arrived_at,customer_arrival_note")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle()
   ]);
   if (orderResult.error) {
     throw new Error("Order confirmation could not be loaded. Please retry.");
   }
   if (!orderResult.data) return null;
-  const order = orderResult.data as Omit<OrderConfirmation, "status_events">;
+  const order = orderResult.data as Omit<
+    OrderConfirmation,
+    "status_events" | "customer_arrived_at" | "customer_arrival_note"
+  >;
+  const arrival = arrivalResult.error
+    ? null
+    : (arrivalResult.data as {
+        customer_arrived_at?: string | null;
+        customer_arrival_note?: string | null;
+      } | null);
   // The timeline is a nicety: an events failure still shows the order.
   const statusEvents = eventsResult.error
     ? []
@@ -59,7 +79,9 @@ export async function loadOrderConfirmation(
     ...order,
     created_at: order.created_at ?? null,
     fulfilment_type: order.fulfilment_type ?? null,
-    status_events: statusEvents
+    status_events: statusEvents,
+    customer_arrived_at: arrival?.customer_arrived_at ?? null,
+    customer_arrival_note: arrival?.customer_arrival_note ?? null
   };
 }
 

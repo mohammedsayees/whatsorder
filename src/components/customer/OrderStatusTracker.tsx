@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, MessageCircle, Phone, XCircle } from "lucide-react";
+import { CarFront, Check, Loader2, MessageCircle, Phone, XCircle } from "lucide-react";
+import { ARRIVAL_NOTE_MAX, canMarkArrived } from "@/lib/car-arrival";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 import { trackFunnel } from "@/lib/customer-funnel-client";
 import {
@@ -39,7 +40,16 @@ const COPY = {
     waitingBody:
       "If you haven't sent the order on WhatsApp, tap Send below. You can also call the restaurant.",
     send: "Send on WhatsApp",
-    call: "Call restaurant"
+    call: "Call restaurant",
+    arrivedTitle: "Arrived at the restaurant?",
+    arrivedHelp: "Tap below once you're parked and they'll bring your order to your car.",
+    parkedLabel: "Where are you parked? (optional)",
+    parkedPlaceholder: "Bay 3, in front of the pharmacy…",
+    arrivedButton: "I've arrived",
+    arrivedDone: "The restaurant knows you're outside",
+    arrivedSince: "since",
+    updateSpot: "Update parking spot",
+    arrivedError: "Couldn't reach the restaurant. Try again or call them."
   },
   ar: {
     sent: "تم تقديم الطلب",
@@ -60,7 +70,16 @@ const COPY = {
     waitingTitle: "لم يؤكد المطعم طلبك بعد",
     waitingBody: "إذا لم ترسل الطلب عبر واتساب بعد، اضغط إرسال أدناه. يمكنك أيضاً الاتصال بالمطعم.",
     send: "إرسال عبر واتساب",
-    call: "اتصل بالمطعم"
+    call: "اتصل بالمطعم",
+    arrivedTitle: "وصلت إلى المطعم؟",
+    arrivedHelp: "اضغط أدناه بعد أن تركن سيارتك وسيحضرون طلبك إليها.",
+    parkedLabel: "أين ركنت سيارتك؟ (اختياري)",
+    parkedPlaceholder: "الموقف 3، أمام الصيدلية…",
+    arrivedButton: "لقد وصلت",
+    arrivedDone: "المطعم يعلم أنك في الخارج",
+    arrivedSince: "منذ",
+    updateSpot: "تحديث مكان الوقوف",
+    arrivedError: "تعذر إبلاغ المطعم. حاول مرة أخرى أو اتصل بهم."
   }
 } as const;
 
@@ -285,6 +304,17 @@ export function OrderStatusTracker({
         </div>
       ) : null}
 
+      {canMarkArrived(snapshot) ? (
+        <CarArrivalPanel
+          copy={copy}
+          formatTime={formatTime}
+          onArrived={(arrival) => setSnapshot((current) => ({ ...current, ...arrival }))}
+          orderId={orderId}
+          restaurantId={restaurantId}
+          snapshot={snapshot}
+        />
+      ) : null}
+
       {active ? (
         <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-stone-500">
           <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-leaf" />
@@ -292,5 +322,110 @@ export function OrderStatusTracker({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function CarArrivalPanel({
+  copy,
+  formatTime,
+  onArrived,
+  orderId,
+  restaurantId,
+  snapshot
+}: {
+  copy: Copy;
+  formatTime: (value: string | null) => string | null;
+  onArrived: (arrival: { customer_arrived_at: string; customer_arrival_note: string | null }) => void;
+  orderId: string;
+  restaurantId: string;
+  snapshot: OrderProgressSnapshot;
+}) {
+  const arrivedAt = snapshot.customer_arrived_at ?? null;
+  const [note, setNote] = useState(snapshot.customer_arrival_note ?? "");
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const send = async () => {
+    setPending(true);
+    setFailed(false);
+
+    try {
+      const response = await fetch("/api/customer/order-arrived", {
+        body: JSON.stringify({ restaurantId, orderId, note }),
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        setFailed(true);
+        return;
+      }
+
+      onArrived(
+        (await response.json()) as {
+          customer_arrived_at: string;
+          customer_arrival_note: string | null;
+        }
+      );
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const noteChanged = (snapshot.customer_arrival_note ?? "") !== note.trim();
+
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-3 text-sm ${
+        arrivedAt ? "border-emerald-200 bg-emerald-50" : "border-violet-200 bg-violet-50"
+      }`}
+    >
+      {arrivedAt ? (
+        <p className="flex items-center gap-2 font-black text-emerald-800">
+          <Check size={16} strokeWidth={3} />
+          {copy.arrivedDone}
+          {formatTime(arrivedAt) ? (
+            <span className="font-semibold text-emerald-700">
+              {copy.arrivedSince} {formatTime(arrivedAt)}
+            </span>
+          ) : null}
+        </p>
+      ) : (
+        <>
+          <p className="flex items-center gap-2 font-black text-violet-900">
+            <CarFront size={16} />
+            {copy.arrivedTitle}
+          </p>
+          <p className="mt-1 text-violet-900/75">{copy.arrivedHelp}</p>
+        </>
+      )}
+      <label className="mt-3 block">
+        <span className="text-xs font-bold text-stone-600">{copy.parkedLabel}</span>
+        <input
+          className="focus-ring mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-base sm:text-sm"
+          maxLength={ARRIVAL_NOTE_MAX}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={copy.parkedPlaceholder}
+          value={note}
+        />
+      </label>
+      {!arrivedAt || noteChanged ? (
+        <button
+          className={`focus-ring mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 font-black disabled:opacity-60 ${
+            arrivedAt ? "border border-emerald-300 bg-white text-emerald-800" : "bg-violet-700 text-white"
+          }`}
+          disabled={pending}
+          onClick={send}
+          type="button"
+        >
+          {pending ? <Loader2 className="animate-spin" size={16} /> : <CarFront size={16} />}
+          {arrivedAt ? copy.updateSpot : copy.arrivedButton}
+        </button>
+      ) : null}
+      {failed ? <p className="mt-2 font-semibold text-rose-700">{copy.arrivedError}</p> : null}
+    </div>
   );
 }
