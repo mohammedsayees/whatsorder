@@ -69,3 +69,18 @@ export function formatDifference(differenceFils: number, format: (fils: number) 
     ? `Till paid ${format(differenceFils)} more than the bill`
     : `Till paid ${format(-differenceFils)} less than the bill`;
 }
+
+/** Database guard messages from paying a bill from the till, in plain words. */
+export function tillPaymentError(message: string | undefined) {
+  const text = message ?? "";
+  if (text.includes("same amount without a bill")) {
+    return "A paid-out of the same amount is already on this shift without a bill. If it is this bill, post the bill without the till option and link it on the Cash paid-outs page; otherwise tick that this is a different payment.";
+  }
+  if (text.includes("no longer open") || text.includes("Open shift not found")) return "The shift has closed. Post the bill without the till option and link it on the Cash paid-outs page.";
+  if (text.includes("Only the shift opener or restaurant management")) return "Only the person who opened the shift or a manager can take cash from this till.";
+  if (text.includes("already been posted")) return "This bill has already been posted.";
+  if (text.includes("Invalid finance category")) return "Choose an active expense category.";
+  if (text.includes("Invalid recurring schedule")) return "Choose an active recurring schedule.";
+  if (text.includes("Finance is not enabled") || text.includes("only available for AED")) return "Paying bills from the till isn't available for this restaurant.";
+  return "The bill could not be paid from the till. Nothing was saved. Try again.";
+}
