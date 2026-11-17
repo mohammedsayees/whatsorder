@@ -15,6 +15,7 @@ import {
 import {
   ChevronDown,
   ChevronLeft,
+  Clock3,
   Menu,
   Minus,
   Plus,
@@ -35,6 +36,8 @@ import {
 } from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
+import { trackFunnel } from "@/lib/customer-funnel-client";
+import { prepRangeLabel } from "@/lib/prep-time";
 import { useCart } from "@/components/customer/CartProvider";
 import {
   FulfilmentSelector,
@@ -136,7 +139,8 @@ export function RestaurantMenu({
   feedback,
   items,
   offers,
-  optionCatalog
+  optionCatalog,
+  prepMinutes = null
 }: {
   restaurant: PublicRestaurant;
   categories: CustomerMenuCategory[];
@@ -144,8 +148,28 @@ export function RestaurantMenu({
   items: CustomerMenuItem[];
   offers: CustomerMenuOffer[];
   optionCatalog?: CustomerMenuOptionCatalog;
+  /** Measured median prep time; null when there is not enough history. */
+  prepMinutes?: number | null;
 }) {
   const cart = useCart();
+  // Cart size once the saved cart has loaded: growth past it is a real add
+  // in this visit, not a restored cart.
+  const loadedCartCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!cart.isReady) {
+      return;
+    }
+
+    if (loadedCartCount.current === null) {
+      loadedCartCount.current = cart.count;
+      return;
+    }
+
+    if (cart.count > loadedCartCount.current) {
+      trackFunnel(restaurant.id, "item_added");
+    }
+  }, [cart.count, cart.isReady, restaurant.id]);
   const amountRemaining = minimumOrderRemaining(
     cart.subtotal,
     restaurant.minimum_order_amount
@@ -212,6 +236,7 @@ export function RestaurantMenu({
     setTableNumber(queryTableNumber ?? "");
     setAttributionSource(currentQuery.get("src")?.trim().slice(0, 64) ?? "");
     setOnboardingTest(currentQuery.get("onboarding") === "test-order");
+    trackFunnel(restaurant.id, "menu_view");
 
     try {
       // Count one visit per browser session, per store.
@@ -545,6 +570,11 @@ export function RestaurantMenu({
   // looking at blank space as results shrink; bring the list start up.
   const onSearchChange = (value: string) => {
     setSearchQuery(value);
+
+    if (value.trim().length >= 2) {
+      trackFunnel(restaurant.id, "search_used");
+    }
+
     const marker = menuStartRef.current;
 
     if (!marker) {
@@ -680,6 +710,16 @@ export function RestaurantMenu({
                     size={13}
                   />
                 </button>
+              ) : null}
+              {prepMinutes !== null ? (
+                <span
+                  className="inline-flex items-center gap-1 text-stone-600"
+                  title={`${t.prepTimeLabel} ${prepRangeLabel(prepMinutes)} ${t.minutesShort}`}
+                >
+                  <Clock3 aria-hidden size={12} />
+                  <span className="sr-only">{t.prepTimeLabel}</span>
+                  {prepRangeLabel(prepMinutes)} {t.minutesShort}
+                </span>
               ) : null}
               <span className="min-w-0 truncate">{cuisineLabel}</span>
             </div>

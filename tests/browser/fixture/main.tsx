@@ -49,7 +49,7 @@ function Fixture() {
  if (mode === "status-waiting" || mode === "status-live") {
   const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
   const waiting = mode === "status-waiting";
-  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000aa", status: waiting ? "New" : "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Tracked order", created_at: minutesAgo(waiting ? 20 : 8), fulfilment_type:"delivery", status_events: waiting ? [] : [{ to_status:"Accepted", created_at: minutesAgo(6) }, { to_status:"Preparing", created_at: minutesAgo(4) }] }} />;
+  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} prepMinutes={waiting ? null : 12} order={{ id: "43000000-0000-4000-8000-0000000000aa", status: waiting ? "New" : "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Tracked order", created_at: minutesAgo(waiting ? 20 : 8), fulfilment_type:"delivery", status_events: waiting ? [] : [{ to_status:"Accepted", created_at: minutesAgo(6) }, { to_status:"Preparing", created_at: minutesAgo(4) }] }} />;
  }
  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "saved-order-12345678", status:"New", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Original saved order: 2 Tea, total 10", created_at:null, fulfilment_type:"takeaway", status_events:[] }} />;
 }

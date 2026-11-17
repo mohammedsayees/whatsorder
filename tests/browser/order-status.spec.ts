@@ -24,6 +24,8 @@ test("the timeline follows live status updates", async ({ page }) => {
     });
   });
   await page.goto("/?mode=status-live");
+  // Accepted 6 minutes ago + 12 measured minutes of prep.
+  await expect(page.getByText(/Usually leaves the kitchen around/)).toBeVisible();
   const steps = page.getByRole("listitem");
   await expect(page.getByText("Preparing", { exact: true })).toHaveClass(/font-black/);
   await expect(page.getByText("On the way", { exact: true })).toHaveClass(/text-stone-400/);
@@ -32,6 +34,8 @@ test("the timeline follows live status updates", async ({ page }) => {
   // Returning to the tab refreshes immediately instead of waiting for the poll.
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByText("On the way", { exact: true })).toHaveClass(/font-black/);
+  // Out for delivery: the kitchen estimate no longer applies.
+  await expect(page.getByText(/Usually leaves the kitchen around/)).toHaveCount(0);
   expect(requested).toContain("orderId=43000000-0000-4000-8000-0000000000aa");
   expect(await steps.count()).toBeGreaterThanOrEqual(5);
 });

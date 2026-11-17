@@ -9,10 +9,12 @@ import { formatOrderItemName } from "@/lib/cart-line";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
 import { OrderStatusTracker } from "@/components/customer/OrderStatusTracker";
+import { TrackedWhatsAppLink } from "@/components/customer/TrackedWhatsAppLink";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 
-export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey }: {
+export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey, prepMinutes = null }: {
   restaurant: PublicRestaurant; order: OrderConfirmation; language?: string; onboardingTest?: boolean; webPushPublicKey: string | null;
+  prepMinutes?: number | null;
 }) {
   const active = order.status !== "Cancelled" && order.status !== "Completed";
   const arabic = language === "ar";
@@ -64,11 +66,11 @@ export function SavedOrderConfirmation({ restaurant, order, language, onboarding
 
       {awaitingSend ? (
         <div className="mt-5 text-center">
-          <a className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
-            href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+          <TrackedWhatsAppLink className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
+            href={whatsappUrl} orderId={order.id} restaurantId={restaurant.id}>
             <MessageCircle size={18} />
             {t("Send this order on WhatsApp", "أرسل هذا الطلب عبر واتساب")}
-          </a>
+          </TrackedWhatsAppLink>
           <p className="mt-2 text-xs text-stone-500">
             {t("Already sent it? No need to send again. You can reopen WhatsApp from this page any time.", "أرسلته بالفعل؟ لا حاجة لإرساله مجدداً. يمكنك فتح واتساب من هذه الصفحة في أي وقت.")}
           </p>
@@ -81,6 +83,7 @@ export function SavedOrderConfirmation({ restaurant, order, language, onboarding
           initial={toOrderProgressSnapshot(order)}
           language={arabic ? "ar" : "en"}
           orderId={order.id}
+          prepMinutes={prepMinutes}
           restaurantId={restaurant.id}
           whatsappUrl={whatsappUrl}
         />

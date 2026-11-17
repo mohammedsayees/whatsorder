@@ -9,6 +9,7 @@ import {
   getRestaurantBySlug
 } from "@/lib/data";
 import { getPublicFeedback } from "@/lib/feedback";
+import { getRestaurantPrepEstimate } from "@/lib/prep-time-data";
 import { getPrebuildRestaurantSlugs } from "@/lib/prebuild-menus";
 import type {
   CustomerMenuCategory,
@@ -49,11 +50,13 @@ export default async function RestaurantPage({
     notFound();
   }
 
-  const [menu, offers, optionCatalog, feedback] = await Promise.all([
+  const [menu, offers, optionCatalog, feedback, prepEstimate] = await Promise.all([
     getMenu(restaurant.id),
     getMenuOffers(restaurant.id),
     getMenuOptionCatalog(restaurant.id),
-    getPublicFeedback(restaurant)
+    getPublicFeedback(restaurant),
+    // Refreshed with the page (revalidate = 300), not per visitor.
+    getRestaurantPrepEstimate(restaurant.id)
   ]);
 
   // Only serialize fields the interactive menu reads. Server pricing keeps
@@ -155,6 +158,7 @@ export default async function RestaurantPage({
         items={items}
         offers={customerOffers}
         optionCatalog={customerOptionCatalog}
+        prepMinutes={prepEstimate?.minutes ?? null}
       />
     </CartProvider>
   );
