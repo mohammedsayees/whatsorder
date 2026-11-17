@@ -23,6 +23,7 @@ Multi-tenant WhatsApp-ordering + restaurant dashboard SaaS (UAE). Pilot: Chai Xp
 ## Conventions
 - **Branches:** `feature/<topic>` off `main`; merge with `git merge --no-ff`. (History also shows `codex/*`.)
 - **Migrations:** no schema change without a SQL file in `supabase/migrations/`. Apply it to Supabase **before** merging the code that uses it (migration-first).
+- **Production Supabase project = `whatsorder-rehearsal` (ref `xdfkgtopodubhjdrgxxm`)** despite its name. The project named `whatsorder` (`ktcgpdfpqhypyerbbkwr`) is the old database (data stops 12 Nov 2026) and is NOT live, even though the PR "Supabase Preview" check still links to it. Confirm with the user before applying anything; check recent `orders` timestamps if in doubt.
 - **Before committing, under Node 22:** `npm run typecheck` (`tsc --noEmit`), `npm run lint` (`eslint .`), `npm test` (`vitest run`). All must pass.
 - Deploys are Git-driven to Vercel from `main` (production). End commits with the `Co-Authored-By` trailer.
 
