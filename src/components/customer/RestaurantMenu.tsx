@@ -642,14 +642,14 @@ export function RestaurantMenu({
               {restaurant.logo_url ? (
                 <Image
                   alt={`${restaurantName} logo`}
-                  className="-mt-7 h-14 w-14 shrink-0 rounded-2xl bg-white object-cover ring-4 ring-white"
+                  className="relative z-10 -mt-7 h-14 w-14 shrink-0 rounded-2xl bg-white object-cover shadow-sm ring-4 ring-white"
                   height={56}
                   src={restaurant.logo_url}
                   unoptimized={!isOptimizableImageUrl(restaurant.logo_url)}
                   width={56}
                 />
               ) : (
-                <div className="-mt-7 grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-mint text-lg font-black text-leaf ring-4 ring-white">
+                <div className="relative z-10 -mt-7 grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-mint text-lg font-black text-leaf shadow-sm ring-4 ring-white">
                   {restaurantName.slice(0, 2).toUpperCase()}
                 </div>
               )}
