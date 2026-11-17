@@ -6,6 +6,7 @@ import { sanitizeAttributionSource } from "@/lib/attribution";
 import { getRestaurantBySlug } from "@/lib/data";
 import { loadCustomerContext } from "@/lib/customer-auth/context";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
+import { getCheckoutSuggestions } from "@/lib/checkout-suggestion-data";
 
 export default async function CheckoutPage({
   params,
@@ -31,9 +32,10 @@ export default async function CheckoutPage({
 
   // Signed-in returning customer → prefill name/address from their profile.
   // Cold open returns immediately without a DB hit.
-  const [{ profile }, onboardingSession] = await Promise.all([
+  const [{ profile }, onboardingSession, suggestions] = await Promise.all([
     loadCustomerContext(restaurant.id),
-    onboardingRequested ? getRestaurantAdminSession() : Promise.resolve(null)
+    onboardingRequested ? getRestaurantAdminSession() : Promise.resolve(null),
+    getCheckoutSuggestions(restaurant.id)
   ]);
   const onboardingTest =
     onboardingSession?.restaurantId === restaurant.id &&
@@ -47,6 +49,7 @@ export default async function CheckoutPage({
         onboardingTest={onboardingTest}
         prefill={profile}
         restaurant={restaurant}
+        suggestions={suggestions}
       />
     </CartProvider>
   );
