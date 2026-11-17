@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CarFront, Check, Loader2, MessageCircle, Phone, XCircle } from "lucide-react";
+import { Bike, CarFront, Check, Loader2, MapPin, MessageCircle, Phone, XCircle } from "lucide-react";
+import { formatDistance } from "@/lib/rider-location";
 import { ARRIVAL_NOTE_MAX, canMarkArrived } from "@/lib/car-arrival";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 import { trackFunnel } from "@/lib/customer-funnel-client";
@@ -49,7 +50,16 @@ const COPY = {
     arrivedDone: "The restaurant knows you're outside",
     arrivedSince: "since",
     updateSpot: "Update parking spot",
-    arrivedError: "Couldn't reach the restaurant. Try again or call them."
+    arrivedError: "Couldn't reach the restaurant. Try again or call them.",
+    riderOnWay: (name: string) => `${name} is on the way`,
+    callRider: (name: string) => `Call ${name}`,
+    away: (distance: string) => `About ${distance} away`,
+    liveLocation: "Live location",
+    updated: (ago: string) => `updated ${ago}`,
+    justNow: "just now",
+    minutesAgo: (m: number) => `${m} min ago`,
+    openMaps: "Open in Google Maps",
+    noLiveLocation: "Live location appears here once your rider shares it."
   },
   ar: {
     sent: "تم تقديم الطلب",
@@ -79,7 +89,16 @@ const COPY = {
     arrivedDone: "المطعم يعلم أنك في الخارج",
     arrivedSince: "منذ",
     updateSpot: "تحديث مكان الوقوف",
-    arrivedError: "تعذر إبلاغ المطعم. حاول مرة أخرى أو اتصل بهم."
+    arrivedError: "تعذر إبلاغ المطعم. حاول مرة أخرى أو اتصل بهم.",
+    riderOnWay: (name: string) => `${name} في الطريق إليك`,
+    callRider: (name: string) => `اتصل بـ ${name}`,
+    away: (distance: string) => `على بعد حوالي ${distance}`,
+    liveLocation: "الموقع المباشر",
+    updated: (ago: string) => `تم التحديث ${ago}`,
+    justNow: "الآن",
+    minutesAgo: (m: number) => `قبل ${m} دقيقة`,
+    openMaps: "افتح في خرائط Google",
+    noLiveLocation: "سيظهر الموقع المباشر هنا عندما يشاركه المندوب."
   }
 } as const;
 
@@ -301,6 +320,60 @@ export function OrderStatusTracker({
               </a>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {snapshot.status === "Out for Delivery" && snapshot.rider ? (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 font-black text-sky-900">
+              <Bike size={17} />
+              {copy.riderOnWay(snapshot.rider.name)}
+            </p>
+            {snapshot.rider.phone ? (
+              <a
+                className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-full bg-sky-700 px-3.5 py-2 text-sm font-black text-white"
+                href={`tel:+${snapshot.rider.phone}`}
+              >
+                <Phone size={15} />
+                {copy.callRider(snapshot.rider.name)}
+              </a>
+            ) : null}
+          </div>
+          {snapshot.rider.location ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sky-900/80">
+                <span className="font-bold">
+                  {snapshot.rider.location.distanceKm !== null
+                    ? copy.away(formatDistance(snapshot.rider.location.distanceKm))
+                    : copy.liveLocation}
+                </span>
+                {now ? (
+                  <span>
+                    {" · "}
+                    {copy.updated(
+                      now.getTime() - Date.parse(snapshot.rider.location.updatedAt) < 60_000
+                        ? copy.justNow
+                        : copy.minutesAgo(
+                            Math.floor((now.getTime() - Date.parse(snapshot.rider.location.updatedAt)) / 60_000)
+                          )
+                    )}
+                  </span>
+                ) : null}
+              </p>
+              <a
+                className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-full border border-sky-300 bg-white px-3.5 py-2 text-sm font-black text-sky-800"
+                href={snapshot.rider.location.mapsUrl}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <MapPin size={15} />
+                {copy.openMaps}
+              </a>
+            </div>
+          ) : (
+            <p className="mt-2 text-sky-900/70">{copy.noLiveLocation}</p>
+          )}
         </div>
       ) : null}
 

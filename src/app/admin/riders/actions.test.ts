@@ -116,9 +116,18 @@ describe("assignRiderToOrderAction", () => {
         restaurant_id: restaurantId,
         order_id: orderId,
         rider_id: riderId,
-        assigned_by_user_id: "user-1"
+        assigned_by_user_id: "user-1",
+        // Only the hash of the rider's private tracking link is stored.
+        tracking_token_hash: expect.stringMatching(/^[0-9a-f]{64}$/)
       })
     );
+    const sent = vi.mocked(sendRiderWhatsApp).mock.calls[0][0] as { message: string };
+    const link = sent.message.match(/\/rider\/([A-Za-z0-9_-]+)/);
+    expect(link).not.toBeNull();
+    const { createHash } = await import("node:crypto");
+    const insertCalls = vi.mocked(assignmentTable.insert).mock.calls as unknown as [{ tracking_token_hash: string }][];
+    const storedHash = insertCalls[0][0].tracking_token_hash;
+    expect(createHash("sha256").update(link![1]).digest("hex")).toBe(storedHash);
     expect(sendRiderWhatsApp).toHaveBeenCalledWith(
       expect.objectContaining({
         restaurantId,

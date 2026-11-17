@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 vi.mock("@/lib/push-auth", () => ({ getOrderPushAuthorization: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
+vi.mock("@/lib/rider-location-data", () => ({ getCustomerRiderView: vi.fn(async () => null) }));
 const orderId = "43000000-0000-0000-0000-000000000001";
 
 describe("saved order confirmation", () => {
@@ -37,7 +38,7 @@ describe("saved order confirmation", () => {
     vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
 
     expect(await loadOrderConfirmation("restaurant", orderId)).toEqual({
-      ...saved, status_events: events, customer_arrived_at: null, customer_arrival_note: null });
+      ...saved, status_events: events, customer_arrived_at: null, customer_arrival_note: null, rider: null });
     // Main read and the separate arrival read are both order- and tenant-scoped.
     expect(orderQuery.eq.mock.calls).toEqual([
       ["restaurant_id", "restaurant"], ["id", orderId],

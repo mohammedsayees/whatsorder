@@ -54,6 +54,21 @@ function order(overrides: Partial<Order> = {}): Order {
 }
 
 describe("buildRiderAssignmentMessage", () => {
+  it("adds the live-location link only when one is given", () => {
+    const withLink = buildRiderAssignmentMessage({
+      order: order(),
+      restaurant,
+      rider: { name: "Ahmed" },
+      trackingUrl: "https://example.com/rider/secret-token"
+    });
+    expect(withLink).toContain("📡 LIVE LOCATION");
+    expect(withLink).toContain("https://example.com/rider/secret-token");
+    expect(withLink.indexOf("📡 LIVE LOCATION")).toBeGreaterThan(withLink.indexOf("💵 PAYMENT"));
+
+    const without = buildRiderAssignmentMessage({ order: order(), restaurant, rider: { name: "Ahmed" } });
+    expect(without).not.toContain("LIVE LOCATION");
+  });
+
   it("includes only the delivery and collection facts the rider needs", () => {
     const message = buildRiderAssignmentMessage({
       order: order(),
