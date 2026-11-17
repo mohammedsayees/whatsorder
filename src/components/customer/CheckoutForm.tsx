@@ -29,6 +29,7 @@ import {
 import { formatCurrency } from "@/lib/currency";
 import { trackFunnel } from "@/lib/customer-funnel-client";
 import { groupCheckoutKey, type GroupCheckoutHandoff } from "@/lib/group-order";
+import { pickSuggestion, type CheckoutSuggestions } from "@/lib/checkout-suggestion";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
@@ -92,7 +93,8 @@ export function CheckoutForm({
   initialTableNumber = "",
   onboardingTest = false,
   prefill = null,
-  restaurant
+  restaurant,
+  suggestions = null
 }: {
   /** Validated ?src= token from the store link, stored on the order. */
   attributionSource?: string | null;
@@ -100,6 +102,8 @@ export function CheckoutForm({
   onboardingTest?: boolean;
   prefill?: CustomerProfile | null;
   restaurant: PublicRestaurant;
+  /** "Goes well with your order" data; null hides the suggestion. */
+  suggestions?: CheckoutSuggestions | null;
 }) {
   const router = useRouter();
   const cart = useCart();
@@ -114,6 +118,9 @@ export function CheckoutForm({
   } = useFulfilmentPreference(restaurant, initialTableNumber);
   const [selectedInstructions, setSelectedInstructions] = useState<InstructionKey[]>([]);
   const [noteText, setNoteText] = useState("");
+  // One suggestion per visit: once added or dismissed it does not come back
+  // with a new item (no chain of interruptions).
+  const [suggestionDone, setSuggestionDone] = useState(false);
   // Set when the organiser arrives from a locked office group order.
   const [groupHandoff, setGroupHandoff] = useState<GroupCheckoutHandoff | null>(null);
 
@@ -183,6 +190,9 @@ export function CheckoutForm({
     deliveryRange.enforced &&
     !deliveryRange.withinRange;
   const deliveryRadiusKm = restaurant.delivery_radius_km ?? 0;
+  const suggestion = suggestionDone
+    ? null
+    : pickSuggestion(cart.lines, cart.subtotal, suggestions);
   const addressCopy = ADDRESS_COPY[language];
   const composedAddress = composeDeliveryAddress(details, language);
 
@@ -666,6 +676,58 @@ export function CheckoutForm({
               );
             })}
           </div>
+          {suggestion ? (
+            <div className="mt-2 flex items-center gap-3 rounded-xl border border-dashed border-leaf/40 bg-mint/30 p-2.5">
+              {suggestion.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt=""
+                  className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                  height={48}
+                  loading="lazy"
+                  src={suggestion.image_url}
+                  width={48}
+                />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-black uppercase tracking-wide text-leaf">
+                  {language === "ar" ? "يناسب طلبك" : "Goes well with your order"}
+                </p>
+                <p className="truncate text-sm font-bold">
+                  {language === "ar" && suggestion.name_ar ? suggestion.name_ar : suggestion.name}
+                  <span className="ms-1.5 font-black text-stone-700">
+                    {formatCurrency(suggestion.price, restaurant)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-0.5">
+                <button
+                  className="focus-ring inline-flex min-h-9 items-center gap-1 rounded-full bg-leaf px-3 py-1.5 text-sm font-black text-white"
+                  onClick={() => {
+                    cart.addItem({
+                      ...suggestion,
+                      description: null,
+                      description_ar: null,
+                      is_available: true,
+                      is_featured: false
+                    });
+                    setSuggestionDone(true);
+                  }}
+                  type="button"
+                >
+                  <Plus size={14} />
+                  {language === "ar" ? "إضافة" : "Add"}
+                </button>
+                <button
+                  className="focus-ring rounded px-1 text-[11px] font-semibold text-stone-500"
+                  onClick={() => setSuggestionDone(true)}
+                  type="button"
+                >
+                  {language === "ar" ? "لا شكراً" : "No thanks"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="mt-3 space-y-1.5 border-t border-stone-200 pt-3 text-sm">
             <div className="flex justify-between">
               <span>{t.subtotal}</span>
