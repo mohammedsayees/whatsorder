@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   addShiftPaidOutAction,
+  attachPaidOutReceiptAction,
   addOtherIncomeAction,
   assignUnassignedOrdersAction,
   closeBusinessDayAction,
@@ -212,6 +213,32 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
         <ActionMessage state={state} />
       </div>
     </form>
+  );
+}
+
+export function PaidOutReceiptForm({ paidOutId }: { paidOutId: string }) {
+  const [state, action, pending] = useActionState(attachPaidOutReceiptAction, initialState);
+  if (state.success) {
+    return <ActionMessage state={state} />;
+  }
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="focus-ring cursor-pointer font-bold text-sky-800">Attach receipt</summary>
+      <form action={action} className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <input name="paid_out_id" type="hidden" value={paidOutId} />
+        <input
+          accept="application/pdf,image/jpeg,image/png,image/webp"
+          capture="environment"
+          className="focus-ring min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2"
+          name="receipt"
+          required
+          type="file"
+        />
+        <button className="focus-ring rounded-lg border border-sky-300 px-3 py-2 font-black text-sky-800 disabled:opacity-60" disabled={pending} type="submit">{pending ? "Uploading…" : "Upload"}</button>
+      </form>
+      <p className="mt-1 text-stone-500">Photo or PDF up to 10 MB. It goes privately to Finance for review.</p>
+      <ActionMessage state={state} />
+    </details>
   );
 }
 

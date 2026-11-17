@@ -40,7 +40,7 @@ export async function getFinanceDocumentReview(
   const [{ data: document }, { data: job }] = await Promise.all([
     admin
       .from("finance_documents")
-      .select("id,restaurant_id,storage_path,original_name,mime_type,byte_size,page_count,file_hash,status,duplicate_of_document_id,confidence,extracted_json,extraction_warnings,error_code,retention_until,created_at")
+      .select("id,restaurant_id,storage_path,original_name,mime_type,byte_size,page_count,file_hash,status,duplicate_of_document_id,shift_paid_out_id,confidence,extracted_json,extraction_warnings,error_code,retention_until,created_at")
       .eq("restaurant_id", restaurantId)
       .eq("id", documentId)
       .neq("status", "deleted")

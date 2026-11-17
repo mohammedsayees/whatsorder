@@ -84,3 +84,27 @@ export function tillPaymentError(message: string | undefined) {
   if (text.includes("Finance is not enabled") || text.includes("only available for AED")) return "Paying bills from the till isn't available for this restaurant.";
   return "The bill could not be paid from the till. Nothing was saved. Try again.";
 }
+
+/** Database guard messages from posting a till receipt, in plain words. */
+export function receiptPostingError(message: string | undefined) {
+  const text = message ?? "";
+  if (text.includes("Amounts differ")) return "The bill total differs from the cash paid out. Tick the confirmation and give a reason.";
+  if (text.includes("Paid-out not found")) return "The till paid-out for this receipt was voided. Delete this receipt, or post the bill without it.";
+  if (text.includes("already linked or dismissed")) return "The till paid-out already has a bill or was marked as not an expense.";
+  if (text.includes("already been posted")) return "This bill has already been posted.";
+  if (text.includes("Invalid finance category")) return "Choose an active expense category.";
+  if (text.includes("Duplicate document")) return "This exact bill file has already been posted.";
+  return "The receipt could not be posted. Nothing was saved. Try again.";
+}
+
+/** Database guard messages from attaching a receipt at the till, in plain words. */
+export function receiptAttachError(message: string | undefined) {
+  const text = message ?? "";
+  if (text.includes("only while the shift is open")) return "Receipts can be attached only while the shift is open.";
+  if (text.includes("Only the shift opener or restaurant management")) return "Only the person who opened the shift or a manager can attach a receipt.";
+  if (text.includes("already has a bill")) return "This paid-out already has a bill in Finance.";
+  if (text.includes("already attached") || text.includes("finance_documents_active_paid_out_receipt")) return "A receipt is already attached to this paid-out.";
+  if (text.includes("not found or voided")) return "This paid-out was voided or no longer exists.";
+  if (text.includes("not available for this restaurant")) return "Receipts aren't available for this restaurant.";
+  return "The receipt could not be attached. Try again.";
+}

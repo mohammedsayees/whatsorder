@@ -1,8 +1,14 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { processFinanceExtractionJob } from "@/lib/finance-extraction";
+import { paidOutLinkingAvailable } from "@/lib/finance-paid-out-data";
+import { receiptAttachError } from "@/lib/finance-paid-outs";
+import { FINANCE_DOCUMENT_BUCKET, inspectFinanceUpload } from "@/lib/finance-upload";
 import {
   requireRestaurantAdmin,
   requireRestaurantRole
@@ -258,6 +264,72 @@ export async function voidShiftPaidOutAction(
       ? `Paid-out voided. Shift report updated to version ${reportVersion}.`
       : "Paid-out voided. Expected cash has been updated."
   };
+}
+
+// Attach a receipt photo/PDF to a paid-out on the open shift. The uploader only
+// learns that the receipt was attached; what is read from it is Finance-only.
+export async function attachPaidOutReceiptAction(
+  _previousState: ShiftActionState,
+  formData: FormData
+): Promise<ShiftActionState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const paidOutId = formString(formData, "paid_out_id", 80);
+  const file = formData.get("receipt");
+  if (!supabase) return { error: "Shift service is unavailable." };
+  if (!/^[0-9a-f-]{36}$/i.test(paidOutId)) return { error: "Choose a paid-out." };
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a receipt photo or PDF." };
+  if (!(await paidOutLinkingAvailable(session))) return { error: "Receipts aren't available for this restaurant." };
+
+  const { data: allowed, error: rateError } = await supabase.rpc("check_finance_scan_rate_limit", {
+    target_restaurant_id: session.restaurantId,
+    target_user_id: session.userId
+  });
+  if (rateError) return { error: "The upload limit could not be checked. Try again." };
+  if (allowed !== true) return { error: "Too many uploads. Wait a few minutes and try again." };
+
+  let inspected;
+  try {
+    inspected = await inspectFinanceUpload(file);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "That file could not be opened." };
+  }
+
+  const documentId = randomUUID();
+  const storagePath = `${session.restaurantId}/${documentId}.${inspected.extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from(FINANCE_DOCUMENT_BUCKET)
+    .upload(storagePath, inspected.bytes, { contentType: inspected.contentType, upsert: false });
+  if (uploadError) return { error: "The receipt upload failed. Try again." };
+
+  const { error } = await supabase.rpc("create_paid_out_receipt_job", {
+    target_restaurant_id: session.restaurantId,
+    target_paid_out_id: paidOutId,
+    requested_document_id: documentId,
+    requested_storage_path: storagePath,
+    requested_original_name: inspected.originalName,
+    requested_mime_type: inspected.contentType,
+    requested_byte_size: inspected.originalByteSize,
+    requested_page_count: inspected.pageCount,
+    requested_file_hash: inspected.originalHash,
+    event_actor_user_id: session.userId
+  });
+  if (error) {
+    await supabase.storage.from(FINANCE_DOCUMENT_BUCKET).remove([storagePath]);
+    return { error: receiptAttachError(error.message) };
+  }
+
+  // Read the receipt in the background, within this request's maxDuration.
+  after(async () => {
+    await processFinanceExtractionJob(session.restaurantId, documentId, {
+      bytes: inspected.bytes,
+      mimeType: inspected.contentType
+    });
+  });
+  refreshShiftViews();
+  revalidatePath("/admin/finance");
+  revalidatePath("/admin/finance/paid-outs");
+  return { success: "Receipt attached. Finance will review it." };
 }
 
 export async function assignUnassignedOrdersAction(

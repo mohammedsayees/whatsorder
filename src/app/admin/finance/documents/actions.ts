@@ -8,7 +8,7 @@ import { isIsoDate, parseAedToFils, parseAedToFilsAllowZero, requiredText } from
 import { processFinanceExtractionJob } from "@/lib/finance-extraction";
 import { FINANCE_DOCUMENT_BUCKET, inspectFinanceUpload } from "@/lib/finance-upload";
 import { requireFinancePermission } from "@/lib/finance-data";
-import { tillPaymentError } from "@/lib/finance-paid-outs";
+import { receiptPostingError, tillPaymentError } from "@/lib/finance-paid-outs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const reviewPath = (documentId: string) => `/admin/finance/documents/${documentId}`;
@@ -190,7 +190,7 @@ export async function approveFinanceDocumentAction(formData: FormData) {
 
   const [{ data: category }, { data: document }] = await Promise.all([
     admin.from("finance_categories").select("id").eq("id", categoryId).eq("restaurant_id", session.restaurantId).eq("is_active", true).maybeSingle(),
-    admin.from("finance_documents").select("id,status,duplicate_of_document_id").eq("id", documentId).eq("restaurant_id", session.restaurantId).maybeSingle()
+    admin.from("finance_documents").select("id,status,duplicate_of_document_id,shift_paid_out_id").eq("id", documentId).eq("restaurant_id", session.restaurantId).maybeSingle()
   ]);
   if (!category || !document || document.status !== "extracted") fail(path, "This bill or category is no longer available.");
   if (document.duplicate_of_document_id) {
@@ -215,6 +215,34 @@ export async function approveFinanceDocumentAction(formData: FormData) {
   const { data: possibleDuplicates } = await possibleDuplicateQuery.limit(1);
   if ((possibleDuplicates?.length ?? 0) > 0 && formData.get("confirm_possible_duplicate") !== "on") {
     fail(path, "A similar expense already exists. Review the warning and explicitly confirm if this is a different bill.");
+  }
+
+  // A receipt attached at the till: post it and link it to its paid-out.
+  if (document.shift_paid_out_id) {
+    const mismatchReason = String(formData.get("mismatch_reason") ?? "").trim();
+    if (mismatchReason.length > 300) fail(path, "The mismatch reason can be up to 300 characters.");
+    const { data: receiptExpenseId, error: receiptError } = await admin.rpc("approve_finance_paid_out_receipt", {
+      target_restaurant_id: session.restaurantId,
+      target_document_id: documentId,
+      requested_category_id: categoryId,
+      requested_supplier_name: supplierName,
+      requested_invoice_number: invoiceNumber,
+      requested_incurred_on: incurredOn,
+      requested_subtotal_fils: subtotalFils,
+      requested_input_vat_fils: vatFils,
+      requested_total_fils: totalFils,
+      requested_vat_inclusive: formData.get("vat_inclusive") === "on",
+      requested_description: description,
+      requested_lines: lines,
+      confirm_mismatch: formData.get("confirm_mismatch") === "on",
+      requested_mismatch_reason: mismatchReason || null,
+      event_actor_user_id: session.userId
+    });
+    if (receiptError || !receiptExpenseId) fail(path, receiptPostingError(receiptError?.message));
+    revalidatePath("/admin/finance");
+    revalidatePath("/admin/finance/paid-outs");
+    revalidatePath("/admin/shifts");
+    redirect(`/admin/finance?success=${encodeURIComponent("Receipt posted and linked to its till paid-out.")}`);
   }
 
   if (formData.get("pay_from_till") === "on") {
