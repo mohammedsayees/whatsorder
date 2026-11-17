@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getConfiguredWebPushPublicKey } from "@/lib/push-auth";
 import { SavedOrderConfirmation } from "@/components/customer/SavedOrderConfirmation";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
+import { getRestaurantPrepEstimate } from "@/lib/prep-time-data";
 
 export default async function ThankYouPage({ params, searchParams }: {
   params: Promise<{ restaurantSlug: string }>;
@@ -12,7 +13,10 @@ export default async function ThankYouPage({ params, searchParams }: {
   const [{ restaurantSlug }, query] = await Promise.all([params, searchParams]);
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   if (!restaurant) notFound();
-  const order = await loadOrderConfirmation(restaurant.id, query.order ?? "");
+  const [order, prepEstimate] = await Promise.all([
+    loadOrderConfirmation(restaurant.id, query.order ?? ""),
+    getRestaurantPrepEstimate(restaurant.id)
+  ]);
   if (!order) notFound();
   const onboardingSession = query.onboarding === "test-order"
     ? await getRestaurantAdminSession()
@@ -21,5 +25,5 @@ export default async function ThankYouPage({ params, searchParams }: {
     onboardingSession?.restaurantId === restaurant.id &&
     onboardingSession.role !== "staff";
   const webPushPublicKey = getConfiguredWebPushPublicKey();
-  return <SavedOrderConfirmation restaurant={restaurant} order={order} language={query.lang} onboardingTest={onboardingTest} webPushPublicKey={webPushPublicKey} />;
+  return <SavedOrderConfirmation restaurant={restaurant} order={order} language={query.lang} onboardingTest={onboardingTest} webPushPublicKey={webPushPublicKey} prepMinutes={prepEstimate?.minutes ?? null} />;
 }

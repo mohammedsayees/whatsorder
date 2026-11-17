@@ -25,6 +25,17 @@ export default function PrivacyPage() {
           </p>
         </div>
         <div>
+          <h2 className="font-black">On your device and visit statistics</h2>
+          <p className="mt-2 text-sm leading-6 text-stone-600">
+            Your cart, language, order type and, if you tick &quot;Remember my details&quot;, your
+            name, phone and address are kept in your own browser for that restaurant only. You can
+            remove saved details with &quot;Forget them&quot; at checkout. To help the restaurant
+            improve ordering, we count anonymous steps of each visit (for example menu opened or
+            checkout reached) using a random visit code; no name, phone, address or IP address is
+            stored with these counts.
+          </p>
+        </div>
+        <div>
           <h2 className="font-black">Marketing messages</h2>
           <p className="mt-2 text-sm leading-6 text-stone-600">
             Promotional WhatsApp messages are allowed only when you explicitly opt in. You can

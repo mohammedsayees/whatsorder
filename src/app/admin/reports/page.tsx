@@ -15,6 +15,8 @@ import {
 } from "@/lib/reports";
 import { orderSourceLabel } from "@/lib/order-source";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { getCustomerFunnel } from "@/lib/customer-funnel-data";
+import { OrderingFunnelCard } from "@/components/admin/OrderingFunnelCard";
 import { getOtherIncomeForReport } from "@/lib/business-day-data";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 
@@ -101,9 +103,13 @@ export default async function AdminReportsPage({
     new Date(),
     restaurant
   );
-  const [orders, otherIncomeEntries] = await Promise.all([
+  const [orders, otherIncomeEntries, funnel] = await Promise.all([
     getOrdersForReport(restaurant.id, range.startIso, range.endExclusiveIso),
-    getOtherIncomeForReport(restaurant.id, range.startIso, range.endExclusiveIso)
+    getOtherIncomeForReport(restaurant.id, range.startIso, range.endExclusiveIso),
+    // Scoped by the session's restaurant; only the overview shows it.
+    activeTab === "overview"
+      ? getCustomerFunnel(restaurant.id, range.startIso, range.endExclusiveIso)
+      : Promise.resolve(null)
   ]);
   const customerPhones = [
     ...new Set(
@@ -272,7 +278,9 @@ export default async function AdminReportsPage({
 
       <div className="mt-5">
         {activeTab === "overview" ? (
-          report.completedOrders === 0 ? (
+          <div className="space-y-5">
+          <OrderingFunnelCard funnel={funnel} />
+          {report.completedOrders === 0 ? (
             <EmptyReport />
           ) : (
             <div className="grid gap-5 lg:grid-cols-2">
@@ -359,7 +367,8 @@ export default async function AdminReportsPage({
                 </div>
               </section>
             </div>
-          )
+          )}
+          </div>
         ) : null}
 
         {activeTab === "sales" ? (

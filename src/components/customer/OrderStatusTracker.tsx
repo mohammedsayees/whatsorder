@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, MessageCircle, Phone, XCircle } from "lucide-react";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
+import { trackFunnel } from "@/lib/customer-funnel-client";
 import {
   isAwaitingAcceptanceTooLong,
   isOrderActive,
@@ -30,6 +31,8 @@ const COPY = {
     collected: "Collected",
     served: "Served",
     live: "Updates automatically",
+    expectedReady: "Usually ready around",
+    expectedDispatch: "Usually leaves the kitchen around",
     cancelledTitle: "This order was cancelled",
     cancelledBody: "Contact the restaurant if you have questions about it.",
     waitingTitle: "The restaurant hasn't confirmed yet",
@@ -50,6 +53,8 @@ const COPY = {
     collected: "تم الاستلام",
     served: "تم التقديم",
     live: "يتم التحديث تلقائياً",
+    expectedReady: "عادةً يكون جاهزاً حوالي",
+    expectedDispatch: "عادةً يغادر المطبخ حوالي",
     cancelledTitle: "تم إلغاء هذا الطلب",
     cancelledBody: "تواصل مع المطعم إذا كان لديك أي استفسار.",
     waitingTitle: "لم يؤكد المطعم طلبك بعد",
@@ -91,6 +96,7 @@ export function OrderStatusTracker({
   initial,
   language,
   orderId,
+  prepMinutes = null,
   restaurantId,
   whatsappUrl
 }: {
@@ -98,6 +104,8 @@ export function OrderStatusTracker({
   initial: OrderProgressSnapshot;
   language: CustomerLanguage;
   orderId: string;
+  /** Restaurant's measured median prep time, or null without history. */
+  prepMinutes?: number | null;
   restaurantId: string;
   whatsappUrl: string;
 }) {
@@ -181,6 +189,12 @@ export function OrderStatusTracker({
   const steps = progressSteps(snapshot.fulfilment_type);
   const reached = progressIndex(snapshot.status) ?? 0;
   const times = stepTimes(snapshot.created_at, snapshot.status_events, steps.length);
+  // Once accepted and until ready: acceptance time + measured prep time.
+  const acceptedAt = times[1] ? Date.parse(times[1]) : Number.NaN;
+  const expectedReadyAt =
+    active && prepMinutes !== null && (reached === 1 || reached === 2) && Number.isFinite(acceptedAt)
+      ? new Date(acceptedAt + prepMinutes * 60_000).toISOString()
+      : null;
   const waitingTooLong =
     now !== null && isAwaitingAcceptanceTooLong(snapshot.status, snapshot.created_at, now);
   const formatTime = (value: string | null) =>
@@ -236,6 +250,13 @@ export function OrderStatusTracker({
         })}
       </ol>
 
+      {expectedReadyAt && formatTime(expectedReadyAt) ? (
+        <p className="mt-4 rounded-xl bg-mint/60 px-3 py-2 text-sm font-bold text-leaf">
+          {snapshot.fulfilment_type === "delivery" ? copy.expectedDispatch : copy.expectedReady}{" "}
+          {formatTime(expectedReadyAt)}
+        </p>
+      ) : null}
+
       {waitingTooLong ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
           <p className="font-black">{copy.waitingTitle}</p>
@@ -244,6 +265,7 @@ export function OrderStatusTracker({
             <a
               className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 font-black text-white"
               href={whatsappUrl}
+              onClick={() => trackFunnel(restaurantId, "whatsapp_opened", { orderId })}
               rel="noopener noreferrer"
               target="_blank"
             >

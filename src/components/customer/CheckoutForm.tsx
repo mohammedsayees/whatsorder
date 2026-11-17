@@ -27,6 +27,7 @@ import {
   type SavedCustomerDetails
 } from "@/lib/customer-address";
 import { formatCurrency } from "@/lib/currency";
+import { trackFunnel } from "@/lib/customer-funnel-client";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
@@ -211,6 +212,35 @@ export function CheckoutForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailsStorageKey]);
 
+  // Funnel: one view per visit, plus why a visit could not order.
+  const orderingClosed = restaurant.accepting_orders === false || !scheduleOpen;
+  const blockReason =
+    !cart.isReady || cart.lines.length === 0 || pendingWhatsAppOrder
+      ? null
+      : amountRemaining > 0
+        ? "minimum_order"
+        : orderingClosed
+          ? "closed"
+          : deliveryBlocked && deliveryRange.distanceKm !== null
+            ? "out_of_range"
+            : null;
+  const readyForView = cart.isReady && cart.lines.length > 0 && !pendingWhatsAppOrder;
+
+  useEffect(() => {
+    if (readyForView) {
+      trackFunnel(restaurant.id, "checkout_view", { fulfilmentType });
+    }
+    // Once per visit; the fulfilment at first view is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyForView, restaurant.id]);
+
+  useEffect(() => {
+    if (blockReason) {
+      trackFunnel(restaurant.id, "checkout_blocked", { detail: blockReason, fulfilmentType });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockReason, restaurant.id]);
+
   function updateDetail(field: keyof typeof ADDRESS_LIMITS, value: string) {
     setDetails((current) => ({ ...current, [field]: value }));
   }
@@ -357,6 +387,7 @@ export function CheckoutForm({
       }
 
       persistDetails();
+      trackFunnel(restaurant.id, "order_saved", { orderId: result.orderId, fulfilmentType });
 
       if (result.confirmationUrl) {
         cart.clearCart();
@@ -421,7 +452,10 @@ export function CheckoutForm({
         <a
           className="focus-ring mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-5 py-4 font-black text-white"
           href={pendingWhatsAppOrder.whatsappUrl}
-          onClick={() => cart.clearCart()}
+          onClick={() => {
+            trackFunnel(restaurant.id, "whatsapp_opened", { orderId: pendingWhatsAppOrder.orderId });
+            cart.clearCart();
+          }}
           rel={pendingWhatsAppOrder.onboardingTest ? "noopener noreferrer" : undefined}
           target={pendingWhatsAppOrder.onboardingTest ? "_blank" : undefined}
         >
