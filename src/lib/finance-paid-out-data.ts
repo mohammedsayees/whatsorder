@@ -173,3 +173,38 @@ export async function getPaidOutBillStatuses(
   return statuses;
 }
 
+
+export type OpenShiftTill = {
+  shiftId: string;
+  shiftName: string;
+  openedAt: string;
+  /** Paid-outs already on this shift with no bill: the bill may be one of them. */
+  unbilled: { amountFils: number; reason: string }[];
+};
+
+/**
+ * The open shift a Finance approver can pay a cash bill from, or null when
+ * the option doesn't apply (no approve permission, Finance linking off, no
+ * open shift, or staff who didn't open the shift).
+ */
+export async function getOpenShiftTill(
+  session: RestaurantAdminSession,
+  canApprove: boolean
+): Promise<OpenShiftTill | null> {
+  if (!canApprove || !(await paidOutLinkingAvailable(session))) return null;
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  const { data: shift } = await admin.from("restaurant_shifts")
+    .select("id,shift_name,opened_at,opened_by_user_id")
+    .eq("restaurant_id", session.restaurantId).eq("status", "open").maybeSingle();
+  if (!shift || (session.role === "staff" && shift.opened_by_user_id !== session.userId)) return null;
+  const unbilled = (await getUnbilledPaidOuts(session.restaurantId, 500))
+    .filter((row) => row.shiftId === shift.id)
+    .map((row) => ({ amountFils: row.amountFils, reason: row.reason }));
+  return {
+    shiftId: String(shift.id),
+    shiftName: String(shift.shift_name),
+    openedAt: String(shift.opened_at),
+    unbilled
+  };
+}

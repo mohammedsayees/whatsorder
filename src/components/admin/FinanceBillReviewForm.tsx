@@ -5,6 +5,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { approveFinanceDocumentAction } from "@/app/admin/finance/documents/actions";
 import type { FinanceCategory } from "@/lib/finance";
 import type { FinanceDocument } from "@/lib/finance-document";
+import type { OpenShiftTill } from "@/lib/finance-paid-out-data";
+import { FinanceTillPaymentFields } from "@/components/admin/FinanceTillPaymentFields";
 
 type ReviewLine = {
   id: string;
@@ -24,11 +26,15 @@ function filsInput(value: number | null | undefined) {
 export function FinanceBillReviewForm({
   categories,
   document,
-  possibleDuplicate
+  possibleDuplicate,
+  till = null,
+  tillOpenedAtLabel = ""
 }: {
   categories: FinanceCategory[];
   document: FinanceDocument;
   possibleDuplicate: boolean;
+  till?: OpenShiftTill | null;
+  tillOpenedAtLabel?: string;
 }) {
   const extracted = document.extracted_json!;
   const [lines, setLines] = useState<ReviewLine[]>(
@@ -70,6 +76,7 @@ export function FinanceBillReviewForm({
         <label className="text-sm font-bold">Payment status<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="partial">Partially paid</option></select></label>
         <label className="text-sm font-bold">Payment method<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_method"><option value="">Not recorded</option><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
         <label className="text-sm font-bold">Paid on<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="paid_on" type="date" /></label>
+        {till ? <FinanceTillPaymentFields openedAtLabel={tillOpenedAtLabel} till={till} /> : null}
       </div>
 
       <section className="border-t border-stone-100 pt-5">

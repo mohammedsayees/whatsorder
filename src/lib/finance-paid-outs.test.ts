@@ -5,7 +5,8 @@ import {
   comparePaidOutToExpense,
   formatDifference,
   paidOutAmountToFils,
-  rankLinkCandidates
+  rankLinkCandidates,
+  tillPaymentError
 } from "@/lib/finance-paid-outs";
 
 describe("paidOutAmountToFils", () => {
@@ -112,5 +113,41 @@ describe("paid-out link migration", () => {
   it("is gated on finance being enabled and AED", () => {
     expect(sql).toContain("finance is not enabled for this restaurant");
     expect(sql).toContain("currency_code <> 'aed'");
+  });
+});
+
+describe("tillPaymentError", () => {
+  it("explains the same-amount guard and closed shifts in plain words", () => {
+    expect(tillPaymentError("A paid-out of the same amount without a bill is already on this shift"))
+      .toContain("link it on the Cash paid-outs page");
+    expect(tillPaymentError("The shift is no longer open")).toContain("The shift has closed");
+    expect(tillPaymentError("Open shift not found")).toContain("The shift has closed");
+  });
+
+  it("never echoes raw database errors", () => {
+    expect(tillPaymentError("duplicate key value violates unique constraint \"x\""))
+      .toBe("The bill could not be paid from the till. Nothing was saved. Try again.");
+    expect(tillPaymentError(undefined)).toContain("Nothing was saved");
+  });
+});
+
+describe("pay-bill-from-till migration", () => {
+  const sql = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20261120090000_finance_pay_bill_from_till.sql"),
+    "utf8"
+  ).toLowerCase();
+
+  it("reuses the existing shift and link guards instead of redefining them", () => {
+    expect(sql).toContain("public.add_shift_cash_paid_out(");
+    expect(sql).toContain("public.link_finance_paid_out_to_expense(");
+    expect(sql).not.toContain("function public.calculate_restaurant_shift_summary");
+    expect(sql).not.toContain("function public.add_shift_cash_paid_out");
+    expect(sql).not.toMatch(/alter\s+table/);
+  });
+
+  it("is service-role only", () => {
+    expect(sql).toMatch(/revoke all on function[\s\S]*from public, anon, authenticated;/);
+    expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/);
+    expect(sql).not.toMatch(/to\s+authenticated/);
   });
 });

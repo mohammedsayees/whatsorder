@@ -10,6 +10,8 @@ import { FinanceBillReviewForm } from "@/components/admin/FinanceBillReviewForm"
 import { formatFils } from "@/lib/finance";
 import { getFinanceDocumentReview } from "@/lib/finance-document-data";
 import { getFinanceCategories, requireFinancePermission } from "@/lib/finance-data";
+import { getOpenShiftTill } from "@/lib/finance-paid-out-data";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 
 export const maxDuration = 60;
 
@@ -25,9 +27,10 @@ export default async function FinanceDocumentReviewPage({
     params,
     searchParams
   ]);
-  const [document, categories] = await Promise.all([
+  const [document, categories, till] = await Promise.all([
     getFinanceDocumentReview(session.restaurantId, route.documentId),
-    getFinanceCategories(session.restaurantId)
+    getFinanceCategories(session.restaurantId),
+    getOpenShiftTill(session, access.approve).catch(() => null)
   ]);
   if (!document) notFound();
   const exactDuplicate = Boolean(document.duplicate_of_document_id);
@@ -56,7 +59,7 @@ export default async function FinanceDocumentReviewPage({
           {(document.status === "queued" || document.status === "processing") && document.readingStalled ? <div className="py-8 text-center"><h2 className="text-lg font-black">Reading did not finish</h2><p className="mt-2 text-sm text-stone-500">No expense was created. Attempt {document.attempts} of 3.</p>{access.create && document.attempts < 3 ? <form action={retryFinanceExtractionAction} className="mt-4"><input name="document_id" type="hidden" value={document.id} /><button className="focus-ring rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" type="submit">Retry secure extraction</button></form> : <Link className="focus-ring mt-4 inline-block rounded-lg border border-stone-300 px-4 py-3 text-sm font-black" href="/admin/finance/new">Enter manually</Link>}</div> : null}
           {document.status === "failed" ? <div className="py-8 text-center"><h2 className="text-lg font-black">Automatic reading failed</h2><p className="mt-2 text-sm text-stone-500">No expense was created. Attempt {document.attempts} of 3.</p>{access.create && document.attempts < 3 ? <form action={retryFinanceExtractionAction} className="mt-4"><input name="document_id" type="hidden" value={document.id} /><button className="focus-ring rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" type="submit">Retry secure extraction</button></form> : <Link className="focus-ring mt-4 inline-block rounded-lg border border-stone-300 px-4 py-3 text-sm font-black" href="/admin/finance/new">Enter manually</Link>}</div> : null}
           {document.status === "reviewed" ? <div className="py-8 text-center"><h2 className="text-lg font-black">Bill already posted</h2><p className="mt-2 text-sm text-stone-500">Idempotent approval prevents this document from creating another expense.</p><Link className="focus-ring mt-4 inline-block rounded-lg bg-ink px-4 py-3 text-sm font-black text-white" href="/admin/finance">View expenses</Link></div> : null}
-          {document.status === "extracted" && document.extracted_json ? <div><div className="mb-5 border-b border-stone-100 pb-4"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">Review extracted fields</h2><span className={`rounded-full px-2.5 py-1 text-xs font-black ${document.confidence === "high" ? "bg-emerald-100 text-emerald-800" : document.confidence === "low" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{document.confidence ?? "unknown"} confidence</span></div><p className="mt-1 text-sm text-stone-500">Printed total: {formatFils(Number(document.extracted_json.total_fils))}. Correct every uncertain field.</p>{document.extraction_warnings.length > 0 ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-900">{document.extraction_warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}</div>{access.approve ? <FinanceBillReviewForm categories={categories} document={document} possibleDuplicate={possibleDuplicate} /> : <p className="rounded-lg bg-amber-50 p-4 text-sm font-bold text-amber-900">You may view extracted data but do not have approval permission.</p>}</div> : null}
+          {document.status === "extracted" && document.extracted_json ? <div><div className="mb-5 border-b border-stone-100 pb-4"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">Review extracted fields</h2><span className={`rounded-full px-2.5 py-1 text-xs font-black ${document.confidence === "high" ? "bg-emerald-100 text-emerald-800" : document.confidence === "low" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{document.confidence ?? "unknown"} confidence</span></div><p className="mt-1 text-sm text-stone-500">Printed total: {formatFils(Number(document.extracted_json.total_fils))}. Correct every uncertain field.</p>{document.extraction_warnings.length > 0 ? <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-900">{document.extraction_warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}</div>{access.approve ? <FinanceBillReviewForm categories={categories} document={document} possibleDuplicate={possibleDuplicate} till={till} tillOpenedAtLabel={till ? formatRestaurantShortDateTime(till.openedAt, session.restaurant) : ""} /> : <p className="rounded-lg bg-amber-50 p-4 text-sm font-bold text-amber-900">You may view extracted data but do not have approval permission.</p>}</div> : null}
         </section>
       </div>
     </main>

@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { createFinanceExpenseAction } from "@/app/admin/finance/actions";
+import { FinanceTillPaymentFields } from "@/components/admin/FinanceTillPaymentFields";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { getFinanceCategories, getFinanceRecurringCosts, requireFinancePermission } from "@/lib/finance-data";
+import { getOpenShiftTill } from "@/lib/finance-paid-out-data";
 
 export default async function NewFinanceExpensePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const [{ session, access }, query] = await Promise.all([requireFinancePermission("create"), searchParams]);
-  const [categories, recurring] = await Promise.all([
-    getFinanceCategories(session.restaurantId), getFinanceRecurringCosts(session.restaurantId)
+  const [categories, recurring, till] = await Promise.all([
+    getFinanceCategories(session.restaurantId), getFinanceRecurringCosts(session.restaurantId),
+    getOpenShiftTill(session, access.approve).catch(() => null)
   ]);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: session.restaurant.time_zone ?? "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
@@ -29,6 +33,7 @@ export default async function NewFinanceExpensePage({ searchParams }: { searchPa
         <label className="text-sm font-bold">Payment status<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="partial">Partially paid</option></select></label>
         <label className="text-sm font-bold">Payment method<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_method"><option value="">Not recorded</option><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
         <label className="text-sm font-bold">Paid on (required when paid)<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="paid_on" type="date" /></label>
+        {till ? <FinanceTillPaymentFields openedAtLabel={formatRestaurantShortDateTime(till.openedAt, session.restaurant)} till={till} /> : null}
         <div className="flex items-end gap-2"><button className="focus-ring flex-1 rounded-lg border border-stone-300 px-4 py-3 text-sm font-black" name="status" value="draft">Save draft</button>{access.approve ? <button className="focus-ring flex-1 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" name="status" value="approved">Record expense</button> : null}</div>
       </form>
     </main>

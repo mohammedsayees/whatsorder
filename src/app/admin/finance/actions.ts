@@ -13,6 +13,7 @@ import {
   type FinanceFrequency
 } from "@/lib/finance";
 import { requireFinancePermission } from "@/lib/finance-data";
+import { tillPaymentError } from "@/lib/finance-paid-outs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 function fail(path: string, message: string): never {
@@ -109,6 +110,33 @@ export async function createFinanceExpenseAction(formData: FormData) {
     if (inputVatFils < 0) fail(path, "Enter a valid VAT amount, or leave it blank.");
     subtotalFils = amountFils;
     totalFils = subtotalFils + inputVatFils;
+  }
+
+  if (formData.get("pay_from_till") === "on") {
+    if (!access.approve) fail(path, "Paying a bill from the till requires Finance approval permission.");
+    const tillShiftId = String(formData.get("till_shift_id") ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(tillShiftId)) fail(path, "The open shift could not be found. Refresh and try again.");
+    const { error: tillError } = await admin.rpc("create_finance_expense_from_till", {
+      target_restaurant_id: session.restaurantId,
+      requested_category_id: categoryId,
+      requested_description: description,
+      requested_supplier_name: supplierName,
+      requested_incurred_on: incurredOn,
+      requested_subtotal_fils: subtotalFils,
+      requested_input_vat_fils: inputVatFils,
+      requested_total_fils: totalFils,
+      requested_vat_inclusive: vatInclusive,
+      requested_service_period_start: servicePeriodStart || null,
+      requested_service_period_end: servicePeriodEnd || null,
+      requested_recurring_cost_id: recurringCostId || null,
+      target_shift_id: tillShiftId,
+      allow_same_amount_paid_out: formData.get("confirm_new_paid_out") === "on",
+      event_actor_user_id: session.userId
+    });
+    if (tillError) fail(path, tillPaymentError(tillError.message));
+    revalidatePath("/admin/finance");
+    revalidatePath("/admin/shifts");
+    redirect(`/admin/finance?success=${encodeURIComponent("Expense recorded and paid from the till. The shift's expected cash is updated.")}`);
   }
 
   const status = requestedStatus === "approved" && access.approve ? "approved" : "draft";
