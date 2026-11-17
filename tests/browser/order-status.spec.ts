@@ -39,3 +39,31 @@ test("the timeline follows live status updates", async ({ page }) => {
   expect(requested).toContain("orderId=43000000-0000-4000-8000-0000000000aa");
   expect(await steps.count()).toBeGreaterThanOrEqual(5);
 });
+
+test("car pickup customers can tell the restaurant they have arrived", async ({ page }) => {
+  await page.route("**/api/customer/order-status**", route => route.fulfill({ status: 404, body: "{}" }));
+  let posted: Record<string, unknown> | null = null;
+  await page.route("**/api/customer/order-arrived", route => {
+    posted = JSON.parse(route.request().postData() ?? "{}");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ customer_arrived_at: new Date().toISOString(), customer_arrival_note: "Bay 3" })
+    });
+  });
+  await page.goto("/?mode=status-car");
+  await expect(page.getByText("Arrived at the restaurant?")).toBeVisible();
+  await page.getByLabel("Where are you parked? (optional)").fill("Bay 3");
+  await page.getByRole("button", { name: "I've arrived" }).click();
+  await expect(page.getByText("The restaurant knows you're outside")).toBeVisible();
+  expect(posted).toMatchObject({ orderId: "43000000-0000-4000-8000-0000000000bb", note: "Bay 3" });
+  // Same spot: nothing to resend. A new spot offers an update.
+  await expect(page.getByRole("button", { name: "Update parking spot" })).toHaveCount(0);
+  await page.getByLabel("Where are you parked? (optional)").fill("Bay 7");
+  await expect(page.getByRole("button", { name: "Update parking spot" })).toBeVisible();
+});
+
+test("the arrival button is only offered for car pickup", async ({ page }) => {
+  await page.route("**/api/customer/order-status**", route => route.fulfill({ status: 404, body: "{}" }));
+  await page.goto("/?mode=status-live");
+  await expect(page.getByText("Arrived at the restaurant?")).toHaveCount(0);
+});

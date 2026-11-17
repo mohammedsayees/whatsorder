@@ -15,7 +15,7 @@ import {
   OptimisticOrderStatusProvider,
   OrderStatusBadge
 } from "@/components/admin/OptimisticOrderStatus";
-import { NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
+import { CarArrivalBadge, NewOrderAlertCard } from "@/components/admin/NewOrderAlerts";
 import {
   CancelOrderAction,
   OrderStatusActions
@@ -234,6 +234,7 @@ export function OrderList({
                     <div className="mt-2 rounded-lg bg-violet-50 p-3 text-violet-900">
                       <p className="font-black">Plate: {order.car_plate_number || "Not provided"}</p>
                       <p className="mt-1">Car: {order.car_description || "No colour/model provided"}</p>
+                      <CarArrivalBadge orderId={order.id} />
                     </div>
                   ) : fulfilmentType === "dine_in" ? (
                     <p className="mt-2 rounded-lg bg-emerald-50 p-3 font-black text-emerald-900">Table: {order.table_number || "Not provided"}</p>

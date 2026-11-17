@@ -3,7 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
-import { Bell, BellRing, Radio, Volume2, VolumeX } from "lucide-react";
+import { Bell, BellRing, CarFront, Radio, Volume2, VolumeX } from "lucide-react";
+import { waitingLabel, type WaitingArrival } from "@/lib/car-arrival";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import type { NewOrderAlertState } from "@/lib/data";
 import {
@@ -25,11 +26,20 @@ const reconcileIntervalFallbackMs = 15_000;
 
 type NewOrderAlertsContextValue = {
   highlightedOrderIds: ReadonlySet<string>;
+  waitingArrivalsById: ReadonlyMap<string, WaitingArrival>;
+  now: Date | null;
 };
 
 const NewOrderAlertsContext = createContext<NewOrderAlertsContextValue>({
-  highlightedOrderIds: new Set()
+  highlightedOrderIds: new Set(),
+  waitingArrivalsById: new Map(),
+  now: null
 });
+
+function arrivalOrderHref(orderId: string) {
+  const id = encodeURIComponent(orderId);
+  return `/admin/orders?status=active&q=${id}&highlight=${id}#order-${id}`;
+}
 
 type NewOrderAlertsProviderProps = {
   children: React.ReactNode;
@@ -208,6 +218,14 @@ export function NewOrderAlertsProvider({
   const activeRealtimeAccessTokenRef = useRef(realtimeAccessToken);
   const toastSequenceRef = useRef(0);
   const [highlightedOrderIds, setHighlightedOrderIds] = useState<Set<string>>(new Set());
+  const [waitingArrivals, setWaitingArrivals] = useState<WaitingArrival[]>(
+    initialNewOrderAlertState.waitingArrivals ?? []
+  );
+  // Arrivals already announced; only newcomers get a toast and a chime.
+  const knownArrivalIdsRef = useRef(
+    new Set((initialNewOrderAlertState.waitingArrivals ?? []).map((arrival) => arrival.id))
+  );
+  const [now, setNow] = useState<Date | null>(null);
   const [newOrderCount, setNewOrderCount] = useState(
     initialNewOrderAlertState.newOrderCount
   );
@@ -374,6 +392,29 @@ export function NewOrderAlertsProvider({
 
     const refreshPromise = fetchNewOrderAlertState()
       .then((state) => {
+        const arrivals = state.waitingArrivals ?? [];
+        const newcomers = arrivals.filter(
+          (arrival) => !knownArrivalIdsRef.current.has(arrival.id)
+        );
+        knownArrivalIdsRef.current = new Set(arrivals.map((arrival) => arrival.id));
+        setWaitingArrivals(arrivals);
+
+        if (newcomers.length > 0) {
+          const first = newcomers[0];
+          showToast(
+            `Customer outside: ${first.car_plate_number || "car pickup"}${
+              first.customer_arrival_note ? ` · ${first.customer_arrival_note}` : ""
+            }`
+          );
+
+          if (
+            soundEnabledRef.current &&
+            claimCrossTabSound(restaurantId, `arrival-${first.id}`)
+          ) {
+            void playAlertSound();
+          }
+        }
+
         const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
         pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
         setNewOrderCount(state.newOrderCount);
@@ -388,7 +429,19 @@ export function NewOrderAlertsProvider({
 
     alertRefreshPromiseRef.current = refreshPromise;
     return refreshPromise;
-  }, [surfaceNewOrders]);
+  }, [playAlertSound, restaurantId, showToast, surfaceNewOrders]);
+
+  // The realtime handler calls the latest refresh without resubscribing.
+  const refreshAlertStateRef = useRef(refreshAlertState);
+  useEffect(() => {
+    refreshAlertStateRef.current = refreshAlertState;
+  }, [refreshAlertState]);
+
+  useEffect(() => {
+    setNow(new Date());
+    const clock = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(clock);
+  }, []);
 
   const refreshRealtimeAccess = useCallback(() => {
     // Focus and visibilitychange fire together when staff return to the tab.
@@ -523,6 +576,32 @@ export function NewOrderAlertsProvider({
               surfaceNewOrders([orderId]);
             }
           )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              filter: `restaurant_id=eq.${restaurantId}`,
+              schema: "public",
+              table: "orders"
+            },
+            (payload) => {
+              // A car-pickup customer just tapped "I've arrived": reconcile
+              // now instead of waiting for the next slow poll.
+              const orderId = String(payload.new.id ?? "");
+
+              if (
+                payload.new.restaurant_id === restaurantId &&
+                payload.new.fulfilment_type === "car_pickup" &&
+                payload.new.customer_arrived_at &&
+                orderId &&
+                !knownArrivalIdsRef.current.has(orderId)
+              ) {
+                void refreshAlertStateRef.current().catch(() => {
+                  // The next poll retries.
+                });
+              }
+            }
+          )
           .subscribe((status) => {
             if (!active) {
               return;
@@ -606,8 +685,12 @@ export function NewOrderAlertsProvider({
   };
 
   const contextValue = useMemo(
-    () => ({ highlightedOrderIds }),
-    [highlightedOrderIds]
+    () => ({
+      highlightedOrderIds,
+      now,
+      waitingArrivalsById: new Map(waitingArrivals.map((arrival) => [arrival.id, arrival]))
+    }),
+    [highlightedOrderIds, now, waitingArrivals]
   );
 
   return (
@@ -662,6 +745,31 @@ export function NewOrderAlertsProvider({
                 })}`
               : "Checking orders…"}
           </span>
+          {waitingArrivals.length > 0 ? (
+            <div className="flex w-full flex-wrap items-center gap-2" role="status">
+              <span className="inline-flex items-center gap-2 rounded-full bg-violet-700 px-3 py-2 text-sm font-black text-white">
+                <CarFront size={16} />
+                Waiting outside: {waitingArrivals.length}
+              </span>
+              {(compact ? waitingArrivals.slice(0, 2) : waitingArrivals).map((arrival) => (
+                <a
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-900 hover:border-violet-400"
+                  href={arrivalOrderHref(arrival.id)}
+                  key={arrival.id}
+                >
+                  {arrival.car_plate_number || "Car pickup"}
+                  {arrival.customer_arrival_note ? (
+                    <span className="font-semibold text-violet-800/80">· {arrival.customer_arrival_note}</span>
+                  ) : null}
+                  {now ? (
+                    <span className="font-semibold text-violet-800/70">
+                      · {waitingLabel(arrival.customer_arrived_at, now)}
+                    </span>
+                  ) : null}
+                </a>
+              ))}
+            </div>
+          ) : null}
           {connectionState === "offline" ? (
             <p className="w-full text-xs font-bold text-amber-700">
               Live connection is unavailable. Orders are still checked every 15 seconds.
@@ -720,5 +828,34 @@ export function NewOrderAlertCard({
     >
       {children}
     </article>
+  );
+}
+
+/**
+ * Shown inside a car-pickup order card while that customer is waiting
+ * outside. Reads the dashboard's live arrival state, so it appears without a
+ * page refresh.
+ */
+export function CarArrivalBadge({ orderId }: { orderId: string }) {
+  const { now, waitingArrivalsById } = useContext(NewOrderAlertsContext);
+  const arrival = waitingArrivalsById.get(orderId);
+
+  if (!arrival) {
+    return null;
+  }
+
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-violet-700 px-3 py-2 text-sm font-black text-white">
+      <CarFront size={16} />
+      Customer is outside
+      {now ? (
+        <span className="font-semibold text-white/80">
+          · waiting {waitingLabel(arrival.customer_arrived_at, now)}
+        </span>
+      ) : null}
+      {arrival.customer_arrival_note ? (
+        <span className="w-full font-semibold text-white/90">Parked: {arrival.customer_arrival_note}</span>
+      ) : null}
+    </p>
   );
 }

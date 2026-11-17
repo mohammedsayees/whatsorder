@@ -37,8 +37,11 @@ describe("saved order confirmation", () => {
     vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
 
     expect(await loadOrderConfirmation("restaurant", orderId)).toEqual({
-      ...saved, status_events: events });
-    expect(orderQuery.eq.mock.calls).toEqual([["restaurant_id", "restaurant"], ["id", orderId]]);
+      ...saved, status_events: events, customer_arrived_at: null, customer_arrival_note: null });
+    // Main read and the separate arrival read are both order- and tenant-scoped.
+    expect(orderQuery.eq.mock.calls).toEqual([
+      ["restaurant_id", "restaurant"], ["id", orderId],
+      ["restaurant_id", "restaurant"], ["id", orderId]]);
     expect(eventsQuery.eq.mock.calls).toEqual([["restaurant_id", "restaurant"], ["order_id", orderId]]);
     expect(eventsQuery.select).toHaveBeenCalledWith("to_status,created_at");
 
