@@ -1,3 +1,7 @@
+import {
+  denominationTotalMinor,
+  type CashDenominationCount
+} from "@/lib/cash-denominations";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
@@ -31,7 +35,30 @@ function moneyRow(label: string, value: string, className = "") {
   return `<div class="row ${className}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
-export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) {
+function denominationRows(
+  report: ShiftCloseReportSnapshot,
+  denominations: CashDenominationCount[] | null | undefined,
+  money: (value: number) => string
+) {
+  if (!denominations?.length) {
+    return "";
+  }
+
+  const totalMinor = denominationTotalMinor(denominations);
+  const matchesCount = totalMinor === Math.round(report.cash_counted_amount * 100);
+  return `<h3>Counted by notes &amp; coins</h3>
+    ${denominations.map((row) => moneyRow(
+      `${money(row.minor / 100)} × ${row.count}`,
+      money((row.minor * row.count) / 100)
+    )).join("")}
+    ${moneyRow("Notes & coins total", money(totalMinor / 100), "total")}
+    ${matchesCount ? "" : `<div class="explanation">As counted at close. The counted cash in this version was later corrected.</div>`}`;
+}
+
+export function renderShiftCloseThermalReport(
+  report: ShiftCloseReportSnapshot,
+  options: { cashDenominations?: CashDenominationCount[] | null } = {}
+) {
   const money = (value: number) => formatCurrency(value, report);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
   const cashDifference = report.cash_difference_amount;
@@ -128,6 +155,7 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
           ${moneyRow("Expected cash", money(report.expected_cash_amount), "total")}
           ${moneyRow("Counted cash", money(report.cash_counted_amount))}
           ${moneyRow(differenceLabel(cashDifference), money(Math.abs(cashDifference)), "difference")}
+          ${denominationRows(report, options.cashDenominations, money)}
         </section>
 
         <section>

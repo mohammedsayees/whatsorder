@@ -90,6 +90,33 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("Portal offline");
   });
 
+  it("prints the notes-and-coins breakdown under the cash drawer when there is one", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Counted by notes");
+
+    const counted = {
+      ...report,
+      cash_counted_amount: 1060.75,
+      cash_difference_amount: report.cash_difference_amount
+    };
+    const breakdown = [
+      { minor: 50000, count: 2 },
+      { minor: 2000, count: 3 },
+      { minor: 25, count: 3 }
+    ];
+    const html = renderShiftCloseThermalReport(counted, { cashDenominations: breakdown });
+    expect(html).toContain("Counted by notes &amp; coins");
+    expect(html).toContain("× 2");
+    expect(html).toContain("Notes &amp; coins total");
+    expect(html).not.toContain("later corrected");
+
+    // A later version with a corrected count keeps the breakdown, flagged.
+    const corrected = renderShiftCloseThermalReport(
+      { ...counted, cash_counted_amount: 1070 },
+      { cashDenominations: breakdown }
+    );
+    expect(corrected).toContain("later corrected");
+  });
+
   it("lists cash other income so the cash drawer lines add up to expected", () => {
     const without = renderShiftCloseThermalReport(report);
     expect(without).not.toContain("Cash other income");
