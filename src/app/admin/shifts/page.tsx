@@ -67,15 +67,32 @@ function differenceTone(value: number | null) {
 // Attaching a receipt reads it with Gemini in after(), within this budget.
 export const maxDuration = 60;
 
-export default async function AdminShiftsPage() {
-  const session = await requireRestaurantAdmin();
+function previousShiftsHref(params: { from: string | null; to: string | null; page: number }) {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page > 1) query.set("page", String(params.page));
+  const text = query.toString();
+  return `/admin/shifts${text ? `?${text}` : ""}#previous-shifts`;
+}
+
+export default async function AdminShiftsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ from?: string; to?: string; page?: string }>;
+}) {
+  const [session, query] = await Promise.all([requireRestaurantAdmin(), searchParams]);
   const money = (value: number) => formatCurrency(value, session.restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, session.restaurant);
-  const [currentShift, previousShifts, unassignedOrders, openBusinessDay, previousBusinessDays] =
+  const [currentShift, previousPage, unassignedOrders, openBusinessDay, previousBusinessDays] =
     await Promise.all([
       getCurrentShiftView(session),
-      getPreviousShifts(session),
+      getPreviousShifts(session, {
+        from: typeof query.from === "string" ? query.from : null,
+        to: typeof query.to === "string" ? query.to : null,
+        page: Number(query.page) || 1
+      }),
       getUnassignedCompletedOrders(session.restaurantId),
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
@@ -88,6 +105,8 @@ export default async function AdminShiftsPage() {
     ).catch(() => null)
     : null;
 
+  const previousShifts = previousPage.shifts;
+  const filtered = Boolean(previousPage.from || previousPage.to);
   const [lateReceipts, varianceShifts] = await Promise.all([
     getLateShiftReceipts(session),
     getCashVarianceShifts(session)
@@ -496,13 +515,42 @@ export default async function AdminShiftsPage() {
         </>
       )}
 
-      <section className="mt-8">
+      <section className="mt-8 scroll-mt-4" id="previous-shifts">
         <h2 className="text-xl font-black">Previous shifts</h2>
         <p className="mt-1 text-sm text-stone-500">
-          {session.role === "staff"
-            ? "Your closed shifts"
-            : "The latest 50 closed shifts for this restaurant"}
+          {session.role === "staff" ? "Your closed shifts" : "Closed shifts for this restaurant"}
+          {" · "}
+          {previousPage.total} shift{previousPage.total === 1 ? "" : "s"}
+          {filtered ? " in the chosen dates" : ""}, newest first
         </p>
+        <form action="/admin/shifts#previous-shifts" className="mt-3 flex flex-wrap items-end gap-3" method="get">
+          <label className="text-xs font-bold text-stone-600">
+            Opened from
+            <input
+              className="focus-ring mt-1 block rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
+              defaultValue={previousPage.from ?? ""}
+              name="from"
+              type="date"
+            />
+          </label>
+          <label className="text-xs font-bold text-stone-600">
+            to
+            <input
+              className="focus-ring mt-1 block rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
+              defaultValue={previousPage.to ?? ""}
+              name="to"
+              type="date"
+            />
+          </label>
+          <button className="focus-ring rounded-lg bg-ink px-4 py-2 text-sm font-black text-white" type="submit">
+            Show
+          </button>
+          {filtered ? (
+            <Link className="focus-ring rounded-lg border border-stone-200 px-4 py-2 text-sm font-black" href="/admin/shifts#previous-shifts">
+              Clear dates
+            </Link>
+          ) : null}
+        </form>
         <div className="mt-4 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
           {previousShifts.length > 0 ? (
             <div className="overflow-x-auto">
@@ -590,10 +638,33 @@ export default async function AdminShiftsPage() {
             </div>
           ) : (
             <p className="p-8 text-center text-sm text-stone-500">
-              No closed shifts yet.
+              {filtered ? "No shifts were opened in these dates." : "No closed shifts yet."}
             </p>
           )}
         </div>
+        {previousPage.pageCount > 1 ? (
+          <nav aria-label="Previous shifts pages" className="mt-3 flex items-center justify-between gap-3 text-sm">
+            {previousPage.page > 1 ? (
+              <Link
+                className="focus-ring rounded-lg border border-stone-200 bg-white px-3 py-2 font-black"
+                href={previousShiftsHref({ ...previousPage, page: previousPage.page - 1 })}
+              >
+                ← Newer
+              </Link>
+            ) : <span />}
+            <span className="font-bold text-stone-500">
+              Page {previousPage.page} of {previousPage.pageCount}
+            </span>
+            {previousPage.page < previousPage.pageCount ? (
+              <Link
+                className="focus-ring rounded-lg border border-stone-200 bg-white px-3 py-2 font-black"
+                href={previousShiftsHref({ ...previousPage, page: previousPage.page + 1 })}
+              >
+                Older →
+              </Link>
+            ) : <span />}
+          </nav>
+        ) : null}
       </section>
 
       {session.role !== "staff" ? (

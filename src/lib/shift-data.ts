@@ -12,6 +12,7 @@ import type {
   ShiftSummary
 } from "@/lib/types";
 import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
+import { getRestaurantDayStartIso } from "@/lib/date-time";
 import type { VarianceShift } from "@/lib/shift-variance";
 import type { CashDenominationCount } from "@/lib/cash-denominations";
 
@@ -222,35 +223,98 @@ export async function getCashVarianceShifts(
   }));
 }
 
+export const previousShiftsPageSize = 25;
+
+export type PreviousShiftsFilter = {
+  /** Restaurant-local dates (YYYY-MM-DD), inclusive, on the shift's opening time. */
+  from?: string | null;
+  to?: string | null;
+  page?: number;
+};
+
+export type PreviousShiftsPage = {
+  shifts: RestaurantShift[];
+  total: number;
+  page: number;
+  pageCount: number;
+  from: string | null;
+  to: string | null;
+};
+
 export async function getPreviousShifts(
   session: RestaurantAdminSession,
-  limit = 50
-) {
+  filter: PreviousShiftsFilter = {}
+): Promise<PreviousShiftsPage> {
+  let from = filter.from && getRestaurantDayStartIso(filter.from, session.restaurant)
+    ? filter.from
+    : null;
+  let to = filter.to && getRestaurantDayStartIso(filter.to, session.restaurant)
+    ? filter.to
+    : null;
+  if (from && to && from > to) {
+    [from, to] = [to, from];
+  }
+  const requestedPage = Number.isInteger(filter.page) && (filter.page ?? 0) > 0
+    ? (filter.page as number)
+    : 1;
+  const empty = { shifts: [], total: 0, page: 1, pageCount: 1, from, to };
+
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return [];
+    return empty;
   }
 
-  let query = supabase
-    .from("restaurant_shifts")
-    .select("*")
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "closed")
-    .order("opened_at", { ascending: false })
-    .limit(Math.min(100, Math.max(1, limit)));
+  const buildQuery = (page: number) => {
+    const offset = (page - 1) * previousShiftsPageSize;
+    let query = supabase
+      .from("restaurant_shifts")
+      .select("*", { count: "exact" })
+      .eq("restaurant_id", session.restaurantId)
+      .eq("status", "closed")
+      .order("opened_at", { ascending: false })
+      .range(offset, offset + previousShiftsPageSize - 1);
 
-  if (session.role === "staff") {
-    query = query.eq("opened_by_user_id", session.userId);
-  }
+    if (session.role === "staff") {
+      query = query.eq("opened_by_user_id", session.userId);
+    }
+    if (from) {
+      query = query.gte("opened_at", getRestaurantDayStartIso(from, session.restaurant)!);
+    }
+    if (to) {
+      // Up to the start of the next local day.
+      const nextDay = new Date(Date.parse(getRestaurantDayStartIso(to, session.restaurant)!) + 86_400_000);
+      query = query.lt("opened_at", nextDay.toISOString());
+    }
+    return query;
+  };
 
-  const { data, error } = await query;
+  let page = requestedPage;
+  let { data, error, count } = await buildQuery(page);
 
   if (error) {
     throw new Error("Previous shifts could not be loaded.");
   }
 
-  return (data ?? []) as RestaurantShift[];
+  const total = count ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / previousShiftsPageSize));
+  // A page past the end (e.g. after narrowing the dates) shows the last page.
+  if (page > pageCount) {
+    page = pageCount;
+    ({ data, error } = await buildQuery(page));
+    if (error) {
+      throw new Error("Previous shifts could not be loaded.");
+    }
+  }
+
+  return {
+    shifts: (data ?? []) as RestaurantShift[],
+    total,
+    page,
+    pageCount,
+    from,
+    to
+  };
 }
 
 export type UnassignedCompletedOrder = {
