@@ -185,6 +185,30 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("Owner took &lt;cash&gt; for bank");
   });
 
+  it("prints unbilled sales as sales, not other income", () => {
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      other_income_total: 25,
+      cash_other_income_total: 17,
+      other_income_breakdown: { unbilled_sale: 20, used_oil_sale: 5 },
+      other_income_entries: [
+        { id: "u1", category: "unbilled_sale", payment_method: "cash", amount: 12, description: "4 teas no bill",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T05:00:00Z", voided_at: null, void_reason: null },
+        { id: "u2", category: "unbilled_sale", payment_method: "card", amount: 8, description: "Card no bill",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T05:10:00Z", voided_at: null, void_reason: null },
+        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 5, description: "Oil",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T06:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("Unbilled sales (no order)");
+    expect(html).toContain("UNBILLED SALES");
+    expect(html).toContain("4 teas no bill (cash)");
+    expect(html).toContain("Unbilled cash sales");
+    // Other income keeps only the oil sale.
+    expect(html).toContain("Used oil sale: Oil");
+    expect(html).not.toContain("Unbilled sale: 4 teas");
+  });
+
   it("lists cash other income so the cash drawer lines add up to expected", () => {
     const without = renderShiftCloseThermalReport(report);
     expect(without).not.toContain("Cash other income");

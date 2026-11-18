@@ -568,7 +568,9 @@ export type OtherIncomeCategory =
   | "supplier_rebate"
   | "rental_income"
   | "customer_credit_repayment"
-  | "other";
+  | "other"
+  /** Money taken without an order; shown as sales, not other income. */
+  | "unbilled_sale";
 
 export type OtherIncomePaymentMethod =
   | "cash"

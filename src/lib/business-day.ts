@@ -11,16 +11,17 @@ export const otherIncomeCategoryLabels: Record<OtherIncomeCategory, string> = {
   supplier_rebate: "Supplier rebate",
   rental_income: "Rental income",
   customer_credit_repayment: "Customer credit repayment",
-  other: "Other income"
+  other: "Other income",
+  unbilled_sale: "Unbilled sale"
 };
 
 export const manualOtherIncomeCategoryLabels = Object.fromEntries(
   Object.entries(otherIncomeCategoryLabels).filter(
-    ([category]) => category !== "customer_credit_repayment"
+    ([category]) => category !== "customer_credit_repayment" && category !== "unbilled_sale"
   )
 ) as Omit<
   Record<OtherIncomeCategory, string>,
-  "customer_credit_repayment"
+  "customer_credit_repayment" | "unbilled_sale"
 >;
 
 export const otherIncomePaymentLabels: Record<OtherIncomePaymentMethod, string> = {

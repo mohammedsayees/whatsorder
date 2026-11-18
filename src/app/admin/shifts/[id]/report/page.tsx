@@ -20,6 +20,12 @@ import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { VoidPaidOutForm } from "@/components/admin/ShiftForms";
 import { getClosedShiftPaidOuts, getReportCustomerNames } from "@/lib/shift-data";
 import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
+import {
+  UNBILLED_SALE,
+  breakdownWithoutUnbilled,
+  otherIncomeExcludingUnbilled,
+  unbilledFromReport
+} from "@/lib/unbilled-sales";
 
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
@@ -134,6 +140,10 @@ export default async function ShiftCloseReportPage({
   const money = (value: number) => formatCurrency(value, report);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
   const payments = salesByPayment(report);
+  // Unbilled sales are stored as receipts but reported as sales.
+  const unbilled = unbilledFromReport(report);
+  const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
+  const otherIncomeBreakdown = breakdownWithoutUnbilled(report.other_income_breakdown);
   const collected = creditCollected(report);
   const showCredit = hasCreditActivity(report);
   // Names are looked up now, per tenant, for management only; reports store IDs.
@@ -151,8 +161,9 @@ export default async function ShiftCloseReportPage({
           `${dateTime(report.closed_at)}\n` +
           `WhatsOrder sales: ${money(report.completed_sales)}\n` +
           `Marketplace sales: ${money(report.marketplace_sales_total)}\n` +
-          `Combined operational sales: ${money(report.combined_operational_sales)}\n` +
-          `Other income: ${money(report.other_income_total)}\n` +
+          (unbilled.total > 0 ? `Unbilled sales: ${money(unbilled.total)}\n` : "") +
+          `Combined operational sales: ${money(report.combined_operational_sales + unbilled.total)}\n` +
+          `Other income: ${money(otherIncome.total)}\n` +
           `Total operational receipts: ${money(report.combined_operational_receipts)}\n` +
           `Cash difference: ${money(report.cash_difference_amount)}\n` +
           `Card difference: ${money(report.card_difference_amount)}`,
@@ -203,13 +214,23 @@ export default async function ShiftCloseReportPage({
 
         <section className="mt-5">
           <h2 className="text-lg font-black">Operational sales</h2>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+          <dl className={`mt-3 grid gap-3 ${unbilled.total > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
             <ReportValue label="WhatsOrder sales" value={money(report.completed_sales)} />
+            {unbilled.total > 0 ? (
+              <ReportValue label="Unbilled sales" tone="warning" value={money(unbilled.total)} />
+            ) : null}
             <ReportValue label="Marketplace sales" value={money(report.marketplace_sales_total)} />
-            <ReportValue label="Combined sales" tone="good" value={money(report.combined_operational_sales)} />
+            <ReportValue
+              label="Combined sales"
+              tone="good"
+              value={money(report.combined_operational_sales + unbilled.total)}
+            />
           </dl>
           <p className="mt-2 text-xs text-stone-500">
             Combined sales include manually reported marketplace gross sales and are not accounting or settlement figures.
+            {unbilled.total > 0
+              ? " Unbilled sales were taken without an order, so they have no items and aren't in the order count."
+              : ""}
           </p>
         </section>
 
@@ -290,13 +311,13 @@ export default async function ShiftCloseReportPage({
         <section className="mt-6">
           <h2 className="text-lg font-black">Other income</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            <ReportValue label="Other income" value={money(report.other_income_total)} />
-            <ReportValue label="Cash other income" value={money(report.cash_other_income_total)} />
+            <ReportValue label="Other income" value={money(otherIncome.total)} />
+            <ReportValue label="Cash other income" value={money(otherIncome.cash)} />
             <ReportValue label="Total operational receipts" tone="good" value={money(report.combined_operational_receipts)} />
           </dl>
-          {Object.keys(report.other_income_breakdown).length ? (
+          {Object.keys(otherIncomeBreakdown).length ? (
             <div className="mt-3 rounded-lg bg-stone-50 p-3 text-sm">
-              {Object.entries(report.other_income_breakdown).map(([category, amount]) => (
+              {Object.entries(otherIncomeBreakdown).map(([category, amount]) => (
                 <p className="flex justify-between gap-3 py-1" key={category}>
                   <span>{otherIncomeCategoryLabels[category as keyof typeof otherIncomeCategoryLabels] ?? category}</span>
                   <span className="font-bold">{money(Number(amount))}</span>
@@ -324,8 +345,11 @@ export default async function ShiftCloseReportPage({
               </dl>
               <p className="mt-2 text-xs text-stone-500">
                 Opening {money(report.opening_cash_amount)} + cash orders {money(report.completed_cash_order_total)}
-                {report.cash_other_income_total > 0
-                  ? ` + cash other income ${money(report.cash_other_income_total)}`
+                {(unbilled.byMethod.cash ?? 0) > 0
+                  ? ` + unbilled cash sales ${money(unbilled.byMethod.cash ?? 0)}`
+                  : ""}
+                {otherIncome.cash > 0
+                  ? ` + cash other income ${money(otherIncome.cash)}`
                   : ""}
                 {" "}− paid-outs {money(report.cash_paid_out_total)}
               </p>
@@ -479,10 +503,30 @@ export default async function ShiftCloseReportPage({
             ) : null}
             {report.other_income_entries ? (
               <div>
+                {report.other_income_entries.some((entry) => entry.category === UNBILLED_SALE) ? (
+                  <>
+                    <h2 className="text-lg font-black">Unbilled sales</h2>
+                    <ul className="mb-4 mt-3 space-y-2 text-sm">
+                      {report.other_income_entries.filter((entry) => entry.category === UNBILLED_SALE).map((entry) => (
+                        <li className={`rounded-lg p-3 ${entry.voided_at ? "bg-stone-100 text-stone-500" : "bg-amber-50"}`} key={entry.id}>
+                          <div className="flex justify-between gap-3">
+                            <span className={`min-w-0 break-words font-bold ${entry.voided_at ? "line-through" : ""}`}>{entry.description}</span>
+                            <span className={`shrink-0 font-black ${entry.voided_at ? "line-through" : ""}`}>{money(entry.amount)}</span>
+                          </div>
+                          <p className="text-xs text-stone-500">
+                            {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
+                            {" · "}{dateTime(entry.recorded_at)}
+                            {entry.voided_at ? ` · Voided${entry.void_reason ? `: ${entry.void_reason}` : ""}` : ""}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 <h2 className="text-lg font-black">Other income entries</h2>
-                {report.other_income_entries.length ? (
+                {report.other_income_entries.some((entry) => entry.category !== UNBILLED_SALE) ? (
                   <ul className="mt-3 space-y-2 text-sm">
-                    {report.other_income_entries.map((entry) => (
+                    {report.other_income_entries.filter((entry) => entry.category !== UNBILLED_SALE).map((entry) => (
                       <li className={`rounded-lg p-3 ${entry.voided_at ? "bg-stone-100 text-stone-500" : "bg-stone-50"}`} key={entry.id}>
                         <div className="flex justify-between gap-3">
                           <span className={`min-w-0 break-words font-bold ${entry.voided_at ? "line-through" : ""}`}>

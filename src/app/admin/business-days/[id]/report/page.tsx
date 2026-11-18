@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { BusinessDayReportActions } from "@/components/admin/BusinessDayReportActions";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
+import { breakdownWithoutUnbilled, unbilledFromReport } from "@/lib/unbilled-sales";
 import { getBusinessDayReportView } from "@/lib/business-day-data";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
@@ -31,6 +32,9 @@ export default async function BusinessDayReportPage({
   if (!view) notFound();
   const report = view.reports[0].snapshot as BusinessDayCloseReportSnapshot;
   const money = (value: number) => formatCurrency(value, report);
+  // Unbilled sales are stored as receipts but reported as sales.
+  const unbilledTotal = unbilledFromReport(report).total;
+  const otherIncomeBreakdown = breakdownWithoutUnbilled(report.other_income_breakdown);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
 
   return (
@@ -63,8 +67,9 @@ export default async function BusinessDayReportPage({
           <h2 className="text-lg font-black">Operational receipts</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="WhatsOrder sales" value={money(report.whatsorder_sales)} />
+            {unbilledTotal > 0 ? <Metric label="Unbilled sales (no order)" value={money(unbilledTotal)} /> : null}
             <Metric label="Marketplace sales" value={money(report.marketplace_sales)} />
-            <Metric label="Other income" value={money(report.other_income_total)} />
+            <Metric label="Other income" value={money(report.other_income_total - unbilledTotal)} />
             <Metric highlight label="Total receipts" value={money(report.total_operational_receipts)} />
           </dl>
           <p className="mt-2 text-xs text-stone-500">Other income remains separate from order sales, order count and average order value.</p>
@@ -109,7 +114,10 @@ export default async function BusinessDayReportPage({
             <h2 className="text-lg font-black">Payment and cash movement</h2>
             <dl className="mt-3 grid grid-cols-2 gap-3">
               <Metric label="Cash order sales" value={money(report.cash_order_sales)} />
-              <Metric label="Cash other income" value={money(report.cash_other_income_total)} />
+              <Metric
+                label={unbilledTotal > 0 ? "Cash other income incl. unbilled" : "Cash other income"}
+                value={money(report.cash_other_income_total)}
+              />
               <Metric label="Cash paid-outs" value={money(report.cash_paid_out_total)} />
               <Metric label="Net cash movement" value={money(report.net_cash_movement)} />
               <Metric label="Card order sales" value={money(report.card_order_sales)} />
@@ -129,11 +137,11 @@ export default async function BusinessDayReportPage({
           </div>
         </section>
 
-        {Object.keys(report.other_income_breakdown).length ? (
+        {Object.keys(otherIncomeBreakdown).length ? (
           <section className="mt-6">
             <h2 className="text-lg font-black">Other income breakdown</h2>
             <div className="mt-3 rounded-lg bg-stone-50 p-3 text-sm">
-              {Object.entries(report.other_income_breakdown).map(([category, amount]) => (
+              {Object.entries(otherIncomeBreakdown).map(([category, amount]) => (
                 <p className="flex justify-between gap-3 py-1" key={category}>
                   <span>{otherIncomeCategoryLabels[category as keyof typeof otherIncomeCategoryLabels] ?? category}</span>
                   <span className="font-bold">{money(Number(amount))}</span>
