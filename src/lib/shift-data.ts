@@ -12,6 +12,7 @@ import type {
   ShiftSummary
 } from "@/lib/types";
 import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
+import type { VarianceShift } from "@/lib/shift-variance";
 import type { CashDenominationCount } from "@/lib/cash-denominations";
 
 export type CurrentShiftView = {
@@ -180,6 +181,45 @@ export async function getCurrentShiftView(
     shift: shift as RestaurantShift,
     summary: cashBlind ? blindSummary(fullSummary) : fullSummary
   };
+}
+
+export const cashVarianceDays = 30;
+
+/**
+ * Closed shifts of the last 30 days with their differences, for the variance
+ * trend. Management only; staff get nothing.
+ */
+export async function getCashVarianceShifts(
+  session: RestaurantAdminSession
+): Promise<VarianceShift[]> {
+  if (session.role === "staff") {
+    return [];
+  }
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return [];
+  }
+
+  const since = new Date(Date.now() - cashVarianceDays * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("restaurant_shifts")
+    .select("opened_by_user_id,difference_amount,card_difference_amount")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("status", "closed")
+    .gte("closed_at", since)
+    .order("closed_at", { ascending: false })
+    .limit(1000);
+
+  if (error) {
+    throw new Error("Cash variance could not be loaded.");
+  }
+
+  return (data ?? []).map((row) => ({
+    opened_by_user_id: String(row.opened_by_user_id),
+    difference_amount: row.difference_amount === null ? null : Number(row.difference_amount),
+    card_difference_amount:
+      row.card_difference_amount === null ? null : Number(row.card_difference_amount)
+  }));
 }
 
 export async function getPreviousShifts(
@@ -424,7 +464,10 @@ export async function getClosedShiftPaidOuts(session: RestaurantAdminSession, sh
  * Display names for the people who opened/closed the given shifts. The IDs come
  * from this tenant's own shift rows, so no other tenant's users are looked up.
  */
-export async function getShiftStaffNames(shifts: RestaurantShift[]) {
+export async function getShiftStaffNames(
+  shifts: Array<Pick<RestaurantShift, "opened_by_user_id"> &
+    Partial<Pick<RestaurantShift, "closed_by_user_id">>>
+) {
   const ids = [...new Set(shifts.flatMap((shift) =>
     [shift.opened_by_user_id, shift.closed_by_user_id].filter(
       (id): id is string => Boolean(id)
