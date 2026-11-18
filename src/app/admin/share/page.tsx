@@ -1,5 +1,6 @@
 import { MarketingTabs } from "@/components/admin/MarketingTabs";
 import { StoreShareKit } from "@/components/admin/StoreShareKit";
+import { getStoreOrderSourceSummary } from "@/lib/store-order-sources";
 import { getStoreShareAssets } from "@/lib/store-share-assets";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -9,7 +10,10 @@ export default async function StoreSharePage() {
     "restaurant_admin",
     "manager"
   ]);
-  const assets = await getStoreShareAssets(restaurant.slug);
+  const [assets, sourceSummary] = await Promise.all([
+    getStoreShareAssets(restaurant.slug),
+    getStoreOrderSourceSummary(restaurant.id)
+  ]);
 
   return (
     <>
@@ -17,11 +21,14 @@ export default async function StoreSharePage() {
         <MarketingTabs active="share" />
       </div>
       <StoreShareKit
+        linkUrl={assets.linkUrl}
         menuUrl={assets.menuUrl}
         qrDataUrl={assets.qrDataUrl}
         restaurantId={restaurant.id}
         restaurantName={restaurant.name}
         restaurantSlug={restaurant.slug}
+        sourceSummary={sourceSummary}
+        whatsappShareUrl={assets.whatsappShareUrl}
       />
     </>
   );

@@ -171,7 +171,12 @@ function BuildProgress() {
   );
 }
 
-export default function InstantDemoBuilder() {
+export default function InstantDemoBuilder({
+  signupSource = null
+}: {
+  /** Validated ?src= from the /try link, recorded on the demo restaurant. */
+  signupSource?: string | null;
+} = {}) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [name, setName] = useState("");
   const [whatsApp, setWhatsApp] = useState("");
@@ -248,6 +253,7 @@ export default function InstantDemoBuilder() {
         restaurantName: name,
         ownerWhatsApp: whatsApp.trim() || undefined,
         countryCode,
+        signupSource: signupSource ?? undefined,
         pages: fitted.map((page) => ({
           imageBase64: dataUrlToBase64(page.dataUrl),
           mimeType: page.mimeType
