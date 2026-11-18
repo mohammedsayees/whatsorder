@@ -56,9 +56,9 @@ export default async function FinancePaidOutsPage({
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 lg:px-8">
       <Link className="text-sm font-bold text-leaf" href="/admin/finance">← Back to Finance</Link>
-      <h1 className="mt-3 text-3xl font-black text-ink">Cash paid-outs without a bill</h1>
+      <h1 className="mt-3 text-3xl font-black text-ink">Cash taken from the till without a bill</h1>
       <p className="mt-2 max-w-3xl text-sm text-stone-600">
-        Cash taken from a shift drawer. Link each one to its bill, record it as a cash expense, or mark it as not an expense.
+        For each one: match it to its bill, save it as a bill without a receipt, or mark it as not a business cost (for example a staff advance).
         This never changes shift totals or close reports.
       </p>
       {query.error ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{query.error}</p> : null}
@@ -130,7 +130,7 @@ export default async function FinancePaidOutsPage({
                 </details>
 
                 <details className="rounded-lg border border-stone-200 p-3">
-                  <summary className="cursor-pointer text-sm font-black">Record as a cash expense (no bill)</summary>
+                  <summary className="cursor-pointer text-sm font-black">Save it as a bill (no receipt)</summary>
                   <form action={convertPaidOutToExpenseAction} className="mt-3 grid gap-3 sm:grid-cols-2">
                     <input name="paid_out_id" type="hidden" value={paidOut.paidOutId} />
                     <label className="text-sm font-bold">Category
