@@ -20,6 +20,8 @@ import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCurrentShiftView,
+  cashVarianceDays,
+  getCashVarianceShifts,
   getPreviousShifts,
   getShiftStaffNames,
   getUnassignedCompletedOrders
@@ -28,6 +30,7 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
+import { summarizeCashVariance } from "@/lib/shift-variance";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -85,9 +88,14 @@ export default async function AdminShiftsPage() {
     ).catch(() => null)
     : null;
 
-  const [lateReceipts, staffNames] = await Promise.all([
+  const [lateReceipts, varianceShifts] = await Promise.all([
     getLateShiftReceipts(session),
-    getShiftStaffNames(previousShifts)
+    getCashVarianceShifts(session)
+  ]);
+  const cashVariance = summarizeCashVariance(varianceShifts);
+  const staffNames = await getShiftStaffNames([
+    ...previousShifts,
+    ...varianceShifts.map((shift) => ({ opened_by_user_id: shift.opened_by_user_id }))
   ]);
   const staffName = (userId: string | null) =>
     userId ? (userId === session.userId ? "you" : staffNames.get(userId) ?? "a team member") : null;
@@ -587,6 +595,64 @@ export default async function AdminShiftsPage() {
           )}
         </div>
       </section>
+
+      {session.role !== "staff" ? (
+        <section className="mt-8">
+          <h2 className="text-xl font-black">Cash over/short by staff</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Closed shifts in the last {cashVarianceDays} days, counted against the person who
+            opened the shift. Differences under 0.01 count as balanced.
+          </p>
+          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+            {cashVariance.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                    <tr>
+                      <th className="px-4 py-3">Staff</th>
+                      <th className="px-4 py-3">Shifts</th>
+                      <th className="px-4 py-3">Balanced</th>
+                      <th className="px-4 py-3">Short</th>
+                      <th className="px-4 py-3">Over</th>
+                      <th className="px-4 py-3">Net</th>
+                      <th className="px-4 py-3">Largest short</th>
+                      <th className="px-4 py-3">Card mismatches</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {cashVariance.map((row) => (
+                      <tr key={row.userId}>
+                        <td className="whitespace-nowrap px-4 py-3 font-black">
+                          {row.userId === session.userId ? "You" : staffNames.get(row.userId) ?? "A team member"}
+                        </td>
+                        <td className="px-4 py-3">{row.shiftCount}</td>
+                        <td className="px-4 py-3">{row.balancedCount}</td>
+                        <td className={`whitespace-nowrap px-4 py-3 ${row.shortCount ? "font-black text-rose-700" : ""}`}>
+                          {row.shortCount ? `${row.shortCount} · ${money(row.shortTotal)}` : "—"}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 ${row.overCount ? "font-bold text-amber-700" : ""}`}>
+                          {row.overCount ? `${row.overCount} · ${money(row.overTotal)}` : "—"}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(row.net)}`}>
+                          {money(row.net)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {row.largestShort > 0 ? money(row.largestShort) : "—"}
+                        </td>
+                        <td className="px-4 py-3">{row.cardMismatchCount || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="p-5 text-sm text-stone-500">
+                No shifts closed in the last {cashVarianceDays} days.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {session.role !== "staff" ? (
         <section className="mt-8">
