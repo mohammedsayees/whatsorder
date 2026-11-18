@@ -4,6 +4,7 @@ import {
 } from "@/lib/cash-denominations";
 import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import { formatCurrency } from "@/lib/currency";
+import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
@@ -56,6 +57,42 @@ function denominationRows(
     ${matchesCount ? "" : `<div class="explanation">As counted at close. The counted cash in this version was later corrected.</div>`}`;
 }
 
+function paymentAndCreditSections(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const payments = salesByPayment(report);
+  const collected = creditCollected(report);
+  const paymentSection = `<section>
+      <h2>SALES BY PAYMENT</h2>
+      ${moneyRow("Cash", money(payments.cash))}
+      ${moneyRow("Card", money(payments.card))}
+      ${report.country_code === "IN" ? moneyRow("UPI", money(payments.upi)) : ""}
+      ${payments.credit !== null ? moneyRow("Customer credit", money(payments.credit)) : ""}
+      ${payments.remainder !== 0
+        ? moneyRow(payments.credit === null ? "Credit / not recorded" : "Not recorded", money(payments.remainder), "attention")
+        : ""}
+      ${moneyRow("WhatsOrder sales", money(report.completed_sales), "total")}
+    </section>`;
+  if (!hasCreditActivity(report)) {
+    return paymentSection;
+  }
+  // Counts and totals only: customer names never go on paper.
+  const creditSection = `<section>
+      <h2>CUSTOMER CREDIT</h2>
+      ${report.credit_sales
+        ? moneyRow(`Sold on credit (${report.credit_sales.length})`, money(payments.credit ?? 0))
+        : ""}
+      ${moneyRow("Credit collected", money(collected.total))}
+      ${Object.entries(collected.byMethod).map(([method, amount]) =>
+        moneyRow(`  by ${method.replace("_", " ")}`, money(amount))).join("")}
+      ${report.credit_sales
+        ? moneyRow("Change in amount owed", money((payments.credit ?? 0) - collected.total), "total")
+        : ""}
+    </section>`;
+  return paymentSection + creditSection;
+}
+
 function itemizedSections(
   report: ShiftCloseReportSnapshot,
   money: (value: number) => string
@@ -75,7 +112,10 @@ function itemizedSections(
     ? `<section>
         <h2>OTHER INCOME</h2>
         ${income.map((entry) => moneyRow(
-          `${otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}: ${entry.description}`,
+          entry.category === "customer_credit_repayment"
+            // No customer names on paper; the label says what it is.
+            ? otherIncomeCategoryLabels.customer_credit_repayment
+            : `${otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}: ${entry.description}`,
           money(entry.amount)
         )).join("")}
       </section>`
@@ -212,6 +252,8 @@ export function renderShiftCloseThermalReport(
           ${moneyRow("Total receipts", money(report.combined_operational_receipts), "grand")}
           <p class="explanation">Marketplace figures are manually reported gross sales, not settlement figures.</p>
         </section>
+
+        ${paymentAndCreditSections(report, money)}
 
         ${marketplaces}
 

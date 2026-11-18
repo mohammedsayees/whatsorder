@@ -27,6 +27,8 @@ export type CurrentShiftView = {
   cashBlind: boolean;
   /** Locked counted cash, once declared. */
   declaredCash: number | null;
+  /** Orders completed on customer credit in this shift so far. */
+  creditSales: { count: number; total: number };
   paidOuts: ShiftCashPaidOut[];
   otherIncomeEntries: ShiftOtherIncomeEntry[];
   shift: RestaurantShift;
@@ -132,7 +134,8 @@ export async function getCurrentShiftView(
     { data: summary, error: summaryError },
     { data: paidOuts, error: paidOutError },
     { count: activeOrderCount, error: activeOrderError },
-    { data: otherIncomeEntries, error: otherIncomeError }
+    { data: otherIncomeEntries, error: otherIncomeError },
+    { data: creditOrders, error: creditError }
   ] =
     await Promise.all([
       supabase.rpc("calculate_restaurant_shift_summary", {
@@ -158,10 +161,18 @@ export async function getCurrentShiftView(
         .eq("shift_id", shift.id)
         .is("voided_at", null)
         .order("recorded_at", { ascending: false })
-        .limit(100)
+        .limit(100),
+      supabase
+        .from("orders")
+        .select("total")
+        .eq("restaurant_id", session.restaurantId)
+        .eq("shift_id", shift.id)
+        .eq("status", "Completed")
+        .eq("payment_method", "Customer Credit")
+        .limit(1000)
     ]);
 
-  if (summaryError || paidOutError || activeOrderError || otherIncomeError) {
+  if (summaryError || paidOutError || activeOrderError || otherIncomeError || creditError) {
     throw new Error("Current shift totals could not be loaded.");
   }
 
@@ -177,6 +188,10 @@ export async function getCurrentShiftView(
       session.role !== "staff" || shift.opened_by_user_id === session.userId,
     cashBlind,
     declaredCash,
+    creditSales: {
+      count: (creditOrders ?? []).length,
+      total: Math.round((creditOrders ?? []).reduce((sum, row) => sum + Number(row.total ?? 0), 0) * 100) / 100
+    },
     paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[],
     otherIncomeEntries: (otherIncomeEntries ?? []) as ShiftOtherIncomeEntry[],
     shift: shift as RestaurantShift,
@@ -545,6 +560,28 @@ export async function getShiftStaffNames(
   for (const profile of data ?? []) {
     const name = String(profile.full_name ?? "").trim() || String(profile.email ?? "").split("@")[0];
     if (name) names.set(String(profile.id), name);
+  }
+  return names;
+}
+
+/**
+ * Customer names for a report, looked up per tenant at view time (reports store
+ * only customer IDs). Management only; staff get no names.
+ */
+export async function getReportCustomerNames(
+  session: RestaurantAdminSession,
+  customerIds: Array<string | null>
+) {
+  const names = new Map<string, string>();
+  const ids = [...new Set(customerIds.filter((id): id is string => Boolean(id)))];
+  if (session.role === "staff" || ids.length === 0) return names;
+  const db = getSupabaseAdmin();
+  if (!db) return names;
+  const { data, error } = await db.from("customers").select("id,name")
+    .eq("restaurant_id", session.restaurantId).in("id", ids.slice(0, 500));
+  if (error) return names;
+  for (const row of data ?? []) {
+    if (row.name) names.set(String(row.id), String(row.name));
   }
   return names;
 }

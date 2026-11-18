@@ -18,7 +18,8 @@ import type { ShiftCloseReportSnapshot } from "@/lib/types";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { VoidPaidOutForm } from "@/components/admin/ShiftForms";
-import { getClosedShiftPaidOuts } from "@/lib/shift-data";
+import { getClosedShiftPaidOuts, getReportCustomerNames } from "@/lib/shift-data";
+import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
 
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
@@ -132,6 +133,16 @@ export default async function ShiftCloseReportPage({
   const latestReport = view.reports[0].snapshot;
   const money = (value: number) => formatCurrency(value, report);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
+  const payments = salesByPayment(report);
+  const collected = creditCollected(report);
+  const showCredit = hasCreditActivity(report);
+  // Names are looked up now, per tenant, for management only; reports store IDs.
+  const customerNames = await getReportCustomerNames(session, [
+    ...(report.credit_sales ?? []).map((sale) => sale.customer_id),
+    ...(report.other_income_entries ?? []).map((entry) => entry.customer_id)
+  ]);
+  const customerLabel = (customerId: string | null) =>
+    (customerId && customerNames.get(customerId)) || "Credit customer";
   const ownerPhone = session.owner.owner_phone;
   const shareUrl = ownerPhone
     ? buildWhatsAppUrl(
@@ -201,6 +212,80 @@ export default async function ShiftCloseReportPage({
             Combined sales include manually reported marketplace gross sales and are not accounting or settlement figures.
           </p>
         </section>
+
+        <section className="mt-6">
+          <h2 className="text-lg font-black">WhatsOrder sales by payment</h2>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-4">
+            <ReportValue label="Cash" value={money(payments.cash)} />
+            <ReportValue label="Card" value={money(payments.card)} />
+            {report.country_code === "IN" ? <ReportValue label="UPI" value={money(payments.upi)} /> : null}
+            {payments.credit !== null ? (
+              <ReportValue label="Customer credit" value={money(payments.credit)} />
+            ) : null}
+            {payments.remainder !== 0 ? (
+              <ReportValue
+                label={payments.credit === null ? "Credit or not recorded" : "Payment not recorded"}
+                tone="warning"
+                value={money(payments.remainder)}
+              />
+            ) : null}
+          </dl>
+          <p className="mt-2 text-xs text-stone-500">
+            These add up to WhatsOrder sales ({money(report.completed_sales)}).
+            {payments.credit === null && payments.remainder !== 0
+              ? " This report was saved before credit sales were recorded separately."
+              : ""}
+          </p>
+        </section>
+
+        {showCredit ? (
+          <section className="mt-6">
+            <h2 className="text-lg font-black">Customer credit</h2>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+              {report.credit_sales ? (
+                <ReportValue
+                  label={`Sold on credit (${report.credit_sales.length})`}
+                  value={money(payments.credit ?? 0)}
+                />
+              ) : null}
+              <ReportValue label="Credit collected" value={money(collected.total)} />
+              {report.credit_sales ? (
+                <ReportValue
+                  label="Change in amount owed"
+                  tone={(payments.credit ?? 0) - collected.total > 0.005 ? "warning" : "default"}
+                  value={money((payments.credit ?? 0) - collected.total)}
+                />
+              ) : null}
+            </dl>
+            {Object.keys(collected.byMethod).length ? (
+              <p className="mt-2 text-xs text-stone-500">
+                Collected by{" "}
+                {Object.entries(collected.byMethod)
+                  .map(([method, amount]) => `${otherIncomePaymentLabels[method as keyof typeof otherIncomePaymentLabels] ?? method} ${money(amount)}`)
+                  .join(" · ")}
+                . Cash collected is already in expected cash.
+              </p>
+            ) : null}
+            {report.credit_sales?.length ? (
+              <ul className="mt-3 space-y-2 text-sm">
+                {report.credit_sales.map((sale) => (
+                  <li className="flex justify-between gap-3 rounded-lg bg-stone-50 p-3" key={sale.order_id}>
+                    <span className="min-w-0">
+                      <span className="block break-words font-bold">
+                        {view.canCorrect ? customerLabel(sale.customer_id) : "Credit sale"}
+                      </span>
+                      <span className="block text-xs text-stone-500">
+                        Order #{sale.order_id.slice(0, 8)} · {dateTime(sale.completed_at)}
+                        {sale.due_date ? ` · Due ${sale.due_date}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-black">{money(sale.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="mt-6">
           <h2 className="text-lg font-black">Other income</h2>
@@ -392,7 +477,9 @@ export default async function ShiftCloseReportPage({
                           <span className={`shrink-0 font-black ${entry.voided_at ? "line-through" : ""}`}>{money(entry.amount)}</span>
                         </div>
                         <p className="break-words text-xs text-stone-500">
-                          {entry.description} · {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
+                          {entry.category === "customer_credit_repayment" && view.canCorrect
+                            ? customerLabel(entry.customer_id)
+                            : entry.description} · {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
                           {entry.reference ? ` · ${entry.reference}` : ""}
                           {entry.voided_at ? ` · Voided${entry.void_reason ? `: ${entry.void_reason}` : ""}` : ""}
                         </p>

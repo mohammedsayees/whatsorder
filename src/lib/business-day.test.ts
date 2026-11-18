@@ -76,6 +76,24 @@ describe("business day close snapshots", () => {
     });
   });
 
+  it("reads the credit block when recorded and treats older days as not recorded", () => {
+    expect(parseBusinessDayCloseReportSnapshot(snapshot)?.credit).toBeNull();
+    expect(parseBusinessDayCloseReportSnapshot({
+      ...snapshot,
+      credit: {
+        sold_order_count: 2, sold_total: "25.50", collected_total: 4,
+        collected_by_method: { cash: 4, crypto: 9 },
+        outstanding_at_close: 172, overdue_at_close: 30
+      }
+    })?.credit).toEqual({
+      sold_order_count: 2, sold_total: 25.5, collected_total: 4,
+      collected_by_method: { cash: 4 },
+      outstanding_at_close: 172, overdue_at_close: 30
+    });
+    expect(parseBusinessDayCloseReportSnapshot({ ...snapshot, credit: { sold_total: "x" } })?.credit)
+      .toBeNull();
+  });
+
   it("rejects incomplete shift facts", () => {
     const invalid = structuredClone(snapshot);
     delete (invalid.shifts[0] as Partial<(typeof invalid.shifts)[number]>).cash_difference;

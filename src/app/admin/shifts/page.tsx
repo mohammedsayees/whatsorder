@@ -298,6 +298,14 @@ export default async function AdminShiftsPage({
                       label: "UPI",
                       value: money(currentShift.summary.upi_total)
                     }]
+                  : []),
+                // Not cash, so it reveals nothing during a blind count.
+                ...(currentShift.creditSales.count > 0
+                  ? [{
+                      icon: WalletCards,
+                      label: `Sold on credit (${currentShift.creditSales.count})`,
+                      value: money(currentShift.creditSales.total)
+                    }]
                   : [])
               ].map(({ icon: Icon, label, value }) => (
                 <div className="rounded-lg bg-stone-50 p-4" key={label}>
