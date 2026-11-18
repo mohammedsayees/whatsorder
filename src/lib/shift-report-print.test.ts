@@ -54,7 +54,8 @@ const report: ShiftCloseReportSnapshot = {
   report_generated_at: "2026-07-17T15:20:00.000Z",
   correction_reason: null,
   paid_outs: null,
-  other_income_entries: null
+  other_income_entries: null,
+  credit_sales: null
 };
 
 describe("renderShiftCloseThermalReport", () => {
@@ -129,7 +130,7 @@ describe("renderShiftCloseThermalReport", () => {
         { id: "p2", amount: 12, reason: "Milk duplicate", recorded_at: "2026-07-17T05:01:00Z", voided_at: "2026-07-17T06:00:00Z", void_reason: "Entered twice" }
       ],
       other_income_entries: [
-        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 30, description: "10 L", reference: null, recorded_at: "2026-07-17T07:00:00Z", voided_at: null, void_reason: null }
+        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 30, description: "10 L", reference: null, customer_id: null, recorded_at: "2026-07-17T07:00:00Z", voided_at: null, void_reason: null }
       ]
     });
     expect(html).toContain("PAID-OUTS");
@@ -138,6 +139,30 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("1 voided paid-out not counted.");
     expect(html).toContain("OTHER INCOME");
     expect(html).toContain("Used oil sale: 10 L");
+  });
+
+  it("prints sales by payment and a credit block without customer names", () => {
+    const plain = renderShiftCloseThermalReport(report);
+    expect(plain).toContain("SALES BY PAYMENT");
+    expect(plain).not.toContain("CUSTOMER CREDIT");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      credit_sales: [
+        { order_id: "o1", customer_id: "c1", amount: 15, due_date: "2026-11-25", completed_at: "2026-07-17T05:00:00Z" }
+      ],
+      other_income_entries: [
+        { id: "r1", category: "customer_credit_repayment", payment_method: "cash", amount: 4,
+          description: "Customer credit repayment", reference: null, customer_id: "c1",
+          recorded_at: "2026-07-17T06:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("Customer credit");
+    expect(html).toContain("CUSTOMER CREDIT");
+    expect(html).toContain("Sold on credit (1)");
+    expect(html).toContain("Credit collected");
+    expect(html).toContain("Change in amount owed");
+    expect(html).not.toContain("c1");
   });
 
   it("lists cash other income so the cash drawer lines add up to expected", () => {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { BusinessDayReportActions } from "@/components/admin/BusinessDayReportActions";
-import { otherIncomeCategoryLabels } from "@/lib/business-day";
+import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import { getBusinessDayReportView } from "@/lib/business-day-data";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
@@ -76,6 +76,34 @@ export default async function BusinessDayReportPage({
           ) : null}
         </section>
 
+        {report.credit ? (
+          <section className="mt-6">
+            <h2 className="text-lg font-black">Customer credit</h2>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric
+                label={`Sold on credit (${report.credit.sold_order_count})`}
+                value={money(report.credit.sold_total)}
+              />
+              <Metric label="Credit collected" value={money(report.credit.collected_total)} />
+              <Metric label="Owed by all customers at close" value={money(report.credit.outstanding_at_close)} />
+              <Metric label="Overdue at close" value={money(report.credit.overdue_at_close)} />
+            </dl>
+            {Object.keys(report.credit.collected_by_method).length ? (
+              <p className="mt-2 text-xs text-stone-500">
+                Collected by{" "}
+                {Object.entries(report.credit.collected_by_method)
+                  .map(([method, amount]) => `${otherIncomePaymentLabels[method as keyof typeof otherIncomePaymentLabels] ?? method} ${money(Number(amount))}`)
+                  .join(" · ")}
+                . Owed and overdue are totals across all credit customers when the day closed.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-stone-500">
+                Owed and overdue are totals across all credit customers when the day closed.
+              </p>
+            )}
+          </section>
+        ) : null}
+
         <section className="mt-6 grid gap-5 md:grid-cols-2">
           <div>
             <h2 className="text-lg font-black">Payment and cash movement</h2>
@@ -86,6 +114,7 @@ export default async function BusinessDayReportPage({
               <Metric label="Net cash movement" value={money(report.net_cash_movement)} />
               <Metric label="Card order sales" value={money(report.card_order_sales)} />
               {report.country_code === "IN" ? <Metric label="UPI order sales" value={money(report.upi_order_sales)} /> : null}
+              {report.credit ? <Metric label="Customer credit sales" value={money(report.credit.sold_total)} /> : null}
             </dl>
           </div>
           <div>

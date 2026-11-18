@@ -1,6 +1,7 @@
 import type {
   CountryCode,
   ShiftCloseReportSnapshot,
+  ShiftReportCreditSale,
   ShiftReportOtherIncomeEntry,
   ShiftReportPaidOut,
   ShiftFulfilmentSummary,
@@ -226,9 +227,30 @@ function parseOtherIncomeEntries(value: unknown): ShiftReportOtherIncomeEntry[] 
       amount,
       description: item.description,
       reference: nullableString(item.reference),
+      customer_id: nullableString(item.customer_id),
       recorded_at: item.recorded_at,
       voided_at: nullableTimestamp(item.voided_at),
       void_reason: nullableString(item.void_reason)
+    });
+  }
+  return rows;
+}
+
+function parseCreditSales(value: unknown): ShiftReportCreditSale[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: ShiftReportCreditSale[] = [];
+  for (const item of value) {
+    const amount = isRecord(item) ? finiteNumber(item.amount) : null;
+    if (!isRecord(item) || typeof item.order_id !== "string" || amount === null ||
+        typeof item.completed_at !== "string") {
+      return null;
+    }
+    rows.push({
+      order_id: item.order_id,
+      customer_id: nullableString(item.customer_id),
+      amount,
+      due_date: nullableString(item.due_date),
+      completed_at: item.completed_at
     });
   }
   return rows;
@@ -367,6 +389,7 @@ export function parseShiftCloseReportSnapshot(
     report_generated_at: value.report_generated_at as string,
     correction_reason: nullableString(value.correction_reason),
     paid_outs: parsePaidOuts(value.paid_outs),
-    other_income_entries: parseOtherIncomeEntries(value.other_income_entries)
+    other_income_entries: parseOtherIncomeEntries(value.other_income_entries),
+    credit_sales: parseCreditSales(value.credit_sales)
   };
 }

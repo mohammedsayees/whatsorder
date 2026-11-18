@@ -492,6 +492,17 @@ export type ShiftCloseReportSnapshot = {
    */
   paid_outs: ShiftReportPaidOut[] | null;
   other_income_entries: ShiftReportOtherIncomeEntry[] | null;
+  /** Orders completed on customer credit in this shift; null on older versions. */
+  credit_sales: ShiftReportCreditSale[] | null;
+};
+
+export type ShiftReportCreditSale = {
+  order_id: string;
+  /** Names are never stored in reports; look them up per tenant when shown. */
+  customer_id: string | null;
+  amount: number;
+  due_date: string | null;
+  completed_at: string;
 };
 
 export type ShiftReportPaidOut = {
@@ -510,6 +521,8 @@ export type ShiftReportOtherIncomeEntry = {
   amount: number;
   description: string;
   reference: string | null;
+  /** Set for customer credit repayments. */
+  customer_id: string | null;
   recorded_at: string;
   voided_at: string | null;
   void_reason: string | null;
@@ -623,6 +636,18 @@ export type BusinessDayCloseReportSnapshot = RestaurantLocalization & {
   final_cash_counted: number;
   shifts: BusinessDayShiftSnapshot[];
   other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
+  /** Recorded when the day closed; null for days closed before credit reporting. */
+  credit: BusinessDayCreditSummary | null;
+};
+
+export type BusinessDayCreditSummary = {
+  sold_order_count: number;
+  sold_total: number;
+  collected_total: number;
+  collected_by_method: Partial<Record<OtherIncomePaymentMethod, number>>;
+  /** All customers, at the moment the day closed. */
+  outstanding_at_close: number;
+  overdue_at_close: number;
 };
 
 export type BusinessDay = {
