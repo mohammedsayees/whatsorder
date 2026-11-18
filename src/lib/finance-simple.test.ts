@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FinanceOperatingReport } from "@/lib/finance-report";
 import {
+  buildMoneyTourSteps,
   buildSimpleSummary,
   categoryIcon,
   categoryLabel,
@@ -118,6 +119,35 @@ describe("setup dates", () => {
     expect(monthlyBillSchedule("2026-11-18", 25)).toEqual({ startOn: "2026-11-01", nextDueOn: "2026-11-25" });
     expect(monthlyBillSchedule("2026-11-18", 5)).toEqual({ startOn: "2026-11-01", nextDueOn: "2026-12-05" });
     expect(monthlyBillSchedule("2026-12-18", 1)).toEqual({ startOn: "2026-12-01", nextDueOn: "2027-01-01" });
+  });
+});
+
+describe("Money tour", () => {
+  const none = { create: false, view: false, approve: false, view_reports: false };
+
+  it("keeps the tour short for staff who only add bills", () => {
+    const steps = buildMoneyTourSteps({ ...none, create: true });
+    expect(steps.map((step) => step.target)).toEqual([null, "add-bill", "type-bill", null]);
+    expect(steps.at(-1)!.body).toContain("a manager checks it");
+  });
+
+  it("shows managers their to-do list, till payments and the summary", () => {
+    const steps = buildMoneyTourSteps(
+      { create: true, view: true, approve: true, view_reports: true },
+      { hasTillPayments: true }
+    );
+    expect(steps.map((step) => step.target)).toEqual([null, "add-bill", "type-bill", "till-payments", "todo", "how-am-i-doing", null]);
+  });
+
+  it("points owners to setup only while it's unfinished", () => {
+    const owner = { create: true, view: true, approve: true, view_reports: true, manage_recurring: true, manage_costing: true };
+    expect(buildMoneyTourSteps(owner, { hasSetupCard: true }).map((step) => step.target)).toContain("setup");
+    expect(buildMoneyTourSteps(owner, { hasSetupCard: false }).map((step) => step.target)).not.toContain("setup");
+  });
+
+  it("never has more than eight steps", () => {
+    const all = { create: true, view: true, approve: true, view_reports: true, manage_recurring: true, manage_costing: true };
+    expect(buildMoneyTourSteps(all, { hasSetupCard: true, hasTillPayments: true }).length).toBeLessThanOrEqual(8);
   });
 });
 

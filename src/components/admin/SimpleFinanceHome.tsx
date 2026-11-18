@@ -2,9 +2,10 @@ import Link from "next/link";
 import { transitionFinanceExpenseAction } from "@/app/admin/finance/actions";
 import { setFinanceModeAction } from "@/app/admin/finance/mode/actions";
 import { SimplePhotoUpload } from "@/components/admin/SimplePhotoUpload";
+import { MoneyTour } from "@/components/admin/MoneyTour";
 import { formatFils, type FinanceAccess, type FinanceExpense } from "@/lib/finance";
 import type { FinanceDocument } from "@/lib/finance-document";
-import { categoryIcon, categoryLabel, friendlyDate, plainBillStatus, plainPaymentStatus } from "@/lib/finance-simple";
+import { buildMoneyTourSteps, categoryIcon, categoryLabel, friendlyDate, plainBillStatus, plainPaymentStatus } from "@/lib/finance-simple";
 
 type Props = {
   access: FinanceAccess;
@@ -18,9 +19,9 @@ type Props = {
   success?: string;
 };
 
-function BigLink({ href, icon, title, hint }: { href: string; icon: string; title: string; hint: string }) {
+function BigLink({ href, icon, title, hint, tour }: { href: string; icon: string; title: string; hint: string; tour?: string }) {
   return (
-    <Link className="focus-ring flex min-h-[88px] items-center gap-4 rounded-2xl border-2 border-stone-200 bg-white px-5 py-4 shadow-sm hover:border-leaf" href={href}>
+    <Link data-tour={tour} className="focus-ring flex min-h-[88px] items-center gap-4 rounded-2xl border-2 border-stone-200 bg-white px-5 py-4 shadow-sm hover:border-leaf" href={href}>
       <span aria-hidden className="text-4xl">{icon}</span>
       <span>
         <span className="block text-xl font-black text-ink">{title}</span>
@@ -56,7 +57,7 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
       {success ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ {success}</p> : null}
 
       {setup && (setup.monthlyBills === 0 || setup.itemsWithoutCost > 0) ? (
-        <section className="mt-5 rounded-2xl border-2 border-sky-200 bg-sky-50 p-4">
+        <section className="mt-5 rounded-2xl border-2 border-sky-200 bg-sky-50 p-4" data-tour="setup">
           <h2 className="text-lg font-black text-ink">Finish setting up</h2>
           <p className="mt-1 text-sm text-sky-950">Two quick steps so profit is shown correctly.</p>
           <div className="mt-3 grid gap-2">
@@ -75,10 +76,10 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
       ) : null}
 
       <div className="mt-5 grid gap-3">
-        {access.create ? <SimplePhotoUpload /> : null}
-        {access.create ? <BigLink href="/admin/finance/new" hint="No photo? Type the amount" icon="✍️" title="Type in a bill" /> : null}
-        {access.approve && unbilledTillCount !== null ? <BigLink href="/admin/finance/paid-outs" hint="Match cash taken from the till to its bill" icon="💵" title="Till payments" /> : null}
-        {access.view_reports ? <BigLink href="/admin/finance/summary" hint="Sales, costs and profit in plain words" icon="📊" title="How am I doing?" /> : null}
+        {access.create ? <div className="rounded-2xl" data-tour="add-bill"><SimplePhotoUpload /></div> : null}
+        {access.create ? <BigLink href="/admin/finance/new" hint="No photo? Type the amount" icon="✍️" title="Type in a bill" tour="type-bill" /> : null}
+        {access.approve && unbilledTillCount !== null ? <BigLink href="/admin/finance/paid-outs" hint="Match cash taken from the till to its bill" icon="💵" title="Till payments" tour="till-payments" /> : null}
+        {access.view_reports ? <BigLink href="/admin/finance/summary" hint="Sales, costs and profit in plain words" icon="📊" title="How am I doing?" tour="how-am-i-doing" /> : null}
       </div>
 
       {reading.length > 0 ? (
@@ -88,7 +89,7 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
       ) : null}
 
       {access.view ? (
-        <section className="mt-6">
+        <section className="mt-6 rounded-2xl" data-tour="todo">
           <h2 className="text-xl font-black text-ink">To do</h2>
           {todo.length === 0 ? (
             <p className="mt-2 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-6 text-center text-sm text-stone-500">Nothing to do right now 👍</p>
@@ -164,6 +165,13 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
           {access.manage_costing ? <Link className="font-bold text-leaf underline" href="/admin/finance/menu-costs">Menu costs</Link> : null}
         </p>
       ) : null}
+
+      <MoneyTour
+        steps={buildMoneyTourSteps(access, {
+          hasSetupCard: Boolean(setup && (setup.monthlyBills === 0 || setup.itemsWithoutCost > 0)),
+          hasTillPayments: access.approve && unbilledTillCount !== null
+        })}
+      />
 
       {canUseAdvanced ? (
         <form action={setFinanceModeAction} className="mt-8 text-center">
