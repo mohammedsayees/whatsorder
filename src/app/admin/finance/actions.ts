@@ -136,7 +136,7 @@ export async function createFinanceExpenseAction(formData: FormData) {
     if (tillError) fail(path, tillPaymentError(tillError.message));
     revalidatePath("/admin/finance");
     revalidatePath("/admin/shifts");
-    redirect(`/admin/finance?success=${encodeURIComponent("Expense recorded and paid from the till. The shift's expected cash is updated.")}`);
+    redirect(`/admin/finance?success=${encodeURIComponent("Bill saved and taken from the till. The till total is updated.")}`);
   }
 
   // A partial payment records how much was actually paid.
@@ -176,7 +176,7 @@ export async function createFinanceExpenseAction(formData: FormData) {
   if (error) fail(path, "The expense could not be saved. Check the fields and try again.");
 
   revalidatePath("/admin/finance");
-  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Expense recorded." : "Expense draft saved.")}`);
+  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Bill saved." : "Bill saved – a manager will check it.")}`);
 }
 
 export async function transitionFinanceExpenseAction(formData: FormData) {
@@ -199,7 +199,7 @@ export async function transitionFinanceExpenseAction(formData: FormData) {
     .neq("status", "void");
   if (error || count !== 1) fail("/admin/finance", "The expense could not be updated.");
   revalidatePath("/admin/finance");
-  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Expense approved." : "Expense voided.")}`);
+  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Bill saved." : "Bill deleted (kept in history).")}`);
 }
 
 export async function createFinanceCategoryAction(formData: FormData) {

@@ -4,6 +4,8 @@ import { FinanceTillPaymentFields } from "@/components/admin/FinanceTillPaymentF
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { getFinanceCategories, getFinanceRecurringCosts, requireFinancePermission } from "@/lib/finance-data";
 import { getOpenShiftTill } from "@/lib/finance-paid-out-data";
+import { SimpleBillForm } from "@/components/admin/SimpleBillForm";
+import { getFinanceMode } from "@/lib/finance-mode";
 
 export default async function NewFinanceExpensePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const [{ session, access }, query] = await Promise.all([requireFinancePermission("create"), searchParams]);
@@ -12,6 +14,30 @@ export default async function NewFinanceExpensePage({ searchParams }: { searchPa
     getOpenShiftTill(session, access.approve).catch(() => null)
   ]);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: session.restaurant.time_zone ?? "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  if ((await getFinanceMode(session)) === "simple") {
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-6">
+        <Link className="text-sm font-bold text-leaf" href="/admin/finance">← Back</Link>
+        <h1 className="mt-3 text-3xl font-black text-ink">Type in a bill</h1>
+        <p className="mt-1 text-sm text-stone-600">Four quick questions. Have a photo? Use “Add a bill” instead.</p>
+        {query.error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{query.error}</p> : null}
+        <div className="mt-5">
+          <SimpleBillForm
+            canApprove={access.approve}
+            categories={categories.map((category) => ({ id: category.id, name: category.name }))}
+            kind="manual"
+            till={till ? {
+              shiftId: till.shiftId,
+              label: `${till.shiftName} shift, opened ${formatRestaurantShortDateTime(till.openedAt, session.restaurant)}`,
+              unbilledAmountsFils: till.unbilled.map((row) => row.amountFils)
+            } : null}
+            today={today}
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 lg:px-8">

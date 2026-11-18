@@ -84,7 +84,7 @@ export async function uploadFinanceDocumentAction(formData: FormData) {
   revalidatePath("/admin/finance");
   redirect(access.view
     ? `${reviewPath(documentId)}?success=${encodeURIComponent("Bill uploaded and queued for reading.")}`
-    : `/admin/finance?success=${encodeURIComponent("Bill uploaded for management review.")}`
+    : `/admin/finance?success=${encodeURIComponent("Bill sent – a manager will check it.")}`
   );
 }
 
@@ -256,7 +256,7 @@ export async function approveFinanceDocumentAction(formData: FormData) {
     revalidatePath("/admin/finance");
     revalidatePath("/admin/finance/paid-outs");
     revalidatePath("/admin/shifts");
-    redirect(`/admin/finance?success=${encodeURIComponent("Receipt posted and linked to its till paid-out.")}`);
+    redirect(`/admin/finance?success=${encodeURIComponent("Bill saved and matched to the till payment.")}`);
   }
 
   if (formData.get("pay_from_till") === "on") {
@@ -283,7 +283,7 @@ export async function approveFinanceDocumentAction(formData: FormData) {
     if (tillError || !tillExpenseId) fail(path, tillPaymentError(tillError?.message));
     revalidatePath("/admin/finance");
     revalidatePath("/admin/shifts");
-    redirect(`/admin/finance?success=${encodeURIComponent("Bill posted and paid from the till. The shift's expected cash is updated.")}`);
+    redirect(`/admin/finance?success=${encodeURIComponent("Bill saved and taken from the till. The till total is updated.")}`);
   }
 
   let paidAmountFils: number | null = null;
@@ -321,7 +321,7 @@ export async function approveFinanceDocumentAction(formData: FormData) {
       : "The reviewed bill could not be posted. Check the fields and try again.");
   }
   revalidatePath("/admin/finance");
-  redirect(`/admin/finance?success=${encodeURIComponent("Reviewed bill posted as an approved expense.")}`);
+  redirect(`/admin/finance?success=${encodeURIComponent("Bill saved.")}`);
 }
 
 export async function deleteFinanceDocumentAction(formData: FormData) {
