@@ -515,7 +515,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
         <button type="button" data-lang="ml" lang="ml">മലയാളം</button>
       </div>
       <a class="btn btn-ghost" href="/r/chaixpress">Live demo</a>
-      <a class="btn btn-primary" href="/try">Start free trial</a>
+      <a class="btn btn-primary" href="/try?src=home">Start free trial</a>
     </div>
   </div>
 </header>
@@ -530,7 +530,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
       <h1><span>Take orders on WhatsApp.</span> <span>Keep every dirham.</span></h1>
       <p class="lede">WhatsOrder gives your cafe its own menu link, turns each chat into a clean order ticket, and remembers every customer. No commission, ever.</p>
       <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="/try">Start 14-day free trial</a>
+        <a class="btn btn-primary btn-lg" href="/try?src=home">Start 14-day free trial</a>
         <a class="btn btn-ghost btn-lg" href="/r/chaixpress">Order from the live demo</a>
       </div>
       <p class="hero-note">Build your menu from a photo in about 2 minutes. No card needed.</p>
@@ -836,7 +836,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Setup help on WhatsApp</li>
         </ul>
         <div class="price-cta">
-          <a class="btn btn-primary btn-lg" href="/try">Start 14-day free trial</a>
+          <a class="btn btn-primary btn-lg" href="/try?src=home">Start 14-day free trial</a>
           <a class="btn btn-ghost btn-lg" href="https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20start%20a%20free%20trial%20for%20my%20restaurant." target="_blank" rel="noopener">Ask a question on WhatsApp</a>
         </div>
       </div>
@@ -853,7 +853,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 3 staff accounts</li>
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 10 AI images a month</li>
         </ul>
-        <a class="btn btn-ghost" href="/try">Start 14-day free trial</a>
+        <a class="btn btn-ghost" href="/try?src=home">Start 14-day free trial</a>
       </article>
       <article class="tier featured">
         <span class="tier-badge">Most popular</span>
@@ -871,7 +871,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 10 staff accounts</li>
           <li><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 100 AI images a month</li>
         </ul>
-        <a class="btn btn-primary" href="/try">Start 14-day free trial</a>
+        <a class="btn btn-primary" href="/try?src=home">Start 14-day free trial</a>
       </article>
       <article class="tier">
         <h3>Personalised</h3>
@@ -959,7 +959,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
     <h2>Put your menu on WhatsApp today.</h2>
     <p>Start your 14-day free trial, or message us and we'll set it up with you.</p>
     <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/try">Start 14-day free trial</a>
+      <a class="btn btn-primary btn-lg" href="/try?src=home">Start 14-day free trial</a>
       <a class="btn btn-wa btn-lg" href="https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20start%20a%20free%20trial%20for%20my%20restaurant." target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-1.6-.1-.4-.1-.9-.3-1.5-.6-2.6-1.1-4.3-3.8-4.4-4-.1-.2-1-1.3-1-2.6 0-1.2.6-1.8.9-2 .2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.3 0 .5l-.4.5-.3.3c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2 1.1.9 2 1.2 2.3 1.4.2.1.4.1.6-.1l.7-.9c.2-.3.4-.2.6-.1l1.8.9c.3.1.4.2.5.3 0 .2 0 .8-.3 1.4Z"/></svg> Message us on WhatsApp</a>
     </div>
     <p class="cta-mail">Prefer email? <a href="mailto:whatsorder.ae@gmail.com?subject=WhatsOrder%20free%20trial" data-no-i18n>whatsorder.ae@gmail.com</a></p>
@@ -998,7 +998,7 @@ const landingMarkup = String.raw`<!-- ===== HEADER ===== -->
 <!-- ===== STICKY MOBILE CTA ===== -->
 <div class="mobile-cta" id="mobileCta">
   <a class="btn btn-wa" href="https://wa.me/971551150068?text=Hi%20WhatsOrder%2C%20I%20would%20like%20to%20start%20a%20free%20trial%20for%20my%20restaurant." target="_blank" rel="noopener" aria-label="Message WhatsOrder on WhatsApp"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-1.6-.1-.4-.1-.9-.3-1.5-.6-2.6-1.1-4.3-3.8-4.4-4-.1-.2-1-1.3-1-2.6 0-1.2.6-1.8.9-2 .2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.3 0 .5l-.4.5-.3.3c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2 1.1.9 2 1.2 2.3 1.4.2.1.4.1.6-.1l.7-.9c.2-.3.4-.2.6-.1l1.8.9c.3.1.4.2.5.3 0 .2 0 .8-.3 1.4Z"/></svg> WhatsApp</a>
-  <a class="btn btn-primary" href="/try">Start free trial</a>
+  <a class="btn btn-primary" href="/try?src=home">Start free trial</a>
 </div>`;
 
 const landingScript = String.raw`// year

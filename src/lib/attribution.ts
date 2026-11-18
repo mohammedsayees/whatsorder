@@ -18,3 +18,23 @@ export function sanitizeAttributionSource(value: unknown): string | null {
 export function posterAttributionSource(posterId: string): string {
   return `poster-${posterId.toLowerCase()}`;
 }
+
+/** Sources stamped on the admin "Share your store" kit, one per channel. */
+export const STORE_SHARE_SOURCES = {
+  link: "share-link",
+  qr: "share-qr",
+  whatsapp: "share-whatsapp",
+  printedMenu: "printed-menu"
+} as const;
+
+/** `url` with `?src=<source>` set (replacing any existing src). */
+export function withAttributionSource(url: string, source: string): string {
+  const safe = sanitizeAttributionSource(source);
+  if (!safe) {
+    return url;
+  }
+  const [base, query = ""] = url.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set("src", safe);
+  return `${base}?${params.toString()}`;
+}

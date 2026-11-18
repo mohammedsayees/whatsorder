@@ -2,6 +2,8 @@ import "server-only";
 
 import QRCode from "qrcode";
 
+import { STORE_SHARE_SOURCES, withAttributionSource } from "@/lib/attribution";
+
 function publicAppUrl() {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
 
@@ -28,9 +30,18 @@ export function qrCodeDataUrl(
   });
 }
 
-export async function getStoreShareAssets(restaurantSlug: string) {
+export async function getStoreShareAssets(
+  restaurantSlug: string,
+  options: { qrSource?: string } = {}
+) {
   const menuUrl = `${publicAppUrl()}/r/${restaurantSlug}`;
-  const qrDataUrl = await qrCodeDataUrl(menuUrl);
+  // Each share channel carries its own ?src= so orders can be attributed;
+  // menuUrl stays clean for display on the printed counter card.
+  const linkUrl = withAttributionSource(menuUrl, STORE_SHARE_SOURCES.link);
+  const whatsappShareUrl = withAttributionSource(menuUrl, STORE_SHARE_SOURCES.whatsapp);
+  const qrDataUrl = await qrCodeDataUrl(
+    withAttributionSource(menuUrl, options.qrSource ?? STORE_SHARE_SOURCES.qr)
+  );
 
-  return { menuUrl, qrDataUrl };
+  return { menuUrl, linkUrl, whatsappShareUrl, qrDataUrl };
 }

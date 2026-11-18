@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import InstantDemoBuilder from "@/components/try/InstantDemoBuilder";
+import { sanitizeAttributionSource } from "@/lib/attribution";
 
 // The build server action runs on this page: reading up to 8 menu pages with
 // the AI (4 at a time, with retries) needs more than the default time limit.
@@ -13,7 +14,16 @@ export const metadata: Metadata = {
     "Upload a photo of your menu and AI builds your restaurant's WhatsApp ordering page. Free demo, no signup, then a 14-day free trial."
 };
 
-export default function TryPage() {
+export default async function TryPage({
+  searchParams
+}: {
+  searchParams: Promise<{ src?: string | string[] }>;
+}) {
+  const query = await searchParams;
+  const signupSource = sanitizeAttributionSource(
+    Array.isArray(query.src) ? query.src[0] : query.src
+  );
+
   return (
     <main className="min-h-screen bg-[#FDFDFB] px-4 py-10 sm:py-16">
       <div className="mx-auto max-w-xl">
@@ -30,7 +40,7 @@ export default function TryPage() {
         </p>
 
         <div className="mt-8">
-          <InstantDemoBuilder />
+          <InstantDemoBuilder signupSource={signupSource} />
         </div>
 
         <ol className="mt-8 space-y-2 text-sm text-slate-500">

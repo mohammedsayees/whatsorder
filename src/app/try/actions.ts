@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import { cookies } from "next/headers";
 import { headers } from "next/headers";
 
+import { sanitizeAttributionSource } from "@/lib/attribution";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { extractMenuPageItems, type DraftMenuItem } from "@/lib/menu-extraction/extract";
 import { groupSizeVariants, type SizeChoice } from "@/lib/size-variants";
@@ -96,6 +97,7 @@ async function notifyFounder(payload: {
   slug: string;
   url: string;
   ownerWhatsApp: string | null;
+  signupSource: string | null;
 }) {
   // Optional webhook (e.g. a Zapier/Make hook that pings WhatsApp). Failures
   // are logged and swallowed — the prospect's build must never fail because
@@ -119,6 +121,24 @@ async function notifyFounder(payload: {
   }
 }
 
+// Best-effort, written once after the insert (same pattern as order
+// attribution): a failure is logged and never blocks the prospect's demo.
+async function recordSignupSource(restaurantId: string, source: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return;
+  }
+  const { error } = await supabase
+    .from("restaurants")
+    .update({ signup_source: source })
+    .eq("id", restaurantId)
+    .eq("is_demo", true)
+    .is("signup_source", null);
+  if (error) {
+    console.error("WhatsOrder signup source failed", { code: error.code, restaurantId });
+  }
+}
+
 export async function buildDemoStoreAction(input: {
   restaurantName: string;
   pages: DemoPage[];
@@ -128,6 +148,8 @@ export async function buildDemoStoreAction(input: {
   // Country decides the currency the AI reads prices in. It is fixed from
   // here on: the claim keeps it, so prices never silently change currency.
   countryCode?: string;
+  // Validated ?src= from the /try link (e.g. home, field-karama). Optional.
+  signupSource?: string;
 }): Promise<DemoBuildResult> {
   const supabase = getSupabaseAdmin();
   if (!supabase || !process.env.GEMINI_API_KEY) {
@@ -143,6 +165,7 @@ export async function buildDemoStoreAction(input: {
   }
 
   const countryCode: CountryCode = isCountryCode(input.countryCode) ? input.countryCode : "AE";
+  const signupSource = sanitizeAttributionSource(input.signupSource);
   const country = getCountryProfile(countryCode);
 
   // Optional and best-effort: an unparseable number is dropped, never a blocker.
@@ -272,10 +295,10 @@ export async function buildDemoStoreAction(input: {
       return { ok: false, error: "Could not create your demo store. Try again in a moment." };
     }
 
-    return finishBuild(supabase, retry, name, drafts, ownerPhone, country.currencyCode);
+    return finishBuild(supabase, retry, name, drafts, ownerPhone, country.currencyCode, signupSource);
   }
 
-  return finishBuild(supabase, restaurant, name, drafts, ownerPhone, country.currencyCode);
+  return finishBuild(supabase, restaurant, name, drafts, ownerPhone, country.currencyCode, signupSource);
 }
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -286,7 +309,8 @@ async function finishBuild(
   name: string,
   drafts: (DraftMenuItem & { sizes: SizeChoice[] | null })[],
   ownerPhone: string | null,
-  currencyCode: string
+  currencyCode: string,
+  signupSource: string | null
 ): Promise<DemoBuildResult> {
   const categoryNames = [...new Set(drafts.map((row) => row.category.trim() || "Menu"))];
   const { data: categories, error: categoryError } = await supabase
@@ -361,8 +385,9 @@ async function finishBuild(
 
   const url = `/r/${restaurant.slug}`;
   await Promise.all([
-    notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone }),
-    recordOnboardingEvent(restaurant.id, "demo_built", "demo_builder")
+    notifyFounder({ name, slug: restaurant.slug, url, ownerWhatsApp: ownerPhone, signupSource }),
+    recordOnboardingEvent(restaurant.id, "demo_built", "demo_builder"),
+    signupSource ? recordSignupSource(restaurant.id, signupSource) : null
   ]);
 
   // Names are unique per demo (dedupeDraftItems, and size grouping only

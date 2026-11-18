@@ -1,5 +1,6 @@
 import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
 import { getMenu, getMenuOptionCatalog } from "@/lib/data";
+import { STORE_SHARE_SOURCES } from "@/lib/attribution";
 import { getStoreShareAssets } from "@/lib/store-share-assets";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -8,7 +9,7 @@ export default async function PrintMenuPage() {
   const [menu, optionCatalog, shareAssets] = await Promise.all([
     getMenu(restaurant.id, { admin: true }),
     getMenuOptionCatalog(restaurant.id, { admin: true }),
-    getStoreShareAssets(restaurant.slug)
+    getStoreShareAssets(restaurant.slug, { qrSource: STORE_SHARE_SOURCES.printedMenu })
   ]);
 
   return (
