@@ -13,7 +13,7 @@ import { getShiftCloseReportView } from "@/lib/shift-data";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
-import { otherIncomeCategoryLabels } from "@/lib/business-day";
+import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
@@ -355,6 +355,56 @@ export default async function ShiftCloseReportPage({
           </div>
         </section>
 
+        {report.paid_outs || report.other_income_entries ? (
+          <section className="mt-6 grid gap-4 sm:grid-cols-2">
+            {report.paid_outs ? (
+              <div>
+                <h2 className="text-lg font-black">Cash paid-outs</h2>
+                {report.paid_outs.length ? (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {report.paid_outs.map((paidOut) => (
+                      <li className={`rounded-lg p-3 ${paidOut.voided_at ? "bg-stone-100 text-stone-500" : "bg-stone-50"}`} key={paidOut.id}>
+                        <div className="flex justify-between gap-3">
+                          <span className={`min-w-0 break-words font-bold ${paidOut.voided_at ? "line-through" : ""}`}>{paidOut.reason}</span>
+                          <span className={`shrink-0 font-black ${paidOut.voided_at ? "line-through" : ""}`}>{money(paidOut.amount)}</span>
+                        </div>
+                        <p className="text-xs text-stone-500">
+                          {dateTime(paidOut.recorded_at)}
+                          {paidOut.voided_at ? ` · Voided${paidOut.void_reason ? `: ${paidOut.void_reason}` : ""}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-3 text-sm text-stone-500">No cash paid-outs.</p>}
+              </div>
+            ) : null}
+            {report.other_income_entries ? (
+              <div>
+                <h2 className="text-lg font-black">Other income entries</h2>
+                {report.other_income_entries.length ? (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {report.other_income_entries.map((entry) => (
+                      <li className={`rounded-lg p-3 ${entry.voided_at ? "bg-stone-100 text-stone-500" : "bg-stone-50"}`} key={entry.id}>
+                        <div className="flex justify-between gap-3">
+                          <span className={`min-w-0 break-words font-bold ${entry.voided_at ? "line-through" : ""}`}>
+                            {otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}
+                          </span>
+                          <span className={`shrink-0 font-black ${entry.voided_at ? "line-through" : ""}`}>{money(entry.amount)}</span>
+                        </div>
+                        <p className="break-words text-xs text-stone-500">
+                          {entry.description} · {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
+                          {entry.reference ? ` · ${entry.reference}` : ""}
+                          {entry.voided_at ? ` · Voided${entry.void_reason ? `: ${entry.void_reason}` : ""}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-3 text-sm text-stone-500">No other income.</p>}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {report.opening_note || report.closing_note ? (
           <section className="mt-6 border-t border-stone-200 pt-4">
             <h2 className="text-lg font-black">Notes</h2>
@@ -367,9 +417,9 @@ export default async function ShiftCloseReportPage({
         </footer>
       </article>
 
-      {shiftPaidOuts.paidOuts.length > 0 ? (
+      {shiftPaidOuts.paidOuts.length > 0 && (!report.paid_outs || canVoidPaidOuts) ? (
         <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4 print:hidden">
-          <h2 className="text-lg font-black">Cash paid-outs</h2>
+          <h2 className="text-lg font-black">{report.paid_outs ? "Paid-outs now" : "Cash paid-outs"}</h2>
           <p className="mt-1 text-xs text-stone-500">
             {canVoidPaidOuts
               ? "Void a paid-out entered by mistake (for example the same bill twice). This saves a new report version."

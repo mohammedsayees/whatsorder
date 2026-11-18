@@ -115,3 +115,24 @@ export function getRestaurantMonthStartIso(
   const { month, year } = restaurantDateParts(value, restaurant);
   return new Date(`${year}-${month}-01T00:00:00${localization.utcOffset}`).toISOString();
 }
+
+/**
+ * The instant a restaurant-local calendar day (YYYY-MM-DD) starts, as an ISO
+ * string, or null when the key isn't a real date. Restaurant time zones have
+ * no daylight saving, so the fixed offset is exact.
+ */
+export function getRestaurantDayStartIso(
+  dateKey: string,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return null;
+  }
+  const localization = getRestaurantLocalization(restaurant);
+  const start = new Date(`${dateKey}T00:00:00${localization.utcOffset}`);
+  // Rejects impossible dates such as 2026-02-31, which Date would roll over.
+  if (Number.isNaN(start.getTime()) || getRestaurantDateKey(start, restaurant) !== dateKey) {
+    return null;
+  }
+  return start.toISOString();
+}

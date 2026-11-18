@@ -2,6 +2,7 @@ import {
   denominationTotalMinor,
   type CashDenominationCount
 } from "@/lib/cash-denominations";
+import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
@@ -53,6 +54,33 @@ function denominationRows(
     )).join("")}
     ${moneyRow("Notes & coins total", money(totalMinor / 100), "total")}
     ${matchesCount ? "" : `<div class="explanation">As counted at close. The counted cash in this version was later corrected.</div>`}`;
+}
+
+function itemizedSections(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const paidOuts = report.paid_outs?.filter((paidOut) => !paidOut.voided_at) ?? null;
+  const voidedPaidOuts = report.paid_outs?.filter((paidOut) => paidOut.voided_at).length ?? 0;
+  const income = report.other_income_entries?.filter((entry) => !entry.voided_at) ?? null;
+
+  const paidOutSection = paidOuts && paidOuts.length
+    ? `<section>
+        <h2>PAID-OUTS</h2>
+        ${paidOuts.map((paidOut) => moneyRow(paidOut.reason, money(paidOut.amount))).join("")}
+        ${voidedPaidOuts ? `<div class="explanation">${voidedPaidOuts} voided paid-out${voidedPaidOuts === 1 ? "" : "s"} not counted.</div>` : ""}
+      </section>`
+    : "";
+  const incomeSection = income && income.length
+    ? `<section>
+        <h2>OTHER INCOME</h2>
+        ${income.map((entry) => moneyRow(
+          `${otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}: ${entry.description}`,
+          money(entry.amount)
+        )).join("")}
+      </section>`
+    : "";
+  return paidOutSection + incomeSection;
 }
 
 export function renderShiftCloseThermalReport(
@@ -157,6 +185,8 @@ export function renderShiftCloseThermalReport(
           ${moneyRow(differenceLabel(cashDifference), money(Math.abs(cashDifference)), "difference")}
           ${denominationRows(report, options.cashDenominations, money)}
         </section>
+
+        ${itemizedSections(report, money)}
 
         <section>
           <h2>CARD RECONCILIATION</h2>
