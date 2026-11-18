@@ -486,6 +486,33 @@ export type ShiftCloseReportSnapshot = {
   combined_operational_receipts: number;
   report_generated_at: string;
   correction_reason: string | null;
+  /**
+   * Entries as they were when this version was written (voided ones included).
+   * Null for versions written before itemized snapshots existed.
+   */
+  paid_outs: ShiftReportPaidOut[] | null;
+  other_income_entries: ShiftReportOtherIncomeEntry[] | null;
+};
+
+export type ShiftReportPaidOut = {
+  id: string;
+  amount: number;
+  reason: string;
+  recorded_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+};
+
+export type ShiftReportOtherIncomeEntry = {
+  id: string;
+  category: string;
+  payment_method: string;
+  amount: number;
+  description: string;
+  reference: string | null;
+  recorded_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
 };
 
 export type ShiftCloseReport = {

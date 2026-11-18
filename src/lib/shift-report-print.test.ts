@@ -52,7 +52,9 @@ const report: ShiftCloseReportSnapshot = {
   credit_repayment_total: 0,
   combined_operational_receipts: 230,
   report_generated_at: "2026-07-17T15:20:00.000Z",
-  correction_reason: null
+  correction_reason: null,
+  paid_outs: null,
+  other_income_entries: null
 };
 
 describe("renderShiftCloseThermalReport", () => {
@@ -115,6 +117,27 @@ describe("renderShiftCloseThermalReport", () => {
       { cashDenominations: breakdown }
     );
     expect(corrected).toContain("later corrected");
+  });
+
+  it("itemizes paid-outs and other income when the snapshot has them", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("PAID-OUTS");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      paid_outs: [
+        { id: "p1", amount: 12, reason: "Milk <supplier>", recorded_at: "2026-07-17T05:00:00Z", voided_at: null, void_reason: null },
+        { id: "p2", amount: 12, reason: "Milk duplicate", recorded_at: "2026-07-17T05:01:00Z", voided_at: "2026-07-17T06:00:00Z", void_reason: "Entered twice" }
+      ],
+      other_income_entries: [
+        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 30, description: "10 L", reference: null, recorded_at: "2026-07-17T07:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("PAID-OUTS");
+    expect(html).toContain("Milk &lt;supplier&gt;");
+    expect(html).not.toContain("Milk duplicate");
+    expect(html).toContain("1 voided paid-out not counted.");
+    expect(html).toContain("OTHER INCOME");
+    expect(html).toContain("Used oil sale: 10 L");
   });
 
   it("lists cash other income so the cash drawer lines add up to expected", () => {

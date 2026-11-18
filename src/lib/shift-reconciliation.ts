@@ -1,6 +1,8 @@
 import type {
   CountryCode,
   ShiftCloseReportSnapshot,
+  ShiftReportOtherIncomeEntry,
+  ShiftReportPaidOut,
   ShiftFulfilmentSummary,
   ShiftMarketplaceChannel,
   ShiftMarketplaceSale,
@@ -181,6 +183,57 @@ function parseMarketplaceSales(value: unknown): ShiftMarketplaceSale[] | null {
   return parsed;
 }
 
+function nullableTimestamp(value: unknown) {
+  return typeof value === "string" && value ? value : null;
+}
+
+/** Itemized lists are optional: missing or malformed means "not recorded". */
+function parsePaidOuts(value: unknown): ShiftReportPaidOut[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: ShiftReportPaidOut[] = [];
+  for (const item of value) {
+    const amount = isRecord(item) ? finiteNumber(item.amount) : null;
+    if (!isRecord(item) || typeof item.id !== "string" || amount === null ||
+        typeof item.reason !== "string" || typeof item.recorded_at !== "string") {
+      return null;
+    }
+    rows.push({
+      id: item.id,
+      amount,
+      reason: item.reason,
+      recorded_at: item.recorded_at,
+      voided_at: nullableTimestamp(item.voided_at),
+      void_reason: nullableString(item.void_reason)
+    });
+  }
+  return rows;
+}
+
+function parseOtherIncomeEntries(value: unknown): ShiftReportOtherIncomeEntry[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: ShiftReportOtherIncomeEntry[] = [];
+  for (const item of value) {
+    const amount = isRecord(item) ? finiteNumber(item.amount) : null;
+    if (!isRecord(item) || typeof item.id !== "string" || amount === null ||
+        typeof item.category !== "string" || typeof item.payment_method !== "string" ||
+        typeof item.description !== "string" || typeof item.recorded_at !== "string") {
+      return null;
+    }
+    rows.push({
+      id: item.id,
+      category: item.category,
+      payment_method: item.payment_method,
+      amount,
+      description: item.description,
+      reference: nullableString(item.reference),
+      recorded_at: item.recorded_at,
+      voided_at: nullableTimestamp(item.voided_at),
+      void_reason: nullableString(item.void_reason)
+    });
+  }
+  return rows;
+}
+
 export function parseShiftCloseReportSnapshot(
   value: unknown
 ): ShiftCloseReportSnapshot | null {
@@ -312,6 +365,8 @@ export function parseShiftCloseReportSnapshot(
     credit_repayment_total: creditRepaymentTotal,
     combined_operational_receipts: combinedOperationalReceipts,
     report_generated_at: value.report_generated_at as string,
-    correction_reason: nullableString(value.correction_reason)
+    correction_reason: nullableString(value.correction_reason),
+    paid_outs: parsePaidOuts(value.paid_outs),
+    other_income_entries: parseOtherIncomeEntries(value.other_income_entries)
   };
 }
