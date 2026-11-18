@@ -10,6 +10,7 @@ import {
   OpenShiftForm,
   OtherIncomeForm,
   PaidOutForm,
+  UnbilledSaleForm,
   VoidOtherIncomeForm,
   VoidPaidOutForm,
   PaidOutReceiptForm
@@ -32,6 +33,7 @@ import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { summarizeCashVariance } from "@/lib/shift-variance";
+import { UNBILLED_SALE, unbilledFromEntries } from "@/lib/unbilled-sales";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -133,6 +135,14 @@ export default async function AdminShiftsPage({
     isCash: order.payment_method === "Cash on Delivery"
   }));
   const assignableCount = assignableOrders.length;
+  // Unbilled sales are stored as shift receipts but shown as sales.
+  const unbilledEntries = (currentShift?.otherIncomeEntries ?? [])
+    .filter((entry) => entry.category === UNBILLED_SALE);
+  const otherIncomeOnly = (currentShift?.otherIncomeEntries ?? [])
+    .filter((entry) => entry.category !== UNBILLED_SALE);
+  const liveUnbilled = unbilledFromEntries(
+    unbilledEntries.map((entry) => ({ ...entry, amount: Number(entry.amount) }))
+  );
   // After a staff member locks a blind count, they can no longer change expected cash.
   const canChangeCash = Boolean(currentShift?.canManage) &&
     !(session.role === "staff" && currentShift?.declaredCash !== null);
@@ -290,10 +300,17 @@ export default async function AdminShiftsPage({
                   label: "Cash paid-outs",
                   value: money(currentShift.summary.cash_paid_out_total)
                 },
+                ...(liveUnbilled.total > 0
+                  ? [{
+                      icon: ReceiptText,
+                      label: "Unbilled sales",
+                      value: money(liveUnbilled.total)
+                    }]
+                  : []),
                 {
                   icon: CircleDollarSign,
                   label: "Other income",
-                  value: money(currentShift.summary.other_income_total)
+                  value: money(currentShift.summary.other_income_total - liveUnbilled.total)
                 },
                 {
                   icon: CreditCard,
@@ -458,6 +475,39 @@ export default async function AdminShiftsPage({
               </div>
             </section>
 
+            <section className="rounded-lg border border-amber-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-black">Unbilled sales</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Money taken without an order. If you know the items, enter the order instead
+                (New order lets you set an earlier time). Counted as sales and in the drawer.
+              </p>
+              {canChangeCash ? (
+                <div className="mt-4">
+                  <UnbilledSaleForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
+                </div>
+              ) : null}
+              <div className="mt-5 space-y-2">
+                {unbilledEntries.length ? unbilledEntries.map((entry) => (
+                  <div className="rounded-lg bg-amber-50 p-3" key={entry.id}>
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-bold">{entry.description}</p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
+                        </p>
+                        {canChangeCash ? (
+                          <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} />
+                        ) : null}
+                      </div>
+                      <p className="shrink-0 font-black text-amber-800">+{money(Number(entry.amount))}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="rounded-lg border border-dashed border-stone-200 p-5 text-center text-sm text-stone-500">No unbilled sales recorded.</p>
+                )}
+              </div>
+            </section>
+
             <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
               <h2 className="text-xl font-black">Other income</h2>
               <p className="mt-1 text-sm text-stone-500">
@@ -469,7 +519,7 @@ export default async function AdminShiftsPage({
                 </div>
               ) : null}
               <div className="mt-5 space-y-2">
-                {currentShift.otherIncomeEntries.length ? currentShift.otherIncomeEntries.map((entry) => (
+                {otherIncomeOnly.length ? otherIncomeOnly.map((entry) => (
                   <div className="rounded-lg bg-stone-50 p-3" key={entry.id}>
                     <div className="flex justify-between gap-3">
                       <div>

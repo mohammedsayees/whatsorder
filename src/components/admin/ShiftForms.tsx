@@ -376,6 +376,46 @@ export function VoidPaidOutForm({
   );
 }
 
+// Money taken without an order. Stored as a shift receipt so the drawer
+// reconciles; reports show it as sales.
+export function UnbilledSaleForm({
+  restaurant,
+  shiftId
+}: {
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
+  const [state, action, pending] = useActionState(addOtherIncomeAction, initialState);
+  return (
+    <form action={action} className="space-y-3">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <input name="category" type="hidden" value="unbilled_sale" />
+      <div className="flex flex-wrap gap-3">
+        <label className="min-w-[140px] flex-1 text-sm font-bold text-stone-700">
+          Amount
+          <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" min="0.01" name="amount" required step="0.01" type="number" />
+        </label>
+        <label className="min-w-[140px] flex-1 text-sm font-bold text-stone-700">
+          Paid by
+          <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="payment_method" required>
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            {restaurant.country_code === "IN" ? <option value="upi">UPI</option> : null}
+          </select>
+        </label>
+      </div>
+      <label className="block text-sm font-bold text-stone-700">
+        What was sold
+        <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" maxLength={300} name="description" placeholder="e.g. 4 karak teas, rush hour, no bill" required />
+      </label>
+      <ActionMessage state={state} />
+      <button className="focus-ring w-full rounded-lg border border-amber-700 px-4 py-2.5 text-sm font-black text-amber-800 disabled:opacity-60" disabled={pending} type="submit">
+        {pending ? "Saving…" : "Record unbilled sale"}
+      </button>
+    </form>
+  );
+}
+
 export function OtherIncomeForm({
   restaurant,
   shiftId

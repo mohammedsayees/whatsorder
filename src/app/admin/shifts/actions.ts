@@ -86,7 +86,8 @@ function friendlyShiftError(message?: string) {
     "Lock the cash count before closing",
     "Enter whole numbers of notes and coins",
     "The notes and coins do not add up to the counted cash",
-    "Explain why opening cash differs from the last count"
+    "Explain why opening cash differs from the last count",
+    "An unbilled sale must be paid by cash, card or UPI"
   ];
 
   return (
@@ -198,7 +199,9 @@ export async function addOtherIncomeAction(
   });
   if (error) return { error: friendlyShiftError(error.message) };
   refreshShiftViews();
-  return { success: "Other income recorded." };
+  return {
+    success: category === "unbilled_sale" ? "Unbilled sale recorded." : "Other income recorded."
+  };
 }
 
 export async function voidOtherIncomeAction(

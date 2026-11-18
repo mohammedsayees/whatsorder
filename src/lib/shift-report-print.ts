@@ -5,6 +5,11 @@ import {
 import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import { formatCurrency } from "@/lib/currency";
 import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
+import {
+  UNBILLED_SALE,
+  otherIncomeExcludingUnbilled,
+  unbilledFromReport
+} from "@/lib/unbilled-sales";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
@@ -113,7 +118,10 @@ function itemizedSections(
 ) {
   const paidOuts = report.paid_outs?.filter((paidOut) => !paidOut.voided_at) ?? null;
   const voidedPaidOuts = report.paid_outs?.filter((paidOut) => paidOut.voided_at).length ?? 0;
-  const income = report.other_income_entries?.filter((entry) => !entry.voided_at) ?? null;
+  const income = report.other_income_entries
+    ?.filter((entry) => !entry.voided_at && entry.category !== UNBILLED_SALE) ?? null;
+  const unbilledEntries = report.other_income_entries
+    ?.filter((entry) => !entry.voided_at && entry.category === UNBILLED_SALE) ?? [];
 
   const paidOutSection = paidOuts && paidOuts.length
     ? `<section>
@@ -134,7 +142,16 @@ function itemizedSections(
         )).join("")}
       </section>`
     : "";
-  return paidOutSection + incomeSection;
+  const unbilledSection = unbilledEntries.length
+    ? `<section>
+        <h2>UNBILLED SALES</h2>
+        ${unbilledEntries.map((entry) => moneyRow(
+          `${entry.description} (${entry.payment_method})`,
+          money(entry.amount)
+        )).join("")}
+      </section>`
+    : "";
+  return paidOutSection + unbilledSection + incomeSection;
 }
 
 export function renderShiftCloseThermalReport(
@@ -142,6 +159,9 @@ export function renderShiftCloseThermalReport(
   options: { cashDenominations?: CashDenominationCount[] | null } = {}
 ) {
   const money = (value: number) => formatCurrency(value, report);
+  // Unbilled sales are stored as receipts but printed as sales.
+  const unbilled = unbilledFromReport(report);
+  const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
   const cashDifference = report.cash_difference_amount;
   const cardDifference = report.card_difference_amount;
@@ -233,7 +253,8 @@ export function renderShiftCloseThermalReport(
           ${moneyRow("Opening cash", money(report.opening_cash_amount))}
           ${openingCheckRows(report, money)}
           ${moneyRow("Cash sales", money(report.completed_cash_order_total))}
-          ${report.cash_other_income_total > 0 ? moneyRow("Cash other income", money(report.cash_other_income_total)) : ""}
+          ${(unbilled.byMethod.cash ?? 0) > 0 ? moneyRow("Unbilled cash sales", money(unbilled.byMethod.cash ?? 0)) : ""}
+          ${otherIncome.cash > 0 ? moneyRow("Cash other income", money(otherIncome.cash)) : ""}
           ${moneyRow("Cash paid-outs", `-${money(report.cash_paid_out_total)}`)}
           ${moneyRow("Expected cash", money(report.expected_cash_amount), "total")}
           ${moneyRow("Counted cash", money(report.cash_counted_amount))}
@@ -260,9 +281,10 @@ export function renderShiftCloseThermalReport(
         <section>
           <h2>SALES SUMMARY</h2>
           ${moneyRow("WhatsOrder sales", money(report.completed_sales))}
+          ${unbilled.total > 0 ? moneyRow("Unbilled sales (no order)", money(unbilled.total), "attention") : ""}
           ${moneyRow("Marketplace sales", money(report.marketplace_sales_total))}
-          ${moneyRow("Combined sales", money(report.combined_operational_sales), "grand")}
-          ${moneyRow("Other income", money(report.other_income_total))}
+          ${moneyRow("Combined sales", money(report.combined_operational_sales + unbilled.total), "grand")}
+          ${moneyRow("Other income", money(otherIncome.total))}
           ${report.credit_repayment_total > 0 ? moneyRow("Less credit repayments (already in sales)", money(report.credit_repayment_total)) : ""}
           ${moneyRow("Total receipts", money(report.combined_operational_receipts), "grand")}
           <p class="explanation">Marketplace figures are manually reported gross sales, not settlement figures.</p>
