@@ -12,6 +12,8 @@ type Props = {
   documents: FinanceDocument[];
   expenses: FinanceExpense[];
   unbilledTillCount: number | null;
+  /** What first-time setup still needs (owners/admins only). */
+  setup?: { monthlyBills: number; itemsWithoutCost: number } | null;
   error?: string;
   success?: string;
 };
@@ -28,7 +30,7 @@ function BigLink({ href, icon, title, hint }: { href: string; icon: string; titl
   );
 }
 
-export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses, unbilledTillCount, error, success }: Props) {
+export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses, unbilledTillCount, setup = null, error, success }: Props) {
   const toCheck = documents.filter((document) => document.status === "extracted");
   const reading = documents.filter((document) => document.status === "queued" || document.status === "processing");
   const unreadable = documents.filter((document) => document.status === "failed");
@@ -52,6 +54,25 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
       <p className="mt-1 text-sm text-stone-600">Add your bills and see how the café is doing.</p>
       {error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p> : null}
       {success ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ {success}</p> : null}
+
+      {setup && (setup.monthlyBills === 0 || setup.itemsWithoutCost > 0) ? (
+        <section className="mt-5 rounded-2xl border-2 border-sky-200 bg-sky-50 p-4">
+          <h2 className="text-lg font-black text-ink">Finish setting up</h2>
+          <p className="mt-1 text-sm text-sky-950">Two quick steps so profit is shown correctly.</p>
+          <div className="mt-3 grid gap-2">
+            {access.manage_recurring ? (
+              <Link className="focus-ring flex items-center justify-between rounded-xl bg-white px-4 py-3 text-sm font-black" href="/admin/finance/setup">
+                <span>{setup.monthlyBills === 0 ? "🏠 Add rent, salaries and other monthly bills" : `✓ ${setup.monthlyBills} monthly bill${setup.monthlyBills === 1 ? "" : "s"} added – change`}</span><span aria-hidden>→</span>
+              </Link>
+            ) : null}
+            {access.manage_costing ? (
+              <Link className="focus-ring flex items-center justify-between rounded-xl bg-white px-4 py-3 text-sm font-black" href="/admin/finance/menu-costs">
+                <span>{setup.itemsWithoutCost > 0 ? `☕ ${setup.itemsWithoutCost} menu item${setup.itemsWithoutCost === 1 ? " needs" : "s need"} a cost` : "✓ Menu costs added – change"}</span><span aria-hidden>→</span>
+              </Link>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <div className="mt-5 grid gap-3">
         {access.create ? <SimplePhotoUpload /> : null}
@@ -134,6 +155,14 @@ export function SimpleFinanceHome({ access, canUseAdvanced, documents, expenses,
             </ul>
           )}
         </section>
+      ) : null}
+
+      {(access.manage_recurring || access.manage_costing) && setup && setup.monthlyBills > 0 && setup.itemsWithoutCost === 0 ? (
+        <p className="mt-8 text-center text-sm">
+          {access.manage_recurring ? <Link className="font-bold text-leaf underline" href="/admin/finance/setup">Monthly bills & who can use Money</Link> : null}
+          {access.manage_recurring && access.manage_costing ? " · " : ""}
+          {access.manage_costing ? <Link className="font-bold text-leaf underline" href="/admin/finance/menu-costs">Menu costs</Link> : null}
+        </p>
       ) : null}
 
       {canUseAdvanced ? (
