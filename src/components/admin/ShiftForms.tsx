@@ -68,25 +68,81 @@ function ActionMessage({ state }: { state: ShiftActionState }) {
   );
 }
 
-export function AssignUnassignedOrdersButton() {
+export type AssignableOrderRow = {
+  id: string;
+  /** Pre-formatted on the server in the restaurant's time zone. */
+  completedLabel: string;
+  detailLabel: string;
+  total: number;
+  isCash: boolean;
+};
+
+export function AssignUnassignedOrdersForm({
+  orders,
+  restaurant,
+  shiftId
+}: {
+  orders: AssignableOrderRow[];
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
   const [state, action, pending] = useActionState(
     assignUnassignedOrdersAction,
     initialState
   );
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(orders.map((order) => order.id))
+  );
+  const chosen = orders.filter((order) => selected.has(order.id));
+  const chosenCash = chosen
+    .filter((order) => order.isCash)
+    .reduce((sum, order) => sum + order.total, 0);
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
-    <div className="space-y-2">
-      <form action={action}>
-        <button
-          className="focus-ring rounded-lg bg-amber-900 px-3 py-2 text-sm font-black text-white disabled:opacity-60"
-          disabled={pending}
-          type="submit"
-        >
-          {pending ? "Assigning…" : "Assign to current shift"}
-        </button>
-      </form>
+    <form action={action} className="space-y-3">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <ul className="max-h-72 divide-y divide-amber-100 overflow-y-auto rounded-lg border border-amber-200 bg-white text-stone-800">
+        {orders.map((order) => (
+          <li key={order.id}>
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
+              <input
+                checked={selected.has(order.id)}
+                className="h-4 w-4 shrink-0 accent-amber-900"
+                name="order_id"
+                onChange={() => toggle(order.id)}
+                type="checkbox"
+                value={order.id}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">{order.completedLabel}</span>
+                <span className="block truncate text-xs text-stone-500">{order.detailLabel}</span>
+              </span>
+              <span className="shrink-0 font-black">{formatCurrency(order.total, restaurant)}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs font-semibold">
+        {chosen.length} selected · adds {formatCurrency(chosenCash, restaurant)} to expected cash
+      </p>
+      <button
+        className="focus-ring rounded-lg bg-amber-900 px-3 py-2 text-sm font-black text-white disabled:opacity-60"
+        disabled={pending || chosen.length === 0}
+        type="submit"
+      >
+        {pending ? "Assigning…" : `Assign ${chosen.length} to current shift`}
+      </button>
       <ActionMessage state={state} />
-    </div>
+    </form>
   );
 }
 

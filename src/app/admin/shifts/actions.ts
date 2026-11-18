@@ -75,7 +75,11 @@ function friendlyShiftError(message?: string) {
     "Only restaurant management can void a paid-out after shift close",
     "Paid-out not found or already voided",
     "This shift belongs to a closed business day and can no longer be corrected",
-    "This shift has no close report to update"
+    "This shift has no close report to update",
+    "Choose at least one order to assign",
+    "Assign at most 200 orders at a time",
+    "Only the shift opener or restaurant management can assign orders",
+    "Some orders can no longer be assigned. Refresh and try again"
   ];
 
   return (
@@ -332,41 +336,54 @@ export async function attachPaidOutReceiptAction(
   return { success: "Receipt attached. Finance will review it." };
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function assignUnassignedOrdersAction(
   _previousState: ShiftActionState,
-  _formData: FormData
+  formData: FormData
 ): Promise<ShiftActionState> {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
+  const shiftId = formString(formData, "shift_id", 80);
+  const orderIds = [...new Set(
+    formData.getAll("order_id").map((value) => String(value).trim())
+  )].filter((value) => uuidPattern.test(value));
 
   if (!supabase) {
     return { error: "Shift service is unavailable." };
   }
 
-  const { data: openShift } = await supabase
-    .from("restaurant_shifts")
-    .select("id")
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "open")
-    .maybeSingle();
-
-  if (!openShift) {
+  if (!uuidPattern.test(shiftId)) {
     return { error: "No open shift found. Open a shift first." };
   }
 
-  const { error } = await supabase
-    .from("orders")
-    .update({ shift_id: openShift.id })
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "Completed")
-    .is("shift_id", null);
+  if (orderIds.length === 0) {
+    return { error: "Choose at least one order to assign." };
+  }
+
+  if (orderIds.length > 200) {
+    return { error: "Assign at most 200 orders at a time." };
+  }
+
+  const { data: assigned, error } = await supabase.rpc(
+    "assign_unassigned_orders_to_open_shift",
+    {
+      event_actor_user_id: session.userId,
+      target_order_ids: orderIds,
+      target_restaurant_id: session.restaurantId,
+      target_shift_id: shiftId
+    }
+  );
 
   if (error) {
-    return { error: "Could not reassign orders. Try again." };
+    return { error: friendlyShiftError(error.message) };
   }
 
   refreshShiftViews();
-  return { success: "Unassigned orders moved to the current shift." };
+  const count = typeof assigned === "number" ? assigned : orderIds.length;
+  return {
+    success: `${count} order${count === 1 ? "" : "s"} moved to the current shift.`
+  };
 }
 
 export async function closeShiftAction(

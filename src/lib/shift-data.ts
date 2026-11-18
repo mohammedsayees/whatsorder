@@ -175,25 +175,75 @@ export async function getPreviousShifts(
   return (data ?? []) as RestaurantShift[];
 }
 
-export async function getUnassignedCompletedOrderCount(restaurantId: string) {
+export type UnassignedCompletedOrder = {
+  id: string;
+  total: number;
+  payment_method: string | null;
+  fulfilment_type: string;
+  completed_at: string;
+};
+
+export type UnassignedCompletedOrders = {
+  /** Completed with no shift open, inside the current business-day window. */
+  assignable: UnassignedCompletedOrder[];
+  /** Older ones belong to a closed day; they are never moved into a live drawer. */
+  olderCount: number;
+};
+
+const unassignedOrderLimit = 200;
+
+export async function getUnassignedCompletedOrders(
+  restaurantId: string
+): Promise<UnassignedCompletedOrders> {
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return 0;
+    return { assignable: [], olderCount: 0 };
   }
 
-  const { count, error } = await supabase
+  const { data: windowStart, error: windowError } = await supabase.rpc(
+    "unassigned_shift_order_window_start",
+    { target_restaurant_id: restaurantId }
+  );
+
+  if (windowError || typeof windowStart !== "string") {
+    throw new Error("Unassigned completed orders could not be loaded.");
+  }
+
+  const { data, error } = await supabase
     .from("orders")
-    .select("id", { count: "exact", head: true })
+    .select("id,total,payment_method,fulfilment_type,created_at,closed_at")
     .eq("restaurant_id", restaurantId)
     .eq("status", "Completed")
-    .is("shift_id", null);
+    .is("shift_id", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   if (error) {
-    throw new Error("Unassigned completed orders could not be counted.");
+    throw new Error("Unassigned completed orders could not be loaded.");
   }
 
-  return count ?? 0;
+  const windowStartMs = Date.parse(windowStart);
+  const assignable: UnassignedCompletedOrder[] = [];
+  let olderCount = 0;
+
+  for (const order of data ?? []) {
+    const completedAt = String(order.closed_at ?? order.created_at);
+    if (Date.parse(completedAt) >= windowStartMs) {
+      assignable.push({
+        id: String(order.id),
+        total: Number(order.total ?? 0),
+        payment_method: order.payment_method ? String(order.payment_method) : null,
+        fulfilment_type: String(order.fulfilment_type),
+        completed_at: completedAt
+      });
+    } else {
+      olderCount += 1;
+    }
+  }
+
+  assignable.sort((a, b) => Date.parse(a.completed_at) - Date.parse(b.completed_at));
+  return { assignable: assignable.slice(0, unassignedOrderLimit), olderCount };
 }
 
 export async function getShiftCloseReportView(

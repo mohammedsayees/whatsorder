@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LateShiftReceipts } from "@/components/admin/LateShiftReceipts";
 import { getLateShiftReceipts } from "@/lib/shift-data";
 import {
-  AssignUnassignedOrdersButton,
+  AssignUnassignedOrdersForm,
   CloseShiftForm,
   CloseBusinessDayButton,
   OpenShiftForm,
@@ -21,7 +21,7 @@ import {
   getCurrentShiftView,
   getPreviousShifts,
   getShiftStaffNames,
-  getUnassignedCompletedOrderCount
+  getUnassignedCompletedOrders
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
@@ -49,6 +49,12 @@ const fulfilmentLabels: Record<string, string> = {
   takeaway: "Takeaway"
 };
 
+const paymentMethodLabels: Record<string, string> = {
+  "Cash on Delivery": "Cash",
+  "Card on Delivery": "Card",
+  UPI: "UPI"
+};
+
 // Same tolerance the close form and printed report use for "balanced".
 function differenceTone(value: number | null) {
   return Math.abs(Number(value ?? 0)) < 0.005 ? "text-emerald-700" : "text-amber-700";
@@ -62,11 +68,11 @@ export default async function AdminShiftsPage() {
   const money = (value: number) => formatCurrency(value, session.restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, session.restaurant);
-  const [currentShift, previousShifts, unassignedCompletedOrders, openBusinessDay, previousBusinessDays] =
+  const [currentShift, previousShifts, unassignedOrders, openBusinessDay, previousBusinessDays] =
     await Promise.all([
       getCurrentShiftView(session),
       getPreviousShifts(session),
-      getUnassignedCompletedOrderCount(session.restaurantId),
+      getUnassignedCompletedOrders(session.restaurantId),
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
     ]);
@@ -85,6 +91,18 @@ export default async function AdminShiftsPage() {
   const staffName = (userId: string | null) =>
     userId ? (userId === session.userId ? "you" : staffNames.get(userId) ?? "a team member") : null;
   const showUpi = session.restaurant.country_code === "IN";
+  const assignableOrders = unassignedOrders.assignable.map((order) => ({
+    id: order.id,
+    completedLabel: `Completed ${formatDateTime(order.completed_at)}`,
+    detailLabel: [
+      `#${order.id.slice(0, 8)}`,
+      paymentMethodLabels[order.payment_method ?? ""] ?? "Payment not recorded",
+      fulfilmentLabels[order.fulfilment_type] ?? order.fulfilment_type
+    ].join(" · "),
+    total: order.total,
+    isCash: order.payment_method === "Cash on Delivery"
+  }));
+  const assignableCount = assignableOrders.length;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -121,29 +139,43 @@ export default async function AdminShiftsPage() {
         </section>
       ) : null}
 
-      {unassignedCompletedOrders > 0 ? (
+      {assignableCount > 0 ? (
         <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <AlertTriangle className="mt-0.5 shrink-0" size={20} />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className="font-black">
-              {unassignedCompletedOrders} completed order
-              {unassignedCompletedOrders === 1 ? "" : "s"} unassigned
+              {assignableCount} completed order{assignableCount === 1 ? "" : "s"} unassigned
             </p>
             <p className="text-sm">
-              These orders were completed while no shift was open. They are not
-              included in a shift&apos;s expected cash.
+              These orders were completed while no shift was open, so they are not in any
+              shift&apos;s expected cash. Assign only orders whose money is in this drawer.
             </p>
-            {currentShift ? (
+            {currentShift?.canManage ? (
               <div className="mt-3">
-                <AssignUnassignedOrdersButton />
+                <AssignUnassignedOrdersForm
+                  key={assignableOrders.map((order) => order.id).join(",")}
+                  orders={assignableOrders}
+                  restaurant={session.restaurant}
+                  shiftId={currentShift.shift.id}
+                />
               </div>
             ) : (
               <p className="mt-2 text-xs font-bold">
-                Open a shift to assign these orders to it.
+                {currentShift
+                  ? "The shift opener or a manager can assign these orders to the current shift."
+                  : "Open a shift to assign these orders to it."}
               </p>
             )}
           </div>
         </div>
+      ) : null}
+      {unassignedOrders.olderCount > 0 && session.role !== "staff" ? (
+        <p className="mt-3 text-xs text-stone-500">
+          {unassignedOrders.olderCount} older unassigned completed order
+          {unassignedOrders.olderCount === 1 ? " was" : "s were"} completed before the current
+          business day and {unassignedOrders.olderCount === 1 ? "is" : "are"} not offered for the
+          current shift, so old sales can&apos;t inflate tonight&apos;s expected cash.
+        </p>
       ) : null}
 
       {!currentShift ? (
