@@ -158,6 +158,7 @@ export default async function ShiftCloseReportPage({
         </Link>
         <ShiftReportActions
           autoPrintThermal={query.print === "thermal"}
+          cashDenominations={view.cashDenominations}
           report={report}
           shareUrl={shareUrl}
         />

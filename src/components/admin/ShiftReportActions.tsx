@@ -9,16 +9,20 @@ import {
 import { MarketplaceReconciliationFields } from "@/components/admin/ShiftForms";
 import { printHtmlDocument } from "@/lib/print-ticket";
 import { renderShiftCloseThermalReport } from "@/lib/shift-report-print";
+import type { CashDenominationCount } from "@/lib/cash-denominations";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
 
 const initialState: ShiftActionState = {};
 
 export function ShiftReportActions({
   autoPrintThermal,
+  cashDenominations = null,
   report,
   shareUrl
 }: {
   autoPrintThermal: boolean;
+  /** Notes-and-coins breakdown locked at close, printed under the cash drawer. */
+  cashDenominations?: CashDenominationCount[] | null;
   report: ShiftCloseReportSnapshot;
   shareUrl: string | null;
 }) {
@@ -27,8 +31,11 @@ export function ShiftReportActions({
 
   const printThermal = useCallback(() => {
     setPrintError(null);
-    printHtmlDocument(renderShiftCloseThermalReport(report), setPrintError);
-  }, [report]);
+    printHtmlDocument(
+      renderShiftCloseThermalReport(report, { cashDenominations }),
+      setPrintError
+    );
+  }, [cashDenominations, report]);
 
   useEffect(() => {
     if (!autoPrintThermal || autoPrintStarted.current) {
