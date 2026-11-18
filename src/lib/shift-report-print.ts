@@ -57,6 +57,20 @@ function denominationRows(
     ${matchesCount ? "" : `<div class="explanation">As counted at close. The counted cash in this version was later corrected.</div>`}`;
 }
 
+function openingCheckRows(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const check = report.opening_check;
+  if (!check || check.previous_cash_counted_amount === null || check.difference === null ||
+      Math.abs(check.difference) < 0.005) {
+    return "";
+  }
+  return `${moneyRow("  Last close counted", money(check.previous_cash_counted_amount))}
+    ${moneyRow(`  Opening ${check.difference > 0 ? "more" : "less"} by`, money(Math.abs(check.difference)), "attention")}
+    ${check.reason ? `<div class="note">${escapeHtml(check.reason)}</div>` : ""}`;
+}
+
 function paymentAndCreditSections(
   report: ShiftCloseReportSnapshot,
   money: (value: number) => string
@@ -217,6 +231,7 @@ export function renderShiftCloseThermalReport(
         <section>
           <h2>CASH DRAWER</h2>
           ${moneyRow("Opening cash", money(report.opening_cash_amount))}
+          ${openingCheckRows(report, money)}
           ${moneyRow("Cash sales", money(report.completed_cash_order_total))}
           ${report.cash_other_income_total > 0 ? moneyRow("Cash other income", money(report.cash_other_income_total)) : ""}
           ${moneyRow("Cash paid-outs", `-${money(report.cash_paid_out_total)}`)}

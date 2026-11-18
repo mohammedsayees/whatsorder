@@ -2,6 +2,7 @@ import type {
   CountryCode,
   ShiftCloseReportSnapshot,
   ShiftReportCreditSale,
+  ShiftReportOpeningCheck,
   ShiftReportOtherIncomeEntry,
   ShiftReportPaidOut,
   ShiftFulfilmentSummary,
@@ -236,6 +237,26 @@ function parseOtherIncomeEntries(value: unknown): ShiftReportOtherIncomeEntry[] 
   return rows;
 }
 
+function parseOpeningCheck(value: unknown): ShiftReportOpeningCheck | null {
+  if (!isRecord(value)) return null;
+  const opening = finiteNumber(value.opening_cash_amount);
+  const previous = value.previous_cash_counted_amount === null
+    ? null
+    : finiteNumber(value.previous_cash_counted_amount);
+  const difference = value.difference === null ? null : finiteNumber(value.difference);
+  if (opening === null ||
+      (value.previous_cash_counted_amount !== null && previous === null) ||
+      (value.difference !== null && difference === null)) {
+    return null;
+  }
+  return {
+    previous_cash_counted_amount: previous,
+    opening_cash_amount: opening,
+    difference,
+    reason: nullableString(value.reason)
+  };
+}
+
 function parseCreditSales(value: unknown): ShiftReportCreditSale[] | null {
   if (!Array.isArray(value)) return null;
   const rows: ShiftReportCreditSale[] = [];
@@ -390,6 +411,7 @@ export function parseShiftCloseReportSnapshot(
     correction_reason: nullableString(value.correction_reason),
     paid_outs: parsePaidOuts(value.paid_outs),
     other_income_entries: parseOtherIncomeEntries(value.other_income_entries),
-    credit_sales: parseCreditSales(value.credit_sales)
+    credit_sales: parseCreditSales(value.credit_sales),
+    opening_check: parseOpeningCheck(value.opening_check)
   };
 }

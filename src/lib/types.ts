@@ -494,6 +494,16 @@ export type ShiftCloseReportSnapshot = {
   other_income_entries: ShiftReportOtherIncomeEntry[] | null;
   /** Orders completed on customer credit in this shift; null on older versions. */
   credit_sales: ShiftReportCreditSale[] | null;
+  /** Opening cash against the previous count; null on older versions. */
+  opening_check: ShiftReportOpeningCheck | null;
+};
+
+export type ShiftReportOpeningCheck = {
+  /** Null for a restaurant's first shift. */
+  previous_cash_counted_amount: number | null;
+  opening_cash_amount: number;
+  difference: number | null;
+  reason: string | null;
 };
 
 export type ShiftReportCreditSale = {

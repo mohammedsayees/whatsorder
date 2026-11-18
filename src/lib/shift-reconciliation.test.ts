@@ -132,6 +132,20 @@ describe("shift reconciliation", () => {
     expect(malformed?.paid_outs).toBeNull();
   });
 
+  it("reads the opening check when present and treats older versions as not recorded", () => {
+    expect(parseShiftCloseReportSnapshot(baseSnapshot)?.opening_check).toBeNull();
+    expect(parseShiftCloseReportSnapshot({
+      ...baseSnapshot,
+      opening_check: { previous_cash_counted_amount: "30.75", opening_cash_amount: 10.75, difference: -20, reason: "Bank" }
+    })?.opening_check).toEqual({
+      previous_cash_counted_amount: 30.75, opening_cash_amount: 10.75, difference: -20, reason: "Bank"
+    });
+    expect(parseShiftCloseReportSnapshot({
+      ...baseSnapshot,
+      opening_check: { previous_cash_counted_amount: null, opening_cash_amount: 50, difference: null, reason: null }
+    })?.opening_check?.previous_cash_counted_amount).toBeNull();
+  });
+
   it("fails closed when an immutable report snapshot is malformed", () => {
     expect(parseShiftCloseReportSnapshot({ report_version: 1 })).toBeNull();
   });

@@ -85,7 +85,8 @@ function friendlyShiftError(message?: string) {
     "Close with the locked cash count",
     "Lock the cash count before closing",
     "Enter whole numbers of notes and coins",
-    "The notes and coins do not add up to the counted cash"
+    "The notes and coins do not add up to the counted cash",
+    "Explain why opening cash differs from the last count"
   ];
 
   return (
@@ -132,6 +133,7 @@ export async function openShiftAction(
   const shiftName = formString(formData, "shift_name", 80);
   const openingNote = formString(formData, "opening_note", 500);
   const openingCash = moneyValue(formData, "opening_cash_amount");
+  const openingCashReason = formString(formData, "opening_cash_reason", 300);
 
   if (!supabase) {
     return { error: "Shift service is unavailable." };
@@ -145,9 +147,10 @@ export async function openShiftAction(
     return { error: "Enter a valid opening cash amount." };
   }
 
-  const { error } = await supabase.rpc("open_restaurant_shift_v2", {
+  const { error } = await supabase.rpc("open_restaurant_shift_v3", {
     event_actor_user_id: session.userId,
     requested_opening_cash_amount: openingCash,
+    requested_opening_cash_reason: openingCashReason || null,
     requested_opening_note: openingNote || null,
     requested_shift_name: shiftName,
     target_restaurant_id: session.restaurantId

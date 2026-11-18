@@ -152,11 +152,26 @@ export function AssignUnassignedOrdersForm({
   );
 }
 
-export function OpenShiftForm({ restaurant }: { restaurant: Restaurant }) {
+export function OpenShiftForm({
+  lastCount = null,
+  restaurant
+}: {
+  /** The last closed shift's counted cash; opening cash starts from it. */
+  lastCount?: { amount: number; label: string } | null;
+  restaurant: Restaurant;
+}) {
   const [state, action, pending] = useActionState(
     openShiftAction,
     initialState
   );
+  const [openingCash, setOpeningCash] = useState(
+    lastCount ? String(lastCount.amount) : ""
+  );
+  const openingValue = Number(openingCash);
+  const openingDifference = lastCount && openingCash.trim() !== "" && Number.isFinite(openingValue)
+    ? Math.round((openingValue - lastCount.amount) * 100) / 100
+    : 0;
+  const needsReason = Math.abs(openingDifference) >= 0.005;
 
   return (
     <form action={action} className="space-y-4">
@@ -180,12 +195,42 @@ export function OpenShiftForm({ restaurant }: { restaurant: Restaurant }) {
             className="focus-ring min-w-0 flex-1 px-3 py-3"
             min="0"
             name="opening_cash_amount"
+            onChange={(event) => setOpeningCash(event.target.value)}
             required
             step="0.01"
             type="number"
+            value={openingCash}
           />
         </div>
+        {lastCount ? (
+          <span className="mt-1 block text-xs font-semibold text-stone-500">
+            Last close counted {formatCurrency(lastCount.amount, restaurant)} ({lastCount.label}).
+          </span>
+        ) : null}
       </label>
+      {needsReason ? (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
+          <p className="text-sm font-black">
+            {openingDifference > 0 ? "More" : "Less"} than the last count by{" "}
+            {formatCurrency(Math.abs(openingDifference), restaurant)}
+          </p>
+          <p className="text-xs">
+            Check for a typing mistake first. If cash really was taken out or added between
+            shifts (bank deposit, owner withdrawal, top-up), say so below.
+          </p>
+          <label className="block text-sm font-bold">
+            Reason <span className="font-normal">(required)</span>
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2.5"
+              maxLength={300}
+              minLength={3}
+              name="opening_cash_reason"
+              placeholder="e.g. Owner took AED 200 for the bank"
+              required
+            />
+          </label>
+        </div>
+      ) : null}
       <label className="block text-sm font-bold text-stone-700">
         Opening note <span className="font-normal text-stone-400">(optional)</span>
         <textarea
