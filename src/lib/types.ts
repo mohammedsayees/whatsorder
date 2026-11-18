@@ -70,6 +70,8 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
   accepting_orders?: boolean;
   status_notifications_enabled?: boolean;
   shift_marketplace_channels?: ShiftMarketplaceChannel[];
+  /** Staff lock their cash count before seeing expected cash (default on). */
+  blind_cash_count?: boolean;
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
   latitude?: number | null;
@@ -416,6 +418,10 @@ export type RestaurantShift = {
   close_report_version: number;
   opened_by_user_id: string;
   closed_by_user_id: string | null;
+  /** Blind count: counted cash locked before close; the close must use it. */
+  declared_cash_counted_amount?: number | null;
+  cash_count_declared_at?: string | null;
+  cash_count_declared_by_user_id?: string | null;
   opened_at: string;
   closed_at: string | null;
   opening_note: string | null;

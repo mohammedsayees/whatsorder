@@ -12,10 +12,19 @@ import type {
   ShiftSummary
 } from "@/lib/types";
 import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
+import type { CashDenominationCount } from "@/lib/cash-denominations";
 
 export type CurrentShiftView = {
   activeOrderCount: number;
   canManage: boolean;
+  /**
+   * Blind count in progress: a staff member must lock their cash count first.
+   * Cash figures that reveal expected cash are zeroed in `summary`, so they
+   * never reach the browser; UIs must hide them while this is true.
+   */
+  cashBlind: boolean;
+  /** Locked counted cash, once declared. */
+  declaredCash: number | null;
   paidOuts: ShiftCashPaidOut[];
   otherIncomeEntries: ShiftOtherIncomeEntry[];
   shift: RestaurantShift;
@@ -70,6 +79,27 @@ function numericSummary(value: unknown) {
     expected_cash_amount: Number(summary.expected_cash_amount ?? 0),
     fulfilment_breakdown: summary.fulfilment_breakdown ?? {}
   } satisfies ShiftSummary;
+}
+
+/** Staff of a blind-count restaurant don't see expected cash until they lock a count. */
+export function isCashCountBlind(
+  session: Pick<RestaurantAdminSession, "role" | "restaurant">,
+  countDeclared: boolean
+) {
+  return session.role === "staff" &&
+    session.restaurant.blind_cash_count !== false &&
+    !countDeclared;
+}
+
+/** Removes the figures from which expected cash could be worked out. */
+export function blindSummary(summary: ShiftSummary): ShiftSummary {
+  return {
+    ...summary,
+    completed_cash_order_total: 0,
+    completed_sales: 0,
+    expected_cash_amount: 0,
+    fulfilment_breakdown: {}
+  };
 }
 
 export async function getCurrentShiftView(
@@ -133,14 +163,22 @@ export async function getCurrentShiftView(
     throw new Error("Current shift totals could not be loaded.");
   }
 
+  const declaredCash = shift.cash_count_declared_at
+    ? Number(shift.declared_cash_counted_amount)
+    : null;
+  const cashBlind = isCashCountBlind(session, declaredCash !== null);
+  const fullSummary = summary ? numericSummary(summary) : emptySummary;
+
   return {
     activeOrderCount: activeOrderCount ?? 0,
     canManage:
       session.role !== "staff" || shift.opened_by_user_id === session.userId,
+    cashBlind,
+    declaredCash,
     paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[],
     otherIncomeEntries: (otherIncomeEntries ?? []) as ShiftOtherIncomeEntry[],
     shift: shift as RestaurantShift,
-    summary: summary ? numericSummary(summary) : emptySummary
+    summary: cashBlind ? blindSummary(fullSummary) : fullSummary
   };
 }
 
@@ -175,25 +213,88 @@ export async function getPreviousShifts(
   return (data ?? []) as RestaurantShift[];
 }
 
-export async function getUnassignedCompletedOrderCount(restaurantId: string) {
+export type UnassignedCompletedOrder = {
+  id: string;
+  total: number;
+  payment_method: string | null;
+  fulfilment_type: string;
+  completed_at: string;
+};
+
+export type UnassignedCompletedOrders = {
+  /** Completed with no shift open, inside the current business-day window. */
+  assignable: UnassignedCompletedOrder[];
+  /** Older ones belong to a closed day; they are never moved into a live drawer. */
+  olderCount: number;
+};
+
+const unassignedOrderLimit = 200;
+
+export async function getUnassignedCompletedOrders(
+  restaurantId: string
+): Promise<UnassignedCompletedOrders> {
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return 0;
+    return { assignable: [], olderCount: 0 };
   }
 
-  const { count, error } = await supabase
+  const { data: windowStart, error: windowError } = await supabase.rpc(
+    "unassigned_shift_order_window_start",
+    { target_restaurant_id: restaurantId }
+  );
+
+  if (windowError || typeof windowStart !== "string") {
+    throw new Error("Unassigned completed orders could not be loaded.");
+  }
+
+  const { data, error } = await supabase
     .from("orders")
-    .select("id", { count: "exact", head: true })
+    .select("id,total,payment_method,fulfilment_type,created_at,closed_at")
     .eq("restaurant_id", restaurantId)
     .eq("status", "Completed")
-    .is("shift_id", null);
+    .is("shift_id", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   if (error) {
-    throw new Error("Unassigned completed orders could not be counted.");
+    throw new Error("Unassigned completed orders could not be loaded.");
   }
 
-  return count ?? 0;
+  const windowStartMs = Date.parse(windowStart);
+  const assignable: UnassignedCompletedOrder[] = [];
+  let olderCount = 0;
+
+  for (const order of data ?? []) {
+    const completedAt = String(order.closed_at ?? order.created_at);
+    if (Date.parse(completedAt) >= windowStartMs) {
+      assignable.push({
+        id: String(order.id),
+        total: Number(order.total ?? 0),
+        payment_method: order.payment_method ? String(order.payment_method) : null,
+        fulfilment_type: String(order.fulfilment_type),
+        completed_at: completedAt
+      });
+    } else {
+      olderCount += 1;
+    }
+  }
+
+  assignable.sort((a, b) => Date.parse(a.completed_at) - Date.parse(b.completed_at));
+  return { assignable: assignable.slice(0, unassignedOrderLimit), olderCount };
+}
+
+/** The stored notes-and-coins breakdown, or null if the count wasn't broken down. */
+function cleanDenominationRows(value: unknown): CashDenominationCount[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows = value
+    .map((row) => ({
+      minor: Number((row as { minor?: unknown })?.minor),
+      count: Number((row as { count?: unknown })?.count)
+    }))
+    .filter((row) => Number.isInteger(row.minor) && row.minor > 0 &&
+      Number.isInteger(row.count) && row.count > 0);
+  return rows.length ? rows : null;
 }
 
 export async function getShiftCloseReportView(
@@ -208,7 +309,7 @@ export async function getShiftCloseReportView(
 
   const { data: shift, error: shiftError } = await supabase
     .from("restaurant_shifts")
-    .select("id,restaurant_id,status,opened_by_user_id,close_report_version")
+    .select("id,restaurant_id,status,opened_by_user_id,close_report_version,cash_count_denominations")
     .eq("id", shiftId)
     .eq("restaurant_id", session.restaurantId)
     .eq("status", "closed")
@@ -248,6 +349,7 @@ export async function getShiftCloseReportView(
 
   return {
     canCorrect: session.role !== "staff",
+    cashDenominations: cleanDenominationRows(shift.cash_count_denominations),
     currentVersion: Number(shift.close_report_version ?? 0),
     reports
   };
@@ -316,4 +418,26 @@ export async function getClosedShiftPaidOuts(session: RestaurantAdminSession, sh
     businessDayClosed = day?.status === "closed";
   }
   return { paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[], businessDayClosed };
+}
+
+/**
+ * Display names for the people who opened/closed the given shifts. The IDs come
+ * from this tenant's own shift rows, so no other tenant's users are looked up.
+ */
+export async function getShiftStaffNames(shifts: RestaurantShift[]) {
+  const ids = [...new Set(shifts.flatMap((shift) =>
+    [shift.opened_by_user_id, shift.closed_by_user_id].filter(
+      (id): id is string => Boolean(id)
+    )
+  ))];
+  const names = new Map<string, string>();
+  const db = getSupabaseAdmin();
+  if (!db || ids.length === 0) return names;
+  const { data, error } = await db.from("profiles").select("id,full_name,email").in("id", ids);
+  if (error) return names;
+  for (const profile of data ?? []) {
+    const name = String(profile.full_name ?? "").trim() || String(profile.email ?? "").split("@")[0];
+    if (name) names.set(String(profile.id), name);
+  }
+  return names;
 }

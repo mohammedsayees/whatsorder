@@ -3,9 +3,10 @@ import Link from "next/link";
 import { LateShiftReceipts } from "@/components/admin/LateShiftReceipts";
 import { getLateShiftReceipts } from "@/lib/shift-data";
 import {
-  AssignUnassignedOrdersButton,
+  AssignUnassignedOrdersForm,
   CloseShiftForm,
   CloseBusinessDayButton,
+  DeclareCashCountForm,
   OpenShiftForm,
   OtherIncomeForm,
   PaidOutForm,
@@ -20,7 +21,8 @@ import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCurrentShiftView,
   getPreviousShifts,
-  getUnassignedCompletedOrderCount
+  getShiftStaffNames,
+  getUnassignedCompletedOrders
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
@@ -48,6 +50,17 @@ const fulfilmentLabels: Record<string, string> = {
   takeaway: "Takeaway"
 };
 
+const paymentMethodLabels: Record<string, string> = {
+  "Cash on Delivery": "Cash",
+  "Card on Delivery": "Card",
+  UPI: "UPI"
+};
+
+// Same tolerance the close form and printed report use for "balanced".
+function differenceTone(value: number | null) {
+  return Math.abs(Number(value ?? 0)) < 0.005 ? "text-emerald-700" : "text-amber-700";
+}
+
 // Attaching a receipt reads it with Gemini in after(), within this budget.
 export const maxDuration = 60;
 
@@ -56,11 +69,11 @@ export default async function AdminShiftsPage() {
   const money = (value: number) => formatCurrency(value, session.restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, session.restaurant);
-  const [currentShift, previousShifts, unassignedCompletedOrders, openBusinessDay, previousBusinessDays] =
+  const [currentShift, previousShifts, unassignedOrders, openBusinessDay, previousBusinessDays] =
     await Promise.all([
       getCurrentShiftView(session),
       getPreviousShifts(session),
-      getUnassignedCompletedOrderCount(session.restaurantId),
+      getUnassignedCompletedOrders(session.restaurantId),
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
     ]);
@@ -72,7 +85,28 @@ export default async function AdminShiftsPage() {
     ).catch(() => null)
     : null;
 
-  const lateReceipts = await getLateShiftReceipts(session);
+  const [lateReceipts, staffNames] = await Promise.all([
+    getLateShiftReceipts(session),
+    getShiftStaffNames(previousShifts)
+  ]);
+  const staffName = (userId: string | null) =>
+    userId ? (userId === session.userId ? "you" : staffNames.get(userId) ?? "a team member") : null;
+  const showUpi = session.restaurant.country_code === "IN";
+  const assignableOrders = unassignedOrders.assignable.map((order) => ({
+    id: order.id,
+    completedLabel: `Completed ${formatDateTime(order.completed_at)}`,
+    detailLabel: [
+      `#${order.id.slice(0, 8)}`,
+      paymentMethodLabels[order.payment_method ?? ""] ?? "Payment not recorded",
+      fulfilmentLabels[order.fulfilment_type] ?? order.fulfilment_type
+    ].join(" · "),
+    total: order.total,
+    isCash: order.payment_method === "Cash on Delivery"
+  }));
+  const assignableCount = assignableOrders.length;
+  // After a staff member locks a blind count, they can no longer change expected cash.
+  const canChangeCash = Boolean(currentShift?.canManage) &&
+    !(session.role === "staff" && currentShift?.declaredCash !== null);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -109,29 +143,43 @@ export default async function AdminShiftsPage() {
         </section>
       ) : null}
 
-      {unassignedCompletedOrders > 0 ? (
+      {assignableCount > 0 ? (
         <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <AlertTriangle className="mt-0.5 shrink-0" size={20} />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className="font-black">
-              {unassignedCompletedOrders} completed order
-              {unassignedCompletedOrders === 1 ? "" : "s"} unassigned
+              {assignableCount} completed order{assignableCount === 1 ? "" : "s"} unassigned
             </p>
             <p className="text-sm">
-              These orders were completed while no shift was open. They are not
-              included in a shift&apos;s expected cash.
+              These orders were completed while no shift was open, so they are not in any
+              shift&apos;s expected cash. Assign only orders whose money is in this drawer.
             </p>
-            {currentShift ? (
+            {currentShift?.canManage ? (
               <div className="mt-3">
-                <AssignUnassignedOrdersButton />
+                <AssignUnassignedOrdersForm
+                  key={assignableOrders.map((order) => order.id).join(",")}
+                  orders={assignableOrders}
+                  restaurant={session.restaurant}
+                  shiftId={currentShift.shift.id}
+                />
               </div>
             ) : (
               <p className="mt-2 text-xs font-bold">
-                Open a shift to assign these orders to it.
+                {currentShift
+                  ? "The shift opener or a manager can assign these orders to the current shift."
+                  : "Open a shift to assign these orders to it."}
               </p>
             )}
           </div>
         </div>
+      ) : null}
+      {unassignedOrders.olderCount > 0 && session.role !== "staff" ? (
+        <p className="mt-3 text-xs text-stone-500">
+          {unassignedOrders.olderCount} older unassigned completed order
+          {unassignedOrders.olderCount === 1 ? " was" : "s were"} completed before the current
+          business day and {unassignedOrders.olderCount === 1 ? "is" : "are"} not offered for the
+          current shift, so old sales can&apos;t inflate tonight&apos;s expected cash.
+        </p>
       ) : null}
 
       {!currentShift ? (
@@ -187,11 +235,13 @@ export default async function AdminShiftsPage() {
                   label: "Opening cash",
                   value: money(Number(currentShift.shift.opening_cash_amount))
                 },
-                {
-                  icon: Banknote,
-                  label: "Completed cash orders",
-                  value: money(currentShift.summary.completed_cash_order_total)
-                },
+                ...(currentShift.cashBlind
+                  ? []
+                  : [{
+                      icon: Banknote,
+                      label: "Completed cash orders",
+                      value: money(currentShift.summary.completed_cash_order_total)
+                    }]),
                 {
                   icon: ReceiptText,
                   label: "Cash paid-outs",
@@ -226,17 +276,33 @@ export default async function AdminShiftsPage() {
             </div>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm font-bold text-emerald-800">
-                  Expected cash
-                </p>
-                <p className="mt-1 text-3xl font-black text-emerald-950">
-                  {money(currentShift.summary.expected_cash_amount)}
-                </p>
-                <p className="mt-2 text-xs font-semibold text-emerald-800">
-                  Opening cash + cash order sales + cash other income − cash paid-outs
-                </p>
-              </div>
+              {currentShift.cashBlind ? (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-sm font-bold text-stone-700">Expected cash</p>
+                  <p className="mt-1 text-xl font-black text-stone-500">Shown after your count</p>
+                  <p className="mt-2 text-xs font-semibold text-stone-500">
+                    This restaurant uses a blind cash count: lock your drawer count when
+                    closing, then the expected amount and any difference are shown.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-bold text-emerald-800">
+                    Expected cash
+                  </p>
+                  <p className="mt-1 text-3xl font-black text-emerald-950">
+                    {money(currentShift.summary.expected_cash_amount)}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-emerald-800">
+                    Opening cash + cash order sales + cash other income − cash paid-outs
+                  </p>
+                  {currentShift.declaredCash !== null ? (
+                    <p className="mt-2 text-xs font-bold text-emerald-900">
+                      Cash count locked: {money(currentShift.declaredCash)}
+                    </p>
+                  ) : null}
+                </div>
+              )}
               <div className="rounded-lg border border-stone-200 p-4">
                 <p className="text-sm font-black">Shift activity</p>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -249,7 +315,9 @@ export default async function AdminShiftsPage() {
                   <div>
                     <dt className="text-stone-500">Completed sales</dt>
                     <dd className="font-black">
-                      {money(currentShift.summary.completed_sales)}
+                      {currentShift.cashBlind
+                        ? "After count"
+                        : money(currentShift.summary.completed_sales)}
                     </dd>
                   </div>
                   <div>
@@ -287,7 +355,7 @@ export default async function AdminShiftsPage() {
               <p className="mt-1 text-sm text-stone-500">
                 Record only cash physically taken from this shift.
               </p>
-              {currentShift.canManage ? (
+              {canChangeCash ? (
                 <div className="mt-4">
                   <PaidOutForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
                 </div>
@@ -319,7 +387,7 @@ export default async function AdminShiftsPage() {
                                 (paidOutBillStatuses.get(paidOut.id) ?? "none") === "none" ? (
                                 <PaidOutReceiptForm paidOutId={paidOut.id} />
                               ) : null}
-                              {currentShift.canManage ? (
+                              {canChangeCash ? (
                                 <VoidPaidOutForm paidOutId={paidOut.id} shiftId={currentShift.shift.id} />
                               ) : null}
                             </>
@@ -344,7 +412,7 @@ export default async function AdminShiftsPage() {
               <p className="mt-1 text-sm text-stone-500">
                 Record receipts that are not customer-order sales. Cash entries increase expected drawer cash.
               </p>
-              {currentShift.canManage ? (
+              {canChangeCash ? (
                 <div className="mt-4">
                   <OtherIncomeForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
                 </div>
@@ -360,7 +428,7 @@ export default async function AdminShiftsPage() {
                           {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
                           {entry.reference ? ` · ${entry.reference}` : ""}
                         </p>
-                        {currentShift.canManage && entry.category !== "customer_credit_repayment" ? (
+                        {canChangeCash && entry.category !== "customer_credit_repayment" ? (
                           <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} />
                         ) : null}
                       </div>
@@ -380,8 +448,16 @@ export default async function AdminShiftsPage() {
               </p>
               {currentShift.canManage ? (
                 <div className="mt-4">
+                  {currentShift.cashBlind ? (
+                    <DeclareCashCountForm
+                      activeOrderCount={currentShift.activeOrderCount}
+                      restaurant={session.restaurant}
+                      shiftId={currentShift.shift.id}
+                    />
+                  ) : (
                   <CloseShiftForm
                     activeOrderCount={currentShift.activeOrderCount}
+                    declaredCash={currentShift.declaredCash}
                     expectedCard={currentShift.summary.card_on_delivery_total}
                     expectedCash={currentShift.summary.expected_cash_amount}
                     expectedUpi={currentShift.summary.upi_total}
@@ -391,6 +467,7 @@ export default async function AdminShiftsPage() {
                     restaurant={session.restaurant}
                     shiftId={currentShift.shift.id}
                   />
+                  )}
                 </div>
               ) : (
                 <p className="mt-4 rounded-lg bg-stone-100 p-4 text-sm font-bold text-stone-600">
@@ -420,7 +497,9 @@ export default async function AdminShiftsPage() {
                     <th className="px-4 py-3">Completed sales</th>
                     <th className="px-4 py-3">Expected</th>
                     <th className="px-4 py-3">Counted</th>
-                    <th className="px-4 py-3">Difference</th>
+                    <th className="px-4 py-3">Cash diff.</th>
+                    <th className="px-4 py-3">Card diff.</th>
+                    {showUpi ? <th className="px-4 py-3">UPI diff.</th> : null}
                     <th className="px-4 py-3">Report</th>
                   </tr>
                 </thead>
@@ -440,6 +519,12 @@ export default async function AdminShiftsPage() {
                             {formatShiftDuration(shift.opened_at, shift.closed_at)} shift
                           </p>
                         ) : null}
+                        <p className="whitespace-nowrap text-xs text-stone-500">
+                          Opened by {staffName(shift.opened_by_user_id)}
+                          {shift.closed_by_user_id && shift.closed_by_user_id !== shift.opened_by_user_id
+                            ? ` · closed by ${staffName(shift.closed_by_user_id)}`
+                            : ""}
+                        </p>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-bold">
                         {money(Number(shift.completed_sales))}
@@ -450,23 +535,32 @@ export default async function AdminShiftsPage() {
                       <td className="whitespace-nowrap px-4 py-3">
                         {money(Number(shift.cash_counted_amount ?? 0))}
                       </td>
-                      <td
-                        className={`whitespace-nowrap px-4 py-3 font-black ${
-                          Number(shift.difference_amount ?? 0) === 0
-                            ? "text-emerald-700"
-                            : "text-amber-700"
-                        }`}
-                      >
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.difference_amount)}`}>
                         {money(Number(shift.difference_amount ?? 0))}
                       </td>
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.card_difference_amount)}`}>
+                        {shift.card_difference_amount === null ? "—" : money(Number(shift.card_difference_amount))}
+                      </td>
+                      {showUpi ? (
+                        <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.upi_difference_amount)}`}>
+                          {shift.upi_difference_amount === null ? "—" : money(Number(shift.upi_difference_amount))}
+                        </td>
+                      ) : null}
                       <td className="whitespace-nowrap px-4 py-3">
                         {shift.close_report_version > 0 ? (
+                          <>
                           <Link
                             className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-leaf"
                             href={`/admin/shifts/${shift.id}/report`}
                           >
                             View v{shift.close_report_version}
                           </Link>
+                          {shift.close_report_version > 1 ? (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-amber-800">
+                              Corrected
+                            </span>
+                          ) : null}
+                          </>
                         ) : (
                           <span className="text-xs font-semibold text-stone-400">
                             Legacy shift

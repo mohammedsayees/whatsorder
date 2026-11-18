@@ -13,6 +13,7 @@ import {
   requireRestaurantAdmin,
   requireRestaurantRole
 } from "@/lib/super-admin-auth";
+import { parseCashDenominations } from "@/lib/cash-denominations";
 import {
   configuredMarketplaceChannels,
   marketplaceSalesFromFormData
@@ -75,13 +76,47 @@ function friendlyShiftError(message?: string) {
     "Only restaurant management can void a paid-out after shift close",
     "Paid-out not found or already voided",
     "This shift belongs to a closed business day and can no longer be corrected",
-    "This shift has no close report to update"
+    "This shift has no close report to update",
+    "Choose at least one order to assign",
+    "Assign at most 200 orders at a time",
+    "Only the shift opener or restaurant management can assign orders",
+    "Some orders can no longer be assigned. Refresh and try again",
+    "The cash count for this shift is already locked",
+    "Close with the locked cash count",
+    "Lock the cash count before closing",
+    "Enter whole numbers of notes and coins",
+    "The notes and coins do not add up to the counted cash"
   ];
 
   return (
     knownMessages.find((known) => message?.includes(known)) ??
     "The shift could not be updated. Refresh and try again."
   );
+}
+
+const countLockedMessage =
+  "The cash count is locked, so paid-outs and other income can't be changed now. Ask a manager.";
+
+/**
+ * Once a blind count is locked the difference is visible, so a staff member
+ * must not be able to change expected cash (e.g. add a paid-out to cover a
+ * shortage). Managers can; their changes appear on the close report.
+ */
+async function staffCashCountLocked(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  session: Awaited<ReturnType<typeof requireRestaurantAdmin>>,
+  shiftId: string
+) {
+  if (session.role !== "staff") {
+    return false;
+  }
+  const { data } = await supabase
+    .from("restaurant_shifts")
+    .select("status,cash_count_declared_at")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("id", shiftId)
+    .maybeSingle();
+  return data?.status === "open" && Boolean(data.cash_count_declared_at);
 }
 
 function refreshShiftViews() {
@@ -144,6 +179,10 @@ export async function addOtherIncomeAction(
     return { error: "Enter the income category, payment method, amount and description." };
   }
 
+  if (await staffCashCountLocked(supabase, session, shiftId)) {
+    return { error: countLockedMessage };
+  }
+
   const { error } = await supabase.rpc("add_shift_other_income", {
     event_actor_user_id: session.userId,
     requested_amount: amount,
@@ -170,6 +209,10 @@ export async function voidOtherIncomeAction(
   const reason = formString(formData, "reason", 300);
   if (!supabase) return { error: "Shift service is unavailable." };
   if (!shiftId || !entryId || !reason) return { error: "Enter a reason for voiding this entry." };
+
+  if (await staffCashCountLocked(supabase, session, shiftId)) {
+    return { error: countLockedMessage };
+  }
 
   const { error } = await supabase.rpc("void_shift_other_income", {
     event_actor_user_id: session.userId,
@@ -199,6 +242,10 @@ export async function addShiftPaidOutAction(
 
   if (!shiftId || amount === null || amount <= 0 || !reason) {
     return { error: "Enter a paid-out amount and reason." };
+  }
+
+  if (await staffCashCountLocked(supabase, session, shiftId)) {
+    return { error: countLockedMessage };
   }
 
   // The same bill entered twice inflates paid-outs and makes the drawer look
@@ -248,6 +295,18 @@ export async function voidShiftPaidOutAction(
   const reason = formString(formData, "reason", 300);
   if (!supabase) return { error: "Shift service is unavailable." };
   if (!paidOutId || !reason) return { error: "Enter a reason for voiding this paid-out." };
+
+  // The paid-out row, not the form, says which shift it belongs to.
+  const { data: paidOutRow } = await supabase
+    .from("shift_cash_paid_outs")
+    .select("shift_id")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("id", paidOutId)
+    .maybeSingle();
+  if (paidOutRow?.shift_id &&
+      await staffCashCountLocked(supabase, session, String(paidOutRow.shift_id))) {
+    return { error: countLockedMessage };
+  }
 
   const { data: reportVersion, error } = await supabase.rpc("void_shift_cash_paid_out", {
     event_actor_user_id: session.userId,
@@ -332,41 +391,103 @@ export async function attachPaidOutReceiptAction(
   return { success: "Receipt attached. Finance will review it." };
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function assignUnassignedOrdersAction(
   _previousState: ShiftActionState,
-  _formData: FormData
+  formData: FormData
 ): Promise<ShiftActionState> {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
+  const shiftId = formString(formData, "shift_id", 80);
+  const orderIds = [...new Set(
+    formData.getAll("order_id").map((value) => String(value).trim())
+  )].filter((value) => uuidPattern.test(value));
 
   if (!supabase) {
     return { error: "Shift service is unavailable." };
   }
 
-  const { data: openShift } = await supabase
-    .from("restaurant_shifts")
-    .select("id")
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "open")
-    .maybeSingle();
-
-  if (!openShift) {
+  if (!uuidPattern.test(shiftId)) {
     return { error: "No open shift found. Open a shift first." };
   }
 
-  const { error } = await supabase
-    .from("orders")
-    .update({ shift_id: openShift.id })
-    .eq("restaurant_id", session.restaurantId)
-    .eq("status", "Completed")
-    .is("shift_id", null);
+  if (orderIds.length === 0) {
+    return { error: "Choose at least one order to assign." };
+  }
+
+  if (orderIds.length > 200) {
+    return { error: "Assign at most 200 orders at a time." };
+  }
+
+  const { data: assigned, error } = await supabase.rpc(
+    "assign_unassigned_orders_to_open_shift",
+    {
+      event_actor_user_id: session.userId,
+      target_order_ids: orderIds,
+      target_restaurant_id: session.restaurantId,
+      target_shift_id: shiftId
+    }
+  );
 
   if (error) {
-    return { error: "Could not reassign orders. Try again." };
+    return { error: friendlyShiftError(error.message) };
   }
 
   refreshShiftViews();
-  return { success: "Unassigned orders moved to the current shift." };
+  const count = typeof assigned === "number" ? assigned : orderIds.length;
+  return {
+    success: `${count} order${count === 1 ? "" : "s"} moved to the current shift.`
+  };
+}
+
+// Blind count, step 1: lock the counted cash before expected cash is shown.
+export async function declareCashCountAction(
+  _previousState: ShiftActionState,
+  formData: FormData
+): Promise<ShiftActionState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const shiftId = formString(formData, "shift_id", 80);
+  const cashCounted = moneyValue(formData, "cash_counted_amount");
+
+  if (!supabase) {
+    return { error: "Shift service is unavailable." };
+  }
+
+  if (!shiftId || cashCounted === null || cashCounted < 0 || cashCounted > 99_999_999.99) {
+    return { error: "Enter a valid counted cash amount." };
+  }
+
+  if (formData.get("confirm_count") !== "on") {
+    return { error: "Confirm you have counted the whole drawer." };
+  }
+
+  const breakdown = parseCashDenominations(
+    formData.get("cash_denominations"),
+    session.restaurant.currency_code,
+    cashCounted
+  );
+  if (breakdown.error) {
+    return { error: breakdown.error };
+  }
+
+  const { error } = await supabase.rpc("declare_shift_cash_count", {
+    event_actor_user_id: session.userId,
+    requested_cash_counted_amount: cashCounted,
+    // Sent only when used, so calls also match the pre-breakdown signature.
+    ...(breakdown.denominations ? { requested_cash_denominations: breakdown.denominations } : {}),
+    target_restaurant_id: session.restaurantId,
+    target_shift_id: shiftId
+  });
+
+  if (error) {
+    return { error: friendlyShiftError(error.message) };
+  }
+
+  refreshShiftViews();
+  revalidatePath("/admin/orders");
+  return { success: "Cash count locked." };
 }
 
 export async function closeShiftAction(
@@ -408,10 +529,21 @@ export async function closeShiftAction(
     return { error: marketplaceResult.error ?? "Confirm every marketplace total." };
   }
 
-  const { error } = await supabase.rpc("close_restaurant_shift_v3", {
+  const breakdown = parseCashDenominations(
+    formData.get("cash_denominations"),
+    session.restaurant.currency_code,
+    cashCounted
+  );
+  if (breakdown.error) {
+    return { error: breakdown.error };
+  }
+
+  const { error } = await supabase.rpc("close_restaurant_shift_v4", {
     event_actor_user_id: session.userId,
     requested_card_terminal_total: cardTerminalTotal,
     requested_cash_counted_amount: cashCounted,
+    // Sent only when used, so calls also match the pre-breakdown signature.
+    ...(breakdown.denominations ? { requested_cash_denominations: breakdown.denominations } : {}),
     requested_closing_note: closingNote || null,
     requested_marketplace_sales: marketplaceResult.entries,
     requested_upi_reported_total:

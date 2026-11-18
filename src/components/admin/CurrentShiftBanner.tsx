@@ -40,10 +40,15 @@ export function CurrentShiftBanner({
         <div>
           <p className="font-black">Current shift: {currentShift.shift.shift_name}</p>
           <p className="text-sm">
-            {currentShift.summary.completed_order_count} completed · Expected cash{" "}
-            <span className="font-black">
-              {formatCurrency(currentShift.summary.expected_cash_amount, restaurant)}
-            </span>
+            {currentShift.summary.completed_order_count} completed
+            {currentShift.cashBlind ? null : (
+              <>
+                {" "}· Expected cash{" "}
+                <span className="font-black">
+                  {formatCurrency(currentShift.summary.expected_cash_amount, restaurant)}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </div>

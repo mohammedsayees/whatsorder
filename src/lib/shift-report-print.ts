@@ -123,6 +123,7 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
           <h2>CASH DRAWER</h2>
           ${moneyRow("Opening cash", money(report.opening_cash_amount))}
           ${moneyRow("Cash sales", money(report.completed_cash_order_total))}
+          ${report.cash_other_income_total > 0 ? moneyRow("Cash other income", money(report.cash_other_income_total)) : ""}
           ${moneyRow("Cash paid-outs", `-${money(report.cash_paid_out_total)}`)}
           ${moneyRow("Expected cash", money(report.expected_cash_amount), "total")}
           ${moneyRow("Counted cash", money(report.cash_counted_amount))}
@@ -131,14 +132,14 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
 
         <section>
           <h2>CARD RECONCILIATION</h2>
-          ${moneyRow("WhatsOrder card", money(report.expected_card_amount))}
+          ${moneyRow("Expected card receipts", money(report.expected_card_amount))}
           ${moneyRow("Terminal total", money(report.card_terminal_total))}
           ${moneyRow(differenceLabel(cardDifference), money(Math.abs(cardDifference)), "difference")}
         </section>
 
         ${report.country_code === "IN" ? `<section>
           <h2>UPI RECONCILIATION</h2>
-          ${moneyRow("WhatsOrder UPI", money(report.expected_upi_amount))}
+          ${moneyRow("Expected UPI receipts", money(report.expected_upi_amount))}
           ${moneyRow("Reported total", money(report.upi_reported_total ?? 0))}
           ${moneyRow(differenceLabel(upiDifference ?? 0), money(Math.abs(upiDifference ?? 0)), "difference")}
         </section>` : ""}
