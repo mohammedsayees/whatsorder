@@ -236,6 +236,13 @@ export default async function ShiftCloseReportPage({
                 <ReportValue label="Counted" value={money(report.cash_counted_amount)} />
                 <DifferenceValue label="Difference" report={report} value={report.cash_difference_amount} />
               </dl>
+              <p className="mt-2 text-xs text-stone-500">
+                Opening {money(report.opening_cash_amount)} + cash orders {money(report.completed_cash_order_total)}
+                {report.cash_other_income_total > 0
+                  ? ` + cash other income ${money(report.cash_other_income_total)}`
+                  : ""}
+                {" "}− paid-outs {money(report.cash_paid_out_total)}
+              </p>
             </div>
             <div>
               <h3 className="text-sm font-black">Card</h3>

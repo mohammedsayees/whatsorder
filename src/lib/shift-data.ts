@@ -317,3 +317,25 @@ export async function getClosedShiftPaidOuts(session: RestaurantAdminSession, sh
   }
   return { paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[], businessDayClosed };
 }
+
+/**
+ * Display names for the people who opened/closed the given shifts. The IDs come
+ * from this tenant's own shift rows, so no other tenant's users are looked up.
+ */
+export async function getShiftStaffNames(shifts: RestaurantShift[]) {
+  const ids = [...new Set(shifts.flatMap((shift) =>
+    [shift.opened_by_user_id, shift.closed_by_user_id].filter(
+      (id): id is string => Boolean(id)
+    )
+  ))];
+  const names = new Map<string, string>();
+  const db = getSupabaseAdmin();
+  if (!db || ids.length === 0) return names;
+  const { data, error } = await db.from("profiles").select("id,full_name,email").in("id", ids);
+  if (error) return names;
+  for (const profile of data ?? []) {
+    const name = String(profile.full_name ?? "").trim() || String(profile.email ?? "").split("@")[0];
+    if (name) names.set(String(profile.id), name);
+  }
+  return names;
+}

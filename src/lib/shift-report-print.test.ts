@@ -89,4 +89,16 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("UNAVAILABLE");
     expect(html).toContain("Portal offline");
   });
+
+  it("lists cash other income so the cash drawer lines add up to expected", () => {
+    const without = renderShiftCloseThermalReport(report);
+    expect(without).not.toContain("Cash other income");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      cash_other_income_total: 25
+    });
+    expect(html).toContain("Cash other income");
+    expect(html).toContain("Expected card receipts");
+  });
 });

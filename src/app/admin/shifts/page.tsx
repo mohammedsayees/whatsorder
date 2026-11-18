@@ -20,6 +20,7 @@ import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCurrentShiftView,
   getPreviousShifts,
+  getShiftStaffNames,
   getUnassignedCompletedOrderCount
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -48,6 +49,11 @@ const fulfilmentLabels: Record<string, string> = {
   takeaway: "Takeaway"
 };
 
+// Same tolerance the close form and printed report use for "balanced".
+function differenceTone(value: number | null) {
+  return Math.abs(Number(value ?? 0)) < 0.005 ? "text-emerald-700" : "text-amber-700";
+}
+
 // Attaching a receipt reads it with Gemini in after(), within this budget.
 export const maxDuration = 60;
 
@@ -72,7 +78,13 @@ export default async function AdminShiftsPage() {
     ).catch(() => null)
     : null;
 
-  const lateReceipts = await getLateShiftReceipts(session);
+  const [lateReceipts, staffNames] = await Promise.all([
+    getLateShiftReceipts(session),
+    getShiftStaffNames(previousShifts)
+  ]);
+  const staffName = (userId: string | null) =>
+    userId ? (userId === session.userId ? "you" : staffNames.get(userId) ?? "a team member") : null;
+  const showUpi = session.restaurant.country_code === "IN";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -420,7 +432,9 @@ export default async function AdminShiftsPage() {
                     <th className="px-4 py-3">Completed sales</th>
                     <th className="px-4 py-3">Expected</th>
                     <th className="px-4 py-3">Counted</th>
-                    <th className="px-4 py-3">Difference</th>
+                    <th className="px-4 py-3">Cash diff.</th>
+                    <th className="px-4 py-3">Card diff.</th>
+                    {showUpi ? <th className="px-4 py-3">UPI diff.</th> : null}
                     <th className="px-4 py-3">Report</th>
                   </tr>
                 </thead>
@@ -440,6 +454,12 @@ export default async function AdminShiftsPage() {
                             {formatShiftDuration(shift.opened_at, shift.closed_at)} shift
                           </p>
                         ) : null}
+                        <p className="whitespace-nowrap text-xs text-stone-500">
+                          Opened by {staffName(shift.opened_by_user_id)}
+                          {shift.closed_by_user_id && shift.closed_by_user_id !== shift.opened_by_user_id
+                            ? ` · closed by ${staffName(shift.closed_by_user_id)}`
+                            : ""}
+                        </p>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-bold">
                         {money(Number(shift.completed_sales))}
@@ -450,23 +470,32 @@ export default async function AdminShiftsPage() {
                       <td className="whitespace-nowrap px-4 py-3">
                         {money(Number(shift.cash_counted_amount ?? 0))}
                       </td>
-                      <td
-                        className={`whitespace-nowrap px-4 py-3 font-black ${
-                          Number(shift.difference_amount ?? 0) === 0
-                            ? "text-emerald-700"
-                            : "text-amber-700"
-                        }`}
-                      >
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.difference_amount)}`}>
                         {money(Number(shift.difference_amount ?? 0))}
                       </td>
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.card_difference_amount)}`}>
+                        {shift.card_difference_amount === null ? "—" : money(Number(shift.card_difference_amount))}
+                      </td>
+                      {showUpi ? (
+                        <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.upi_difference_amount)}`}>
+                          {shift.upi_difference_amount === null ? "—" : money(Number(shift.upi_difference_amount))}
+                        </td>
+                      ) : null}
                       <td className="whitespace-nowrap px-4 py-3">
                         {shift.close_report_version > 0 ? (
+                          <>
                           <Link
                             className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-leaf"
                             href={`/admin/shifts/${shift.id}/report`}
                           >
                             View v{shift.close_report_version}
                           </Link>
+                          {shift.close_report_version > 1 ? (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-amber-800">
+                              Corrected
+                            </span>
+                          ) : null}
+                          </>
                         ) : (
                           <span className="text-xs font-semibold text-stone-400">
                             Legacy shift
