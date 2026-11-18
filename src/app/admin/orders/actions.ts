@@ -756,6 +756,8 @@ export async function changeOrderPaymentMethodAction(
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
   revalidatePath("/admin/shifts");
+  // A correction in a closed shift saves a new report version.
+  revalidatePath("/admin/shifts/[id]/report", "page");
 
   return {
     success: `Payment changed to ${newMethod === "Cash on Delivery" ? "Cash" : newMethod === "UPI" ? "UPI" : "Card"}.`

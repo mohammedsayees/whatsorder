@@ -607,3 +607,39 @@ export async function getLastClosedCount(
     shiftName: String(data.shift_name)
   };
 }
+
+export type MixupOrder = {
+  id: string;
+  total: number;
+  completedAt: string;
+  fulfilmentType: string;
+};
+
+/**
+ * Completed orders in a shift recorded with the given payment method, for the
+ * payment mix-up prompt. Management only; tenant-scoped.
+ */
+export async function getShiftOrdersByPaymentMethod(
+  session: RestaurantAdminSession,
+  shiftId: string,
+  orderPaymentMethod: string,
+  maxTotal: number
+): Promise<MixupOrder[]> {
+  if (session.role === "staff") return [];
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+  const { data, error } = await db.from("orders")
+    .select("id,total,created_at,closed_at,fulfilment_type")
+    .eq("restaurant_id", session.restaurantId).eq("shift_id", shiftId)
+    .eq("status", "Completed").eq("payment_method", orderPaymentMethod)
+    .lte("total", maxTotal)
+    .order("total", { ascending: false })
+    .limit(200);
+  if (error) return [];
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    total: Number(row.total),
+    completedAt: String(row.closed_at ?? row.created_at),
+    fulfilmentType: String(row.fulfilment_type)
+  }));
+}

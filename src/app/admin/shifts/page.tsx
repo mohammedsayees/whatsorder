@@ -33,6 +33,7 @@ import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { summarizeCashVariance } from "@/lib/shift-variance";
+import { detectPaymentMixup } from "@/lib/payment-mixup";
 import { UNBILLED_SALE, unbilledFromEntries } from "@/lib/unbilled-sales";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
@@ -689,6 +690,20 @@ export default async function AdminShiftsPage({
                             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-amber-800">
                               Corrected
                             </span>
+                          ) : null}
+                          {session.role !== "staff" && openBusinessDay &&
+                            shift.business_day_id === openBusinessDay.day.id &&
+                            detectPaymentMixup({
+                              cash: shift.difference_amount,
+                              card: shift.card_difference_amount,
+                              upi: shift.upi_difference_amount
+                            }) ? (
+                            <Link
+                              className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-rose-800"
+                              href={`/admin/shifts/${shift.id}/report`}
+                            >
+                              Check payments
+                            </Link>
                           ) : null}
                           </>
                         ) : (

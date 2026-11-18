@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import {
+  CorrectOrderPaymentButton,
   ShiftReportActions,
   ShiftReportCorrectionForm
 } from "@/components/admin/ShiftReportActions";
@@ -18,7 +19,17 @@ import type { ShiftCloseReportSnapshot } from "@/lib/types";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { VoidPaidOutForm } from "@/components/admin/ShiftForms";
-import { getClosedShiftPaidOuts, getReportCustomerNames } from "@/lib/shift-data";
+import {
+  getClosedShiftPaidOuts,
+  getReportCustomerNames,
+  getShiftOrdersByPaymentMethod
+} from "@/lib/shift-data";
+import {
+  detectPaymentMixup,
+  drawerMethodLabels,
+  orderPaymentMethodFor,
+  rankMixupCandidates
+} from "@/lib/payment-mixup";
 import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
 import {
   UNBILLED_SALE,
@@ -153,6 +164,25 @@ export default async function ShiftCloseReportPage({
   ]);
   const customerLabel = (customerId: string | null) =>
     (customerId && customerNames.get(customerId)) || "Credit customer";
+  // Cash over and card short (or similar) on the latest version of a shift
+  // whose business day is still open: offer to correct the likely orders.
+  const isLatestVersion = selected.version === view.reports[0].version;
+  const mixup = view.canCorrect && isLatestVersion && !shiftPaidOuts.businessDayClosed
+    ? detectPaymentMixup({
+        cash: report.cash_difference_amount,
+        card: report.card_difference_amount,
+        upi: report.upi_difference_amount
+      })
+    : null;
+  const mixupCandidates = mixup
+    ? rankMixupCandidates(
+        await getShiftOrdersByPaymentMethod(
+          session, id, orderPaymentMethodFor[mixup.shortMethod],
+          Math.min(mixup.overAmount, mixup.shortAmount) + 0.5
+        ),
+        mixup
+      )
+    : [];
   const ownerPhone = session.owner.owner_phone;
   const shareUrl = ownerPhone
     ? buildWhatsAppUrl(
@@ -185,6 +215,52 @@ export default async function ShiftCloseReportPage({
           shareUrl={shareUrl}
         />
       </div>
+
+      {mixup ? (
+        <section className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 print:hidden">
+          <h2 className="font-black">Check payment methods</h2>
+          <p className="mt-1 text-sm">
+            {drawerMethodLabels[mixup.overMethod]} counted over by {money(mixup.overAmount)} and{" "}
+            {drawerMethodLabels[mixup.shortMethod].toLowerCase()} short by {money(mixup.shortAmount)}.
+            Some orders recorded as {drawerMethodLabels[mixup.shortMethod].toLowerCase()} may have been
+            paid by {drawerMethodLabels[mixup.overMethod].toLowerCase()}. Correcting one saves a new report
+            version; this is only possible until the business day closes.
+          </p>
+          {mixupCandidates.length ? (
+            <ul className="mt-3 space-y-2">
+              {mixupCandidates.map((order) => (
+                <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 text-sm" key={order.id}>
+                  <span>
+                    <span className="font-black">{money(order.total)}</span>
+                    {order.exactMatch ? (
+                      <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-black uppercase">
+                        Matches the {drawerMethodLabels[mixup.shortMethod].toLowerCase()} shortage
+                      </span>
+                    ) : null}
+                    <span className="block text-xs text-stone-500">
+                      Order #{order.id.slice(0, 8)} · {dateTime(order.completedAt)} · recorded as{" "}
+                      {drawerMethodLabels[mixup.shortMethod]}
+                    </span>
+                  </span>
+                  <CorrectOrderPaymentButton
+                    label={`Paid by ${drawerMethodLabels[mixup.overMethod]}`}
+                    orderId={order.id}
+                    paymentMethod={orderPaymentMethodFor[mixup.overMethod]}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm">
+              No single {drawerMethodLabels[mixup.shortMethod].toLowerCase()} order is small enough to explain it;
+              check the Orders page for this shift.
+            </p>
+          )}
+          <p className="mt-2 text-xs">
+            Only change an order you have confirmed, for example against the card terminal slips.
+          </p>
+        </section>
+      ) : null}
 
       <article className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm print:mt-0 print:border-0 print:p-0 print:shadow-none">
         <header className="border-b border-stone-200 pb-4">

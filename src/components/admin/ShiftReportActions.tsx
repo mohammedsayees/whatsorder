@@ -7,6 +7,10 @@ import {
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { MarketplaceReconciliationFields } from "@/components/admin/ShiftForms";
+import {
+  changeOrderPaymentMethodAction,
+  type ChangePaymentState
+} from "@/app/admin/orders/actions";
 import { printHtmlDocument } from "@/lib/print-ticket";
 import { renderShiftCloseThermalReport } from "@/lib/shift-report-print";
 import type { CashDenominationCount } from "@/lib/cash-denominations";
@@ -194,5 +198,38 @@ export function ShiftReportCorrectionForm({
         </button>
       </form>
     </details>
+  );
+}
+
+/** One-click payment correction for an order flagged by the mix-up prompt. */
+export function CorrectOrderPaymentButton({
+  label,
+  orderId,
+  paymentMethod
+}: {
+  label: string;
+  orderId: string;
+  paymentMethod: string;
+}) {
+  const [state, action, pending] = useActionState<ChangePaymentState, FormData>(
+    changeOrderPaymentMethodAction,
+    {}
+  );
+  if (state.success && !state.error) {
+    return <span className="text-xs font-black text-emerald-700">{state.success}</span>;
+  }
+  return (
+    <form action={action} className="inline-flex flex-col items-end gap-1">
+      <input name="order_id" type="hidden" value={orderId} />
+      <input name="payment_method" type="hidden" value={paymentMethod} />
+      <button
+        className="focus-ring rounded-lg border border-amber-700 bg-white px-3 py-1.5 text-xs font-black text-amber-900 disabled:opacity-60"
+        disabled={pending}
+        type="submit"
+      >
+        {pending ? "Correcting…" : label}
+      </button>
+      {state.error ? <span className="text-xs font-bold text-rose-700">{state.error}</span> : null}
+    </form>
   );
 }
