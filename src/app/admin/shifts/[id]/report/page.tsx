@@ -329,6 +329,20 @@ export default async function ShiftCloseReportPage({
                   : ""}
                 {" "}− paid-outs {money(report.cash_paid_out_total)}
               </p>
+              {report.opening_check?.previous_cash_counted_amount != null ? (
+                report.opening_check.difference !== null && Math.abs(report.opening_check.difference) >= 0.005 ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-950">
+                    <p className="font-black">
+                      Opening cash was {money(Math.abs(report.opening_check.difference))}{" "}
+                      {report.opening_check.difference > 0 ? "more" : "less"} than the last close count (
+                      {money(report.opening_check.previous_cash_counted_amount)})
+                    </p>
+                    {report.opening_check.reason ? <p className="mt-1 break-words">{report.opening_check.reason}</p> : null}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-stone-500">Opening cash matched the last close count.</p>
+                )
+              ) : null}
             </div>
             <div>
               <h3 className="text-sm font-black">Card</h3>

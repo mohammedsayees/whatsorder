@@ -22,6 +22,7 @@ import {
   getCurrentShiftView,
   cashVarianceDays,
   getCashVarianceShifts,
+  getLastClosedCount,
   getPreviousShifts,
   getShiftStaffNames,
   getUnassignedCompletedOrders
@@ -107,9 +108,10 @@ export default async function AdminShiftsPage({
 
   const previousShifts = previousPage.shifts;
   const filtered = Boolean(previousPage.from || previousPage.to);
-  const [lateReceipts, varianceShifts] = await Promise.all([
+  const [lateReceipts, varianceShifts, lastCount] = await Promise.all([
     getLateShiftReceipts(session),
-    getCashVarianceShifts(session)
+    getCashVarianceShifts(session),
+    currentShift ? Promise.resolve(null) : getLastClosedCount(session)
   ]);
   const cashVariance = summarizeCashVariance(varianceShifts);
   const staffNames = await getShiftStaffNames([
@@ -230,7 +232,13 @@ export default async function AdminShiftsPage({
               </p>
             </div>
           </div>
-          <OpenShiftForm restaurant={session.restaurant} />
+          <OpenShiftForm
+            lastCount={lastCount ? {
+              amount: lastCount.amount,
+              label: `${lastCount.shiftName}, closed ${formatDateTime(lastCount.closedAt)}`
+            } : null}
+            restaurant={session.restaurant}
+          />
         </section>
       ) : (
         <>

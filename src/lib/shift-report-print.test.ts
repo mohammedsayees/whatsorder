@@ -55,7 +55,8 @@ const report: ShiftCloseReportSnapshot = {
   correction_reason: null,
   paid_outs: null,
   other_income_entries: null,
-  credit_sales: null
+  credit_sales: null,
+  opening_check: null
 };
 
 describe("renderShiftCloseThermalReport", () => {
@@ -163,6 +164,25 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("Credit collected");
     expect(html).toContain("Change in amount owed");
     expect(html).not.toContain("c1");
+  });
+
+  it("prints the opening check only when opening cash differed from the last count", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Last close counted");
+    expect(renderShiftCloseThermalReport({
+      ...report,
+      opening_check: { previous_cash_counted_amount: 50, opening_cash_amount: 50, difference: 0, reason: null }
+    })).not.toContain("Last close counted");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      opening_check: {
+        previous_cash_counted_amount: 30.75, opening_cash_amount: 10.75, difference: -20,
+        reason: "Owner took <cash> for bank"
+      }
+    });
+    expect(html).toContain("Last close counted");
+    expect(html).toContain("Opening less by");
+    expect(html).toContain("Owner took &lt;cash&gt; for bank");
   });
 
   it("lists cash other income so the cash drawer lines add up to expected", () => {

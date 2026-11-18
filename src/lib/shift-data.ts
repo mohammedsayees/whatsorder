@@ -585,3 +585,25 @@ export async function getReportCustomerNames(
   }
   return names;
 }
+
+export type LastClosedCount = { amount: number; closedAt: string; shiftName: string };
+
+/** The latest closed shift's counted cash: the expected opening cash for the next shift. */
+export async function getLastClosedCount(
+  session: RestaurantAdminSession
+): Promise<LastClosedCount | null> {
+  const db = getSupabaseAdmin();
+  if (!db) return null;
+  const { data, error } = await db.from("restaurant_shifts")
+    .select("cash_counted_amount,closed_at,shift_name")
+    .eq("restaurant_id", session.restaurantId).eq("status", "closed")
+    .not("cash_counted_amount", "is", null)
+    .order("closed_at", { ascending: false, nullsFirst: false })
+    .limit(1).maybeSingle();
+  if (error || !data) return null;
+  return {
+    amount: Number(data.cash_counted_amount),
+    closedAt: String(data.closed_at),
+    shiftName: String(data.shift_name)
+  };
+}
