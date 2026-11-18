@@ -14,6 +14,7 @@ import { getOpenShiftTill, getPaidOutForReceipt } from "@/lib/finance-paid-out-d
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { SimpleBillForm } from "@/components/admin/SimpleBillForm";
 import { getFinanceMode } from "@/lib/finance-mode";
+import { getSupplierMemory } from "@/lib/finance-data";
 
 export const maxDuration = 60;
 
@@ -45,6 +46,9 @@ export default async function FinanceDocumentReviewPage({
   if ((await getFinanceMode(session)) === "simple") {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: session.restaurant.time_zone ?? "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const extracted = document.extracted_json;
+    const supplierMemory = document.status === "extracted" && access.approve
+      ? await getSupplierMemory(session.restaurantId).catch(() => ({}))
+      : {};
     const reading = (document.status === "queued" || document.status === "processing") && !document.readingStalled;
     const unreadable = document.status === "failed" || ((document.status === "queued" || document.status === "processing") && document.readingStalled);
     return (
@@ -115,6 +119,7 @@ export default async function FinanceDocumentReviewPage({
                   label: `${till.shiftName} shift, opened ${formatRestaurantShortDateTime(till.openedAt, session.restaurant)}`,
                   unbilledAmountsFils: till.unbilled.map((row) => row.amountFils)
                 } : null}
+                supplierMemory={supplierMemory}
                 today={today}
               />
             </div>

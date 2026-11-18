@@ -150,3 +150,34 @@ export function buildSimpleSummary(
   }
   return { salesFils: current.netSalesFils, costsFils, profitFils, trend, sentences, missingCostItems };
 }
+
+/** Monthly bills offered in the two-minute setup, mapped to default categories. */
+export const SETUP_MONTHLY_BILLS = [
+  { key: "rent", label: "Rent", category: "Rent", icon: "🏠" },
+  { key: "salaries", label: "Salaries", category: "Salaries", icon: "👥" },
+  { key: "power", label: "Electricity & water", category: "Utilities", icon: "💡" },
+  { key: "internet", label: "Internet & phone", category: "Utilities", icon: "📶" },
+  { key: "other", label: "Other monthly bill", category: "Other", icon: "➕" }
+] as const;
+
+/** First day of the month before the given ISO date ("2026-11-18" → "2026-10-01"). */
+export function firstDayOfPreviousMonth(isoDate: string) {
+  const [year, month] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * A monthly bill set up today counts from the 1st of this month, so this
+ * month's rent is included in this month's profit. Next due: this month's day
+ * if it hasn't passed, otherwise next month's.
+ */
+export function monthlyBillSchedule(todayIso: string, dayOfMonth: number) {
+  const [year, month, day] = todayIso.split("-").map(Number);
+  const startOn = `${todayIso.slice(0, 7)}-01`;
+  const due = day <= dayOfMonth
+    ? new Date(Date.UTC(year, month - 1, dayOfMonth))
+    : new Date(Date.UTC(year, month, dayOfMonth));
+  return { startOn, nextDueOn: due.toISOString().slice(0, 10) };
+}
+

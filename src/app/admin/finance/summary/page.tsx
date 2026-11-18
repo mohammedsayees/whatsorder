@@ -19,7 +19,7 @@ export default async function FinanceSummaryPage({
 }: {
   searchParams: Promise<{ preset?: string }>;
 }) {
-  const [{ session }, query] = await Promise.all([requireFinancePermission("view_reports"), searchParams]);
+  const [{ session, access }, query] = await Promise.all([requireFinancePermission("view_reports"), searchParams]);
   const preset = PERIODS.some((period) => period.value === query.preset) ? query.preset! : "this_month";
   const range = resolveReportRange(preset, undefined, undefined, new Date(), session.restaurant);
   const bundle = await getFinanceReportBundle(session, range).catch(() => null);
@@ -63,7 +63,10 @@ export default async function FinanceSummaryPage({
               {trendText ? <p className="border-t border-stone-100 px-5 py-3 text-sm font-bold">{trendText}</p> : null}
             </section>
             {summary.profitFils === null ? (
-              <p className="mt-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">To see profit, add what your menu items cost you to make. Ask the owner to set this up.</p>
+              <p className="mt-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">To see profit, add what your menu items cost you to make. {access.manage_costing ? <Link className="font-black underline" href="/admin/finance/menu-costs">Add menu costs →</Link> : "Ask the owner to set this up."}</p>
+            ) : null}
+            {summary.missingCostItems > 0 && summary.profitFils !== null && access.manage_costing ? (
+              <p className="mt-3 text-sm"><Link className="font-black text-leaf underline" href="/admin/finance/menu-costs">Add costs for the missing menu items →</Link></p>
             ) : null}
             <section className="mt-5">
               <h2 className="text-lg font-black text-ink">In short</h2>

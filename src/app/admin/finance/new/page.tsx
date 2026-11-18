@@ -6,6 +6,7 @@ import { getFinanceCategories, getFinanceRecurringCosts, requireFinancePermissio
 import { getOpenShiftTill } from "@/lib/finance-paid-out-data";
 import { SimpleBillForm } from "@/components/admin/SimpleBillForm";
 import { getFinanceMode } from "@/lib/finance-mode";
+import { getSupplierMemory } from "@/lib/finance-data";
 
 export default async function NewFinanceExpensePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const [{ session, access }, query] = await Promise.all([requireFinancePermission("create"), searchParams]);
@@ -32,6 +33,7 @@ export default async function NewFinanceExpensePage({ searchParams }: { searchPa
               label: `${till.shiftName} shift, opened ${formatRestaurantShortDateTime(till.openedAt, session.restaurant)}`,
               unbilledAmountsFils: till.unbilled.map((row) => row.amountFils)
             } : null}
+            supplierMemory={await getSupplierMemory(session.restaurantId).catch(() => ({}))}
             today={today}
           />
         </div>

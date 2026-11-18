@@ -15,7 +15,8 @@ import {
   getFinanceAccess,
   getFinanceCategories,
   getFinanceExpenses,
-  getFinanceRecurringCosts
+  getFinanceRecurringCosts,
+  getFinanceSetupStatus
 } from "@/lib/finance-data";
 import { getFinanceDocuments } from "@/lib/finance-document-data";
 import { getUnbilledPaidOuts, paidOutLinkingAvailable } from "@/lib/finance-paid-out-data";
@@ -64,7 +65,7 @@ export default async function AdminFinancePage({
 
   // Simple mode is the default for everyone; owners/admins can opt into advanced.
   if ((await getFinanceMode(session)) === "simple") {
-    const [simpleDocuments, simpleExpenses, simpleUnbilled] = await Promise.all([
+    const [simpleDocuments, simpleExpenses, simpleUnbilled, simpleSetup] = await Promise.all([
       access.view ? getFinanceDocuments(session.restaurantId) : Promise.resolve([]),
       access.view ? getFinanceExpenses(session.restaurantId) : Promise.resolve([]),
       access.approve
@@ -72,10 +73,14 @@ export default async function AdminFinancePage({
           .then((available) => available ? getUnbilledPaidOuts(session.restaurantId, 500) : null)
           .then((rows) => rows?.length ?? null)
           .catch(() => null)
+        : Promise.resolve(null),
+      access.manage_recurring || access.manage_costing
+        ? getFinanceSetupStatus(session.restaurantId).catch(() => null)
         : Promise.resolve(null)
     ]);
     return (
       <SimpleFinanceHome
+        setup={simpleSetup}
         access={access}
         canUseAdvanced={canUseAdvancedFinance(session.role)}
         documents={simpleDocuments}

@@ -5,7 +5,9 @@ import {
   categoryIcon,
   categoryLabel,
   filsToInput,
+  firstDayOfPreviousMonth,
   friendlyDate,
+  monthlyBillSchedule,
   inputToFils,
   paymentFields,
   plainBillStatus,
@@ -105,3 +107,17 @@ describe("simple summary", () => {
     expect(summary.sentences.join(" ")).toContain("1 menu item has no food cost yet");
   });
 });
+
+describe("setup dates", () => {
+  it("starts quick costs from the first day of last month", () => {
+    expect(firstDayOfPreviousMonth("2026-11-18")).toBe("2026-10-01");
+    expect(firstDayOfPreviousMonth("2026-01-05")).toBe("2025-12-01");
+  });
+
+  it("counts a monthly bill from the 1st and finds its next due day", () => {
+    expect(monthlyBillSchedule("2026-11-18", 25)).toEqual({ startOn: "2026-11-01", nextDueOn: "2026-11-25" });
+    expect(monthlyBillSchedule("2026-11-18", 5)).toEqual({ startOn: "2026-11-01", nextDueOn: "2026-12-05" });
+    expect(monthlyBillSchedule("2026-12-18", 1)).toEqual({ startOn: "2026-12-01", nextDueOn: "2027-01-01" });
+  });
+});
+

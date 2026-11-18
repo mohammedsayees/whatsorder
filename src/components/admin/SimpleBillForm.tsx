@@ -44,6 +44,12 @@ export type SimpleBillFormProps = {
   /** The bill was attached at the till to this paid-out. */
   receiptPaidOut?: { amountFils: number; reason: string; voided: boolean } | null;
   possibleDuplicate?: boolean;
+  /** Last category and payment per supplier (lower-case name), to pre-fill. */
+  supplierMemory?: Record<string, { categoryId: string; paymentMethod: string | null }>;
+};
+
+const PAYMENT_METHOD_WORDS: Record<string, string> = {
+  cash: "cash", card: "card", bank_transfer: "bank transfer", other: "another method"
 };
 
 function SaveButton({ disabled, label }: { disabled: boolean; label: string }) {
@@ -68,10 +74,17 @@ export function SimpleBillForm({
   defaults = {},
   till = null,
   receiptPaidOut = null,
-  possibleDuplicate = false
+  possibleDuplicate = false,
+  supplierMemory = {}
 }: SimpleBillFormProps) {
+  const remembered = (name: string) => {
+    const memory = supplierMemory[name.trim().toLowerCase()];
+    return memory && categories.some((item) => item.id === memory.categoryId) ? memory : null;
+  };
   const [supplier, setSupplier] = useState(defaults.supplier ?? "");
-  const [categoryId, setCategoryId] = useState("");
+  // Pre-pick the category this supplier was saved under last time.
+  const [categoryId, setCategoryId] = useState(() => remembered(defaults.supplier ?? "")?.categoryId ?? "");
+  const [categoryTouched, setCategoryTouched] = useState(false);
   const [total, setTotal] = useState(filsToInput(defaults.totalFils));
   const [vat, setVat] = useState(filsToInput(defaults.vatFils ?? 0) || "0.00");
   const [includesVat, setIncludesVat] = useState(false);
@@ -139,12 +152,22 @@ export function SimpleBillForm({
           className="focus-ring mt-2 block w-full rounded-xl border border-stone-300 px-4 py-3 text-base"
           maxLength={160}
           name="supplier_name"
-          onChange={(event) => setSupplier(event.target.value)}
+          onChange={(event) => {
+            setSupplier(event.target.value);
+            const memory = remembered(event.target.value);
+            if (memory && !categoryTouched) setCategoryId(memory.categoryId);
+          }}
           placeholder="Shop or supplier name (optional)"
           value={supplier}
         />
       </section>
 
+      {remembered(supplier) ? (
+        <p className="-mt-3 text-xs font-bold text-leaf">
+          ✓ We remembered this supplier
+          {remembered(supplier)!.paymentMethod ? ` · last time paid by ${PAYMENT_METHOD_WORDS[remembered(supplier)!.paymentMethod!] ?? "another method"}` : ""}
+        </p>
+      ) : null}
       <section>
         <h2 className="text-lg font-black text-ink">2. What is it for?</h2>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -153,7 +176,7 @@ export function SimpleBillForm({
               aria-pressed={categoryId === item.id}
               className={`focus-ring flex min-h-[64px] items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-black ${categoryId === item.id ? "border-leaf bg-mint/60 text-ink" : "border-stone-200 bg-white text-stone-700"}`}
               key={item.id}
-              onClick={() => setCategoryId(item.id)}
+              onClick={() => { setCategoryId(item.id); setCategoryTouched(true); }}
               type="button"
             >
               <span aria-hidden className="text-2xl">{categoryIcon(item.name)}</span>
