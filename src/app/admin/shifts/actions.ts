@@ -13,6 +13,7 @@ import {
   requireRestaurantAdmin,
   requireRestaurantRole
 } from "@/lib/super-admin-auth";
+import { parseCashDenominations } from "@/lib/cash-denominations";
 import {
   configuredMarketplaceChannels,
   marketplaceSalesFromFormData
@@ -82,7 +83,9 @@ function friendlyShiftError(message?: string) {
     "Some orders can no longer be assigned. Refresh and try again",
     "The cash count for this shift is already locked",
     "Close with the locked cash count",
-    "Lock the cash count before closing"
+    "Lock the cash count before closing",
+    "Enter whole numbers of notes and coins",
+    "The notes and coins do not add up to the counted cash"
   ];
 
   return (
@@ -460,9 +463,20 @@ export async function declareCashCountAction(
     return { error: "Confirm you have counted the whole drawer." };
   }
 
+  const breakdown = parseCashDenominations(
+    formData.get("cash_denominations"),
+    session.restaurant.currency_code,
+    cashCounted
+  );
+  if (breakdown.error) {
+    return { error: breakdown.error };
+  }
+
   const { error } = await supabase.rpc("declare_shift_cash_count", {
     event_actor_user_id: session.userId,
     requested_cash_counted_amount: cashCounted,
+    // Sent only when used, so calls also match the pre-breakdown signature.
+    ...(breakdown.denominations ? { requested_cash_denominations: breakdown.denominations } : {}),
     target_restaurant_id: session.restaurantId,
     target_shift_id: shiftId
   });
@@ -515,10 +529,21 @@ export async function closeShiftAction(
     return { error: marketplaceResult.error ?? "Confirm every marketplace total." };
   }
 
+  const breakdown = parseCashDenominations(
+    formData.get("cash_denominations"),
+    session.restaurant.currency_code,
+    cashCounted
+  );
+  if (breakdown.error) {
+    return { error: breakdown.error };
+  }
+
   const { error } = await supabase.rpc("close_restaurant_shift_v4", {
     event_actor_user_id: session.userId,
     requested_card_terminal_total: cardTerminalTotal,
     requested_cash_counted_amount: cashCounted,
+    // Sent only when used, so calls also match the pre-breakdown signature.
+    ...(breakdown.denominations ? { requested_cash_denominations: breakdown.denominations } : {}),
     requested_closing_note: closingNote || null,
     requested_marketplace_sales: marketplaceResult.entries,
     requested_upi_reported_total:

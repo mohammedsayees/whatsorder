@@ -12,6 +12,7 @@ import type {
   ShiftSummary
 } from "@/lib/types";
 import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
+import type { CashDenominationCount } from "@/lib/cash-denominations";
 
 export type CurrentShiftView = {
   activeOrderCount: number;
@@ -283,6 +284,19 @@ export async function getUnassignedCompletedOrders(
   return { assignable: assignable.slice(0, unassignedOrderLimit), olderCount };
 }
 
+/** The stored notes-and-coins breakdown, or null if the count wasn't broken down. */
+function cleanDenominationRows(value: unknown): CashDenominationCount[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows = value
+    .map((row) => ({
+      minor: Number((row as { minor?: unknown })?.minor),
+      count: Number((row as { count?: unknown })?.count)
+    }))
+    .filter((row) => Number.isInteger(row.minor) && row.minor > 0 &&
+      Number.isInteger(row.count) && row.count > 0);
+  return rows.length ? rows : null;
+}
+
 export async function getShiftCloseReportView(
   session: RestaurantAdminSession,
   shiftId: string
@@ -295,7 +309,7 @@ export async function getShiftCloseReportView(
 
   const { data: shift, error: shiftError } = await supabase
     .from("restaurant_shifts")
-    .select("id,restaurant_id,status,opened_by_user_id,close_report_version")
+    .select("id,restaurant_id,status,opened_by_user_id,close_report_version,cash_count_denominations")
     .eq("id", shiftId)
     .eq("restaurant_id", session.restaurantId)
     .eq("status", "closed")
@@ -335,6 +349,7 @@ export async function getShiftCloseReportView(
 
   return {
     canCorrect: session.role !== "staff",
+    cashDenominations: cleanDenominationRows(shift.cash_count_denominations),
     currentVersion: Number(shift.close_report_version ?? 0),
     reports
   };

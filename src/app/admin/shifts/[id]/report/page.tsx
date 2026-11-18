@@ -265,6 +265,40 @@ export default async function ShiftCloseReportPage({
           </div>
         </section>
 
+        {view.cashDenominations ? (
+          <section className="mt-6">
+            <h2 className="text-lg font-black">Cash counted by notes &amp; coins</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              As counted at close
+              {report.correction_reason ? "; a later correction may have changed the counted total" : ""}.
+            </p>
+            <div className="mt-3 overflow-hidden rounded-lg border border-stone-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                  <tr><th className="px-3 py-2">Note / coin</th><th className="px-3 py-2">Count</th><th className="px-3 py-2 text-right">Amount</th></tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {view.cashDenominations.map((row) => (
+                    <tr key={row.minor}>
+                      <td className="px-3 py-2 font-black">{money(row.minor / 100)}</td>
+                      <td className="px-3 py-2">{row.count}</td>
+                      <td className="px-3 py-2 text-right font-bold">{money((row.minor * row.count) / 100)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-stone-50">
+                  <tr>
+                    <td className="px-3 py-2 font-black" colSpan={2}>Total</td>
+                    <td className="px-3 py-2 text-right font-black">
+                      {money(view.cashDenominations.reduce((sum, row) => sum + row.minor * row.count, 0) / 100)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
         {report.marketplace_sales.length > 0 ? (
           <section className="mt-6">
             <h2 className="text-lg font-black">Delivery platforms</h2>

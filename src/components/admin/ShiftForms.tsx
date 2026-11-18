@@ -16,6 +16,11 @@ import {
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
+import {
+  denominationsFor,
+  denominationTotalMinor,
+  maxDenominationCount
+} from "@/lib/cash-denominations";
 import { manualOtherIncomeCategoryLabels } from "@/lib/business-day";
 import { calculateCashDifference } from "@/lib/shift-calculations";
 import {
@@ -550,18 +555,155 @@ function ActiveOrdersWarning({ count, action }: { count: number; action: string 
   );
 }
 
+/**
+ * Counted-cash input with an optional notes-and-coins breakdown. In breakdown
+ * mode the total is calculated and posted as cash_counted_amount, and the
+ * counts are posted as cash_denominations (checked again on the server).
+ */
+function CashCountInput({
+  onChange,
+  restaurant,
+  value
+}: {
+  onChange: (value: string) => void;
+  restaurant: Restaurant;
+  value: string;
+}) {
+  const denominations = denominationsFor(restaurant.currency_code);
+  const [byDenomination, setByDenomination] = useState(false);
+  const [counts, setCounts] = useState<Record<number, string>>({});
+
+  const rows = denominations.map((denomination) => {
+    const raw = counts[denomination.minor] ?? "";
+    const count = Number(raw);
+    return {
+      ...denomination,
+      raw,
+      count: raw !== "" && Number.isInteger(count) && count >= 0 ? count : 0,
+      invalid: raw !== "" && !(Number.isInteger(count) && count >= 0 && count <= maxDenominationCount)
+    };
+  });
+  const totalMinor = denominationTotalMinor(rows);
+  const anyInvalid = rows.some((row) => row.invalid);
+
+  function updateCount(minor: number, next: string) {
+    const updated = { ...counts, [minor]: next };
+    setCounts(updated);
+    const total = denominationTotalMinor(denominations.map((denomination) => {
+      const count = Number(updated[denomination.minor] ?? "");
+      return {
+        minor: denomination.minor,
+        count: Number.isInteger(count) && count >= 0 ? count : 0
+      };
+    }));
+    onChange(String(total / 100));
+  }
+
+  function toggle() {
+    if (byDenomination) {
+      setByDenomination(false);
+      setCounts({});
+      onChange("");
+    } else {
+      setByDenomination(true);
+      onChange("0");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {byDenomination ? (
+        <div className="text-sm font-bold text-stone-700">
+          Cash counted
+          <input name="cash_counted_amount" type="hidden" value={String(totalMinor / 100)} />
+          <input
+            name="cash_denominations"
+            type="hidden"
+            value={JSON.stringify(rows.filter((row) => row.count > 0)
+              .map((row) => ({ minor: row.minor, count: row.count })))}
+          />
+          <div className="mt-1 rounded-lg border border-stone-200">
+            <div className="grid grid-cols-[1fr_6rem_1fr] gap-2 border-b border-stone-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-stone-500">
+              <span>Note / coin</span>
+              <span>Count</span>
+              <span className="text-right">Amount</span>
+            </div>
+            {rows.map((row) => (
+              <label
+                className="grid grid-cols-[1fr_6rem_1fr] items-center gap-2 px-3 py-1.5"
+                key={row.minor}
+              >
+                <span className="font-black">
+                  {formatCurrency(row.minor / 100, restaurant)}
+                  <span className="ml-1 text-xs font-semibold text-stone-400">{row.kind}</span>
+                </span>
+                <input
+                  aria-invalid={row.invalid}
+                  aria-label={`Number of ${formatCurrency(row.minor / 100, restaurant)} ${row.kind}s`}
+                  className={`focus-ring w-full rounded-lg border px-2 py-1.5 text-right ${row.invalid ? "border-rose-400 bg-rose-50" : "border-stone-200"}`}
+                  inputMode="numeric"
+                  min="0"
+                  onChange={(event) => updateCount(row.minor, event.target.value)}
+                  placeholder="0"
+                  step="1"
+                  type="number"
+                  value={row.raw}
+                />
+                <span className="text-right text-stone-600">
+                  {row.count > 0 ? formatCurrency((row.minor * row.count) / 100, restaurant) : "—"}
+                </span>
+              </label>
+            ))}
+            <div className="flex justify-between border-t border-stone-200 px-3 py-2">
+              <span>Total</span>
+              <span className="text-lg font-black">{formatCurrency(totalMinor / 100, restaurant)}</span>
+            </div>
+          </div>
+          {anyInvalid ? (
+            <p className="mt-1 text-xs font-bold text-rose-700">Enter whole numbers of notes and coins.</p>
+          ) : null}
+        </div>
+      ) : (
+        <label className="block text-sm font-bold text-stone-700">
+          Cash counted
+          <input
+            className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+            min="0"
+            name="cash_counted_amount"
+            onChange={(event) => onChange(event.target.value)}
+            required
+            step="0.01"
+            type="number"
+            value={value}
+          />
+        </label>
+      )}
+      <button
+        className="focus-ring text-xs font-black text-leaf underline underline-offset-2"
+        onClick={toggle}
+        type="button"
+      >
+        {byDenomination ? "Enter the total instead" : "Count by notes & coins"}
+      </button>
+    </div>
+  );
+}
+
 // Blind count, step 1. Expected cash is not on this page until the count is locked.
 export function DeclareCashCountForm({
   activeOrderCount,
+  restaurant,
   shiftId
 }: {
   activeOrderCount: number;
+  restaurant: Restaurant;
   shiftId: string;
 }) {
   const [state, action, pending] = useActionState(
     declareCashCountAction,
     initialState
   );
+  const [cashCounted, setCashCounted] = useState("");
 
   return (
     <form action={action} className="space-y-4">
@@ -575,17 +717,7 @@ export function DeclareCashCountForm({
           closing.
         </p>
       </div>
-      <label className="block text-sm font-bold text-stone-700">
-        Cash counted
-        <input
-          className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
-          min="0"
-          name="cash_counted_amount"
-          required
-          step="0.01"
-          type="number"
-        />
-      </label>
+      <CashCountInput onChange={setCashCounted} restaurant={restaurant} value={cashCounted} />
       <label className="flex items-start gap-2 text-sm font-semibold text-stone-700">
         <input className="mt-1" name="confirm_count" required type="checkbox" />
         I have counted the whole drawer. This count can&apos;t be changed.
@@ -593,7 +725,7 @@ export function DeclareCashCountForm({
       <ActionMessage state={state} />
       <button
         className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
-        disabled={pending || activeOrderCount > 0}
+        disabled={pending || activeOrderCount > 0 || cashCounted.trim() === ""}
         type="submit"
       >
         {pending ? <Loader2 className="animate-spin" size={18} /> : null}
@@ -669,19 +801,7 @@ export function CloseShiftForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           {declaredCash === null ? (
-            <label className="block text-sm font-bold text-stone-700">
-              Cash counted
-              <input
-                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
-                min="0"
-                name="cash_counted_amount"
-                onChange={(event) => setCashCounted(event.target.value)}
-                required
-                step="0.01"
-                type="number"
-                value={cashCounted}
-              />
-            </label>
+            <CashCountInput onChange={setCashCounted} restaurant={restaurant} value={cashCounted} />
           ) : (
             <div className="text-sm font-bold text-stone-700">
               Cash counted <span className="font-normal text-stone-400">(locked)</span>

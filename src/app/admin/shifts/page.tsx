@@ -451,6 +451,7 @@ export default async function AdminShiftsPage() {
                   {currentShift.cashBlind ? (
                     <DeclareCashCountForm
                       activeOrderCount={currentShift.activeOrderCount}
+                      restaurant={session.restaurant}
                       shiftId={currentShift.shift.id}
                     />
                   ) : (
