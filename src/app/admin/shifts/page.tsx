@@ -135,9 +135,17 @@ export default async function AdminShiftsPage() {
               </div>
             </div>
             {!currentShift && session.role !== "staff" && openBusinessDay.shifts.length > 0 ? (
-              <div className="w-full sm:w-72">
-                <CloseBusinessDayButton businessDayId={openBusinessDay.day.id} />
-              </div>
+              assignableCount > 0 ? (
+                <p className="w-full rounded-lg bg-white/70 p-3 text-sm font-bold text-sky-900 sm:w-72">
+                  {assignableCount} completed order{assignableCount === 1 ? " needs" : "s need"} a
+                  shift first. Open a shift, assign {assignableCount === 1 ? "it" : "them"} and close
+                  the shift, then close the business day.
+                </p>
+              ) : (
+                <div className="w-full sm:w-72">
+                  <CloseBusinessDayButton businessDayId={openBusinessDay.day.id} />
+                </div>
+              )
             ) : null}
           </div>
         </section>
