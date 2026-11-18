@@ -16,6 +16,14 @@ import { parseShiftCloseReportSnapshot } from "@/lib/shift-reconciliation";
 export type CurrentShiftView = {
   activeOrderCount: number;
   canManage: boolean;
+  /**
+   * Blind count in progress: a staff member must lock their cash count first.
+   * Cash figures that reveal expected cash are zeroed in `summary`, so they
+   * never reach the browser; UIs must hide them while this is true.
+   */
+  cashBlind: boolean;
+  /** Locked counted cash, once declared. */
+  declaredCash: number | null;
   paidOuts: ShiftCashPaidOut[];
   otherIncomeEntries: ShiftOtherIncomeEntry[];
   shift: RestaurantShift;
@@ -70,6 +78,27 @@ function numericSummary(value: unknown) {
     expected_cash_amount: Number(summary.expected_cash_amount ?? 0),
     fulfilment_breakdown: summary.fulfilment_breakdown ?? {}
   } satisfies ShiftSummary;
+}
+
+/** Staff of a blind-count restaurant don't see expected cash until they lock a count. */
+export function isCashCountBlind(
+  session: Pick<RestaurantAdminSession, "role" | "restaurant">,
+  countDeclared: boolean
+) {
+  return session.role === "staff" &&
+    session.restaurant.blind_cash_count !== false &&
+    !countDeclared;
+}
+
+/** Removes the figures from which expected cash could be worked out. */
+export function blindSummary(summary: ShiftSummary): ShiftSummary {
+  return {
+    ...summary,
+    completed_cash_order_total: 0,
+    completed_sales: 0,
+    expected_cash_amount: 0,
+    fulfilment_breakdown: {}
+  };
 }
 
 export async function getCurrentShiftView(
@@ -133,14 +162,22 @@ export async function getCurrentShiftView(
     throw new Error("Current shift totals could not be loaded.");
   }
 
+  const declaredCash = shift.cash_count_declared_at
+    ? Number(shift.declared_cash_counted_amount)
+    : null;
+  const cashBlind = isCashCountBlind(session, declaredCash !== null);
+  const fullSummary = summary ? numericSummary(summary) : emptySummary;
+
   return {
     activeOrderCount: activeOrderCount ?? 0,
     canManage:
       session.role !== "staff" || shift.opened_by_user_id === session.userId,
+    cashBlind,
+    declaredCash,
     paidOuts: (paidOuts ?? []) as ShiftCashPaidOut[],
     otherIncomeEntries: (otherIncomeEntries ?? []) as ShiftOtherIncomeEntry[],
     shift: shift as RestaurantShift,
-    summary: summary ? numericSummary(summary) : emptySummary
+    summary: cashBlind ? blindSummary(fullSummary) : fullSummary
   };
 }
 

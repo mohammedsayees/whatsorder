@@ -189,6 +189,22 @@ export function SettingsForm({
             ))}
           </div>
         </fieldset>
+        <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-4 sm:col-span-2">
+          <input
+            className="mt-1"
+            defaultChecked={restaurant.blind_cash_count !== false}
+            disabled={!canWrite}
+            name="blind_cash_count"
+            type="checkbox"
+          />
+          <span>
+            <span className="block text-sm font-black">Blind cash count at shift close</span>
+            <span className="mt-1 block text-xs leading-5 text-stone-500">
+              Staff count and lock the drawer before they see expected cash, so a count
+              can&apos;t be adjusted to match. Managers and owners always see expected cash.
+            </span>
+          </span>
+        </label>
         <div className="sm:col-span-2">
           <WeeklyHoursFields
             canWrite={canWrite}

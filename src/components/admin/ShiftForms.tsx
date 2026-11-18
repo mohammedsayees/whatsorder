@@ -9,6 +9,7 @@ import {
   assignUnassignedOrdersAction,
   closeBusinessDayAction,
   closeShiftAction,
+  declareCashCountAction,
   openShiftAction,
   voidOtherIncomeAction,
   voidShiftPaidOutAction,
@@ -532,8 +533,79 @@ export function MarketplaceReconciliationFields({
   );
 }
 
+function ActiveOrdersWarning({ count, action }: { count: number; action: string }) {
+  if (count === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+      <p className="font-black">
+        Resolve {count} active order{count === 1 ? "" : "s"} before {action}
+      </p>
+      <p className="mt-1 text-xs font-semibold">
+        Complete or cancel every pending order, then refresh this page.
+      </p>
+    </div>
+  );
+}
+
+// Blind count, step 1. Expected cash is not on this page until the count is locked.
+export function DeclareCashCountForm({
+  activeOrderCount,
+  shiftId
+}: {
+  activeOrderCount: number;
+  shiftId: string;
+}) {
+  const [state, action, pending] = useActionState(
+    declareCashCountAction,
+    initialState
+  );
+
+  return (
+    <form action={action} className="space-y-4">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <ActiveOrdersWarning action="counting" count={activeOrderCount} />
+      <div className="rounded-lg bg-stone-100 p-3 text-sm text-stone-700">
+        <p className="font-black">Step 1 of 2: count the cash drawer</p>
+        <p className="mt-1 text-xs leading-5">
+          Count every note and coin in the drawer and enter the total. Once locked, the
+          count can&apos;t be changed. You&apos;ll then see the expected amount and finish
+          closing.
+        </p>
+      </div>
+      <label className="block text-sm font-bold text-stone-700">
+        Cash counted
+        <input
+          className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+          min="0"
+          name="cash_counted_amount"
+          required
+          step="0.01"
+          type="number"
+        />
+      </label>
+      <label className="flex items-start gap-2 text-sm font-semibold text-stone-700">
+        <input className="mt-1" name="confirm_count" required type="checkbox" />
+        I have counted the whole drawer. This count can&apos;t be changed.
+      </label>
+      <ActionMessage state={state} />
+      <button
+        className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
+        disabled={pending || activeOrderCount > 0}
+        type="submit"
+      >
+        {pending ? <Loader2 className="animate-spin" size={18} /> : null}
+        {pending ? "Locking count…" : "Lock cash count"}
+      </button>
+    </form>
+  );
+}
+
 export function CloseShiftForm({
   activeOrderCount,
+  declaredCash = null,
   expectedCard,
   expectedCash,
   expectedUpi,
@@ -542,6 +614,8 @@ export function CloseShiftForm({
   shiftId
 }: {
   activeOrderCount: number;
+  /** Locked blind count; when set, the cash field is fixed to it. */
+  declaredCash?: number | null;
   expectedCard: number;
   expectedCash: number;
   expectedUpi: number;
@@ -553,7 +627,9 @@ export function CloseShiftForm({
     closeShiftAction,
     initialState
   );
-  const [cashCounted, setCashCounted] = useState("");
+  const [cashCounted, setCashCounted] = useState(
+    declaredCash === null ? "" : String(declaredCash)
+  );
   const [cardTerminalTotal, setCardTerminalTotal] = useState("");
   const [upiReportedTotal, setUpiReportedTotal] = useState("");
   const [closingNote, setClosingNote] = useState("");
@@ -575,17 +651,7 @@ export function CloseShiftForm({
   return (
     <form action={action} className="space-y-4">
       <input name="shift_id" type="hidden" value={shiftId} />
-      {activeOrderCount > 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
-          <p className="font-black">
-            Resolve {activeOrderCount} active order
-            {activeOrderCount === 1 ? "" : "s"} before closing
-          </p>
-          <p className="mt-1 text-xs font-semibold">
-            Complete or cancel every pending order, then refresh this page.
-          </p>
-        </div>
-      ) : null}
+      <ActiveOrdersWarning action="closing" count={activeOrderCount} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg bg-stone-100 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
@@ -602,19 +668,29 @@ export function CloseShiftForm({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <label className="block text-sm font-bold text-stone-700">
-            Cash counted
-            <input
-              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
-              min="0"
-              name="cash_counted_amount"
-              onChange={(event) => setCashCounted(event.target.value)}
-              required
-              step="0.01"
-              type="number"
-              value={cashCounted}
-            />
-          </label>
+          {declaredCash === null ? (
+            <label className="block text-sm font-bold text-stone-700">
+              Cash counted
+              <input
+                className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+                min="0"
+                name="cash_counted_amount"
+                onChange={(event) => setCashCounted(event.target.value)}
+                required
+                step="0.01"
+                type="number"
+                value={cashCounted}
+              />
+            </label>
+          ) : (
+            <div className="text-sm font-bold text-stone-700">
+              Cash counted <span className="font-normal text-stone-400">(locked)</span>
+              <input name="cash_counted_amount" type="hidden" value={String(declaredCash)} />
+              <p className="mt-1 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 font-black">
+                {formatCurrency(declaredCash, restaurant)}
+              </p>
+            </div>
+          )}
           <DifferencePreview difference={cashDifference} restaurant={restaurant} />
         </div>
         <div className="space-y-2">
