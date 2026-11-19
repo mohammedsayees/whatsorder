@@ -27,7 +27,8 @@ export type SubscriptionStatus =
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 
-export type PaymentMethod = "bank_transfer" | "cash" | "cheque" | "other";
+/** "card" is recorded only by Stripe (Pay by card / autopay), never by hand. */
+export type PaymentMethod = "bank_transfer" | "cash" | "cheque" | "other" | "card";
 
 export type BillingInterval = "monthly" | "yearly";
 

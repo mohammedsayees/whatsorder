@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDailyBilling } from "@/lib/billing-data";
+import { runAutopay } from "@/lib/stripe/billing";
 
 // Daily billing cron (Feature Brief §9). Triggered by the Vercel cron schedule
 // in vercel.json. Guarded by CRON_SECRET so only the scheduler (or an operator
@@ -23,9 +24,17 @@ async function handle(request: Request) {
 
   try {
     const summary = await runDailyBilling();
+    // After issuing: charge saved cards of cafés on autopay. Declined cards
+    // are normal (the invoice stays issued); only engine failures turn red.
+    const autopay = await runAutopay().catch((error) => {
+      console.error("WhatsOrder billing: autopay pass failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    });
     // Per-subscription failures don't abort the run, but must not look green.
-    const ok = summary.failed === 0;
-    return NextResponse.json({ ok, summary }, { status: ok ? 200 : 500 });
+    const ok = summary.failed === 0 && autopay !== null;
+    return NextResponse.json({ ok, summary, autopay }, { status: ok ? 200 : 500 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Billing cron failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
