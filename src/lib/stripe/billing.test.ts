@@ -6,14 +6,15 @@ import {
   runAutopay
 } from "@/lib/stripe/billing";
 import { getOwnerInvoice, recordPayment } from "@/lib/billing-data";
-import { getStripe, isBillingWebhookConfigured } from "@/lib/stripe/server";
+import { getDirectRestaurantId, getStripe, isBillingWebhookConfigured } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
 vi.mock("@/lib/stripe/server", () => ({
   getStripe: vi.fn(),
   isStripeLiveMode: () => false,
-  isBillingWebhookConfigured: vi.fn(() => true)
+  isBillingWebhookConfigured: vi.fn(() => true),
+  getDirectRestaurantId: vi.fn(() => null)
 }));
 vi.mock("@/lib/billing-data", () => ({ getOwnerInvoice: vi.fn(), recordPayment: vi.fn(async () => ({ ok: true })) }));
 
@@ -187,6 +188,17 @@ describe("WhatsOrder invoices by card", () => {
     expect(await runAutopay(new Date())).toEqual({ attempted: 0, charged: 0, failed: 0 });
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
     expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps WhatsOrder card billing off in single-café mode", async () => {
+    mockDb({ restaurant_billing_cards: card });
+    const stripe = mockStripe();
+    vi.mocked(getOwnerInvoice).mockResolvedValue(issuedInvoice as never);
+    vi.mocked(getDirectRestaurantId).mockReturnValue("chai-xpress");
+    await expect(createInvoiceCheckoutUrl({ restaurantId, restaurantName: "C", email: null, invoiceId, saveCardForAutopay: false, userId: "u", origin: "o" })).rejects.toMatchObject({ code: "not_configured" });
+    expect(await runAutopay(new Date())).toEqual({ attempted: 0, charged: 0, failed: 0 });
+    vi.mocked(getDirectRestaurantId).mockReturnValue(null);
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   it("spaces retries and stops after three attempts", () => {

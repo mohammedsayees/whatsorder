@@ -1,7 +1,7 @@
 import "server-only";
 
 import type Stripe from "stripe";
-import { isStripeLiveMode } from "@/lib/stripe/server";
+import { getDirectRestaurantId, isStripeLiveMode } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { applyCheckoutSessionToOrder, markOrderRefunded } from "@/lib/stripe/order-payments";
 
@@ -19,6 +19,48 @@ async function restaurantForAccount(accountId: string, livemode: boolean): Promi
     .eq("livemode", livemode)
     .maybeSingle();
   return (data as { restaurant_id?: string } | null)?.restaurant_id ?? null;
+}
+
+/**
+ * Single-café mode: that café's order payments happen on the platform account,
+ * so their events arrive on the "Your account" webhook without event.account.
+ * Orders are still matched by restaurant + Checkout Session / PaymentIntent.
+ */
+export async function handleDirectOrderEvent(event: Stripe.Event): Promise<"handled" | "ignored"> {
+  const restaurantId = getDirectRestaurantId();
+  if (!restaurantId || event.account || event.livemode !== isStripeLiveMode()) return "ignored";
+
+  switch (event.type) {
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.async_payment_failed":
+    case "checkout.session.expired": {
+      const session = event.data.object;
+      // Only sessions WhatsOrder created for this café's orders.
+      if (!session.metadata?.whatsorder_order_id || session.metadata.whatsorder_restaurant_id !== restaurantId) {
+        return "ignored";
+      }
+      const override =
+        event.type === "checkout.session.expired"
+          ? "expired"
+          : event.type === "checkout.session.async_payment_failed"
+            ? "failed"
+            : undefined;
+      await applyCheckoutSessionToOrder(restaurantId, session, override);
+      return "handled";
+    }
+    case "charge.refunded": {
+      const charge = event.data.object;
+      const paymentIntentId =
+        typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+      if (paymentIntentId && charge.refunded) {
+        await markOrderRefunded(restaurantId, paymentIntentId);
+      }
+      return "handled";
+    }
+    default:
+      return "ignored";
+  }
 }
 
 export async function handleStripeEvent(event: Stripe.Event): Promise<"handled" | "ignored"> {

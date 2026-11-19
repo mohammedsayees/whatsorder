@@ -3,7 +3,12 @@ import "server-only";
 import type Stripe from "stripe";
 import { amountDue } from "@/lib/owner-billing";
 import { getOwnerInvoice, recordPayment } from "@/lib/billing-data";
-import { getStripe, isBillingWebhookConfigured, isStripeLiveMode } from "@/lib/stripe/server";
+import {
+  getDirectRestaurantId,
+  getStripe,
+  isBillingWebhookConfigured,
+  isStripeLiveMode
+} from "@/lib/stripe/server";
 import { toMinorUnits } from "@/lib/stripe/order-payment-rules";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -53,7 +58,9 @@ function clients() {
 }
 
 export function isCardBillingAvailable() {
-  return Boolean(getStripe()) && isBillingWebhookConfigured();
+  // Off in single-café mode: the Stripe account belongs to that café, so
+  // WhatsOrder's subscription money must not be collected into it.
+  return Boolean(getStripe()) && isBillingWebhookConfigured() && getDirectRestaurantId() === null;
 }
 
 export async function getBillingCard(restaurantId: string): Promise<BillingCard | null> {
@@ -380,7 +387,7 @@ export async function runAutopay(now: Date = new Date()): Promise<AutopaySummary
   const summary: AutopaySummary = { attempted: 0, charged: 0, failed: 0 };
   const stripe = getStripe();
   const admin = getSupabaseAdmin();
-  if (!stripe || !admin || !isBillingWebhookConfigured()) return summary;
+  if (!stripe || !admin || !isCardBillingAvailable()) return summary;
 
   const { data: cards } = await admin
     .from("restaurant_billing_cards")

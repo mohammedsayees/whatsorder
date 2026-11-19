@@ -3,7 +3,12 @@ import "server-only";
 import type Stripe from "stripe";
 import { canAcceptOnlinePayments, supportsOnlinePayments } from "@/lib/stripe/connect";
 import { getRestaurantStripeAccount } from "@/lib/stripe/connect-data";
-import { getStripe, isOrderPaymentWebhookConfigured } from "@/lib/stripe/server";
+import {
+  getDirectRestaurantId,
+  getStripe,
+  isBillingWebhookConfigured,
+  isOrderPaymentWebhookConfigured
+} from "@/lib/stripe/server";
 import { isPushAuthorizationConfigured } from "@/lib/push-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
@@ -25,19 +30,73 @@ type OnlinePaymentRestaurant = {
   currency_code?: string | null;
 };
 
-/** The restaurant's Stripe account when it can take card payments right now. */
-export async function getOnlinePaymentAccount(restaurant: Pick<OnlinePaymentRestaurant, "id" | "country_code">) {
-  if (
-    !supportsOnlinePayments(restaurant.country_code) ||
-    !getStripe() ||
-    !isOrderPaymentWebhookConfigured() ||
-    !isPushAuthorizationConfigured()
-  ) {
+/**
+ * Where this restaurant's online payments are charged, when it can take them
+ * right now. `stripeAccount` is the connected account (Stripe-Account header),
+ * or undefined in single-café mode, where the platform account IS the café's.
+ */
+export type OnlinePaymentAccount = { stripeAccount: string | undefined };
+
+// Single-café mode: is the platform account activated (charges enabled)?
+// Cached briefly so checkout pages don't call Stripe on every view; any
+// error (e.g. a key without Account read access) reads as "not ready".
+let directReady: { value: boolean; at: number } | null = null;
+const DIRECT_READY_TTL_MS = 5 * 60 * 1000;
+
+async function isDirectAccountReady(): Promise<boolean> {
+  if (directReady && Date.now() - directReady.at < DIRECT_READY_TTL_MS) {
+    return directReady.value;
+  }
+  const stripe = getStripe();
+  let value = false;
+  try {
+    value = Boolean(stripe && (await stripe.accounts.retrieveCurrent()).charges_enabled);
+  } catch {
+    value = false;
+  }
+  directReady = { value, at: Date.now() };
+  return value;
+}
+
+/** Test hook: forget the cached activation state. */
+export function resetDirectAccountReadyCache() {
+  directReady = null;
+}
+
+export async function getOnlinePaymentAccount(
+  restaurant: Pick<OnlinePaymentRestaurant, "id" | "country_code">
+): Promise<OnlinePaymentAccount | null> {
+  if (!supportsOnlinePayments(restaurant.country_code) || !getStripe() || !isPushAuthorizationConfigured()) {
     return null;
   }
 
+  const directRestaurantId = getDirectRestaurantId();
+  if (directRestaurantId) {
+    // Single-café mode: only that restaurant, and its payment events arrive on
+    // the platform ("Your account") webhook.
+    return restaurant.id === directRestaurantId && isBillingWebhookConfigured() && (await isDirectAccountReady())
+      ? { stripeAccount: undefined }
+      : null;
+  }
+
+  if (!isOrderPaymentWebhookConfigured()) {
+    return null;
+  }
   const account = await getRestaurantStripeAccount(restaurant.id);
-  return account && canAcceptOnlinePayments(account) ? account : null;
+  return account && canAcceptOnlinePayments(account) ? { stripeAccount: account.stripe_account_id } : null;
+}
+
+/** Account to read an existing session from (no readiness checks). */
+async function stripeAccountForReads(restaurantId: string): Promise<OnlinePaymentAccount | null> {
+  if (getDirectRestaurantId()) {
+    return restaurantId === getDirectRestaurantId() ? { stripeAccount: undefined } : null;
+  }
+  const account = await getRestaurantStripeAccount(restaurantId);
+  return account ? { stripeAccount: account.stripe_account_id } : null;
+}
+
+function requestOptions(account: OnlinePaymentAccount) {
+  return account.stripeAccount ? { stripeAccount: account.stripeAccount } : {};
 }
 
 type OrderPaymentRow = {
@@ -142,10 +201,12 @@ export async function checkoutUrlForOrder(input: {
   // here; cash/card-on-collection orders never switch to online payment.
   if (order.online_payment_status === null) return null;
 
-  const stripeAccount = account.stripe_account_id;
-
   if (order.stripe_checkout_session_id) {
-    const existing = await stripe.checkout.sessions.retrieve(order.stripe_checkout_session_id, {}, { stripeAccount });
+    const existing = await stripe.checkout.sessions.retrieve(
+      order.stripe_checkout_session_id,
+      {},
+      requestOptions(account)
+    );
     if (existing.status === "open" && existing.url) {
       return existing.url;
     }
@@ -182,7 +243,7 @@ export async function checkoutUrlForOrder(input: {
       cancel_url: `${confirmation}&payment=cancelled`
     },
     {
-      stripeAccount,
+      ...requestOptions(account),
       // One session per order (and per replaced session after expiry).
       idempotencyKey: `whatsorder-order-${orderId}-${order.stripe_checkout_session_id ?? "first"}`
     }
@@ -212,14 +273,14 @@ export async function refreshOrderPayment(
   }
 
   const stripe = getStripe();
-  const account = await getRestaurantStripeAccount(restaurant.id);
+  const account = await stripeAccountForReads(restaurant.id);
   if (!stripe || !account) return order.online_payment_status;
 
   try {
     const session = await stripe.checkout.sessions.retrieve(
       order.stripe_checkout_session_id,
       {},
-      { stripeAccount: account.stripe_account_id }
+      requestOptions(account)
     );
     return (await applyCheckoutSessionToOrder(restaurant.id, session)) ?? order.online_payment_status;
   } catch {
