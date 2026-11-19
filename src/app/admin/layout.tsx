@@ -2,7 +2,8 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { accessTokenCookieName } from "@/lib/auth-cookies";
-import { getTenantAccess } from "@/lib/billing-data";
+import { getAutopayFailure, getTenantAccess } from "@/lib/billing-data";
+import { canViewBilling } from "@/lib/owner-billing";
 import { getUnreadChatConversationIds } from "@/lib/chat-inbox";
 import { getNewOrderAlertState } from "@/lib/data";
 import { getFinanceAccess } from "@/lib/finance-data";
@@ -35,7 +36,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     initialNewOrderAlertState,
     initialUnreadChatConversationIds,
     access,
-    financeAccess
+    financeAccess,
+    autopayFailure
   ] = await Promise.all([
     cookies(),
     jobsOnly
@@ -47,12 +49,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     jobsOnly ? Promise.resolve({ status: null }) : getTenantAccess(session.restaurantId),
     jobsOnly
       ? Promise.resolve(resolveFinanceAccess(false, session.role))
-      : getFinanceAccess(session)
+      : getFinanceAccess(session),
+    // Owners only: a declined autopay charge needs someone who can pay.
+    jobsOnly || !canViewBilling(session.role)
+      ? Promise.resolve(null)
+      : getAutopayFailure(session.restaurantId)
   ]);
   const realtimeAccessToken = cookieStore.get(accessTokenCookieName)?.value ?? null;
 
   return (
     <AdminShell
+      autopayFailure={autopayFailure}
       billingStatus={access.status}
       financeVisible={financeAccess.view || financeAccess.create}
       initialNewOrderAlertState={initialNewOrderAlertState}

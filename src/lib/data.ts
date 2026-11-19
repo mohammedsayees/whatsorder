@@ -1329,7 +1329,38 @@ export type NewOrderAlertState = {
   pendingOrderIds: string[];
   /** Car-pickup customers who tapped "I've arrived" and are not served yet. */
   waitingArrivals?: WaitingArrival[];
+  /** Open orders paid online in the last hour (staff "Paid online" alert). */
+  recentOnlinePayments?: RecentOnlinePayment[];
 };
+
+export type RecentOnlinePayment = { id: string; online_paid_at: string };
+
+const ONLINE_PAYMENT_ALERT_WINDOW_MS = 60 * 60 * 1000;
+
+// Best-effort, like arrivals: never breaks new-order alerts.
+async function getRecentOnlinePayments(restaurantId: string): Promise<RecentOnlinePayment[]> {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id,online_paid_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("online_payment_status", "paid")
+      .not("status", "in", "(Completed,Cancelled)")
+      .gte("online_paid_at", new Date(Date.now() - ONLINE_PAYMENT_ALERT_WINDOW_MS).toISOString())
+      .order("online_paid_at", { ascending: true })
+      .limit(20);
+
+    return error || !data ? [] : (data as RecentOnlinePayment[]);
+  } catch {
+    return [];
+  }
+}
 
 // Best-effort: a failure (or arrival columns not yet migrated) must never
 // break new-order alerts, so it degrades to "nobody waiting".
@@ -1365,7 +1396,7 @@ export async function getNewOrderAlertState(
   if (supabase) {
     // Supabase returns the total count alongside the limited rows, so a
     // single request can power both the badge and the alert ID reconciliation.
-    const [{ count, data, error }, waitingArrivals] = await Promise.all([
+    const [{ count, data, error }, waitingArrivals, recentOnlinePayments] = await Promise.all([
       supabase
         .from("orders")
         .select("id", { count: "exact" })
@@ -1373,14 +1404,16 @@ export async function getNewOrderAlertState(
         .eq("status", "New")
         .order("created_at", { ascending: false })
         .limit(100),
-      getWaitingArrivals(restaurantId)
+      getWaitingArrivals(restaurantId),
+      getRecentOnlinePayments(restaurantId)
     ]);
 
     if (!error) {
       return {
         newOrderCount: count ?? 0,
         pendingOrderIds: (data ?? []).map((order) => String(order.id)),
-        waitingArrivals
+        waitingArrivals,
+        recentOnlinePayments
       };
     }
 

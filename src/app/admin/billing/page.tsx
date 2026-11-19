@@ -24,6 +24,7 @@ import {
   BILLING_ROLES,
   SUBSCRIPTION_STATUS_LABELS,
   amountDue,
+  autopayFailureReason,
   buildTrialConversionPreview,
   firstInvoiceSentence,
   formatBillingAmount,
@@ -215,6 +216,12 @@ export default async function AdminBillingPage({
                       : "Due on receipt"}
                   </span>
                 </div>
+                {invoice.autopay_last_error ? (
+                  <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700" role="alert">
+                    Autopay couldn&apos;t pay this invoice: {autopayFailureReason(invoice.autopay_last_error)}.
+                    Pay below or replace your card.
+                  </p>
+                ) : null}
                 {cardBilling ? (
                   <PayInvoiceByCardForm
                     amountLabel={formatBillingAmount(amountDue(invoice), invoice.currency)}

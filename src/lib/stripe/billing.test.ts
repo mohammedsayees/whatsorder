@@ -129,6 +129,10 @@ describe("WhatsOrder invoices by card", () => {
     expect(stripe.customers.update).toHaveBeenCalledWith("cus_TestAAAAAAAA", { invoice_settings: { default_payment_method: "pm_NewAAAAAAAA" } });
     const saved = calls.find((call) => call.op === "update" && call.table === "restaurant_billing_cards");
     expect(saved?.payload).toMatchObject({ payment_method_id: "pm_NewAAAAAAAA", card_last4: "1111", autopay_enabled: true, autopay_consented_by_user_id: "u1" });
+    // The new card gets fresh autopay attempts on this restaurant's open invoices.
+    const reset = calls.find((call) => call.op === "update" && call.table === "invoices");
+    expect(reset?.payload).toEqual({ autopay_attempts: 0, autopay_last_error: null });
+    expect(reset?.filters).toEqual([["restaurant_id", restaurantId], ["status", "issued"]]);
   });
 
   it("ignores sessions whose customer is not the restaurant's own", async () => {

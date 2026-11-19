@@ -3,7 +3,10 @@ const fixtureRouter = {
   forward: () => history.forward(),
   prefetch: async () => undefined,
   push: (href: string) => history.pushState(null, "", href),
-  refresh: () => undefined,
+  refresh: () => {
+    const counted = window as unknown as { __fixtureRefreshes?: number };
+    counted.__fixtureRefreshes = (counted.__fixtureRefreshes ?? 0) + 1;
+  },
   replace: (href: string) => history.replaceState(null, "", href)
 };
 

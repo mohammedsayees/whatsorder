@@ -222,6 +222,10 @@ export function NewOrderAlertsProvider({
     initialNewOrderAlertState.waitingArrivals ?? []
   );
   // Arrivals already announced; only newcomers get a toast and a chime.
+  // Payments already shown when the page loaded are not re-announced.
+  const knownOnlinePaymentIdsRef = useRef(
+    new Set((initialNewOrderAlertState.recentOnlinePayments ?? []).map((payment) => payment.id))
+  );
   const knownArrivalIdsRef = useRef(
     new Set((initialNewOrderAlertState.waitingArrivals ?? []).map((arrival) => arrival.id))
   );
@@ -415,6 +419,31 @@ export function NewOrderAlertsProvider({
           }
         }
 
+        const payments = state.recentOnlinePayments ?? [];
+        const newlyPaid = payments.filter(
+          (payment) => !knownOnlinePaymentIdsRef.current.has(payment.id)
+        );
+        newlyPaid.forEach((payment) => knownOnlinePaymentIdsRef.current.add(payment.id));
+
+        if (newlyPaid.length > 0) {
+          showToast(
+            newlyPaid.length === 1
+              ? `Paid online: order #${newlyPaid[0].id.slice(-8).toUpperCase()} — OK to prepare`
+              : `${newlyPaid.length} orders paid online — OK to prepare`
+          );
+
+          if (
+            soundEnabledRef.current &&
+            claimCrossTabSound(restaurantId, `paid-${newlyPaid[0].id}`)
+          ) {
+            void playAlertSound();
+          }
+
+          if (!compact) {
+            router.refresh();
+          }
+        }
+
         const surfacedOrderCount = surfaceNewOrders(state.pendingOrderIds);
         pendingOrderIdsRef.current = new Set(state.pendingOrderIds);
         setNewOrderCount(state.newOrderCount);
@@ -429,7 +458,7 @@ export function NewOrderAlertsProvider({
 
     alertRefreshPromiseRef.current = refreshPromise;
     return refreshPromise;
-  }, [playAlertSound, restaurantId, showToast, surfaceNewOrders]);
+  }, [compact, playAlertSound, restaurantId, router, showToast, surfaceNewOrders]);
 
   // The realtime handler calls the latest refresh without resubscribing.
   const refreshAlertStateRef = useRef(refreshAlertState);
@@ -589,12 +618,19 @@ export function NewOrderAlertsProvider({
               // now instead of waiting for the next slow poll.
               const orderId = String(payload.new.id ?? "");
 
-              if (
-                payload.new.restaurant_id === restaurantId &&
+              const arrived =
                 payload.new.fulfilment_type === "car_pickup" &&
                 payload.new.customer_arrived_at &&
+                !knownArrivalIdsRef.current.has(orderId);
+              // Stripe confirmed a "Pay online" order: tell staff now.
+              const paidOnline =
+                payload.new.online_payment_status === "paid" &&
+                !knownOnlinePaymentIdsRef.current.has(orderId);
+
+              if (
+                payload.new.restaurant_id === restaurantId &&
                 orderId &&
-                !knownArrivalIdsRef.current.has(orderId)
+                (arrived || paidOnline)
               ) {
                 void refreshAlertStateRef.current().catch(() => {
                   // The next poll retries.

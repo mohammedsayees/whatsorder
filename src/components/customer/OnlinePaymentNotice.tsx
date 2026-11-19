@@ -1,5 +1,6 @@
 import { CheckCircle2, CreditCard } from "lucide-react";
 import type { OnlinePaymentStatus } from "@/lib/stripe/order-payment-rules";
+import { PaymentConfirmingRefresh } from "@/components/customer/PaymentConfirmingRefresh";
 
 // Server-rendered payment state for a "Pay online" order. No client JS: the
 // customer returns from Stripe to a fresh render of this page.
@@ -40,7 +41,7 @@ export function OnlinePaymentNotice({
   const message = unavailable
     ? t("Online payment isn't available right now. You can pay when you collect.", "الدفع الإلكتروني غير متاح الآن. يمكنك الدفع عند الاستلام.")
     : confirming
-      ? t("Confirming your payment… refresh in a few seconds.", "جارٍ تأكيد الدفع… حدّث الصفحة بعد ثوانٍ.")
+      ? t("Confirming your payment… this page updates by itself.", "جارٍ تأكيد الدفع… ستتحدث هذه الصفحة تلقائياً.")
       : status === "pending"
         ? t("Your order is saved but not paid yet.", "تم حفظ طلبك لكنه لم يُدفع بعد.")
         : t("The online payment didn't go through. Try again, or pay when you collect.", "لم يكتمل الدفع الإلكتروني. حاول مجدداً أو ادفع عند الاستلام.");
@@ -48,6 +49,7 @@ export function OnlinePaymentNotice({
   return (
     <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-start text-amber-950">
       <p className="font-bold">{message}</p>
+      {confirming && !unavailable ? <PaymentConfirmingRefresh /> : null}
       {unavailable ? null : confirming ? (
         <a className="focus-ring mt-3 inline-flex w-full items-center justify-center rounded-full border border-amber-300 bg-white px-5 py-3 font-black" href="">
           {t("Refresh", "تحديث")}

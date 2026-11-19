@@ -8,6 +8,7 @@ import { demoRestaurant } from "@/lib/demo-data";
 import type { StaffOrderPayload } from "@/lib/staff-order-payload";
 import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
 import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
+import { BillingBanner } from "@/components/admin/BillingBanner";
 import type { MenuCategory, MenuItem, MenuOptionCatalog, MenuWithCategories } from "@/lib/types";
 const billingMenu: MenuWithCategories = {
  categories: [{ id: "43000000-0000-4000-8000-000000000002", restaurant_id: "restaurant-a", name: "Drinks", is_active: true, display_order: 0, created_at: "" }],
@@ -51,6 +52,11 @@ function Fixture() {
  if (mode === "status-rider" || mode === "status-rider-stale") {
   const stale = mode === "status-rider-stale";
   return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000cc", status: "Out for Delivery", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Rider order", created_at: new Date(Date.now() - 25 * 60_000).toISOString(), fulfilment_type:"delivery", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: { name: "Ravi", phone: "971501234567", location: stale ? null : { distanceKm: 1.24, updatedAt: new Date(Date.now() - 30_000).toISOString(), mapsUrl: "https://www.google.com/maps?q=25.4,55.5" } } }} />;
+ }
+ if (mode === "billing-autopay-failed") return <BillingBanner autopayFailure="insufficient_funds" billingHref="/admin/billing" status="active" />;
+ if (mode === "status-paying" || mode === "status-paid") {
+  const paid = mode === "status-paid";
+  return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} paymentReturn="done" order={{ id: "43000000-0000-4000-8000-0000000000dd", status: "New", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Online order", created_at: new Date().toISOString(), fulfilment_type:"takeaway", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: null, online_payment_status: paid ? "paid" : "pending" }} />;
  }
  if (mode === "status-car") {
   return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000bb", status: "Preparing", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Car order", created_at: new Date(Date.now() - 5 * 60_000).toISOString(), fulfilment_type:"car_pickup", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: null }} />;

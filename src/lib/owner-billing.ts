@@ -316,3 +316,21 @@ export function buildPaymentReceiptMessage(input: {
 export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
+
+const AUTOPAY_REASONS: Record<string, string> = {
+  insufficient_funds: "the card has insufficient funds",
+  expired_card: "the card has expired",
+  card_declined: "the card was declined",
+  generic_decline: "the card was declined",
+  do_not_honor: "the bank declined the charge",
+  authentication_required: "your bank needs you to confirm the payment",
+  incorrect_cvc: "the card details need updating",
+  lost_card: "the card was reported lost",
+  stolen_card: "the card was reported stolen"
+};
+
+/** Plain-language reason for a failed autopay charge (Stripe decline code). */
+export function autopayFailureReason(code: string | null | undefined): string {
+  if (!code) return "the card couldn't be charged";
+  return AUTOPAY_REASONS[code] ?? "the card couldn't be charged";
+}
