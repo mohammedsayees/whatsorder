@@ -44,7 +44,9 @@ export function buildWhatsAppMessage(input: MessageInput) {
         ? "الدفع نقدا عند الاستلام"
         : input.paymentMethod === "UPI"
           ? "UPI"
-          : "بطاقة عند الاستلام";
+          : input.paymentMethod === "Online Payment"
+            ? "دفع إلكتروني (بطاقة)"
+            : "بطاقة عند الاستلام";
     const fulfilmentLabel =
       input.fulfilmentType === "delivery"
         ? "توصيل"
@@ -139,7 +141,7 @@ export function buildWhatsAppMessage(input: MessageInput) {
     ...(input.deliveryFee > 0 ? [`Delivery Fee: ${formatCurrency(input.deliveryFee, input.restaurant)}`] : []),
     `Total: ${formatCurrency(input.total, input.restaurant)}`,
     "",
-    `Payment: ${input.paymentMethod}`,
+    `Payment: ${input.paymentMethod === "Online Payment" ? "Online (card)" : input.paymentMethod}`,
     "",
     input.notes ? `Notes: ${input.notes}` : "Notes: None"
   ].join("\n");

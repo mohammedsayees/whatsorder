@@ -21,6 +21,7 @@ import {
   OrderStatusActions
 } from "@/components/admin/OrderStatusActions";
 import { PaymentMethodControl } from "@/components/admin/PaymentMethodControl";
+import { onlinePaymentStaffLabel } from "@/lib/stripe/order-payment-rules";
 import { RequestFeedbackButton } from "@/components/admin/RequestFeedbackButton";
 import { OrderPrintActions } from "@/components/admin/OrderPrintActions";
 import {
@@ -163,7 +164,11 @@ export function OrderList({
               <div className="min-w-0">
                 <div className="flex items-center justify-between gap-3 lg:justify-end">
                   <span className={`text-xs font-black ${order.payment_method ? "text-emerald-700" : "text-amber-700"}`}>
-                    {order.payment_method ? `Paid · ${order.payment_method.replace(" on Delivery", "")}` : "Unpaid"}
+                    {order.payment_method === "Online Payment"
+                      ? "Paid online"
+                      : order.payment_method
+                        ? `Paid · ${order.payment_method.replace(" on Delivery", "")}`
+                        : onlinePaymentStaffLabel(order.online_payment_status) ?? "Unpaid"}
                   </span>
                   <p className="text-lg font-black">{formatCurrency(order.total, restaurant)}</p>
                 </div>
@@ -171,6 +176,11 @@ export function OrderList({
                   <p className="mt-1 flex items-center justify-end gap-1 text-sm font-bold text-leaf">
                     <Gift size={15} />
                     {order.points_earned} points earned
+                  </p>
+                ) : null}
+                {isOperational && order.online_payment_status === "pending" && !order.payment_method ? (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                    Customer chose Pay online and hasn&apos;t paid yet. Wait for &ldquo;Paid online&rdquo; before preparing, or collect payment on completion.
                   </p>
                 ) : null}
                 {isOperational ? (

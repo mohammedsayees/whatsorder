@@ -9,6 +9,8 @@ function paymentInstruction(order: Order, restaurant: Restaurant) {
       return [`Amount: ${total}`, "Method: Cash on delivery", "Collect cash from the customer."];
     case "Card on Delivery":
       return [`Amount: ${total}`, "Method: Card on delivery", "Collect payment by card."];
+    case "Online Payment":
+      return [`Amount: ${total}`, "Method: Paid online", "Already paid. Do NOT collect payment."];
     case "UPI":
       return [
         `Amount: ${total}`,
@@ -16,6 +18,12 @@ function paymentInstruction(order: Order, restaurant: Restaurant) {
         "Confirm payment with the restaurant before delivery."
       ];
     default:
+      if (order.online_payment_status === "pending") {
+        return [
+          `Amount: ${total}`,
+          "Online payment not confirmed yet — confirm with the restaurant before collecting payment."
+        ];
+      }
       return [
         `Amount: ${total}`,
         "Payment method not recorded — confirm with the restaurant before collecting payment."

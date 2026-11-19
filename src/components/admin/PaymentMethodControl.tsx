@@ -17,7 +17,9 @@ function label(method: PaymentMethod | string | null) {
       ? "UPI"
       : method === "Customer Credit"
         ? "Customer credit"
-        : "Card";
+        : method === "Online Payment"
+          ? "Online"
+          : "Card";
 }
 
 export function PaymentMethodControl({
@@ -40,6 +42,17 @@ export function PaymentMethodControl({
     "Card on Delivery",
     ...(countryCode === "IN" ? (["UPI"] as const) : [])
   ];
+
+  if (paymentMethod === "Online Payment") {
+    return (
+      <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-2.5">
+        <p className="text-sm font-bold text-emerald-800">Paid online (card)</p>
+        <p className="mt-1 text-xs text-emerald-700">
+          The money goes to your Stripe account. Refunds are made from the Stripe Dashboard.
+        </p>
+      </div>
+    );
+  }
 
   if (paymentMethod === "Customer Credit") {
     return (

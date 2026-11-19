@@ -11,10 +11,13 @@ import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
 import { OrderStatusTracker } from "@/components/customer/OrderStatusTracker";
 import { TrackedWhatsAppLink } from "@/components/customer/TrackedWhatsAppLink";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
+import { OnlinePaymentNotice } from "@/components/customer/OnlinePaymentNotice";
 
-export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey, prepMinutes = null }: {
+export function SavedOrderConfirmation({ restaurant, order, language, onboardingTest = false, webPushPublicKey, prepMinutes = null, paymentReturn = null }: {
   restaurant: PublicRestaurant; order: OrderConfirmation; language?: string; onboardingTest?: boolean; webPushPublicKey: string | null;
   prepMinutes?: number | null;
+  /** ?payment= from the Stripe return URL or the Pay now route. */
+  paymentReturn?: string | null;
 }) {
   const active = order.status !== "Cancelled" && order.status !== "Completed";
   const arabic = language === "ar";
@@ -48,6 +51,16 @@ export function SavedOrderConfirmation({ restaurant, order, language, onboarding
           {t("Reference", "رقم الطلب")}: {reference}
         </p>
       </div>
+
+      {active || order.online_payment_status === "paid" ? (
+        <OnlinePaymentNotice
+          arabic={arabic}
+          payHref={`/r/${restaurant.slug}/pay?order=${encodeURIComponent(order.id)}`}
+          returned={paymentReturn === "done"}
+          status={order.online_payment_status ?? null}
+          unavailable={paymentReturn === "unavailable"}
+        />
+      ) : null}
 
       {onboardingTest ? (
         <aside className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4 text-start text-violet-950">

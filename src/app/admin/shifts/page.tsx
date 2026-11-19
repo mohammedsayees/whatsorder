@@ -60,7 +60,8 @@ const fulfilmentLabels: Record<string, string> = {
 const paymentMethodLabels: Record<string, string> = {
   "Cash on Delivery": "Cash",
   "Card on Delivery": "Card",
-  UPI: "UPI"
+  UPI: "UPI",
+  "Online Payment": "Online"
 };
 
 // Same tolerance the close form and printed report use for "balanced".
