@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { handleStripeEvent } from "@/lib/stripe/webhook-events";
+import { handleDirectOrderEvent, handleStripeEvent } from "@/lib/stripe/webhook-events";
 import { applyCheckoutSessionToOrder, markOrderRefunded } from "@/lib/stripe/order-payments";
-import { isStripeLiveMode } from "@/lib/stripe/server";
+import { getDirectRestaurantId, isStripeLiveMode } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
-vi.mock("@/lib/stripe/server", () => ({ isStripeLiveMode: vi.fn(() => false) }));
+vi.mock("@/lib/stripe/server", () => ({ isStripeLiveMode: vi.fn(() => false), getDirectRestaurantId: vi.fn(() => null) }));
 vi.mock("@/lib/stripe/order-payments", () => ({
   applyCheckoutSessionToOrder: vi.fn(async () => "paid"),
   markOrderRefunded: vi.fn(async () => undefined)
@@ -73,5 +73,28 @@ describe("Stripe Connect webhook events", () => {
     expect(markOrderRefunded).not.toHaveBeenCalled();
     await handleStripeEvent(event("charge.refunded", { payment_intent: "pi_1", refunded: true }));
     expect(markOrderRefunded).toHaveBeenCalledWith(restaurantId, "pi_1");
+  });
+
+  it("single-café mode applies platform events only to that café's own orders", async () => {
+    const platformEvent = (type: string, object: Record<string, unknown>) =>
+      ({ type, account: undefined, livemode: false, data: { object } }) as never;
+    const session = { id: "cs_test_9", status: "complete", payment_status: "paid", metadata: { whatsorder_order_id: "o1", whatsorder_restaurant_id: restaurantId } };
+
+    expect(await handleDirectOrderEvent(platformEvent("checkout.session.completed", session))).toBe("ignored");
+
+    vi.mocked(getDirectRestaurantId).mockReturnValue(restaurantId);
+    expect(await handleDirectOrderEvent(platformEvent("checkout.session.completed", session))).toBe("handled");
+    expect(applyCheckoutSessionToOrder).toHaveBeenLastCalledWith(restaurantId, session, undefined);
+    await handleDirectOrderEvent(platformEvent("checkout.session.expired", session));
+    expect(applyCheckoutSessionToOrder).toHaveBeenLastCalledWith(restaurantId, session, "expired");
+    await handleDirectOrderEvent(platformEvent("charge.refunded", { payment_intent: "pi_9", refunded: true }));
+    expect(markOrderRefunded).toHaveBeenCalledWith(restaurantId, "pi_9");
+
+    // Not a WhatsOrder order, or another restaurant's metadata: ignored.
+    vi.mocked(applyCheckoutSessionToOrder).mockClear();
+    expect(await handleDirectOrderEvent(platformEvent("checkout.session.completed", { id: "cs_x", metadata: {} }))).toBe("ignored");
+    expect(await handleDirectOrderEvent(platformEvent("checkout.session.completed", { ...session, metadata: { whatsorder_order_id: "o2", whatsorder_restaurant_id: "other" } }))).toBe("ignored");
+    expect(applyCheckoutSessionToOrder).not.toHaveBeenCalled();
+    vi.mocked(getDirectRestaurantId).mockReturnValue(null);
   });
 });

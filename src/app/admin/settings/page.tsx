@@ -14,7 +14,14 @@ import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { OnlinePaymentsSettings, type OnlinePaymentsView } from "@/components/admin/OnlinePaymentsSettings";
 import { stripeDashboardUrl, supportsOnlinePayments } from "@/lib/stripe/connect";
 import { getRestaurantStripeAccount, syncRestaurantStripeAccount } from "@/lib/stripe/connect-data";
-import { getStripePublishableKey, isStripeConfigured, isStripeLiveMode } from "@/lib/stripe/server";
+import {
+  getDirectRestaurantId,
+  getStripePublishableKey,
+  isConnectPlatformEnabled,
+  isStripeConfigured,
+  isStripeLiveMode
+} from "@/lib/stripe/server";
+import { getOnlinePaymentAccount } from "@/lib/stripe/order-payments";
 
 async function loadOnlinePaymentsView(
   restaurantId: string,
@@ -23,7 +30,8 @@ async function loadOnlinePaymentsView(
 ): Promise<OnlinePaymentsView | null> {
   const publishableKey = getStripePublishableKey();
 
-  if (!isStripeConfigured() || !publishableKey) {
+  // Single-café mode: no per-café Stripe onboarding (see DirectPaymentsNotice).
+  if (!isStripeConfigured() || !publishableKey || !isConnectPlatformEnabled()) {
     return null;
   }
 
@@ -66,13 +74,16 @@ export default async function AdminSettingsPage({
 
   const canEditPosterBranding = ["owner", "restaurant_admin", "manager"].includes(session.role);
   const canManagePayments = session.role === "owner" || session.role === "restaurant_admin";
-  const [access, riders, posterPalette, onlinePayments] = await Promise.all([
+  const directPayments =
+    session.role !== "staff" && getDirectRestaurantId() === session.restaurantId;
+  const [access, riders, posterPalette, onlinePayments, directPaymentsLive] = await Promise.all([
     getTenantAccess(session.restaurantId),
     getDeliveryRiders(session.restaurantId),
     canEditPosterBranding ? previewPosterPalette(restaurant) : Promise.resolve(null),
     session.role !== "staff"
       ? loadOnlinePaymentsView(session.restaurantId, restaurant.country_code, canManagePayments)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    directPayments ? getOnlinePaymentAccount(restaurant).then(Boolean).catch(() => false) : Promise.resolve(false)
   ]);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Restaurant settings" />;
@@ -110,6 +121,23 @@ export default async function AdminSettingsPage({
         <div className="mt-6">
           <OnlinePaymentsSettings view={onlinePayments} />
         </div>
+      ) : null}
+      {directPayments ? (
+        <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black">Online payments</h2>
+          {directPaymentsLive ? (
+            <p className="mt-2 text-sm text-stone-600">
+              <span className="font-bold text-leaf">On.</span> Customers can choose &ldquo;Pay online&rdquo; at
+              checkout. Payments go to {restaurant.name}&apos;s own Stripe account and are paid out to its bank.
+              Refunds and payouts are managed in the Stripe Dashboard.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-stone-600">
+              Connected to {restaurant.name}&apos;s own Stripe account, but not taking payments yet. Check that
+              the Stripe account is activated and its webhook is set up.
+            </p>
+          )}
+        </section>
       ) : null}
       {session.role !== "staff" ? (
         <div className="mt-6">

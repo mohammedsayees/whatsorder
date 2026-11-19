@@ -44,6 +44,22 @@ export function isOrderPaymentWebhookConfigured() {
   return Boolean(process.env.STRIPE_WEBHOOK_SECRET);
 }
 
+/**
+ * Single-café ("direct") mode: until WhatsOrder has its own licensed Stripe
+ * platform account, the Stripe account belongs to ONE restaurant (set here by
+ * id). That restaurant's "Pay online" charges go straight to this account;
+ * Connect onboarding for other cafés and card billing of WhatsOrder invoices
+ * stay off, so no other café's or WhatsOrder's money lands in it.
+ */
+export function getDirectRestaurantId(): string | null {
+  const id = process.env.STRIPE_DIRECT_RESTAURANT_ID?.trim();
+  return id ? id : null;
+}
+
+export function isConnectPlatformEnabled() {
+  return getDirectRestaurantId() === null;
+}
+
 export function isBillingWebhookConfigured() {
   return Boolean(process.env.STRIPE_BILLING_WEBHOOK_SECRET);
 }
