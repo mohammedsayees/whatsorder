@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyCheckoutSessionToOrder, checkoutUrlForOrder } from "@/lib/stripe/order-payments";
 import { getRestaurantStripeAccount } from "@/lib/stripe/connect-data";
-import { getStripe } from "@/lib/stripe/server";
+import { getStripe, isOrderPaymentWebhookConfigured } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
-vi.mock("@/lib/stripe/server", () => ({ getStripe: vi.fn() }));
+vi.mock("@/lib/stripe/server", () => ({ getStripe: vi.fn(), isOrderPaymentWebhookConfigured: vi.fn(() => true) }));
 vi.mock("@/lib/push-auth", () => ({ isPushAuthorizationConfigured: () => true }));
 vi.mock("@/lib/stripe/connect-data", () => ({ getRestaurantStripeAccount: vi.fn() }));
 
@@ -100,6 +100,15 @@ describe("Pay online checkout sessions", () => {
     vi.mocked(getRestaurantStripeAccount).mockResolvedValue({ ...activeAccount, card_payments_status: "restricted" } as never);
     expect(await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" })).toBeNull();
     expect(await checkoutUrlForOrder({ restaurant: { ...restaurant, country_code: "IN" }, orderId, origin: "https://a" })).toBeNull();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("hides Pay online until the order webhook is configured", async () => {
+    const stripe = mockStripe();
+    mockOrders({ id: orderId, total: 10, status: "New", online_payment_status: "pending", stripe_checkout_session_id: null });
+    vi.mocked(isOrderPaymentWebhookConfigured).mockReturnValue(false);
+    expect(await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" })).toBeNull();
+    vi.mocked(isOrderPaymentWebhookConfigured).mockReturnValue(true);
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 

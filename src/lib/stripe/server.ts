@@ -27,9 +27,25 @@ export function getStripe(): Stripe | null {
   return cached;
 }
 
-/** Browser-safe key for Stripe's embedded components (admin pages only). */
+/**
+ * Browser-safe key for Stripe's embedded components (admin pages only). Read
+ * on the server and passed down as a prop, so either name works without a
+ * rebuild-time NEXT_PUBLIC_ variable.
+ */
 export function getStripePublishableKey(): string | null {
-  return process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || null;
+  return process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || null;
+}
+
+/**
+ * Money can only be taken when the matching signed webhook is configured:
+ * without it a successful payment would never be recorded.
+ */
+export function isOrderPaymentWebhookConfigured() {
+  return Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+}
+
+export function isBillingWebhookConfigured() {
+  return Boolean(process.env.STRIPE_BILLING_WEBHOOK_SECRET);
 }
 
 export function isStripeConfigured() {
