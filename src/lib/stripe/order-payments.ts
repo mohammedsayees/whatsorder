@@ -50,9 +50,20 @@ async function isDirectAccountReady(): Promise<boolean> {
   const stripe = getStripe();
   let value = false;
   try {
-    value = Boolean(stripe && (await stripe.accounts.retrieveCurrent()).charges_enabled);
-  } catch {
+    const account = stripe ? await stripe.accounts.retrieveCurrent() : null;
+    value = Boolean(account?.charges_enabled);
+    if (account && !value) {
+      // Logged once per cache refresh so "Pay online not showing" is diagnosable.
+      console.warn("WhatsOrder Stripe: account cannot take charges yet", {
+        disabledReason: account.requirements?.disabled_reason ?? null,
+        currentlyDue: account.requirements?.currently_due?.slice(0, 10) ?? []
+      });
+    }
+  } catch (error) {
     value = false;
+    console.warn("WhatsOrder Stripe: could not read account status", {
+      message: error instanceof Error ? error.message : "unknown"
+    });
   }
   directReady = { value, at: Date.now() };
   return value;
