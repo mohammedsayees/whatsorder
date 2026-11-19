@@ -11,6 +11,44 @@ import { previewPosterPalette } from "@/lib/poster/subjects";
 import { getDeliveryRiders } from "@/lib/rider-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { OnlinePaymentsSettings, type OnlinePaymentsView } from "@/components/admin/OnlinePaymentsSettings";
+import { stripeDashboardUrl, supportsOnlinePayments } from "@/lib/stripe/connect";
+import { getRestaurantStripeAccount, syncRestaurantStripeAccount } from "@/lib/stripe/connect-data";
+import { getStripePublishableKey, isStripeConfigured, isStripeLiveMode } from "@/lib/stripe/server";
+
+async function loadOnlinePaymentsView(
+  restaurantId: string,
+  countryCode: string | null | undefined,
+  canManage: boolean
+): Promise<OnlinePaymentsView | null> {
+  const publishableKey = getStripePublishableKey();
+
+  if (!isStripeConfigured() || !publishableKey) {
+    return null;
+  }
+
+  let account = await getRestaurantStripeAccount(restaurantId);
+
+  // Until cards are active, re-check with Stripe so the page reflects
+  // onboarding progress without waiting for a webhook.
+  if (account && account.card_payments_status !== "active") {
+    account = await syncRestaurantStripeAccount(restaurantId).catch(() => account);
+  }
+
+  return {
+    canManage,
+    countrySupported: supportsOnlinePayments(countryCode),
+    publishableKey,
+    testMode: !isStripeLiveMode(),
+    account: account
+      ? {
+          status: account.card_payments_status,
+          requirementsDue: account.requirements_due,
+          dashboardUrl: stripeDashboardUrl(account.stripe_account_id)
+        }
+      : null
+  };
+}
 
 export default async function AdminSettingsPage({
   searchParams
@@ -27,10 +65,14 @@ export default async function AdminSettingsPage({
   const restaurant = session.restaurant;
 
   const canEditPosterBranding = ["owner", "restaurant_admin", "manager"].includes(session.role);
-  const [access, riders, posterPalette] = await Promise.all([
+  const canManagePayments = session.role === "owner" || session.role === "restaurant_admin";
+  const [access, riders, posterPalette, onlinePayments] = await Promise.all([
     getTenantAccess(session.restaurantId),
     getDeliveryRiders(session.restaurantId),
-    canEditPosterBranding ? previewPosterPalette(restaurant) : Promise.resolve(null)
+    canEditPosterBranding ? previewPosterPalette(restaurant) : Promise.resolve(null),
+    session.role !== "staff"
+      ? loadOnlinePaymentsView(session.restaurantId, restaurant.country_code, canManagePayments)
+      : Promise.resolve(null)
   ]);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Restaurant settings" />;
@@ -64,6 +106,11 @@ export default async function AdminSettingsPage({
       <div className="mt-6">
         <SettingsForm restaurant={restaurant} canWrite={canWrite} />
       </div>
+      {onlinePayments ? (
+        <div className="mt-6">
+          <OnlinePaymentsSettings view={onlinePayments} />
+        </div>
+      ) : null}
       {session.role !== "staff" ? (
         <div className="mt-6">
           <RiderSettings
