@@ -3,14 +3,17 @@ import Link from "next/link";
 import { LateShiftReceipts } from "@/components/admin/LateShiftReceipts";
 import { getLateShiftReceipts } from "@/lib/shift-data";
 import {
-  AssignUnassignedOrdersButton,
+  AssignUnassignedOrdersForm,
   CloseShiftForm,
   CloseBusinessDayButton,
+  DeclareCashCountForm,
   OpenShiftForm,
   OtherIncomeForm,
   PaidOutForm,
+  UnbilledSaleForm,
   VoidOtherIncomeForm,
-  VoidPaidOutForm
+  VoidPaidOutForm,
+  PaidOutReceiptForm
 } from "@/components/admin/ShiftForms";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import { getOpenBusinessDay, getPreviousBusinessDays } from "@/lib/business-day-data";
@@ -18,13 +21,20 @@ import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import {
   getCurrentShiftView,
+  cashVarianceDays,
+  getCashVarianceShifts,
+  getLastClosedCount,
   getPreviousShifts,
-  getUnassignedCompletedOrderCount
+  getShiftStaffNames,
+  getUnassignedCompletedOrders
 } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
+import { summarizeCashVariance } from "@/lib/shift-variance";
+import { detectPaymentMixup } from "@/lib/payment-mixup";
+import { UNBILLED_SALE, unbilledFromEntries } from "@/lib/unbilled-sales";
 
 function formatShiftDuration(openedAt: string, closedAt: string | null) {
   if (!closedAt) {
@@ -47,16 +57,47 @@ const fulfilmentLabels: Record<string, string> = {
   takeaway: "Takeaway"
 };
 
-export default async function AdminShiftsPage() {
-  const session = await requireRestaurantAdmin();
+const paymentMethodLabels: Record<string, string> = {
+  "Cash on Delivery": "Cash",
+  "Card on Delivery": "Card",
+  UPI: "UPI"
+};
+
+// Same tolerance the close form and printed report use for "balanced".
+function differenceTone(value: number | null) {
+  return Math.abs(Number(value ?? 0)) < 0.005 ? "text-emerald-700" : "text-amber-700";
+}
+
+// Attaching a receipt reads it with Gemini in after(), within this budget.
+export const maxDuration = 60;
+
+function previousShiftsHref(params: { from: string | null; to: string | null; page: number }) {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page > 1) query.set("page", String(params.page));
+  const text = query.toString();
+  return `/admin/shifts${text ? `?${text}` : ""}#previous-shifts`;
+}
+
+export default async function AdminShiftsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ from?: string; to?: string; page?: string }>;
+}) {
+  const [session, query] = await Promise.all([requireRestaurantAdmin(), searchParams]);
   const money = (value: number) => formatCurrency(value, session.restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, session.restaurant);
-  const [currentShift, previousShifts, unassignedCompletedOrders, openBusinessDay, previousBusinessDays] =
+  const [currentShift, previousPage, unassignedOrders, openBusinessDay, previousBusinessDays] =
     await Promise.all([
       getCurrentShiftView(session),
-      getPreviousShifts(session),
-      getUnassignedCompletedOrderCount(session.restaurantId),
+      getPreviousShifts(session, {
+        from: typeof query.from === "string" ? query.from : null,
+        to: typeof query.to === "string" ? query.to : null,
+        page: Number(query.page) || 1
+      }),
+      getUnassignedCompletedOrders(session.restaurantId),
       getOpenBusinessDay(session),
       getPreviousBusinessDays(session)
     ]);
@@ -68,7 +109,44 @@ export default async function AdminShiftsPage() {
     ).catch(() => null)
     : null;
 
-  const lateReceipts = await getLateShiftReceipts(session);
+  const previousShifts = previousPage.shifts;
+  const filtered = Boolean(previousPage.from || previousPage.to);
+  const [lateReceipts, varianceShifts, lastCount] = await Promise.all([
+    getLateShiftReceipts(session),
+    getCashVarianceShifts(session),
+    currentShift ? Promise.resolve(null) : getLastClosedCount(session)
+  ]);
+  const cashVariance = summarizeCashVariance(varianceShifts);
+  const staffNames = await getShiftStaffNames([
+    ...previousShifts,
+    ...varianceShifts.map((shift) => ({ opened_by_user_id: shift.opened_by_user_id }))
+  ]);
+  const staffName = (userId: string | null) =>
+    userId ? (userId === session.userId ? "you" : staffNames.get(userId) ?? "a team member") : null;
+  const showUpi = session.restaurant.country_code === "IN";
+  const assignableOrders = unassignedOrders.assignable.map((order) => ({
+    id: order.id,
+    completedLabel: `Completed ${formatDateTime(order.completed_at)}`,
+    detailLabel: [
+      `#${order.id.slice(0, 8)}`,
+      paymentMethodLabels[order.payment_method ?? ""] ?? "Payment not recorded",
+      fulfilmentLabels[order.fulfilment_type] ?? order.fulfilment_type
+    ].join(" · "),
+    total: order.total,
+    isCash: order.payment_method === "Cash on Delivery"
+  }));
+  const assignableCount = assignableOrders.length;
+  // Unbilled sales are stored as shift receipts but shown as sales.
+  const unbilledEntries = (currentShift?.otherIncomeEntries ?? [])
+    .filter((entry) => entry.category === UNBILLED_SALE);
+  const otherIncomeOnly = (currentShift?.otherIncomeEntries ?? [])
+    .filter((entry) => entry.category !== UNBILLED_SALE);
+  const liveUnbilled = unbilledFromEntries(
+    unbilledEntries.map((entry) => ({ ...entry, amount: Number(entry.amount) }))
+  );
+  // After a staff member locks a blind count, they can no longer change expected cash.
+  const canChangeCash = Boolean(currentShift?.canManage) &&
+    !(session.role === "staff" && currentShift?.declaredCash !== null);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -97,37 +175,59 @@ export default async function AdminShiftsPage() {
               </div>
             </div>
             {!currentShift && session.role !== "staff" && openBusinessDay.shifts.length > 0 ? (
-              <div className="w-full sm:w-72">
-                <CloseBusinessDayButton businessDayId={openBusinessDay.day.id} />
-              </div>
+              assignableCount > 0 ? (
+                <p className="w-full rounded-lg bg-white/70 p-3 text-sm font-bold text-sky-900 sm:w-72">
+                  {assignableCount} completed order{assignableCount === 1 ? " needs" : "s need"} a
+                  shift first. Open a shift, assign {assignableCount === 1 ? "it" : "them"} and close
+                  the shift, then close the business day.
+                </p>
+              ) : (
+                <div className="w-full sm:w-72">
+                  <CloseBusinessDayButton businessDayId={openBusinessDay.day.id} />
+                </div>
+              )
             ) : null}
           </div>
         </section>
       ) : null}
 
-      {unassignedCompletedOrders > 0 ? (
+      {assignableCount > 0 ? (
         <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <AlertTriangle className="mt-0.5 shrink-0" size={20} />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className="font-black">
-              {unassignedCompletedOrders} completed order
-              {unassignedCompletedOrders === 1 ? "" : "s"} unassigned
+              {assignableCount} completed order{assignableCount === 1 ? "" : "s"} unassigned
             </p>
             <p className="text-sm">
-              These orders were completed while no shift was open. They are not
-              included in a shift&apos;s expected cash.
+              These orders were completed while no shift was open, so they are not in any
+              shift&apos;s expected cash. Assign only orders whose money is in this drawer.
             </p>
-            {currentShift ? (
+            {currentShift?.canManage ? (
               <div className="mt-3">
-                <AssignUnassignedOrdersButton />
+                <AssignUnassignedOrdersForm
+                  key={assignableOrders.map((order) => order.id).join(",")}
+                  orders={assignableOrders}
+                  restaurant={session.restaurant}
+                  shiftId={currentShift.shift.id}
+                />
               </div>
             ) : (
               <p className="mt-2 text-xs font-bold">
-                Open a shift to assign these orders to it.
+                {currentShift
+                  ? "The shift opener or a manager can assign these orders to the current shift."
+                  : "Open a shift to assign these orders to it."}
               </p>
             )}
           </div>
         </div>
+      ) : null}
+      {unassignedOrders.olderCount > 0 && session.role !== "staff" ? (
+        <p className="mt-3 text-xs text-stone-500">
+          {unassignedOrders.olderCount} older unassigned completed order
+          {unassignedOrders.olderCount === 1 ? " was" : "s were"} completed before the current
+          business day and {unassignedOrders.olderCount === 1 ? "is" : "are"} not offered for the
+          current shift, so old sales can&apos;t inflate tonight&apos;s expected cash.
+        </p>
       ) : null}
 
       {!currentShift ? (
@@ -143,7 +243,13 @@ export default async function AdminShiftsPage() {
               </p>
             </div>
           </div>
-          <OpenShiftForm restaurant={session.restaurant} />
+          <OpenShiftForm
+            lastCount={lastCount ? {
+              amount: lastCount.amount,
+              label: `${lastCount.shiftName}, closed ${formatDateTime(lastCount.closedAt)}`
+            } : null}
+            restaurant={session.restaurant}
+          />
         </section>
       ) : (
         <>
@@ -183,20 +289,29 @@ export default async function AdminShiftsPage() {
                   label: "Opening cash",
                   value: money(Number(currentShift.shift.opening_cash_amount))
                 },
-                {
-                  icon: Banknote,
-                  label: "Completed cash orders",
-                  value: money(currentShift.summary.completed_cash_order_total)
-                },
+                ...(currentShift.cashBlind
+                  ? []
+                  : [{
+                      icon: Banknote,
+                      label: "Completed cash orders",
+                      value: money(currentShift.summary.completed_cash_order_total)
+                    }]),
                 {
                   icon: ReceiptText,
                   label: "Cash paid-outs",
                   value: money(currentShift.summary.cash_paid_out_total)
                 },
+                ...(liveUnbilled.total > 0
+                  ? [{
+                      icon: ReceiptText,
+                      label: "Unbilled sales",
+                      value: money(liveUnbilled.total)
+                    }]
+                  : []),
                 {
                   icon: CircleDollarSign,
                   label: "Other income",
-                  value: money(currentShift.summary.other_income_total)
+                  value: money(currentShift.summary.other_income_total - liveUnbilled.total)
                 },
                 {
                   icon: CreditCard,
@@ -208,6 +323,14 @@ export default async function AdminShiftsPage() {
                       icon: QrCode,
                       label: "UPI",
                       value: money(currentShift.summary.upi_total)
+                    }]
+                  : []),
+                // Not cash, so it reveals nothing during a blind count.
+                ...(currentShift.creditSales.count > 0
+                  ? [{
+                      icon: WalletCards,
+                      label: `Sold on credit (${currentShift.creditSales.count})`,
+                      value: money(currentShift.creditSales.total)
                     }]
                   : [])
               ].map(({ icon: Icon, label, value }) => (
@@ -222,17 +345,33 @@ export default async function AdminShiftsPage() {
             </div>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm font-bold text-emerald-800">
-                  Expected cash
-                </p>
-                <p className="mt-1 text-3xl font-black text-emerald-950">
-                  {money(currentShift.summary.expected_cash_amount)}
-                </p>
-                <p className="mt-2 text-xs font-semibold text-emerald-800">
-                  Opening cash + cash order sales + cash other income − cash paid-outs
-                </p>
-              </div>
+              {currentShift.cashBlind ? (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-sm font-bold text-stone-700">Expected cash</p>
+                  <p className="mt-1 text-xl font-black text-stone-500">Shown after your count</p>
+                  <p className="mt-2 text-xs font-semibold text-stone-500">
+                    This restaurant uses a blind cash count: lock your drawer count when
+                    closing, then the expected amount and any difference are shown.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-bold text-emerald-800">
+                    Expected cash
+                  </p>
+                  <p className="mt-1 text-3xl font-black text-emerald-950">
+                    {money(currentShift.summary.expected_cash_amount)}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-emerald-800">
+                    Opening cash + cash order sales + cash other income − cash paid-outs
+                  </p>
+                  {currentShift.declaredCash !== null ? (
+                    <p className="mt-2 text-xs font-bold text-emerald-900">
+                      Cash count locked: {money(currentShift.declaredCash)}
+                    </p>
+                  ) : null}
+                </div>
+              )}
               <div className="rounded-lg border border-stone-200 p-4">
                 <p className="text-sm font-black">Shift activity</p>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -245,7 +384,9 @@ export default async function AdminShiftsPage() {
                   <div>
                     <dt className="text-stone-500">Completed sales</dt>
                     <dd className="font-black">
-                      {money(currentShift.summary.completed_sales)}
+                      {currentShift.cashBlind
+                        ? "After count"
+                        : money(currentShift.summary.completed_sales)}
                     </dd>
                   </div>
                   <div>
@@ -283,7 +424,7 @@ export default async function AdminShiftsPage() {
               <p className="mt-1 text-sm text-stone-500">
                 Record only cash physically taken from this shift.
               </p>
-              {currentShift.canManage ? (
+              {canChangeCash ? (
                 <div className="mt-4">
                   <PaidOutForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
                 </div>
@@ -311,7 +452,11 @@ export default async function AdminShiftsPage() {
                               {paidOutBillStatuses ? (
                                 <PaidOutBillBadge status={paidOutBillStatuses.get(paidOut.id) ?? "none"} />
                               ) : null}
-                              {currentShift.canManage ? (
+                              {paidOutBillStatuses && currentShift.canManage &&
+                                (paidOutBillStatuses.get(paidOut.id) ?? "none") === "none" ? (
+                                <PaidOutReceiptForm paidOutId={paidOut.id} />
+                              ) : null}
+                              {canChangeCash ? (
                                 <VoidPaidOutForm paidOutId={paidOut.id} shiftId={currentShift.shift.id} />
                               ) : null}
                             </>
@@ -331,18 +476,51 @@ export default async function AdminShiftsPage() {
               </div>
             </section>
 
+            <section className="rounded-lg border border-amber-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-black">Unbilled sales</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Money taken without an order. If you know the items, enter the order instead
+                (New order lets you set an earlier time). Counted as sales and in the drawer.
+              </p>
+              {canChangeCash ? (
+                <div className="mt-4">
+                  <UnbilledSaleForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
+                </div>
+              ) : null}
+              <div className="mt-5 space-y-2">
+                {unbilledEntries.length ? unbilledEntries.map((entry) => (
+                  <div className="rounded-lg bg-amber-50 p-3" key={entry.id}>
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-bold">{entry.description}</p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
+                        </p>
+                        {canChangeCash ? (
+                          <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} />
+                        ) : null}
+                      </div>
+                      <p className="shrink-0 font-black text-amber-800">+{money(Number(entry.amount))}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="rounded-lg border border-dashed border-stone-200 p-5 text-center text-sm text-stone-500">No unbilled sales recorded.</p>
+                )}
+              </div>
+            </section>
+
             <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
               <h2 className="text-xl font-black">Other income</h2>
               <p className="mt-1 text-sm text-stone-500">
                 Record receipts that are not customer-order sales. Cash entries increase expected drawer cash.
               </p>
-              {currentShift.canManage ? (
+              {canChangeCash ? (
                 <div className="mt-4">
                   <OtherIncomeForm restaurant={session.restaurant} shiftId={currentShift.shift.id} />
                 </div>
               ) : null}
               <div className="mt-5 space-y-2">
-                {currentShift.otherIncomeEntries.length ? currentShift.otherIncomeEntries.map((entry) => (
+                {otherIncomeOnly.length ? otherIncomeOnly.map((entry) => (
                   <div className="rounded-lg bg-stone-50 p-3" key={entry.id}>
                     <div className="flex justify-between gap-3">
                       <div>
@@ -352,7 +530,7 @@ export default async function AdminShiftsPage() {
                           {otherIncomePaymentLabels[entry.payment_method]} · {formatDateTime(entry.recorded_at)}
                           {entry.reference ? ` · ${entry.reference}` : ""}
                         </p>
-                        {currentShift.canManage && entry.category !== "customer_credit_repayment" ? (
+                        {canChangeCash && entry.category !== "customer_credit_repayment" ? (
                           <VoidOtherIncomeForm entryId={entry.id} shiftId={currentShift.shift.id} />
                         ) : null}
                       </div>
@@ -372,8 +550,16 @@ export default async function AdminShiftsPage() {
               </p>
               {currentShift.canManage ? (
                 <div className="mt-4">
+                  {currentShift.cashBlind ? (
+                    <DeclareCashCountForm
+                      activeOrderCount={currentShift.activeOrderCount}
+                      restaurant={session.restaurant}
+                      shiftId={currentShift.shift.id}
+                    />
+                  ) : (
                   <CloseShiftForm
                     activeOrderCount={currentShift.activeOrderCount}
+                    declaredCash={currentShift.declaredCash}
                     expectedCard={currentShift.summary.card_on_delivery_total}
                     expectedCash={currentShift.summary.expected_cash_amount}
                     expectedUpi={currentShift.summary.upi_total}
@@ -383,6 +569,7 @@ export default async function AdminShiftsPage() {
                     restaurant={session.restaurant}
                     shiftId={currentShift.shift.id}
                   />
+                  )}
                 </div>
               ) : (
                 <p className="mt-4 rounded-lg bg-stone-100 p-4 text-sm font-bold text-stone-600">
@@ -395,13 +582,42 @@ export default async function AdminShiftsPage() {
         </>
       )}
 
-      <section className="mt-8">
+      <section className="mt-8 scroll-mt-4" id="previous-shifts">
         <h2 className="text-xl font-black">Previous shifts</h2>
         <p className="mt-1 text-sm text-stone-500">
-          {session.role === "staff"
-            ? "Your closed shifts"
-            : "The latest 50 closed shifts for this restaurant"}
+          {session.role === "staff" ? "Your closed shifts" : "Closed shifts for this restaurant"}
+          {" · "}
+          {previousPage.total} shift{previousPage.total === 1 ? "" : "s"}
+          {filtered ? " in the chosen dates" : ""}, newest first
         </p>
+        <form action="/admin/shifts#previous-shifts" className="mt-3 flex flex-wrap items-end gap-3" method="get">
+          <label className="text-xs font-bold text-stone-600">
+            Opened from
+            <input
+              className="focus-ring mt-1 block rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
+              defaultValue={previousPage.from ?? ""}
+              name="from"
+              type="date"
+            />
+          </label>
+          <label className="text-xs font-bold text-stone-600">
+            to
+            <input
+              className="focus-ring mt-1 block rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"
+              defaultValue={previousPage.to ?? ""}
+              name="to"
+              type="date"
+            />
+          </label>
+          <button className="focus-ring rounded-lg bg-ink px-4 py-2 text-sm font-black text-white" type="submit">
+            Show
+          </button>
+          {filtered ? (
+            <Link className="focus-ring rounded-lg border border-stone-200 px-4 py-2 text-sm font-black" href="/admin/shifts#previous-shifts">
+              Clear dates
+            </Link>
+          ) : null}
+        </form>
         <div className="mt-4 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
           {previousShifts.length > 0 ? (
             <div className="overflow-x-auto">
@@ -412,7 +628,9 @@ export default async function AdminShiftsPage() {
                     <th className="px-4 py-3">Completed sales</th>
                     <th className="px-4 py-3">Expected</th>
                     <th className="px-4 py-3">Counted</th>
-                    <th className="px-4 py-3">Difference</th>
+                    <th className="px-4 py-3">Cash diff.</th>
+                    <th className="px-4 py-3">Card diff.</th>
+                    {showUpi ? <th className="px-4 py-3">UPI diff.</th> : null}
                     <th className="px-4 py-3">Report</th>
                   </tr>
                 </thead>
@@ -432,6 +650,12 @@ export default async function AdminShiftsPage() {
                             {formatShiftDuration(shift.opened_at, shift.closed_at)} shift
                           </p>
                         ) : null}
+                        <p className="whitespace-nowrap text-xs text-stone-500">
+                          Opened by {staffName(shift.opened_by_user_id)}
+                          {shift.closed_by_user_id && shift.closed_by_user_id !== shift.opened_by_user_id
+                            ? ` · closed by ${staffName(shift.closed_by_user_id)}`
+                            : ""}
+                        </p>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-bold">
                         {money(Number(shift.completed_sales))}
@@ -442,23 +666,46 @@ export default async function AdminShiftsPage() {
                       <td className="whitespace-nowrap px-4 py-3">
                         {money(Number(shift.cash_counted_amount ?? 0))}
                       </td>
-                      <td
-                        className={`whitespace-nowrap px-4 py-3 font-black ${
-                          Number(shift.difference_amount ?? 0) === 0
-                            ? "text-emerald-700"
-                            : "text-amber-700"
-                        }`}
-                      >
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.difference_amount)}`}>
                         {money(Number(shift.difference_amount ?? 0))}
                       </td>
+                      <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.card_difference_amount)}`}>
+                        {shift.card_difference_amount === null ? "—" : money(Number(shift.card_difference_amount))}
+                      </td>
+                      {showUpi ? (
+                        <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(shift.upi_difference_amount)}`}>
+                          {shift.upi_difference_amount === null ? "—" : money(Number(shift.upi_difference_amount))}
+                        </td>
+                      ) : null}
                       <td className="whitespace-nowrap px-4 py-3">
                         {shift.close_report_version > 0 ? (
+                          <>
                           <Link
                             className="focus-ring rounded-lg border border-stone-200 px-3 py-2 text-xs font-black text-leaf"
                             href={`/admin/shifts/${shift.id}/report`}
                           >
                             View v{shift.close_report_version}
                           </Link>
+                          {shift.close_report_version > 1 ? (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-amber-800">
+                              Corrected
+                            </span>
+                          ) : null}
+                          {session.role !== "staff" && openBusinessDay &&
+                            shift.business_day_id === openBusinessDay.day.id &&
+                            detectPaymentMixup({
+                              cash: shift.difference_amount,
+                              card: shift.card_difference_amount,
+                              upi: shift.upi_difference_amount
+                            }) ? (
+                            <Link
+                              className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-rose-800"
+                              href={`/admin/shifts/${shift.id}/report`}
+                            >
+                              Check payments
+                            </Link>
+                          ) : null}
+                          </>
                         ) : (
                           <span className="text-xs font-semibold text-stone-400">
                             Legacy shift
@@ -472,11 +719,92 @@ export default async function AdminShiftsPage() {
             </div>
           ) : (
             <p className="p-8 text-center text-sm text-stone-500">
-              No closed shifts yet.
+              {filtered ? "No shifts were opened in these dates." : "No closed shifts yet."}
             </p>
           )}
         </div>
+        {previousPage.pageCount > 1 ? (
+          <nav aria-label="Previous shifts pages" className="mt-3 flex items-center justify-between gap-3 text-sm">
+            {previousPage.page > 1 ? (
+              <Link
+                className="focus-ring rounded-lg border border-stone-200 bg-white px-3 py-2 font-black"
+                href={previousShiftsHref({ ...previousPage, page: previousPage.page - 1 })}
+              >
+                ← Newer
+              </Link>
+            ) : <span />}
+            <span className="font-bold text-stone-500">
+              Page {previousPage.page} of {previousPage.pageCount}
+            </span>
+            {previousPage.page < previousPage.pageCount ? (
+              <Link
+                className="focus-ring rounded-lg border border-stone-200 bg-white px-3 py-2 font-black"
+                href={previousShiftsHref({ ...previousPage, page: previousPage.page + 1 })}
+              >
+                Older →
+              </Link>
+            ) : <span />}
+          </nav>
+        ) : null}
       </section>
+
+      {session.role !== "staff" ? (
+        <section className="mt-8">
+          <h2 className="text-xl font-black">Cash over/short by staff</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Closed shifts in the last {cashVarianceDays} days, counted against the person who
+            opened the shift. Differences under 0.01 count as balanced.
+          </p>
+          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+            {cashVariance.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                    <tr>
+                      <th className="px-4 py-3">Staff</th>
+                      <th className="px-4 py-3">Shifts</th>
+                      <th className="px-4 py-3">Balanced</th>
+                      <th className="px-4 py-3">Short</th>
+                      <th className="px-4 py-3">Over</th>
+                      <th className="px-4 py-3">Net</th>
+                      <th className="px-4 py-3">Largest short</th>
+                      <th className="px-4 py-3">Card mismatches</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {cashVariance.map((row) => (
+                      <tr key={row.userId}>
+                        <td className="whitespace-nowrap px-4 py-3 font-black">
+                          {row.userId === session.userId ? "You" : staffNames.get(row.userId) ?? "A team member"}
+                        </td>
+                        <td className="px-4 py-3">{row.shiftCount}</td>
+                        <td className="px-4 py-3">{row.balancedCount}</td>
+                        <td className={`whitespace-nowrap px-4 py-3 ${row.shortCount ? "font-black text-rose-700" : ""}`}>
+                          {row.shortCount ? `${row.shortCount} · ${money(row.shortTotal)}` : "—"}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 ${row.overCount ? "font-bold text-amber-700" : ""}`}>
+                          {row.overCount ? `${row.overCount} · ${money(row.overTotal)}` : "—"}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 font-black ${differenceTone(row.net)}`}>
+                          {money(row.net)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {row.largestShort > 0 ? money(row.largestShort) : "—"}
+                        </td>
+                        <td className="px-4 py-3">{row.cardMismatchCount || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="p-5 text-sm text-stone-500">
+                No shifts closed in the last {cashVarianceDays} days.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {session.role !== "staff" ? (
         <section className="mt-8">

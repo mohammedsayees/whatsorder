@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getUaeMonthStartIso } from "@/lib/date-time";
+import { summarizeSignupSources, type SignupSourceRow } from "@/lib/attribution-report";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   onboardingEventNames,
@@ -245,8 +246,23 @@ export async function getSuperAdminDashboardData() {
   const onboardingFunnel = Object.fromEntries(
     onboardingEventNames.map((eventName) => [eventName, 0])
   ) as Record<OnboardingEventName, number>;
+  let signupSources: SignupSourceRow[] = [];
 
   if (supabase) {
+    // Best-effort: a missing column (migration not yet applied) or any other
+    // error leaves the breakdown empty instead of failing the dashboard.
+    const signupSourceResult = await supabase
+      .from("restaurants")
+      .select("signup_source,is_demo")
+      .not("signup_source", "is", null);
+    if (signupSourceResult.error) {
+      console.error("WhatsOrder super admin: signup sources failed", signupSourceResult.error.code);
+    } else {
+      signupSources = summarizeSignupSources(
+        (signupSourceResult.data ?? []) as Array<{ signup_source: string | null; is_demo: boolean | null }>
+      );
+    }
+
     const [
       orderResult,
       customerResult,
@@ -310,6 +326,7 @@ export async function getSuperAdminDashboardData() {
   return {
     restaurants,
     onboardingFunnel,
+    signupSources,
     metrics: {
       totalRestaurants: restaurants.length,
       liveRestaurants: restaurants.filter((restaurant) => restaurant.status === "live").length,

@@ -70,6 +70,8 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
   accepting_orders?: boolean;
   status_notifications_enabled?: boolean;
   shift_marketplace_channels?: ShiftMarketplaceChannel[];
+  /** Staff lock their cash count before seeing expected cash (default on). */
+  blind_cash_count?: boolean;
   opening_hours_enabled?: boolean;
   opening_hours?: OpeningHours | null;
   latitude?: number | null;
@@ -416,6 +418,10 @@ export type RestaurantShift = {
   close_report_version: number;
   opened_by_user_id: string;
   closed_by_user_id: string | null;
+  /** Blind count: counted cash locked before close; the close must use it. */
+  declared_cash_counted_amount?: number | null;
+  cash_count_declared_at?: string | null;
+  cash_count_declared_by_user_id?: string | null;
   opened_at: string;
   closed_at: string | null;
   opening_note: string | null;
@@ -480,6 +486,56 @@ export type ShiftCloseReportSnapshot = {
   combined_operational_receipts: number;
   report_generated_at: string;
   correction_reason: string | null;
+  /**
+   * Entries as they were when this version was written (voided ones included).
+   * Null for versions written before itemized snapshots existed.
+   */
+  paid_outs: ShiftReportPaidOut[] | null;
+  other_income_entries: ShiftReportOtherIncomeEntry[] | null;
+  /** Orders completed on customer credit in this shift; null on older versions. */
+  credit_sales: ShiftReportCreditSale[] | null;
+  /** Opening cash against the previous count; null on older versions. */
+  opening_check: ShiftReportOpeningCheck | null;
+};
+
+export type ShiftReportOpeningCheck = {
+  /** Null for a restaurant's first shift. */
+  previous_cash_counted_amount: number | null;
+  opening_cash_amount: number;
+  difference: number | null;
+  reason: string | null;
+};
+
+export type ShiftReportCreditSale = {
+  order_id: string;
+  /** Names are never stored in reports; look them up per tenant when shown. */
+  customer_id: string | null;
+  amount: number;
+  due_date: string | null;
+  completed_at: string;
+};
+
+export type ShiftReportPaidOut = {
+  id: string;
+  amount: number;
+  reason: string;
+  recorded_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+};
+
+export type ShiftReportOtherIncomeEntry = {
+  id: string;
+  category: string;
+  payment_method: string;
+  amount: number;
+  description: string;
+  reference: string | null;
+  /** Set for customer credit repayments. */
+  customer_id: string | null;
+  recorded_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
 };
 
 export type ShiftCloseReport = {
@@ -512,7 +568,9 @@ export type OtherIncomeCategory =
   | "supplier_rebate"
   | "rental_income"
   | "customer_credit_repayment"
-  | "other";
+  | "other"
+  /** Money taken without an order; shown as sales, not other income. */
+  | "unbilled_sale";
 
 export type OtherIncomePaymentMethod =
   | "cash"
@@ -590,6 +648,18 @@ export type BusinessDayCloseReportSnapshot = RestaurantLocalization & {
   final_cash_counted: number;
   shifts: BusinessDayShiftSnapshot[];
   other_income_breakdown: Partial<Record<OtherIncomeCategory, number>>;
+  /** Recorded when the day closed; null for days closed before credit reporting. */
+  credit: BusinessDayCreditSummary | null;
+};
+
+export type BusinessDayCreditSummary = {
+  sold_order_count: number;
+  sold_total: number;
+  collected_total: number;
+  collected_by_method: Partial<Record<OtherIncomePaymentMethod, number>>;
+  /** All customers, at the moment the day closed. */
+  outstanding_at_close: number;
+  overdue_at_close: number;
 };
 
 export type BusinessDay = {

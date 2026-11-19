@@ -1,13 +1,45 @@
 import Link from "next/link";
 import { createFinanceExpenseAction } from "@/app/admin/finance/actions";
+import { FinanceTillPaymentFields } from "@/components/admin/FinanceTillPaymentFields";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { getFinanceCategories, getFinanceRecurringCosts, requireFinancePermission } from "@/lib/finance-data";
+import { getOpenShiftTill } from "@/lib/finance-paid-out-data";
+import { SimpleBillForm } from "@/components/admin/SimpleBillForm";
+import { getFinanceMode } from "@/lib/finance-mode";
+import { getSupplierMemory } from "@/lib/finance-data";
 
 export default async function NewFinanceExpensePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const [{ session, access }, query] = await Promise.all([requireFinancePermission("create"), searchParams]);
-  const [categories, recurring] = await Promise.all([
-    getFinanceCategories(session.restaurantId), getFinanceRecurringCosts(session.restaurantId)
+  const [categories, recurring, till] = await Promise.all([
+    getFinanceCategories(session.restaurantId), getFinanceRecurringCosts(session.restaurantId),
+    getOpenShiftTill(session, access.approve).catch(() => null)
   ]);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: session.restaurant.time_zone ?? "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  if ((await getFinanceMode(session)) === "simple") {
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-6">
+        <Link className="text-sm font-bold text-leaf" href="/admin/finance">← Back</Link>
+        <h1 className="mt-3 text-3xl font-black text-ink">Type in a bill</h1>
+        <p className="mt-1 text-sm text-stone-600">Four quick questions. Have a photo? Use “Add a bill” instead.</p>
+        {query.error ? <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{query.error}</p> : null}
+        <div className="mt-5">
+          <SimpleBillForm
+            canApprove={access.approve}
+            categories={categories.map((category) => ({ id: category.id, name: category.name }))}
+            kind="manual"
+            till={till ? {
+              shiftId: till.shiftId,
+              label: `${till.shiftName} shift, opened ${formatRestaurantShortDateTime(till.openedAt, session.restaurant)}`,
+              unbilledAmountsFils: till.unbilled.map((row) => row.amountFils)
+            } : null}
+            supplierMemory={await getSupplierMemory(session.restaurantId).catch(() => ({}))}
+            today={today}
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 lg:px-8">
@@ -28,7 +60,9 @@ export default async function NewFinanceExpensePage({ searchParams }: { searchPa
         <label className="text-sm font-bold">Service period end<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="service_period_end" type="date" /></label>
         <label className="text-sm font-bold">Payment status<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="partial">Partially paid</option></select></label>
         <label className="text-sm font-bold">Payment method<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_method"><option value="">Not recorded</option><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
+        <label className="text-sm font-bold">Amount paid so far (AED, for partial payments)<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" inputMode="decimal" name="paid_amount" placeholder="0.00" /></label>
         <label className="text-sm font-bold">Paid on (required when paid)<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="paid_on" type="date" /></label>
+        {till ? <FinanceTillPaymentFields openedAtLabel={formatRestaurantShortDateTime(till.openedAt, session.restaurant)} till={till} /> : null}
         <div className="flex items-end gap-2"><button className="focus-ring flex-1 rounded-lg border border-stone-300 px-4 py-3 text-sm font-black" name="status" value="draft">Save draft</button>{access.approve ? <button className="focus-ring flex-1 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white" name="status" value="approved">Record expense</button> : null}</div>
       </form>
     </main>

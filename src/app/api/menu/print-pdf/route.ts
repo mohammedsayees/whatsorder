@@ -3,6 +3,7 @@ import { getMenu, getMenuOptionCatalog } from "@/lib/data";
 import { parseMenuPrintPdfSettings } from "@/lib/menu-pdf-config";
 import { renderMenuPdf } from "@/lib/menu-pdf/render";
 import { resolveRestaurantAdminSession } from "@/lib/super-admin-auth";
+import { STORE_SHARE_SOURCES } from "@/lib/attribution";
 import { getStoreShareAssets } from "@/lib/store-share-assets";
 
 export const runtime = "nodejs";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     const [menu, optionCatalog, shareAssets] = await Promise.all([
       getMenu(restaurantId, { admin: true }),
       getMenuOptionCatalog(restaurantId, { admin: true }),
-      getStoreShareAssets(restaurant.slug)
+      getStoreShareAssets(restaurant.slug, { qrSource: STORE_SHARE_SOURCES.printedMenu })
     ]);
     const pdf = await renderMenuPdf({
       restaurant,

@@ -13,6 +13,7 @@ import {
   type FinanceFrequency
 } from "@/lib/finance";
 import { requireFinancePermission } from "@/lib/finance-data";
+import { tillPaymentError } from "@/lib/finance-paid-outs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 function fail(path: string, message: string): never {
@@ -111,6 +112,42 @@ export async function createFinanceExpenseAction(formData: FormData) {
     totalFils = subtotalFils + inputVatFils;
   }
 
+  if (formData.get("pay_from_till") === "on") {
+    if (!access.approve) fail(path, "Paying a bill from the till requires Finance approval permission.");
+    const tillShiftId = String(formData.get("till_shift_id") ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(tillShiftId)) fail(path, "The open shift could not be found. Refresh and try again.");
+    const { error: tillError } = await admin.rpc("create_finance_expense_from_till", {
+      target_restaurant_id: session.restaurantId,
+      requested_category_id: categoryId,
+      requested_description: description,
+      requested_supplier_name: supplierName,
+      requested_incurred_on: incurredOn,
+      requested_subtotal_fils: subtotalFils,
+      requested_input_vat_fils: inputVatFils,
+      requested_total_fils: totalFils,
+      requested_vat_inclusive: vatInclusive,
+      requested_service_period_start: servicePeriodStart || null,
+      requested_service_period_end: servicePeriodEnd || null,
+      requested_recurring_cost_id: recurringCostId || null,
+      target_shift_id: tillShiftId,
+      allow_same_amount_paid_out: formData.get("confirm_new_paid_out") === "on",
+      event_actor_user_id: session.userId
+    });
+    if (tillError) fail(path, tillPaymentError(tillError.message));
+    revalidatePath("/admin/finance");
+    revalidatePath("/admin/shifts");
+    redirect(`/admin/finance?success=${encodeURIComponent("Bill saved and taken from the till. The till total is updated.")}`);
+  }
+
+  // A partial payment records how much was actually paid.
+  let paidAmountFils: number | null = null;
+  if (paymentStatus === "partial") {
+    paidAmountFils = parseAedToFils(formData.get("paid_amount"));
+    if (paidAmountFils === null || paidAmountFils >= totalFils) {
+      fail(path, "For a partial payment, enter the amount paid so far (less than the total).");
+    }
+  }
+
   const status = requestedStatus === "approved" && access.approve ? "approved" : "draft";
   const now = new Date().toISOString();
   const { error } = await admin.from("finance_expenses").insert({
@@ -127,6 +164,7 @@ export async function createFinanceExpenseAction(formData: FormData) {
     payment_status: paymentStatus,
     payment_method: paymentMethod || null,
     paid_on: paidOn || null,
+    paid_amount_fils: paidAmountFils,
     service_period_start: servicePeriodStart || null,
     service_period_end: servicePeriodEnd || null,
     recurring_cost_id: recurringCostId || null,
@@ -138,7 +176,7 @@ export async function createFinanceExpenseAction(formData: FormData) {
   if (error) fail(path, "The expense could not be saved. Check the fields and try again.");
 
   revalidatePath("/admin/finance");
-  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Expense recorded." : "Expense draft saved.")}`);
+  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Bill saved." : "Bill saved – a manager will check it.")}`);
 }
 
 export async function transitionFinanceExpenseAction(formData: FormData) {
@@ -161,7 +199,7 @@ export async function transitionFinanceExpenseAction(formData: FormData) {
     .neq("status", "void");
   if (error || count !== 1) fail("/admin/finance", "The expense could not be updated.");
   revalidatePath("/admin/finance");
-  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Expense approved." : "Expense voided.")}`);
+  redirect(`/admin/finance?success=${encodeURIComponent(status === "approved" ? "Bill saved." : "Bill deleted (kept in history).")}`);
 }
 
 export async function createFinanceCategoryAction(formData: FormData) {
@@ -242,15 +280,25 @@ export async function toggleFinanceRecurringCostAction(formData: FormData) {
   const path = "/admin/finance/recurring";
   if (!admin) unavailable(path);
   const recurringId = String(formData.get("recurring_id") ?? "");
-  const isActive = formData.get("is_active") === "true";
-  const { error, count } = await admin
-    .from("finance_recurring_costs")
-    .update({ is_active: isActive, updated_by: session.userId }, { count: "exact" })
-    .eq("id", recurringId)
-    .eq("restaurant_id", session.restaurantId);
-  if (error || count !== 1) fail(path, "The recurring cost could not be updated.");
+  const resume = formData.get("is_active") === "true";
+  // Pausing dates the pause; resuming starts a new schedule from today, so
+  // past reports keep the cost for the time it was really running.
+  const { data, error } = resume
+    ? await admin.rpc("resume_finance_recurring_cost", {
+      target_restaurant_id: session.restaurantId, target_recurring_id: recurringId,
+      event_actor_user_id: session.userId
+    })
+    : await admin.rpc("pause_finance_recurring_cost", {
+      target_restaurant_id: session.restaurantId, target_recurring_id: recurringId,
+      event_actor_user_id: session.userId
+    });
+  if (error || !data) {
+    fail(path, error?.message.includes("already ended")
+      ? "That schedule has already ended. Add a new recurring cost instead."
+      : "The recurring cost could not be updated.");
+  }
   revalidatePath(path);
-  redirect(`${path}?success=${encodeURIComponent(isActive ? "Recurring cost resumed." : "Recurring cost paused.")}`);
+  redirect(`${path}?success=${encodeURIComponent(resume ? "Recurring cost resumed from today." : "Recurring cost paused.")}`);
 }
 
 export async function updateFinancePermissionsAction(formData: FormData) {

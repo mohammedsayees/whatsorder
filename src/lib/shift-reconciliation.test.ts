@@ -72,8 +72,7 @@ describe("shift reconciliation", () => {
     expect(reconciliationNeedsNote([0, -0.01, null])).toBe(true);
   });
 
-  it("excludes credit repayments from total receipts, including reports saved before the fix", () => {
-    const parsed = parseShiftCloseReportSnapshot({
+  const baseSnapshot = {
       schema_version: 1, report_version: 1,
       restaurant_id: "r", restaurant_name: "R", country_code: "AE",
       currency_code: "AED", time_zone: "Asia/Dubai",
@@ -93,11 +92,58 @@ describe("shift reconciliation", () => {
       // Stale value saved before the fix: 30 + 20, counting the repayment twice.
       combined_operational_receipts: 50,
       report_generated_at: "2026-11-10T12:00:00Z", correction_reason: null
-    });
+  };
+
+  it("excludes credit repayments from total receipts, including reports saved before the fix", () => {
+    const parsed = parseShiftCloseReportSnapshot(baseSnapshot);
     expect(parsed).toMatchObject({
       credit_repayment_total: 15,
       combined_operational_receipts: 35
     });
+  });
+
+  it("reads itemized entries when present and treats older versions as not recorded", () => {
+    expect(parseShiftCloseReportSnapshot(baseSnapshot)).toMatchObject({
+      paid_outs: null,
+      other_income_entries: null
+    });
+
+    const parsed = parseShiftCloseReportSnapshot({
+      ...baseSnapshot,
+      paid_outs: [{
+        id: "p1", amount: "12.50", reason: "Milk", recorded_at: "2026-11-10T05:00:00Z",
+        voided_at: "2026-11-10T06:00:00Z", void_reason: "Twice"
+      }],
+      other_income_entries: [{
+        id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 5,
+        description: "Oil", reference: null, recorded_at: "2026-11-10T07:00:00Z",
+        voided_at: null, void_reason: null
+      }]
+    });
+    expect(parsed?.paid_outs).toEqual([{
+      id: "p1", amount: 12.5, reason: "Milk", recorded_at: "2026-11-10T05:00:00Z",
+      voided_at: "2026-11-10T06:00:00Z", void_reason: "Twice"
+    }]);
+    expect(parsed?.other_income_entries?.[0]).toMatchObject({ id: "o1", amount: 5, reference: null });
+
+    // A malformed list doesn't break the report; it is treated as not recorded.
+    const malformed = parseShiftCloseReportSnapshot({ ...baseSnapshot, paid_outs: [{ id: 1 }] });
+    expect(malformed).not.toBeNull();
+    expect(malformed?.paid_outs).toBeNull();
+  });
+
+  it("reads the opening check when present and treats older versions as not recorded", () => {
+    expect(parseShiftCloseReportSnapshot(baseSnapshot)?.opening_check).toBeNull();
+    expect(parseShiftCloseReportSnapshot({
+      ...baseSnapshot,
+      opening_check: { previous_cash_counted_amount: "30.75", opening_cash_amount: 10.75, difference: -20, reason: "Bank" }
+    })?.opening_check).toEqual({
+      previous_cash_counted_amount: 30.75, opening_cash_amount: 10.75, difference: -20, reason: "Bank"
+    });
+    expect(parseShiftCloseReportSnapshot({
+      ...baseSnapshot,
+      opening_check: { previous_cash_counted_amount: null, opening_cash_amount: 50, difference: null, reason: null }
+    })?.opening_check?.previous_cash_counted_amount).toBeNull();
   });
 
   it("fails closed when an immutable report snapshot is malformed", () => {

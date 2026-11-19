@@ -1,4 +1,15 @@
+import {
+  denominationTotalMinor,
+  type CashDenominationCount
+} from "@/lib/cash-denominations";
+import { otherIncomeCategoryLabels } from "@/lib/business-day";
 import { formatCurrency } from "@/lib/currency";
+import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
+import {
+  UNBILLED_SALE,
+  otherIncomeExcludingUnbilled,
+  unbilledFromReport
+} from "@/lib/unbilled-sales";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
@@ -31,8 +42,126 @@ function moneyRow(label: string, value: string, className = "") {
   return `<div class="row ${className}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
-export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) {
+function denominationRows(
+  report: ShiftCloseReportSnapshot,
+  denominations: CashDenominationCount[] | null | undefined,
+  money: (value: number) => string
+) {
+  if (!denominations?.length) {
+    return "";
+  }
+
+  const totalMinor = denominationTotalMinor(denominations);
+  const matchesCount = totalMinor === Math.round(report.cash_counted_amount * 100);
+  return `<h3>Counted by notes &amp; coins</h3>
+    ${denominations.map((row) => moneyRow(
+      `${money(row.minor / 100)} × ${row.count}`,
+      money((row.minor * row.count) / 100)
+    )).join("")}
+    ${moneyRow("Notes & coins total", money(totalMinor / 100), "total")}
+    ${matchesCount ? "" : `<div class="explanation">As counted at close. The counted cash in this version was later corrected.</div>`}`;
+}
+
+function openingCheckRows(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const check = report.opening_check;
+  if (!check || check.previous_cash_counted_amount === null || check.difference === null ||
+      Math.abs(check.difference) < 0.005) {
+    return "";
+  }
+  return `${moneyRow("  Last close counted", money(check.previous_cash_counted_amount))}
+    ${moneyRow(`  Opening ${check.difference > 0 ? "more" : "less"} by`, money(Math.abs(check.difference)), "attention")}
+    ${check.reason ? `<div class="note">${escapeHtml(check.reason)}</div>` : ""}`;
+}
+
+function paymentAndCreditSections(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const payments = salesByPayment(report);
+  const collected = creditCollected(report);
+  const paymentSection = `<section>
+      <h2>SALES BY PAYMENT</h2>
+      ${moneyRow("Cash", money(payments.cash))}
+      ${moneyRow("Card", money(payments.card))}
+      ${report.country_code === "IN" ? moneyRow("UPI", money(payments.upi)) : ""}
+      ${payments.credit !== null ? moneyRow("Customer credit", money(payments.credit)) : ""}
+      ${payments.remainder !== 0
+        ? moneyRow(payments.credit === null ? "Credit / not recorded" : "Not recorded", money(payments.remainder), "attention")
+        : ""}
+      ${moneyRow("WhatsOrder sales", money(report.completed_sales), "total")}
+    </section>`;
+  if (!hasCreditActivity(report)) {
+    return paymentSection;
+  }
+  // Counts and totals only: customer names never go on paper.
+  const creditSection = `<section>
+      <h2>CUSTOMER CREDIT</h2>
+      ${report.credit_sales
+        ? moneyRow(`Sold on credit (${report.credit_sales.length})`, money(payments.credit ?? 0))
+        : ""}
+      ${moneyRow("Credit collected", money(collected.total))}
+      ${Object.entries(collected.byMethod).map(([method, amount]) =>
+        moneyRow(`  by ${method.replace("_", " ")}`, money(amount))).join("")}
+      ${report.credit_sales
+        ? moneyRow("Change in amount owed", money((payments.credit ?? 0) - collected.total), "total")
+        : ""}
+    </section>`;
+  return paymentSection + creditSection;
+}
+
+function itemizedSections(
+  report: ShiftCloseReportSnapshot,
+  money: (value: number) => string
+) {
+  const paidOuts = report.paid_outs?.filter((paidOut) => !paidOut.voided_at) ?? null;
+  const voidedPaidOuts = report.paid_outs?.filter((paidOut) => paidOut.voided_at).length ?? 0;
+  const income = report.other_income_entries
+    ?.filter((entry) => !entry.voided_at && entry.category !== UNBILLED_SALE) ?? null;
+  const unbilledEntries = report.other_income_entries
+    ?.filter((entry) => !entry.voided_at && entry.category === UNBILLED_SALE) ?? [];
+
+  const paidOutSection = paidOuts && paidOuts.length
+    ? `<section>
+        <h2>PAID-OUTS</h2>
+        ${paidOuts.map((paidOut) => moneyRow(paidOut.reason, money(paidOut.amount))).join("")}
+        ${voidedPaidOuts ? `<div class="explanation">${voidedPaidOuts} voided paid-out${voidedPaidOuts === 1 ? "" : "s"} not counted.</div>` : ""}
+      </section>`
+    : "";
+  const incomeSection = income && income.length
+    ? `<section>
+        <h2>OTHER INCOME</h2>
+        ${income.map((entry) => moneyRow(
+          entry.category === "customer_credit_repayment"
+            // No customer names on paper; the label says what it is.
+            ? otherIncomeCategoryLabels.customer_credit_repayment
+            : `${otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}: ${entry.description}`,
+          money(entry.amount)
+        )).join("")}
+      </section>`
+    : "";
+  const unbilledSection = unbilledEntries.length
+    ? `<section>
+        <h2>UNBILLED SALES</h2>
+        ${unbilledEntries.map((entry) => moneyRow(
+          `${entry.description} (${entry.payment_method})`,
+          money(entry.amount)
+        )).join("")}
+      </section>`
+    : "";
+  return paidOutSection + unbilledSection + incomeSection;
+}
+
+export function renderShiftCloseThermalReport(
+  report: ShiftCloseReportSnapshot,
+  options: { cashDenominations?: CashDenominationCount[] | null } = {}
+) {
   const money = (value: number) => formatCurrency(value, report);
+  // Unbilled sales are stored as receipts but printed as sales.
+  const unbilled = unbilledFromReport(report);
+  const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
   const cashDifference = report.cash_difference_amount;
   const cardDifference = report.card_difference_amount;
@@ -122,23 +251,29 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
         <section>
           <h2>CASH DRAWER</h2>
           ${moneyRow("Opening cash", money(report.opening_cash_amount))}
+          ${openingCheckRows(report, money)}
           ${moneyRow("Cash sales", money(report.completed_cash_order_total))}
+          ${(unbilled.byMethod.cash ?? 0) > 0 ? moneyRow("Unbilled cash sales", money(unbilled.byMethod.cash ?? 0)) : ""}
+          ${otherIncome.cash > 0 ? moneyRow("Cash other income", money(otherIncome.cash)) : ""}
           ${moneyRow("Cash paid-outs", `-${money(report.cash_paid_out_total)}`)}
           ${moneyRow("Expected cash", money(report.expected_cash_amount), "total")}
           ${moneyRow("Counted cash", money(report.cash_counted_amount))}
           ${moneyRow(differenceLabel(cashDifference), money(Math.abs(cashDifference)), "difference")}
+          ${denominationRows(report, options.cashDenominations, money)}
         </section>
+
+        ${itemizedSections(report, money)}
 
         <section>
           <h2>CARD RECONCILIATION</h2>
-          ${moneyRow("WhatsOrder card", money(report.expected_card_amount))}
+          ${moneyRow("Expected card receipts", money(report.expected_card_amount))}
           ${moneyRow("Terminal total", money(report.card_terminal_total))}
           ${moneyRow(differenceLabel(cardDifference), money(Math.abs(cardDifference)), "difference")}
         </section>
 
         ${report.country_code === "IN" ? `<section>
           <h2>UPI RECONCILIATION</h2>
-          ${moneyRow("WhatsOrder UPI", money(report.expected_upi_amount))}
+          ${moneyRow("Expected UPI receipts", money(report.expected_upi_amount))}
           ${moneyRow("Reported total", money(report.upi_reported_total ?? 0))}
           ${moneyRow(differenceLabel(upiDifference ?? 0), money(Math.abs(upiDifference ?? 0)), "difference")}
         </section>` : ""}
@@ -146,13 +281,16 @@ export function renderShiftCloseThermalReport(report: ShiftCloseReportSnapshot) 
         <section>
           <h2>SALES SUMMARY</h2>
           ${moneyRow("WhatsOrder sales", money(report.completed_sales))}
+          ${unbilled.total > 0 ? moneyRow("Unbilled sales (no order)", money(unbilled.total), "attention") : ""}
           ${moneyRow("Marketplace sales", money(report.marketplace_sales_total))}
-          ${moneyRow("Combined sales", money(report.combined_operational_sales), "grand")}
-          ${moneyRow("Other income", money(report.other_income_total))}
+          ${moneyRow("Combined sales", money(report.combined_operational_sales + unbilled.total), "grand")}
+          ${moneyRow("Other income", money(otherIncome.total))}
           ${report.credit_repayment_total > 0 ? moneyRow("Less credit repayments (already in sales)", money(report.credit_repayment_total)) : ""}
           ${moneyRow("Total receipts", money(report.combined_operational_receipts), "grand")}
           <p class="explanation">Marketplace figures are manually reported gross sales, not settlement figures.</p>
         </section>
+
+        ${paymentAndCreditSections(report, money)}
 
         ${marketplaces}
 

@@ -1,5 +1,6 @@
 import type {
   BusinessDayCloseReportSnapshot,
+  BusinessDayCreditSummary,
   OtherIncomeCategory,
   OtherIncomePaymentMethod
 } from "@/lib/types";
@@ -10,16 +11,17 @@ export const otherIncomeCategoryLabels: Record<OtherIncomeCategory, string> = {
   supplier_rebate: "Supplier rebate",
   rental_income: "Rental income",
   customer_credit_repayment: "Customer credit repayment",
-  other: "Other income"
+  other: "Other income",
+  unbilled_sale: "Unbilled sale"
 };
 
 export const manualOtherIncomeCategoryLabels = Object.fromEntries(
   Object.entries(otherIncomeCategoryLabels).filter(
-    ([category]) => category !== "customer_credit_repayment"
+    ([category]) => category !== "customer_credit_repayment" && category !== "unbilled_sale"
   )
 ) as Omit<
   Record<OtherIncomeCategory, string>,
-  "customer_credit_repayment"
+  "customer_credit_repayment" | "unbilled_sale"
 >;
 
 export const otherIncomePaymentLabels: Record<OtherIncomePaymentMethod, string> = {
@@ -32,6 +34,33 @@ export const otherIncomePaymentLabels: Record<OtherIncomePaymentMethod, string> 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseBusinessDayCredit(value: unknown): BusinessDayCreditSummary | null {
+  if (!isRecord(value)) return null;
+  const keys = [
+    "sold_order_count", "sold_total", "collected_total", "outstanding_at_close", "overdue_at_close"
+  ] as const;
+  const numbers = keys.map((key) => Number(value[key]));
+  if (numbers.some((number) => !Number.isFinite(number))) return null;
+  const byMethod: BusinessDayCreditSummary["collected_by_method"] = {};
+  if (isRecord(value.collected_by_method)) {
+    for (const [method, amount] of Object.entries(value.collected_by_method)) {
+      const number = Number(amount);
+      if (method in otherIncomePaymentLabels && Number.isFinite(number)) {
+        byMethod[method as keyof typeof byMethod] = number;
+      }
+    }
+  }
+  const [soldOrderCount, soldTotal, collectedTotal, outstanding, overdue] = numbers;
+  return {
+    sold_order_count: soldOrderCount,
+    sold_total: soldTotal,
+    collected_total: collectedTotal,
+    collected_by_method: byMethod,
+    outstanding_at_close: outstanding,
+    overdue_at_close: overdue
+  };
 }
 
 export function parseBusinessDayCloseReportSnapshot(
@@ -90,6 +119,7 @@ export function parseBusinessDayCloseReportSnapshot(
 
   return {
     ...(value as unknown as BusinessDayCloseReportSnapshot),
+    credit: parseBusinessDayCredit(value.credit),
     credit_repayment_total: creditRepaymentTotal,
     // Derived so days closed before the fix also exclude repayments, whose
     // sales were already counted when the credit order completed.

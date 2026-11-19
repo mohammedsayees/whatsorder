@@ -80,7 +80,7 @@ export async function getFinanceRecurringCosts(restaurantId: string) {
   if (!admin) return [];
   const { data } = await admin
     .from("finance_recurring_costs")
-    .select("id,restaurant_id,category_id,description,amount_fils,frequency,allocation_months,start_on,end_on,next_due_on,is_active,finance_categories(name,classification)")
+    .select("id,restaurant_id,category_id,description,amount_fils,frequency,allocation_months,start_on,end_on,next_due_on,is_active,paused_on,superseded_by,finance_categories(name,classification)")
     .eq("restaurant_id", restaurantId)
     .order("is_active", { ascending: false })
     .order("next_due_on");
@@ -96,4 +96,45 @@ export async function getFinanceRolePermissions(restaurantId: string) {
     .eq("restaurant_id", restaurantId)
     .order("role");
   return (data ?? []) as FinanceRolePermissionRow[];
+}
+
+export type SupplierMemory = Record<string, { categoryId: string; paymentMethod: string | null }>;
+
+/** Each supplier's most recent category and payment method, keyed by lower-case name. */
+export async function getSupplierMemory(restaurantId: string): Promise<SupplierMemory> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return {};
+  const { data } = await admin
+    .from("finance_expenses")
+    .select("supplier_name,category_id,payment_method,payment_status")
+    .eq("restaurant_id", restaurantId)
+    .eq("status", "approved")
+    .not("supplier_name", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  const memory: SupplierMemory = {};
+  for (const row of data ?? []) {
+    const key = String(row.supplier_name ?? "").trim().toLowerCase();
+    if (!key || memory[key]) continue;
+    memory[key] = {
+      categoryId: String(row.category_id),
+      paymentMethod: row.payment_status === "unpaid" ? null : (row.payment_method ? String(row.payment_method) : null)
+    };
+  }
+  return memory;
+}
+
+/** What the first-time setup still needs, for the Simple home. */
+export async function getFinanceSetupStatus(restaurantId: string) {
+  const admin = getSupabaseAdmin();
+  if (!admin) return { monthlyBills: 0, itemsWithoutCost: 0 };
+  const [{ count: monthlyBills }, { data: items }] = await Promise.all([
+    admin.from("finance_recurring_costs").select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId).eq("is_active", true),
+    admin.rpc("get_finance_quick_item_costs", { target_restaurant_id: restaurantId })
+  ]);
+  const itemsWithoutCost = ((items ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => row.is_available !== false && row.quick_cost_fils === null && row.has_full_recipe !== true)
+    .length;
+  return { monthlyBills: monthlyBills ?? 0, itemsWithoutCost };
 }

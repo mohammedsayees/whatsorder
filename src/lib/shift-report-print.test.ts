@@ -52,7 +52,11 @@ const report: ShiftCloseReportSnapshot = {
   credit_repayment_total: 0,
   combined_operational_receipts: 230,
   report_generated_at: "2026-07-17T15:20:00.000Z",
-  correction_reason: null
+  correction_reason: null,
+  paid_outs: null,
+  other_income_entries: null,
+  credit_sales: null,
+  opening_check: null
 };
 
 describe("renderShiftCloseThermalReport", () => {
@@ -88,5 +92,132 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("SHORT");
     expect(html).toContain("UNAVAILABLE");
     expect(html).toContain("Portal offline");
+  });
+
+  it("prints the notes-and-coins breakdown under the cash drawer when there is one", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Counted by notes");
+
+    const counted = {
+      ...report,
+      cash_counted_amount: 1060.75,
+      cash_difference_amount: report.cash_difference_amount
+    };
+    const breakdown = [
+      { minor: 50000, count: 2 },
+      { minor: 2000, count: 3 },
+      { minor: 25, count: 3 }
+    ];
+    const html = renderShiftCloseThermalReport(counted, { cashDenominations: breakdown });
+    expect(html).toContain("Counted by notes &amp; coins");
+    expect(html).toContain("× 2");
+    expect(html).toContain("Notes &amp; coins total");
+    expect(html).not.toContain("later corrected");
+
+    // A later version with a corrected count keeps the breakdown, flagged.
+    const corrected = renderShiftCloseThermalReport(
+      { ...counted, cash_counted_amount: 1070 },
+      { cashDenominations: breakdown }
+    );
+    expect(corrected).toContain("later corrected");
+  });
+
+  it("itemizes paid-outs and other income when the snapshot has them", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("PAID-OUTS");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      paid_outs: [
+        { id: "p1", amount: 12, reason: "Milk <supplier>", recorded_at: "2026-07-17T05:00:00Z", voided_at: null, void_reason: null },
+        { id: "p2", amount: 12, reason: "Milk duplicate", recorded_at: "2026-07-17T05:01:00Z", voided_at: "2026-07-17T06:00:00Z", void_reason: "Entered twice" }
+      ],
+      other_income_entries: [
+        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 30, description: "10 L", reference: null, customer_id: null, recorded_at: "2026-07-17T07:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("PAID-OUTS");
+    expect(html).toContain("Milk &lt;supplier&gt;");
+    expect(html).not.toContain("Milk duplicate");
+    expect(html).toContain("1 voided paid-out not counted.");
+    expect(html).toContain("OTHER INCOME");
+    expect(html).toContain("Used oil sale: 10 L");
+  });
+
+  it("prints sales by payment and a credit block without customer names", () => {
+    const plain = renderShiftCloseThermalReport(report);
+    expect(plain).toContain("SALES BY PAYMENT");
+    expect(plain).not.toContain("CUSTOMER CREDIT");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      credit_sales: [
+        { order_id: "o1", customer_id: "c1", amount: 15, due_date: "2026-11-25", completed_at: "2026-07-17T05:00:00Z" }
+      ],
+      other_income_entries: [
+        { id: "r1", category: "customer_credit_repayment", payment_method: "cash", amount: 4,
+          description: "Customer credit repayment", reference: null, customer_id: "c1",
+          recorded_at: "2026-07-17T06:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("Customer credit");
+    expect(html).toContain("CUSTOMER CREDIT");
+    expect(html).toContain("Sold on credit (1)");
+    expect(html).toContain("Credit collected");
+    expect(html).toContain("Change in amount owed");
+    expect(html).not.toContain("c1");
+  });
+
+  it("prints the opening check only when opening cash differed from the last count", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Last close counted");
+    expect(renderShiftCloseThermalReport({
+      ...report,
+      opening_check: { previous_cash_counted_amount: 50, opening_cash_amount: 50, difference: 0, reason: null }
+    })).not.toContain("Last close counted");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      opening_check: {
+        previous_cash_counted_amount: 30.75, opening_cash_amount: 10.75, difference: -20,
+        reason: "Owner took <cash> for bank"
+      }
+    });
+    expect(html).toContain("Last close counted");
+    expect(html).toContain("Opening less by");
+    expect(html).toContain("Owner took &lt;cash&gt; for bank");
+  });
+
+  it("prints unbilled sales as sales, not other income", () => {
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      other_income_total: 25,
+      cash_other_income_total: 17,
+      other_income_breakdown: { unbilled_sale: 20, used_oil_sale: 5 },
+      other_income_entries: [
+        { id: "u1", category: "unbilled_sale", payment_method: "cash", amount: 12, description: "4 teas no bill",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T05:00:00Z", voided_at: null, void_reason: null },
+        { id: "u2", category: "unbilled_sale", payment_method: "card", amount: 8, description: "Card no bill",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T05:10:00Z", voided_at: null, void_reason: null },
+        { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 5, description: "Oil",
+          reference: null, customer_id: null, recorded_at: "2026-07-17T06:00:00Z", voided_at: null, void_reason: null }
+      ]
+    });
+    expect(html).toContain("Unbilled sales (no order)");
+    expect(html).toContain("UNBILLED SALES");
+    expect(html).toContain("4 teas no bill (cash)");
+    expect(html).toContain("Unbilled cash sales");
+    // Other income keeps only the oil sale.
+    expect(html).toContain("Used oil sale: Oil");
+    expect(html).not.toContain("Unbilled sale: 4 teas");
+  });
+
+  it("lists cash other income so the cash drawer lines add up to expected", () => {
+    const without = renderShiftCloseThermalReport(report);
+    expect(without).not.toContain("Cash other income");
+
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      cash_other_income_total: 25
+    });
+    expect(html).toContain("Cash other income");
+    expect(html).toContain("Expected card receipts");
   });
 });

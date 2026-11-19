@@ -884,6 +884,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       shift_marketplace_channels: configuredMarketplaceChannels(
         formData.getAll("shift_marketplace_channels")
       ),
+      blind_cash_count: formData.get("blind_cash_count") === "on",
       opening_hours_enabled: formData.get("opening_hours_enabled") === "on",
       opening_hours: openingHoursFromFormData(formData),
       latitude: decimalValue(formData, "latitude"),

@@ -91,3 +91,28 @@ export async function getFinancePilotStatus(restaurantId: string) {
   if (error || !enrollment || !readiness) return null;
   return { enrollment, readiness: readiness as FinancePilotReadiness };
 }
+
+export type QuickItemCost = {
+  menuItemId: string;
+  name: string;
+  priceFils: number;
+  isAvailable: boolean;
+  quickCostFils: number | null;
+  hasFullRecipe: boolean;
+};
+
+/** Menu items with their quick cost (Simple mode) or a note that a full recipe is used. */
+export async function getQuickItemCosts(restaurantId: string): Promise<QuickItemCost[]> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return [];
+  const { data, error } = await admin.rpc("get_finance_quick_item_costs", { target_restaurant_id: restaurantId });
+  if (error) throw new Error("Menu costs could not be loaded.");
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    menuItemId: String(row.menu_item_id),
+    name: String(row.name),
+    priceFils: Math.round(Number(row.price ?? 0) * 100),
+    isAvailable: row.is_available !== false,
+    quickCostFils: row.quick_cost_fils === null || row.quick_cost_fils === undefined ? null : Number(row.quick_cost_fils),
+    hasFullRecipe: row.has_full_recipe === true
+  }));
+}

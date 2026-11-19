@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import {
+  CorrectOrderPaymentButton,
   ShiftReportActions,
   ShiftReportCorrectionForm
 } from "@/components/admin/ShiftReportActions";
@@ -13,12 +14,29 @@ import { getShiftCloseReportView } from "@/lib/shift-data";
 import { shiftMarketplaceLabels } from "@/lib/shift-reconciliation";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
-import { otherIncomeCategoryLabels } from "@/lib/business-day";
+import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
 import type { ShiftCloseReportSnapshot } from "@/lib/types";
 import { getPaidOutBillStatuses } from "@/lib/finance-paid-out-data";
 import { PaidOutBillBadge } from "@/components/admin/PaidOutBillBadge";
 import { VoidPaidOutForm } from "@/components/admin/ShiftForms";
-import { getClosedShiftPaidOuts } from "@/lib/shift-data";
+import {
+  getClosedShiftPaidOuts,
+  getReportCustomerNames,
+  getShiftOrdersByPaymentMethod
+} from "@/lib/shift-data";
+import {
+  detectPaymentMixup,
+  drawerMethodLabels,
+  orderPaymentMethodFor,
+  rankMixupCandidates
+} from "@/lib/payment-mixup";
+import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
+import {
+  UNBILLED_SALE,
+  breakdownWithoutUnbilled,
+  otherIncomeExcludingUnbilled,
+  unbilledFromReport
+} from "@/lib/unbilled-sales";
 
 const fulfilmentLabels: Record<string, string> = {
   car_pickup: "Bring to My Car",
@@ -132,6 +150,39 @@ export default async function ShiftCloseReportPage({
   const latestReport = view.reports[0].snapshot;
   const money = (value: number) => formatCurrency(value, report);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
+  const payments = salesByPayment(report);
+  // Unbilled sales are stored as receipts but reported as sales.
+  const unbilled = unbilledFromReport(report);
+  const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
+  const otherIncomeBreakdown = breakdownWithoutUnbilled(report.other_income_breakdown);
+  const collected = creditCollected(report);
+  const showCredit = hasCreditActivity(report);
+  // Names are looked up now, per tenant, for management only; reports store IDs.
+  const customerNames = await getReportCustomerNames(session, [
+    ...(report.credit_sales ?? []).map((sale) => sale.customer_id),
+    ...(report.other_income_entries ?? []).map((entry) => entry.customer_id)
+  ]);
+  const customerLabel = (customerId: string | null) =>
+    (customerId && customerNames.get(customerId)) || "Credit customer";
+  // Cash over and card short (or similar) on the latest version of a shift
+  // whose business day is still open: offer to correct the likely orders.
+  const isLatestVersion = selected.version === view.reports[0].version;
+  const mixup = view.canCorrect && isLatestVersion && !shiftPaidOuts.businessDayClosed
+    ? detectPaymentMixup({
+        cash: report.cash_difference_amount,
+        card: report.card_difference_amount,
+        upi: report.upi_difference_amount
+      })
+    : null;
+  const mixupCandidates = mixup
+    ? rankMixupCandidates(
+        await getShiftOrdersByPaymentMethod(
+          session, id, orderPaymentMethodFor[mixup.shortMethod],
+          Math.min(mixup.overAmount, mixup.shortAmount) + 0.5
+        ),
+        mixup
+      )
+    : [];
   const ownerPhone = session.owner.owner_phone;
   const shareUrl = ownerPhone
     ? buildWhatsAppUrl(
@@ -140,8 +191,9 @@ export default async function ShiftCloseReportPage({
           `${dateTime(report.closed_at)}\n` +
           `WhatsOrder sales: ${money(report.completed_sales)}\n` +
           `Marketplace sales: ${money(report.marketplace_sales_total)}\n` +
-          `Combined operational sales: ${money(report.combined_operational_sales)}\n` +
-          `Other income: ${money(report.other_income_total)}\n` +
+          (unbilled.total > 0 ? `Unbilled sales: ${money(unbilled.total)}\n` : "") +
+          `Combined operational sales: ${money(report.combined_operational_sales + unbilled.total)}\n` +
+          `Other income: ${money(otherIncome.total)}\n` +
           `Total operational receipts: ${money(report.combined_operational_receipts)}\n` +
           `Cash difference: ${money(report.cash_difference_amount)}\n` +
           `Card difference: ${money(report.card_difference_amount)}`,
@@ -158,10 +210,57 @@ export default async function ShiftCloseReportPage({
         </Link>
         <ShiftReportActions
           autoPrintThermal={query.print === "thermal"}
+          cashDenominations={view.cashDenominations}
           report={report}
           shareUrl={shareUrl}
         />
       </div>
+
+      {mixup ? (
+        <section className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 print:hidden">
+          <h2 className="font-black">Check payment methods</h2>
+          <p className="mt-1 text-sm">
+            {drawerMethodLabels[mixup.overMethod]} counted over by {money(mixup.overAmount)} and{" "}
+            {drawerMethodLabels[mixup.shortMethod].toLowerCase()} short by {money(mixup.shortAmount)}.
+            Some orders recorded as {drawerMethodLabels[mixup.shortMethod].toLowerCase()} may have been
+            paid by {drawerMethodLabels[mixup.overMethod].toLowerCase()}. Correcting one saves a new report
+            version; this is only possible until the business day closes.
+          </p>
+          {mixupCandidates.length ? (
+            <ul className="mt-3 space-y-2">
+              {mixupCandidates.map((order) => (
+                <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3 text-sm" key={order.id}>
+                  <span>
+                    <span className="font-black">{money(order.total)}</span>
+                    {order.exactMatch ? (
+                      <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-black uppercase">
+                        Matches the {drawerMethodLabels[mixup.shortMethod].toLowerCase()} shortage
+                      </span>
+                    ) : null}
+                    <span className="block text-xs text-stone-500">
+                      Order #{order.id.slice(0, 8)} · {dateTime(order.completedAt)} · recorded as{" "}
+                      {drawerMethodLabels[mixup.shortMethod]}
+                    </span>
+                  </span>
+                  <CorrectOrderPaymentButton
+                    label={`Paid by ${drawerMethodLabels[mixup.overMethod]}`}
+                    orderId={order.id}
+                    paymentMethod={orderPaymentMethodFor[mixup.overMethod]}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm">
+              No single {drawerMethodLabels[mixup.shortMethod].toLowerCase()} order is small enough to explain it;
+              check the Orders page for this shift.
+            </p>
+          )}
+          <p className="mt-2 text-xs">
+            Only change an order you have confirmed, for example against the card terminal slips.
+          </p>
+        </section>
+      ) : null}
 
       <article className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm print:mt-0 print:border-0 print:p-0 print:shadow-none">
         <header className="border-b border-stone-200 pb-4">
@@ -191,26 +290,110 @@ export default async function ShiftCloseReportPage({
 
         <section className="mt-5">
           <h2 className="text-lg font-black">Operational sales</h2>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+          <dl className={`mt-3 grid gap-3 ${unbilled.total > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
             <ReportValue label="WhatsOrder sales" value={money(report.completed_sales)} />
+            {unbilled.total > 0 ? (
+              <ReportValue label="Unbilled sales" tone="warning" value={money(unbilled.total)} />
+            ) : null}
             <ReportValue label="Marketplace sales" value={money(report.marketplace_sales_total)} />
-            <ReportValue label="Combined sales" tone="good" value={money(report.combined_operational_sales)} />
+            <ReportValue
+              label="Combined sales"
+              tone="good"
+              value={money(report.combined_operational_sales + unbilled.total)}
+            />
           </dl>
           <p className="mt-2 text-xs text-stone-500">
             Combined sales include manually reported marketplace gross sales and are not accounting or settlement figures.
+            {unbilled.total > 0
+              ? " Unbilled sales were taken without an order, so they have no items and aren't in the order count."
+              : ""}
           </p>
         </section>
 
         <section className="mt-6">
+          <h2 className="text-lg font-black">WhatsOrder sales by payment</h2>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-4">
+            <ReportValue label="Cash" value={money(payments.cash)} />
+            <ReportValue label="Card" value={money(payments.card)} />
+            {report.country_code === "IN" ? <ReportValue label="UPI" value={money(payments.upi)} /> : null}
+            {payments.credit !== null ? (
+              <ReportValue label="Customer credit" value={money(payments.credit)} />
+            ) : null}
+            {payments.remainder !== 0 ? (
+              <ReportValue
+                label={payments.credit === null ? "Credit or not recorded" : "Payment not recorded"}
+                tone="warning"
+                value={money(payments.remainder)}
+              />
+            ) : null}
+          </dl>
+          <p className="mt-2 text-xs text-stone-500">
+            These add up to WhatsOrder sales ({money(report.completed_sales)}).
+            {payments.credit === null && payments.remainder !== 0
+              ? " This report was saved before credit sales were recorded separately."
+              : ""}
+          </p>
+        </section>
+
+        {showCredit ? (
+          <section className="mt-6">
+            <h2 className="text-lg font-black">Customer credit</h2>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+              {report.credit_sales ? (
+                <ReportValue
+                  label={`Sold on credit (${report.credit_sales.length})`}
+                  value={money(payments.credit ?? 0)}
+                />
+              ) : null}
+              <ReportValue label="Credit collected" value={money(collected.total)} />
+              {report.credit_sales ? (
+                <ReportValue
+                  label="Change in amount owed"
+                  tone={(payments.credit ?? 0) - collected.total > 0.005 ? "warning" : "default"}
+                  value={money((payments.credit ?? 0) - collected.total)}
+                />
+              ) : null}
+            </dl>
+            {Object.keys(collected.byMethod).length ? (
+              <p className="mt-2 text-xs text-stone-500">
+                Collected by{" "}
+                {Object.entries(collected.byMethod)
+                  .map(([method, amount]) => `${otherIncomePaymentLabels[method as keyof typeof otherIncomePaymentLabels] ?? method} ${money(amount)}`)
+                  .join(" · ")}
+                . Cash collected is already in expected cash.
+              </p>
+            ) : null}
+            {report.credit_sales?.length ? (
+              <ul className="mt-3 space-y-2 text-sm">
+                {report.credit_sales.map((sale) => (
+                  <li className="flex justify-between gap-3 rounded-lg bg-stone-50 p-3" key={sale.order_id}>
+                    <span className="min-w-0">
+                      <span className="block break-words font-bold">
+                        {view.canCorrect ? customerLabel(sale.customer_id) : "Credit sale"}
+                      </span>
+                      <span className="block text-xs text-stone-500">
+                        Order #{sale.order_id.slice(0, 8)} · {dateTime(sale.completed_at)}
+                        {sale.due_date ? ` · Due ${sale.due_date}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-black">{money(sale.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="mt-6">
           <h2 className="text-lg font-black">Other income</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            <ReportValue label="Other income" value={money(report.other_income_total)} />
-            <ReportValue label="Cash other income" value={money(report.cash_other_income_total)} />
+            <ReportValue label="Other income" value={money(otherIncome.total)} />
+            <ReportValue label="Cash other income" value={money(otherIncome.cash)} />
             <ReportValue label="Total operational receipts" tone="good" value={money(report.combined_operational_receipts)} />
           </dl>
-          {Object.keys(report.other_income_breakdown).length ? (
+          {Object.keys(otherIncomeBreakdown).length ? (
             <div className="mt-3 rounded-lg bg-stone-50 p-3 text-sm">
-              {Object.entries(report.other_income_breakdown).map(([category, amount]) => (
+              {Object.entries(otherIncomeBreakdown).map(([category, amount]) => (
                 <p className="flex justify-between gap-3 py-1" key={category}>
                   <span>{otherIncomeCategoryLabels[category as keyof typeof otherIncomeCategoryLabels] ?? category}</span>
                   <span className="font-bold">{money(Number(amount))}</span>
@@ -236,6 +419,30 @@ export default async function ShiftCloseReportPage({
                 <ReportValue label="Counted" value={money(report.cash_counted_amount)} />
                 <DifferenceValue label="Difference" report={report} value={report.cash_difference_amount} />
               </dl>
+              <p className="mt-2 text-xs text-stone-500">
+                Opening {money(report.opening_cash_amount)} + cash orders {money(report.completed_cash_order_total)}
+                {(unbilled.byMethod.cash ?? 0) > 0
+                  ? ` + unbilled cash sales ${money(unbilled.byMethod.cash ?? 0)}`
+                  : ""}
+                {otherIncome.cash > 0
+                  ? ` + cash other income ${money(otherIncome.cash)}`
+                  : ""}
+                {" "}− paid-outs {money(report.cash_paid_out_total)}
+              </p>
+              {report.opening_check?.previous_cash_counted_amount != null ? (
+                report.opening_check.difference !== null && Math.abs(report.opening_check.difference) >= 0.005 ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-950">
+                    <p className="font-black">
+                      Opening cash was {money(Math.abs(report.opening_check.difference))}{" "}
+                      {report.opening_check.difference > 0 ? "more" : "less"} than the last close count (
+                      {money(report.opening_check.previous_cash_counted_amount)})
+                    </p>
+                    {report.opening_check.reason ? <p className="mt-1 break-words">{report.opening_check.reason}</p> : null}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-stone-500">Opening cash matched the last close count.</p>
+                )
+              ) : null}
             </div>
             <div>
               <h3 className="text-sm font-black">Card</h3>
@@ -257,6 +464,40 @@ export default async function ShiftCloseReportPage({
             ) : null}
           </div>
         </section>
+
+        {view.cashDenominations ? (
+          <section className="mt-6">
+            <h2 className="text-lg font-black">Cash counted by notes &amp; coins</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              As counted at close
+              {report.correction_reason ? "; a later correction may have changed the counted total" : ""}.
+            </p>
+            <div className="mt-3 overflow-hidden rounded-lg border border-stone-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+                  <tr><th className="px-3 py-2">Note / coin</th><th className="px-3 py-2">Count</th><th className="px-3 py-2 text-right">Amount</th></tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {view.cashDenominations.map((row) => (
+                    <tr key={row.minor}>
+                      <td className="px-3 py-2 font-black">{money(row.minor / 100)}</td>
+                      <td className="px-3 py-2">{row.count}</td>
+                      <td className="px-3 py-2 text-right font-bold">{money((row.minor * row.count) / 100)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-stone-50">
+                  <tr>
+                    <td className="px-3 py-2 font-black" colSpan={2}>Total</td>
+                    <td className="px-3 py-2 text-right font-black">
+                      {money(view.cashDenominations.reduce((sum, row) => sum + row.minor * row.count, 0) / 100)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        ) : null}
 
         {report.marketplace_sales.length > 0 ? (
           <section className="mt-6">
@@ -313,6 +554,78 @@ export default async function ShiftCloseReportPage({
           </div>
         </section>
 
+        {report.paid_outs || report.other_income_entries ? (
+          <section className="mt-6 grid gap-4 sm:grid-cols-2">
+            {report.paid_outs ? (
+              <div>
+                <h2 className="text-lg font-black">Cash paid-outs</h2>
+                {report.paid_outs.length ? (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {report.paid_outs.map((paidOut) => (
+                      <li className={`rounded-lg p-3 ${paidOut.voided_at ? "bg-stone-100 text-stone-500" : "bg-stone-50"}`} key={paidOut.id}>
+                        <div className="flex justify-between gap-3">
+                          <span className={`min-w-0 break-words font-bold ${paidOut.voided_at ? "line-through" : ""}`}>{paidOut.reason}</span>
+                          <span className={`shrink-0 font-black ${paidOut.voided_at ? "line-through" : ""}`}>{money(paidOut.amount)}</span>
+                        </div>
+                        <p className="text-xs text-stone-500">
+                          {dateTime(paidOut.recorded_at)}
+                          {paidOut.voided_at ? ` · Voided${paidOut.void_reason ? `: ${paidOut.void_reason}` : ""}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-3 text-sm text-stone-500">No cash paid-outs.</p>}
+              </div>
+            ) : null}
+            {report.other_income_entries ? (
+              <div>
+                {report.other_income_entries.some((entry) => entry.category === UNBILLED_SALE) ? (
+                  <>
+                    <h2 className="text-lg font-black">Unbilled sales</h2>
+                    <ul className="mb-4 mt-3 space-y-2 text-sm">
+                      {report.other_income_entries.filter((entry) => entry.category === UNBILLED_SALE).map((entry) => (
+                        <li className={`rounded-lg p-3 ${entry.voided_at ? "bg-stone-100 text-stone-500" : "bg-amber-50"}`} key={entry.id}>
+                          <div className="flex justify-between gap-3">
+                            <span className={`min-w-0 break-words font-bold ${entry.voided_at ? "line-through" : ""}`}>{entry.description}</span>
+                            <span className={`shrink-0 font-black ${entry.voided_at ? "line-through" : ""}`}>{money(entry.amount)}</span>
+                          </div>
+                          <p className="text-xs text-stone-500">
+                            {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
+                            {" · "}{dateTime(entry.recorded_at)}
+                            {entry.voided_at ? ` · Voided${entry.void_reason ? `: ${entry.void_reason}` : ""}` : ""}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                <h2 className="text-lg font-black">Other income entries</h2>
+                {report.other_income_entries.some((entry) => entry.category !== UNBILLED_SALE) ? (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {report.other_income_entries.filter((entry) => entry.category !== UNBILLED_SALE).map((entry) => (
+                      <li className={`rounded-lg p-3 ${entry.voided_at ? "bg-stone-100 text-stone-500" : "bg-stone-50"}`} key={entry.id}>
+                        <div className="flex justify-between gap-3">
+                          <span className={`min-w-0 break-words font-bold ${entry.voided_at ? "line-through" : ""}`}>
+                            {otherIncomeCategoryLabels[entry.category as keyof typeof otherIncomeCategoryLabels] ?? entry.category}
+                          </span>
+                          <span className={`shrink-0 font-black ${entry.voided_at ? "line-through" : ""}`}>{money(entry.amount)}</span>
+                        </div>
+                        <p className="break-words text-xs text-stone-500">
+                          {entry.category === "customer_credit_repayment" && view.canCorrect
+                            ? customerLabel(entry.customer_id)
+                            : entry.description} · {otherIncomePaymentLabels[entry.payment_method as keyof typeof otherIncomePaymentLabels] ?? entry.payment_method}
+                          {entry.reference ? ` · ${entry.reference}` : ""}
+                          {entry.voided_at ? ` · Voided${entry.void_reason ? `: ${entry.void_reason}` : ""}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-3 text-sm text-stone-500">No other income.</p>}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {report.opening_note || report.closing_note ? (
           <section className="mt-6 border-t border-stone-200 pt-4">
             <h2 className="text-lg font-black">Notes</h2>
@@ -325,9 +638,9 @@ export default async function ShiftCloseReportPage({
         </footer>
       </article>
 
-      {shiftPaidOuts.paidOuts.length > 0 ? (
+      {shiftPaidOuts.paidOuts.length > 0 && (!report.paid_outs || canVoidPaidOuts) ? (
         <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4 print:hidden">
-          <h2 className="text-lg font-black">Cash paid-outs</h2>
+          <h2 className="text-lg font-black">{report.paid_outs ? "Paid-outs now" : "Cash paid-outs"}</h2>
           <p className="mt-1 text-xs text-stone-500">
             {canVoidPaidOuts
               ? "Void a paid-out entered by mistake (for example the same bill twice). This saves a new report version."

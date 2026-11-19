@@ -204,6 +204,28 @@ begin
       where shift_id = sid and version = 1) <> 30 then
     raise exception 'Original report version was changed';
   end if;
+  -- Each version itemizes paid-outs as they were when it was written, voided
+  -- ones included, and the shift row keeps the latest version exactly.
+  if (select jsonb_array_length(snapshot->'paid_outs') from public.shift_close_reports
+      where shift_id = sid and version = 1) <> 3
+     or (select count(*) from public.shift_close_reports v,
+           jsonb_array_elements(v.snapshot->'paid_outs') p
+         where v.shift_id = sid and v.version = 1
+           and (p->>'id')::uuid = milk_id and p->>'voided_at' is null) <> 1
+     or (select count(*) from public.shift_close_reports v,
+           jsonb_array_elements(v.snapshot->'paid_outs') p
+         where v.shift_id = sid and v.version = 1
+           and (p->>'id')::uuid = duplicate_id and p->>'void_reason' = 'Same bill entered twice') <> 1
+     or (select count(*) from public.shift_close_reports v,
+           jsonb_array_elements(v.snapshot->'paid_outs') p
+         where v.shift_id = sid and v.version = 2
+           and (p->>'id')::uuid = milk_id and p->>'void_reason' like 'Milk was paid by the owner%') <> 1
+     or (select jsonb_typeof(snapshot->'other_income_entries') from public.shift_close_reports
+         where shift_id = sid and version = 2) <> 'array'
+     or saved.close_report_snapshot <> (select snapshot from public.shift_close_reports
+                                         where shift_id = sid and version = 2) then
+    raise exception 'Report versions do not itemize paid-outs as written';
+  end if;
   -- The milk link is released; the expense itself is untouched.
   if exists (select 1 from public.finance_paid_out_links where paid_out_id = milk_id and removed_at is null)
      or not exists (select 1 from public.finance_paid_out_links where paid_out_id = milk_id

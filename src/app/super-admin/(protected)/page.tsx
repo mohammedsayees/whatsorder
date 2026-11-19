@@ -16,7 +16,7 @@ import { getSuperAdminDashboardData } from "@/lib/super-admin-data";
 import { RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 
 export default async function SuperAdminDashboardPage() {
-  const { metrics, onboardingFunnel, restaurants } = await getSuperAdminDashboardData();
+  const { metrics, onboardingFunnel, restaurants, signupSources } = await getSuperAdminDashboardData();
   const cards = [
     { label: "Total restaurants", value: metrics.totalRestaurants, icon: Building2, href: "/super-admin/restaurants" },
     { label: "Live restaurants", value: metrics.liveRestaurants, icon: Store, href: "/super-admin/restaurants?filter=live" },
@@ -90,6 +90,47 @@ export default async function SuperAdminDashboardPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="mt-8 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-sm font-black uppercase tracking-wide text-leaf">Acquisition</p>
+          <h2 className="mt-1 text-lg font-black">Signups by source</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Demos built from a tagged <code className="rounded bg-stone-100 px-1">/try?src=…</code> link, and how many were
+            claimed. Expired, unclaimed demos drop out when they are cleaned up. Untagged signups are not shown.
+          </p>
+        </div>
+        {signupSources.length === 0 ? (
+          <p className="mt-4 text-sm font-semibold text-stone-500">
+            No tagged signups yet. Share links like /try?src=field-karama or /try?src=ref-chaixpress.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-left text-sm">
+              <thead className="text-xs font-bold uppercase text-stone-500">
+                <tr>
+                  <th className="py-2 pr-4">Source</th>
+                  <th className="py-2 pr-4 text-right">Demos</th>
+                  <th className="py-2 pr-4 text-right">Claimed</th>
+                  <th className="py-2 text-right">Claim rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {signupSources.map((row) => (
+                  <tr key={row.bucket}>
+                    <td className="py-2 pr-4 font-bold">{row.label}</td>
+                    <td className="py-2 pr-4 text-right">{row.demos}</td>
+                    <td className="py-2 pr-4 text-right">{row.claimed}</td>
+                    <td className="py-2 text-right text-stone-500">
+                      {row.demos > 0 ? `${Math.round((row.claimed / row.demos) * 100)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="mt-8 rounded-lg border border-stone-200 bg-white shadow-sm">

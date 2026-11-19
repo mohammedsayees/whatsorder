@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
+  BarChart3,
   Check,
   Copy,
   Download,
@@ -17,6 +18,13 @@ import {
   recordStoreShareAction,
   type StoreShareAction
 } from "@/app/admin/share/actions";
+import type { AttributionRow } from "@/lib/attribution-report";
+
+export type StoreOrderSourceSummary = {
+  days: number;
+  total: number;
+  rows: AttributionRow[];
+};
 
 function trackShareAction(restaurantId: string, shareAction: StoreShareAction) {
   void recordStoreShareAction(restaurantId, shareAction).catch(() => {
@@ -45,26 +53,36 @@ async function copyText(value: string) {
 }
 
 export function StoreShareKit({
+  linkUrl,
   menuUrl,
   qrDataUrl,
+  sourceSummary,
+  whatsappShareUrl,
   restaurantId,
   restaurantName,
   restaurantSlug
 }: {
+  /** Store link tagged ?src=share-link (what "Copy link" copies). */
+  linkUrl: string;
+  /** Clean store link, shown on the printed card. */
   menuUrl: string;
+  /** QR image; encodes the store link tagged ?src=share-qr. */
   qrDataUrl: string;
+  sourceSummary: StoreOrderSourceSummary | null;
+  /** Store link tagged ?src=share-whatsapp. */
+  whatsappShareUrl: string;
   restaurantId: string;
   restaurantName: string;
   restaurantSlug: string;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(
-    `Order from ${restaurantName}: ${menuUrl}`
+    `Order from ${restaurantName}: ${whatsappShareUrl}`
   )}`;
 
   async function copyStoreLink() {
     try {
-      await copyText(menuUrl);
+      await copyText(linkUrl);
       setCopyState("copied");
       trackShareAction(restaurantId, "link_copied");
       window.setTimeout(() => setCopyState("idle"), 2500);
@@ -111,7 +129,7 @@ export function StoreShareKit({
                 className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-semibold text-stone-700"
                 onFocus={(event) => event.currentTarget.select()}
                 readOnly
-                value={menuUrl}
+                value={linkUrl}
               />
               <button
                 className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-5 py-3 font-black text-white"
@@ -165,6 +183,8 @@ export function StoreShareKit({
             </a>
           </div>
 
+          <OrderSourcesPanel summary={sourceSummary} />
+
           <div className="rounded-2xl border border-stone-200 bg-stone-50 p-5">
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 shrink-0 text-stone-500" size={20} />
@@ -202,5 +222,44 @@ export function StoreShareKit({
         </aside>
       </div>
     </main>
+  );
+}
+
+function OrderSourcesPanel({ summary }: { summary: StoreOrderSourceSummary | null }) {
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center gap-2">
+        <BarChart3 className="text-leaf" size={19} />
+        <h2 className="text-lg font-black">Where your orders come from</h2>
+      </div>
+      <p className="mt-1 text-sm text-stone-500">
+        The link, QR code and WhatsApp share above are each tagged, so orders placed through them are counted here
+        {summary ? ` (last ${summary.days} days, excluding cancelled)` : ""}.
+      </p>
+      {summary === null ? (
+        <p className="mt-4 text-sm font-semibold text-stone-500">Order sources are unavailable right now.</p>
+      ) : summary.total === 0 ? (
+        <p className="mt-4 text-sm font-semibold text-stone-500">No orders yet. Share your link to get started.</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {summary.rows.map((row) => {
+            const percent = Math.round((row.count / summary.total) * 100);
+            return (
+              <li key={row.bucket}>
+                <div className="flex justify-between gap-3 text-sm font-bold">
+                  <span className="text-stone-700">{row.label}</span>
+                  <span className="shrink-0 text-stone-500">
+                    {row.count} · {percent}%
+                  </span>
+                </div>
+                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full rounded-full bg-leaf" style={{ width: `${percent}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -4,16 +4,23 @@ import { useActionState, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   addShiftPaidOutAction,
+  attachPaidOutReceiptAction,
   addOtherIncomeAction,
   assignUnassignedOrdersAction,
   closeBusinessDayAction,
   closeShiftAction,
+  declareCashCountAction,
   openShiftAction,
   voidOtherIncomeAction,
   voidShiftPaidOutAction,
   type ShiftActionState
 } from "@/app/admin/shifts/actions";
 import { formatCurrency } from "@/lib/currency";
+import {
+  denominationsFor,
+  denominationTotalMinor,
+  maxDenominationCount
+} from "@/lib/cash-denominations";
 import { manualOtherIncomeCategoryLabels } from "@/lib/business-day";
 import { calculateCashDifference } from "@/lib/shift-calculations";
 import {
@@ -67,33 +74,104 @@ function ActionMessage({ state }: { state: ShiftActionState }) {
   );
 }
 
-export function AssignUnassignedOrdersButton() {
+export type AssignableOrderRow = {
+  id: string;
+  /** Pre-formatted on the server in the restaurant's time zone. */
+  completedLabel: string;
+  detailLabel: string;
+  total: number;
+  isCash: boolean;
+};
+
+export function AssignUnassignedOrdersForm({
+  orders,
+  restaurant,
+  shiftId
+}: {
+  orders: AssignableOrderRow[];
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
   const [state, action, pending] = useActionState(
     assignUnassignedOrdersAction,
     initialState
   );
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(orders.map((order) => order.id))
+  );
+  const chosen = orders.filter((order) => selected.has(order.id));
+  const chosenCash = chosen
+    .filter((order) => order.isCash)
+    .reduce((sum, order) => sum + order.total, 0);
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
-    <div className="space-y-2">
-      <form action={action}>
-        <button
-          className="focus-ring rounded-lg bg-amber-900 px-3 py-2 text-sm font-black text-white disabled:opacity-60"
-          disabled={pending}
-          type="submit"
-        >
-          {pending ? "Assigning…" : "Assign to current shift"}
-        </button>
-      </form>
+    <form action={action} className="space-y-3">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <ul className="max-h-72 divide-y divide-amber-100 overflow-y-auto rounded-lg border border-amber-200 bg-white text-stone-800">
+        {orders.map((order) => (
+          <li key={order.id}>
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
+              <input
+                checked={selected.has(order.id)}
+                className="h-4 w-4 shrink-0 accent-amber-900"
+                name="order_id"
+                onChange={() => toggle(order.id)}
+                type="checkbox"
+                value={order.id}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">{order.completedLabel}</span>
+                <span className="block truncate text-xs text-stone-500">{order.detailLabel}</span>
+              </span>
+              <span className="shrink-0 font-black">{formatCurrency(order.total, restaurant)}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs font-semibold">
+        {chosen.length} selected · adds {formatCurrency(chosenCash, restaurant)} to expected cash
+      </p>
+      <button
+        className="focus-ring rounded-lg bg-amber-900 px-3 py-2 text-sm font-black text-white disabled:opacity-60"
+        disabled={pending || chosen.length === 0}
+        type="submit"
+      >
+        {pending ? "Assigning…" : `Assign ${chosen.length} to current shift`}
+      </button>
       <ActionMessage state={state} />
-    </div>
+    </form>
   );
 }
 
-export function OpenShiftForm({ restaurant }: { restaurant: Restaurant }) {
+export function OpenShiftForm({
+  lastCount = null,
+  restaurant
+}: {
+  /** The last closed shift's counted cash; opening cash starts from it. */
+  lastCount?: { amount: number; label: string } | null;
+  restaurant: Restaurant;
+}) {
   const [state, action, pending] = useActionState(
     openShiftAction,
     initialState
   );
+  const [openingCash, setOpeningCash] = useState(
+    lastCount ? String(lastCount.amount) : ""
+  );
+  const openingValue = Number(openingCash);
+  const openingDifference = lastCount && openingCash.trim() !== "" && Number.isFinite(openingValue)
+    ? Math.round((openingValue - lastCount.amount) * 100) / 100
+    : 0;
+  const needsReason = Math.abs(openingDifference) >= 0.005;
 
   return (
     <form action={action} className="space-y-4">
@@ -117,12 +195,42 @@ export function OpenShiftForm({ restaurant }: { restaurant: Restaurant }) {
             className="focus-ring min-w-0 flex-1 px-3 py-3"
             min="0"
             name="opening_cash_amount"
+            onChange={(event) => setOpeningCash(event.target.value)}
             required
             step="0.01"
             type="number"
+            value={openingCash}
           />
         </div>
+        {lastCount ? (
+          <span className="mt-1 block text-xs font-semibold text-stone-500">
+            Last close counted {formatCurrency(lastCount.amount, restaurant)} ({lastCount.label}).
+          </span>
+        ) : null}
       </label>
+      {needsReason ? (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
+          <p className="text-sm font-black">
+            {openingDifference > 0 ? "More" : "Less"} than the last count by{" "}
+            {formatCurrency(Math.abs(openingDifference), restaurant)}
+          </p>
+          <p className="text-xs">
+            Check for a typing mistake first. If cash really was taken out or added between
+            shifts (bank deposit, owner withdrawal, top-up), say so below.
+          </p>
+          <label className="block text-sm font-bold">
+            Reason <span className="font-normal">(required)</span>
+            <input
+              className="focus-ring mt-1 block w-full rounded-lg border border-amber-300 bg-white px-3 py-2.5"
+              maxLength={300}
+              minLength={3}
+              name="opening_cash_reason"
+              placeholder="e.g. Owner took AED 200 for the bank"
+              required
+            />
+          </label>
+        </div>
+      ) : null}
       <label className="block text-sm font-bold text-stone-700">
         Opening note <span className="font-normal text-stone-400">(optional)</span>
         <textarea
@@ -215,6 +323,32 @@ export function PaidOutForm({ restaurant, shiftId }: { restaurant: Restaurant; s
   );
 }
 
+export function PaidOutReceiptForm({ paidOutId }: { paidOutId: string }) {
+  const [state, action, pending] = useActionState(attachPaidOutReceiptAction, initialState);
+  if (state.success) {
+    return <ActionMessage state={state} />;
+  }
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="focus-ring cursor-pointer font-bold text-sky-800">Attach receipt</summary>
+      <form action={action} className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <input name="paid_out_id" type="hidden" value={paidOutId} />
+        <input
+          accept="application/pdf,image/jpeg,image/png,image/webp"
+          capture="environment"
+          className="focus-ring min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2"
+          name="receipt"
+          required
+          type="file"
+        />
+        <button className="focus-ring rounded-lg border border-sky-300 px-3 py-2 font-black text-sky-800 disabled:opacity-60" disabled={pending} type="submit">{pending ? "Uploading…" : "Upload"}</button>
+      </form>
+      <p className="mt-1 text-stone-500">Photo or PDF up to 10 MB. It goes privately to Finance for review.</p>
+      <ActionMessage state={state} />
+    </details>
+  );
+}
+
 export function VoidPaidOutForm({
   paidOutId,
   shiftId,
@@ -239,6 +373,46 @@ export function VoidPaidOutForm({
       ) : null}
       <ActionMessage state={state} />
     </details>
+  );
+}
+
+// Money taken without an order. Stored as a shift receipt so the drawer
+// reconciles; reports show it as sales.
+export function UnbilledSaleForm({
+  restaurant,
+  shiftId
+}: {
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
+  const [state, action, pending] = useActionState(addOtherIncomeAction, initialState);
+  return (
+    <form action={action} className="space-y-3">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <input name="category" type="hidden" value="unbilled_sale" />
+      <div className="flex flex-wrap gap-3">
+        <label className="min-w-[140px] flex-1 text-sm font-bold text-stone-700">
+          Amount
+          <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" min="0.01" name="amount" required step="0.01" type="number" />
+        </label>
+        <label className="min-w-[140px] flex-1 text-sm font-bold text-stone-700">
+          Paid by
+          <select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5" name="payment_method" required>
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            {restaurant.country_code === "IN" ? <option value="upi">UPI</option> : null}
+          </select>
+        </label>
+      </div>
+      <label className="block text-sm font-bold text-stone-700">
+        What was sold
+        <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" maxLength={300} name="description" placeholder="e.g. 4 karak teas, rush hour, no bill" required />
+      </label>
+      <ActionMessage state={state} />
+      <button className="focus-ring w-full rounded-lg border border-amber-700 px-4 py-2.5 text-sm font-black text-amber-800 disabled:opacity-60" disabled={pending} type="submit">
+        {pending ? "Saving…" : "Record unbilled sale"}
+      </button>
+    </form>
   );
 }
 
@@ -449,8 +623,206 @@ export function MarketplaceReconciliationFields({
   );
 }
 
+function ActiveOrdersWarning({ count, action }: { count: number; action: string }) {
+  if (count === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+      <p className="font-black">
+        Resolve {count} active order{count === 1 ? "" : "s"} before {action}
+      </p>
+      <p className="mt-1 text-xs font-semibold">
+        Complete or cancel every pending order, then refresh this page.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Counted-cash input with an optional notes-and-coins breakdown. In breakdown
+ * mode the total is calculated and posted as cash_counted_amount, and the
+ * counts are posted as cash_denominations (checked again on the server).
+ */
+function CashCountInput({
+  onChange,
+  restaurant,
+  value
+}: {
+  onChange: (value: string) => void;
+  restaurant: Restaurant;
+  value: string;
+}) {
+  const denominations = denominationsFor(restaurant.currency_code);
+  const [byDenomination, setByDenomination] = useState(false);
+  const [counts, setCounts] = useState<Record<number, string>>({});
+
+  const rows = denominations.map((denomination) => {
+    const raw = counts[denomination.minor] ?? "";
+    const count = Number(raw);
+    return {
+      ...denomination,
+      raw,
+      count: raw !== "" && Number.isInteger(count) && count >= 0 ? count : 0,
+      invalid: raw !== "" && !(Number.isInteger(count) && count >= 0 && count <= maxDenominationCount)
+    };
+  });
+  const totalMinor = denominationTotalMinor(rows);
+  const anyInvalid = rows.some((row) => row.invalid);
+
+  function updateCount(minor: number, next: string) {
+    const updated = { ...counts, [minor]: next };
+    setCounts(updated);
+    const total = denominationTotalMinor(denominations.map((denomination) => {
+      const count = Number(updated[denomination.minor] ?? "");
+      return {
+        minor: denomination.minor,
+        count: Number.isInteger(count) && count >= 0 ? count : 0
+      };
+    }));
+    onChange(String(total / 100));
+  }
+
+  function toggle() {
+    if (byDenomination) {
+      setByDenomination(false);
+      setCounts({});
+      onChange("");
+    } else {
+      setByDenomination(true);
+      onChange("0");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {byDenomination ? (
+        <div className="text-sm font-bold text-stone-700">
+          Cash counted
+          <input name="cash_counted_amount" type="hidden" value={String(totalMinor / 100)} />
+          <input
+            name="cash_denominations"
+            type="hidden"
+            value={JSON.stringify(rows.filter((row) => row.count > 0)
+              .map((row) => ({ minor: row.minor, count: row.count })))}
+          />
+          <div className="mt-1 rounded-lg border border-stone-200">
+            <div className="grid grid-cols-[1fr_6rem_1fr] gap-2 border-b border-stone-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-stone-500">
+              <span>Note / coin</span>
+              <span>Count</span>
+              <span className="text-right">Amount</span>
+            </div>
+            {rows.map((row) => (
+              <label
+                className="grid grid-cols-[1fr_6rem_1fr] items-center gap-2 px-3 py-1.5"
+                key={row.minor}
+              >
+                <span className="font-black">
+                  {formatCurrency(row.minor / 100, restaurant)}
+                  <span className="ml-1 text-xs font-semibold text-stone-400">{row.kind}</span>
+                </span>
+                <input
+                  aria-invalid={row.invalid}
+                  aria-label={`Number of ${formatCurrency(row.minor / 100, restaurant)} ${row.kind}s`}
+                  className={`focus-ring w-full rounded-lg border px-2 py-1.5 text-right ${row.invalid ? "border-rose-400 bg-rose-50" : "border-stone-200"}`}
+                  inputMode="numeric"
+                  min="0"
+                  onChange={(event) => updateCount(row.minor, event.target.value)}
+                  placeholder="0"
+                  step="1"
+                  type="number"
+                  value={row.raw}
+                />
+                <span className="text-right text-stone-600">
+                  {row.count > 0 ? formatCurrency((row.minor * row.count) / 100, restaurant) : "—"}
+                </span>
+              </label>
+            ))}
+            <div className="flex justify-between border-t border-stone-200 px-3 py-2">
+              <span>Total</span>
+              <span className="text-lg font-black">{formatCurrency(totalMinor / 100, restaurant)}</span>
+            </div>
+          </div>
+          {anyInvalid ? (
+            <p className="mt-1 text-xs font-bold text-rose-700">Enter whole numbers of notes and coins.</p>
+          ) : null}
+        </div>
+      ) : (
+        <label className="block text-sm font-bold text-stone-700">
+          Cash counted
+          <input
+            className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
+            min="0"
+            name="cash_counted_amount"
+            onChange={(event) => onChange(event.target.value)}
+            required
+            step="0.01"
+            type="number"
+            value={value}
+          />
+        </label>
+      )}
+      <button
+        className="focus-ring text-xs font-black text-leaf underline underline-offset-2"
+        onClick={toggle}
+        type="button"
+      >
+        {byDenomination ? "Enter the total instead" : "Count by notes & coins"}
+      </button>
+    </div>
+  );
+}
+
+// Blind count, step 1. Expected cash is not on this page until the count is locked.
+export function DeclareCashCountForm({
+  activeOrderCount,
+  restaurant,
+  shiftId
+}: {
+  activeOrderCount: number;
+  restaurant: Restaurant;
+  shiftId: string;
+}) {
+  const [state, action, pending] = useActionState(
+    declareCashCountAction,
+    initialState
+  );
+  const [cashCounted, setCashCounted] = useState("");
+
+  return (
+    <form action={action} className="space-y-4">
+      <input name="shift_id" type="hidden" value={shiftId} />
+      <ActiveOrdersWarning action="counting" count={activeOrderCount} />
+      <div className="rounded-lg bg-stone-100 p-3 text-sm text-stone-700">
+        <p className="font-black">Step 1 of 2: count the cash drawer</p>
+        <p className="mt-1 text-xs leading-5">
+          Count every note and coin in the drawer and enter the total. Once locked, the
+          count can&apos;t be changed. You&apos;ll then see the expected amount and finish
+          closing.
+        </p>
+      </div>
+      <CashCountInput onChange={setCashCounted} restaurant={restaurant} value={cashCounted} />
+      <label className="flex items-start gap-2 text-sm font-semibold text-stone-700">
+        <input className="mt-1" name="confirm_count" required type="checkbox" />
+        I have counted the whole drawer. This count can&apos;t be changed.
+      </label>
+      <ActionMessage state={state} />
+      <button
+        className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 font-black text-white disabled:opacity-60"
+        disabled={pending || activeOrderCount > 0 || cashCounted.trim() === ""}
+        type="submit"
+      >
+        {pending ? <Loader2 className="animate-spin" size={18} /> : null}
+        {pending ? "Locking count…" : "Lock cash count"}
+      </button>
+    </form>
+  );
+}
+
 export function CloseShiftForm({
   activeOrderCount,
+  declaredCash = null,
   expectedCard,
   expectedCash,
   expectedUpi,
@@ -459,6 +831,8 @@ export function CloseShiftForm({
   shiftId
 }: {
   activeOrderCount: number;
+  /** Locked blind count; when set, the cash field is fixed to it. */
+  declaredCash?: number | null;
   expectedCard: number;
   expectedCash: number;
   expectedUpi: number;
@@ -470,7 +844,9 @@ export function CloseShiftForm({
     closeShiftAction,
     initialState
   );
-  const [cashCounted, setCashCounted] = useState("");
+  const [cashCounted, setCashCounted] = useState(
+    declaredCash === null ? "" : String(declaredCash)
+  );
   const [cardTerminalTotal, setCardTerminalTotal] = useState("");
   const [upiReportedTotal, setUpiReportedTotal] = useState("");
   const [closingNote, setClosingNote] = useState("");
@@ -492,17 +868,7 @@ export function CloseShiftForm({
   return (
     <form action={action} className="space-y-4">
       <input name="shift_id" type="hidden" value={shiftId} />
-      {activeOrderCount > 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
-          <p className="font-black">
-            Resolve {activeOrderCount} active order
-            {activeOrderCount === 1 ? "" : "s"} before closing
-          </p>
-          <p className="mt-1 text-xs font-semibold">
-            Complete or cancel every pending order, then refresh this page.
-          </p>
-        </div>
-      ) : null}
+      <ActiveOrdersWarning action="closing" count={activeOrderCount} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg bg-stone-100 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
@@ -519,19 +885,17 @@ export function CloseShiftForm({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <label className="block text-sm font-bold text-stone-700">
-            Cash counted
-            <input
-              className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-3"
-              min="0"
-              name="cash_counted_amount"
-              onChange={(event) => setCashCounted(event.target.value)}
-              required
-              step="0.01"
-              type="number"
-              value={cashCounted}
-            />
-          </label>
+          {declaredCash === null ? (
+            <CashCountInput onChange={setCashCounted} restaurant={restaurant} value={cashCounted} />
+          ) : (
+            <div className="text-sm font-bold text-stone-700">
+              Cash counted <span className="font-normal text-stone-400">(locked)</span>
+              <input name="cash_counted_amount" type="hidden" value={String(declaredCash)} />
+              <p className="mt-1 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 font-black">
+                {formatCurrency(declaredCash, restaurant)}
+              </p>
+            </div>
+          )}
           <DifferencePreview difference={cashDifference} restaurant={restaurant} />
         </div>
         <div className="space-y-2">

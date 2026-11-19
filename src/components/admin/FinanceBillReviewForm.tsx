@@ -5,6 +5,9 @@ import { Plus, Trash2 } from "lucide-react";
 import { approveFinanceDocumentAction } from "@/app/admin/finance/documents/actions";
 import type { FinanceCategory } from "@/lib/finance";
 import type { FinanceDocument } from "@/lib/finance-document";
+import type { OpenShiftTill, PaidOutReceiptContext } from "@/lib/finance-paid-out-data";
+import { formatFils } from "@/lib/finance";
+import { FinanceTillPaymentFields } from "@/components/admin/FinanceTillPaymentFields";
 
 type ReviewLine = {
   id: string;
@@ -24,11 +27,21 @@ function filsInput(value: number | null | undefined) {
 export function FinanceBillReviewForm({
   categories,
   document,
-  possibleDuplicate
+  possibleDuplicate,
+  till = null,
+  tillOpenedAtLabel = "",
+  receiptPaidOut = null,
+  receiptRecordedAtLabel = "",
+  recurringCosts = []
 }: {
   categories: FinanceCategory[];
   document: FinanceDocument;
   possibleDuplicate: boolean;
+  till?: OpenShiftTill | null;
+  tillOpenedAtLabel?: string;
+  receiptPaidOut?: PaidOutReceiptContext | null;
+  receiptRecordedAtLabel?: string;
+  recurringCosts?: { id: string; description: string }[];
 }) {
   const extracted = document.extracted_json!;
   const [lines, setLines] = useState<ReviewLine[]>(
@@ -70,6 +83,32 @@ export function FinanceBillReviewForm({
         <label className="text-sm font-bold">Payment status<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_status"><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="partial">Partially paid</option></select></label>
         <label className="text-sm font-bold">Payment method<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="payment_method"><option value="">Not recorded</option><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
         <label className="text-sm font-bold">Paid on<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="paid_on" type="date" /></label>
+        <label className="text-sm font-bold">Amount paid so far (AED, for partial payments)<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" inputMode="decimal" name="paid_amount" placeholder="0.00" /></label>
+        <label className="text-sm font-bold">Service period start<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="service_period_start" type="date" /><span className="mt-1 block text-xs font-normal text-stone-500">For bills covering a period, e.g. a monthly utility bill</span></label>
+        <label className="text-sm font-bold">Service period end<input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" name="service_period_end" type="date" /></label>
+        {recurringCosts.length > 0 ? <label className="text-sm font-bold sm:col-span-2">Recurring schedule (optional)<select className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2.5" defaultValue="" name="recurring_cost_id"><option value="">Not linked</option>{recurringCosts.map((cost) => <option key={cost.id} value={cost.id}>{cost.description}</option>)}</select><span className="mt-1 block text-xs font-normal text-stone-500">Link a bill that pays a scheduled cost (e.g. rent) so it isn&apos;t counted twice.</span></label> : null}
+        {till ? <FinanceTillPaymentFields openedAtLabel={tillOpenedAtLabel} till={till} /> : null}
+        {receiptPaidOut ? (
+          <fieldset className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm sm:col-span-2">
+            <p className="font-bold text-sky-950">Attached at the till to a cash paid-out</p>
+            <p className="mt-1 text-xs text-sky-900">
+              {formatFils(receiptPaidOut.amountFils)} · {receiptPaidOut.reason} · {receiptRecordedAtLabel}. Posting records this bill as paid in cash and links it to that paid-out; payment fields on this form are ignored.
+            </p>
+            {receiptPaidOut.voided ? (
+              <p className="mt-2 text-xs font-bold text-red-700">That paid-out was voided, so this receipt can&apos;t be posted against it. Delete the receipt or upload the bill again from Finance.</p>
+            ) : (
+              <div className="mt-2 grid gap-2">
+                <label className="flex items-start gap-2 text-xs font-bold">
+                  <input className="mt-0.5 h-4 w-4" name="confirm_mismatch" type="checkbox" />
+                  If the bill total differs from the {formatFils(receiptPaidOut.amountFils)} paid out, I confirm this is the right bill
+                </label>
+                <label className="text-xs font-bold">Reason for the difference (required if the amounts differ)
+                  <input className="focus-ring mt-1 block w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-normal" maxLength={300} name="mismatch_reason" placeholder="e.g. part paid by card" />
+                </label>
+              </div>
+            )}
+          </fieldset>
+        ) : null}
       </div>
 
       <section className="border-t border-stone-100 pt-5">

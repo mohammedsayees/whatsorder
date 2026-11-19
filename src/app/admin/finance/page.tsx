@@ -15,11 +15,16 @@ import {
   getFinanceAccess,
   getFinanceCategories,
   getFinanceExpenses,
-  getFinanceRecurringCosts
+  getFinanceRecurringCosts,
+  getFinanceSetupStatus
 } from "@/lib/finance-data";
 import { getFinanceDocuments } from "@/lib/finance-document-data";
 import { getUnbilledPaidOuts, paidOutLinkingAvailable } from "@/lib/finance-paid-out-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { SimpleFinanceHome } from "@/components/admin/SimpleFinanceHome";
+import { setFinanceModeAction } from "@/app/admin/finance/mode/actions";
+import { getFinanceMode } from "@/lib/finance-mode";
+import { canUseAdvancedFinance } from "@/lib/finance-simple";
 
 export const dynamic = "force-dynamic";
 // The bill upload action posts from this page and reads the bill with Gemini in
@@ -57,6 +62,35 @@ export default async function AdminFinancePage({
     );
   }
   if (!access.view && !access.create) redirect("/admin?error=You%20do%20not%20have%20Finance%20permission.");
+
+  // Simple mode is the default for everyone; owners/admins can opt into advanced.
+  if ((await getFinanceMode(session)) === "simple") {
+    const [simpleDocuments, simpleExpenses, simpleUnbilled, simpleSetup] = await Promise.all([
+      access.view ? getFinanceDocuments(session.restaurantId) : Promise.resolve([]),
+      access.view ? getFinanceExpenses(session.restaurantId) : Promise.resolve([]),
+      access.approve
+        ? paidOutLinkingAvailable(session)
+          .then((available) => available ? getUnbilledPaidOuts(session.restaurantId, 500) : null)
+          .then((rows) => rows?.length ?? null)
+          .catch(() => null)
+        : Promise.resolve(null),
+      access.manage_recurring || access.manage_costing
+        ? getFinanceSetupStatus(session.restaurantId).catch(() => null)
+        : Promise.resolve(null)
+    ]);
+    return (
+      <SimpleFinanceHome
+        setup={simpleSetup}
+        access={access}
+        canUseAdvanced={canUseAdvancedFinance(session.role)}
+        documents={simpleDocuments}
+        error={query.error}
+        expenses={simpleExpenses}
+        success={query.success}
+        unbilledTillCount={simpleUnbilled}
+      />
+    );
+  }
 
   if (!access.view) {
     return (
@@ -107,6 +141,7 @@ export default async function AdminFinancePage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <form action={setFinanceModeAction}><input name="mode" type="hidden" value="simple" /><button className="focus-ring inline-flex items-center gap-2 rounded-lg border border-leaf/40 bg-mint/40 px-4 py-3 text-sm font-black text-leaf" type="submit">Simple view</button></form>
           {access.manage_permissions ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/settings"><Settings2 size={17} /> Access</Link> : null}
           {access.manage_recurring ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/recurring"><Repeat2 size={17} /> Recurring</Link> : null}
           {access.manage_costing ? <Link className="focus-ring inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-3 text-sm font-black" href="/admin/finance/ingredients"><Wheat size={17} /> Ingredients</Link> : null}

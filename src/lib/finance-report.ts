@@ -37,6 +37,8 @@ export type FinanceProductContribution = {
 export type FinanceOperatingReport = {
   orderCount: number;
   grossCustomerSalesFils: number;
+  /** Delivery fees charged to customers; included in gross and net sales. */
+  deliveryFeesFils: number;
   outputVatFils: number;
   netSalesFils: number;
   knownDirectCostFils: number;
@@ -84,6 +86,7 @@ export function buildFinanceOperatingReport({
   }
 
   let grossCustomerSalesFils = 0;
+  let deliveryFeesFils = 0;
   let outputVatFils = 0;
   let knownDirectCostFils = 0;
   let channelFeesFils = 0;
@@ -100,7 +103,10 @@ export function buildFinanceOperatingReport({
     const orderSnapshots = snapshotsByOrder.get(order.id) ?? [];
     const lineRevenue = orderSnapshots.map((row) => row.revenueFils);
     const discountAllocation = allocateFils(Math.min(order.discountFils, lineRevenue.reduce((sum, value) => sum + value, 0)), lineRevenue);
-    const orderFee = variableFeeFils(order.totalFils, order.feeBps) + order.promotionFils;
+    // Commission is charged on the order's food value, not the delivery fee.
+    const orderFee = variableFeeFils(Math.max(0, order.totalFils - order.deliveryFeeFils), order.feeBps)
+      + order.promotionFils;
+    deliveryFeesFils += order.deliveryFeeFils;
     channelFeesFils += orderFee;
     const feeAllocation = allocateFils(orderFee, lineRevenue);
 
@@ -174,6 +180,7 @@ export function buildFinanceOperatingReport({
   return {
     orderCount: orders.length,
     grossCustomerSalesFils,
+    deliveryFeesFils,
     outputVatFils,
     netSalesFils,
     knownDirectCostFils,
@@ -269,4 +276,36 @@ export function recurringAccrualForRange({
     cursor = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
   }
   return total;
+}
+
+/** Cash actually paid for an expense: the paid amount for partial payments. */
+export function expenseCashPaidFils({
+  paidAmountFils,
+  paymentStatus,
+  totalFils
+}: {
+  paidAmountFils: number | null;
+  paymentStatus: string;
+  totalFils: number;
+}) {
+  return paymentStatus === "partial" && paidAmountFils !== null ? paidAmountFils : totalFils;
+}
+
+/** Last day a recurring schedule accrues: its end date or the day before it paused. */
+export function recurringEffectiveEnd(endOn: string | null, pausedOn: string | null) {
+  if (!pausedOn) return endOn;
+  const dayBefore = new Date(Date.parse(`${pausedOn}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
+  return endOn && endOn < dayBefore ? endOn : dayBefore;
+}
+
+/** PostgREST filter for expenses that can affect a period (dates are ISO yyyy-mm-dd). */
+export function expensePeriodFilter(start: string, end: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    throw new Error("Invalid report period.");
+  }
+  return [
+    `and(incurred_on.gte.${start},incurred_on.lte.${end})`,
+    `and(service_period_start.lte.${end},service_period_end.gte.${start})`,
+    `and(paid_on.gte.${start},paid_on.lte.${end})`
+  ].join(",");
 }
