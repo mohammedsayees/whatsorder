@@ -32,7 +32,7 @@ import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
-import { publicAppUrl } from "@/lib/public-app-url";
+import { requestOrigin } from "@/lib/request-origin";
 import { checkoutUrlForOrder, getOnlinePaymentAccount } from "@/lib/stripe/order-payments";
 import { ONLINE_PAYMENT_METHOD } from "@/lib/stripe/order-payment-rules";
 import type { CartLine, FulfilmentType, PaymentMethod } from "@/lib/types";
@@ -512,14 +512,6 @@ export async function createOrderAction(
       restaurant.phone_country_code
     )
   };
-}
-
-async function requestOrigin() {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-  const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
-  // The customer must return to the same host: the order cookie lives there.
-  return host && /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${proto === "http" ? "http" : "https"}://${host}` : publicAppUrl();
 }
 
 /**

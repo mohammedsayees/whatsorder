@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { CreditCard, FileText, MessageCircle } from "lucide-react";
 import { InvoicePaymentInstructions } from "@/components/admin/InvoicePaymentInstructions";
+import {
+  BillingCardNotice,
+  BillingCardPanel,
+  PayInvoiceByCardForm
+} from "@/components/admin/BillingCardPanel";
+import { getBillingCard, isCardBillingAvailable } from "@/lib/stripe/billing";
 import { InvoiceStatusBadge } from "@/components/super-admin/BillingBadges";
 import {
   billingDateString,
@@ -44,14 +50,22 @@ const statusTone: Record<SubscriptionStatus, string> = {
 
 // Owner billing overview. Reachable in every subscription state, including
 // suspended: it is how a paused restaurant finds out what to pay. Read-only.
-export default async function AdminBillingPage() {
+export default async function AdminBillingPage({
+  searchParams
+}: {
+  searchParams: Promise<{ card?: string }>;
+}) {
   // requireRestaurantRole wraps requireRestaurantAdmin and also keeps staff out.
   const session = await requireRestaurantRole([...BILLING_ROLES]);
   const restaurantId = session.restaurantId;
-  const [{ subscription, plan }, invoices] = await Promise.all([
+  const cardBilling = isCardBillingAvailable();
+  const [{ subscription, plan }, invoices, billingCard, query] = await Promise.all([
     getOwnerSubscription(restaurantId),
-    listOwnerInvoices(restaurantId)
+    listOwnerInvoices(restaurantId),
+    cardBilling ? getBillingCard(restaurantId) : Promise.resolve(null),
+    searchParams
   ]);
+  const hasAutopay = Boolean(billingCard?.payment_method_id && billingCard.autopay_enabled);
   const bank = getBankTransferDetails();
   const today = billingDateString();
   const sortedInvoices = sortInvoicesNewestFirst(invoices);
@@ -82,6 +96,8 @@ export default async function AdminBillingPage() {
           billing.
         </p>
       </div>
+
+      <BillingCardNotice code={query.card ?? null} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
@@ -199,6 +215,13 @@ export default async function AdminBillingPage() {
                       : "Due on receipt"}
                   </span>
                 </div>
+                {cardBilling ? (
+                  <PayInvoiceByCardForm
+                    amountLabel={formatBillingAmount(amountDue(invoice), invoice.currency)}
+                    hasAutopay={hasAutopay}
+                    invoiceId={invoice.id}
+                  />
+                ) : null}
                 <InvoicePaymentInstructions
                   amountDue={amountDue(invoice)}
                   bank={bank}
@@ -211,6 +234,8 @@ export default async function AdminBillingPage() {
           </div>
         </section>
       ) : null}
+
+      {cardBilling && subscription ? <BillingCardPanel card={billingCard} /> : null}
 
       <section className="mt-6 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
         <header className="flex items-center gap-2 border-b border-stone-200 px-5 py-4">

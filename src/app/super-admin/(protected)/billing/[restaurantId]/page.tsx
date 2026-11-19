@@ -41,7 +41,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "Bank transfer",
   cash: "Cash",
   cheque: "Cheque",
-  other: "Other"
+  other: "Other",
+  card: "Card (Stripe)"
 };
 
 export default async function BillingDetailPage({
