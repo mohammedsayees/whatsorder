@@ -7,6 +7,7 @@ import type { StatusEvent } from "@/lib/order-progress";
 import type { CustomerRiderView } from "@/lib/rider-location";
 import { getCustomerRiderView } from "@/lib/rider-location-data";
 import type { CartLine, FulfilmentType, OrderStatus } from "@/lib/types";
+import { asOnlinePaymentStatus, type OnlinePaymentStatus } from "@/lib/stripe/order-payment-rules";
 
 export type OrderConfirmation = {
   id: string;
@@ -23,6 +24,8 @@ export type OrderConfirmation = {
   customer_arrival_note: string | null;
   /** Assigned rider (name, phone, recent position) while out for delivery. */
   rider: CustomerRiderView | null;
+  /** "Pay online" state; null for cash/card-on-collection orders. */
+  online_payment_status?: OnlinePaymentStatus | null;
 };
 
 // A URL reference alone never authorizes access to the order or its message.
@@ -37,7 +40,7 @@ export async function loadOrderConfirmation(
   }
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error("Order confirmation is temporarily unavailable.");
-  const [orderResult, eventsResult, arrivalResult] = await Promise.all([
+  const [orderResult, eventsResult, arrivalResult, paymentResult] = await Promise.all([
     admin
       .from("orders")
       .select("id,items,total,status,whatsapp_message,created_at,fulfilment_type")
@@ -59,6 +62,13 @@ export async function loadOrderConfirmation(
       .select("customer_arrived_at,customer_arrival_note")
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .maybeSingle(),
+    // Separate read for the same reason (20261124120000_online_order_payments).
+    admin
+      .from("orders")
+      .select("online_payment_status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
       .maybeSingle()
   ]);
   if (orderResult.error) {
@@ -67,7 +77,7 @@ export async function loadOrderConfirmation(
   if (!orderResult.data) return null;
   const order = orderResult.data as Omit<
     OrderConfirmation,
-    "status_events" | "customer_arrived_at" | "customer_arrival_note" | "rider"
+    "status_events" | "customer_arrived_at" | "customer_arrival_note" | "rider" | "online_payment_status"
   >;
   const arrival = arrivalResult.error
     ? null
@@ -86,6 +96,9 @@ export async function loadOrderConfirmation(
     status_events: statusEvents,
     customer_arrived_at: arrival?.customer_arrived_at ?? null,
     customer_arrival_note: arrival?.customer_arrival_note ?? null,
+    online_payment_status: paymentResult.error
+      ? null
+      : asOnlinePaymentStatus((paymentResult.data as { online_payment_status?: unknown } | null)?.online_payment_status),
     rider: await getCustomerRiderView(restaurantId, orderId, {
       status: order.status,
       fulfilment_type: order.fulfilment_type ?? null

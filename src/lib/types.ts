@@ -4,7 +4,9 @@ export type PaymentMethod =
   | "Cash on Delivery"
   | "Card on Delivery"
   | "UPI"
-  | "Customer Credit";
+  | "Customer Credit"
+  /** Paid by card on Stripe Checkout; set only by the signed Stripe webhook. */
+  | "Online Payment";
 export type FulfilmentType = "delivery" | "takeaway" | "car_pickup" | "dine_in";
 export type CountryCode = "AE" | "IN";
 export type ShiftMarketplaceChannel =
@@ -321,6 +323,8 @@ export type Order = {
   delivery_landmark: string | null;
   notes: string | null;
   payment_method: PaymentMethod | null;
+  /** Stripe "Pay online" state; null for cash/card-on-collection orders. */
+  online_payment_status?: "pending" | "paid" | "expired" | "failed" | "refunded" | null;
   items: OrderItem[];
   subtotal: number;
   delivery_fee: number;

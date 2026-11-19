@@ -104,6 +104,21 @@ describe("buildRiderAssignmentMessage", () => {
     expect(message).toContain("confirm with the restaurant before collecting payment");
   });
 
+  it("tells the rider not to collect payment for paid-online orders", () => {
+    const paid = buildRiderAssignmentMessage({
+      order: order({ payment_method: "Online Payment", online_payment_status: "paid" }),
+      restaurant,
+      rider: { name: "Ahmed" }
+    });
+    expect(paid).toContain("Do NOT collect payment");
+    const pending = buildRiderAssignmentMessage({
+      order: order({ payment_method: null, online_payment_status: "pending" }),
+      restaurant,
+      rider: { name: "Ahmed" }
+    });
+    expect(pending).toContain("Online payment not confirmed yet");
+  });
+
   it("does not repeat the city when the saved pickup address already contains it", () => {
     const message = buildRiderAssignmentMessage({
       order: order(),

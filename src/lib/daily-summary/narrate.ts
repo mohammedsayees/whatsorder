@@ -329,6 +329,7 @@ const paymentLabels: Record<string, string> = {
   "Cash on Delivery": "Cash",
   "Card on Delivery": "Card",
   "Customer Credit": "Customer credit",
+  "Online Payment": "Paid online",
   UPI: "UPI",
   Unrecorded: "Unrecorded"
 };

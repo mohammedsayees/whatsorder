@@ -7,6 +7,7 @@ import { getRestaurantBySlug } from "@/lib/data";
 import { loadCustomerContext } from "@/lib/customer-auth/context";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 import { getCheckoutSuggestions } from "@/lib/checkout-suggestion-data";
+import { getOnlinePaymentAccount } from "@/lib/stripe/order-payments";
 
 export default async function CheckoutPage({
   params,
@@ -32,10 +33,12 @@ export default async function CheckoutPage({
 
   // Signed-in returning customer → prefill name/address from their profile.
   // Cold open returns immediately without a DB hit.
-  const [{ profile }, onboardingSession, suggestions] = await Promise.all([
+  const [{ profile }, onboardingSession, suggestions, onlinePaymentAccount] = await Promise.all([
     loadCustomerContext(restaurant.id),
     onboardingRequested ? getRestaurantAdminSession() : Promise.resolve(null),
-    getCheckoutSuggestions(restaurant.id)
+    getCheckoutSuggestions(restaurant.id),
+    // "Pay online" only when the restaurant's Stripe account is active.
+    getOnlinePaymentAccount(restaurant).catch(() => null)
   ]);
   const onboardingTest =
     onboardingSession?.restaurantId === restaurant.id &&
@@ -47,6 +50,7 @@ export default async function CheckoutPage({
         attributionSource={attributionSource}
         initialTableNumber={tableNumber}
         onboardingTest={onboardingTest}
+        onlinePaymentAvailable={Boolean(onlinePaymentAccount)}
         prefill={profile}
         restaurant={restaurant}
         suggestions={suggestions}

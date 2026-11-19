@@ -79,6 +79,11 @@ const ADDRESS_COPY = {
   }
 } as const;
 
+const onlinePaymentCopy = {
+  en: { label: "Pay online now (card, Apple Pay, Google Pay)", redirecting: "Opening secure payment…" },
+  ar: { label: "ادفع الآن إلكترونياً (بطاقة، Apple Pay، Google Pay)", redirecting: "جارٍ فتح صفحة الدفع الآمنة…" }
+} as const;
+
 type InstructionKey = "callOnArrival" | "dontRingBell" | "leaveAtDoor" | "noCutlery";
 
 type PendingWhatsAppOrder = {
@@ -92,6 +97,7 @@ export function CheckoutForm({
   attributionSource = null,
   initialTableNumber = "",
   onboardingTest = false,
+  onlinePaymentAvailable = false,
   prefill = null,
   restaurant,
   suggestions = null
@@ -100,6 +106,8 @@ export function CheckoutForm({
   attributionSource?: string | null;
   initialTableNumber?: string;
   onboardingTest?: boolean;
+  /** The restaurant's Stripe account can take card payments now. */
+  onlinePaymentAvailable?: boolean;
   prefill?: CustomerProfile | null;
   restaurant: PublicRestaurant;
   /** "Goes well with your order" data; null hides the suggestion. */
@@ -154,6 +162,7 @@ export function CheckoutForm({
   const [hasSavedDetails, setHasSavedDetails] = useState(false);
   const detailsStorageKey = savedDetailsStorageKey(restaurant.slug);
   const [isPending, startTransition] = useTransition();
+  const [redirectingToPayment, setRedirectingToPayment] = useState(false);
   const [submissionToken] = useState(() =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -433,6 +442,15 @@ export function CheckoutForm({
       }
 
       trackFunnel(restaurant.id, "order_saved", { orderId: result.orderId, fulfilmentType });
+
+      if (result.paymentUrl) {
+        // Stripe Checkout on the restaurant's account; it returns the
+        // customer to the order page (which also offers "Pay now" again).
+        cart.clearCart();
+        setRedirectingToPayment(true);
+        window.location.assign(result.paymentUrl);
+        return;
+      }
 
       if (result.confirmationUrl) {
         cart.clearCart();
@@ -1065,10 +1083,15 @@ export function CheckoutForm({
                 },
                 ...(restaurant.country_code === "IN"
                   ? [{ value: "UPI", label: "UPI" }]
+                  : []),
+                ...(onlinePaymentAvailable
+                  ? [{ value: "Online Payment", label: onlinePaymentCopy[language === "ar" ? "ar" : "en"].label }]
                   : [])
               ].map((method) => (
                 <label
-                  className="flex min-h-12 items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold has-[:checked]:border-leaf has-[:checked]:bg-mint/40"
+                  className={`flex min-h-12 items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold has-[:checked]:border-leaf has-[:checked]:bg-mint/40${
+                    method.value === "Online Payment" ? " col-span-2" : ""
+                  }`}
                   key={method.value}
                 >
                   <input defaultChecked={method.value === "Cash on Delivery"} name="payment_method" type="radio" value={method.value} />
@@ -1140,11 +1163,15 @@ export function CheckoutForm({
             </div>
             <button
               className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isPending || amountRemaining > 0 || deliveryBlocked}
+              disabled={isPending || redirectingToPayment || amountRemaining > 0 || deliveryBlocked}
               type="submit"
             >
               <MessageCircle className="shrink-0" size={18} />
-              {isPending ? t.sendingOrder : t.saveAndContinueWhatsApp}
+              {redirectingToPayment
+                ? onlinePaymentCopy[language === "ar" ? "ar" : "en"].redirecting
+                : isPending
+                  ? t.sendingOrder
+                  : t.saveAndContinueWhatsApp}
             </button>
             <p className="mt-2 text-center text-xs text-stone-500">{t.whatsAppNextStep}</p>
           </div>

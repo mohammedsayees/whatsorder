@@ -32,6 +32,9 @@ import { isFulfilmentEnabled } from "@/lib/fulfilment";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { formatCurrency } from "@/lib/currency";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
+import { publicAppUrl } from "@/lib/public-app-url";
+import { checkoutUrlForOrder, getOnlinePaymentAccount } from "@/lib/stripe/order-payments";
+import { ONLINE_PAYMENT_METHOD } from "@/lib/stripe/order-payment-rules";
 import type { CartLine, FulfilmentType, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -40,6 +43,8 @@ type CreateOrderResult =
       onboardingTest: boolean;
       orderId: string;
       confirmationUrl: string | null;
+      /** Stripe Checkout page for "Pay online" orders. */
+      paymentUrl: string | null;
       webPushPublicKey: string | null;
       whatsappUrl: string;
       whatsappAppUrl: string;
@@ -288,8 +293,18 @@ export async function createOrderAction(
     restaurant.country_code === "IN"
       ? ["Cash on Delivery", "Card on Delivery", "UPI"]
       : ["Cash on Delivery", "Card on Delivery"];
+  const payOnline = paymentMethod === ONLINE_PAYMENT_METHOD;
 
-  if (!allowedPaymentMethods.includes(paymentMethod)) {
+  if (payOnline) {
+    // Server-side gate: only when the restaurant's own Stripe account can
+    // take card payments right now.
+    if (!(await getOnlinePaymentAccount(restaurant))) {
+      return {
+        ok: false,
+        error: "Online payment isn't available right now. Please choose another payment method."
+      };
+    }
+  } else if (!allowedPaymentMethods.includes(paymentMethod)) {
     return { ok: false, error: "Please choose a payment method." };
   }
 
@@ -398,7 +413,8 @@ export async function createOrderAction(
       fulfilmentType === "delivery" ? deliveryAddressText || null : null,
     order_delivery_landmark: fulfilmentType === "delivery" ? deliveryLandmark || null : null,
     order_notes: notes || null,
-    order_payment_method: paymentMethod,
+    // Online orders start unpaid; the signed Stripe webhook records the payment.
+    order_payment_method: payOnline ? null : paymentMethod,
     order_items: verifiedItems,
     order_subtotal: subtotal,
     order_delivery_fee: appliedDeliveryFee,
@@ -468,6 +484,9 @@ export async function createOrderAction(
   // Do not revalidate /r/[slug] here: the menu is edge-cached (force-static,
   // revalidate 300) and nothing on it depends on orders. Purging it on every
   // order made the next menu visitor wait for a full re-render from the origin.
+  const paymentUrl = payOnline && confirmationAuthorized
+    ? await startOnlinePayment(restaurant, orderId)
+    : null;
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
   revalidatePath("/admin/customers");
@@ -480,6 +499,7 @@ export async function createOrderAction(
     confirmationUrl: confirmationAuthorized
       ? `/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(orderId)}`
       : null,
+    paymentUrl,
     webPushPublicKey: getConfiguredWebPushPublicKey(),
     whatsappUrl: buildWhatsAppUrl(
       restaurant.whatsapp_number,
@@ -492,6 +512,47 @@ export async function createOrderAction(
       restaurant.phone_country_code
     )
   };
+}
+
+async function requestOrigin() {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
+  // The customer must return to the same host: the order cookie lives there.
+  return host && /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${proto === "http" ? "http" : "https"}://${host}` : publicAppUrl();
+}
+
+/**
+ * Marks the order as "Pay online" and opens a Stripe Checkout Session on the
+ * restaurant's account. A Stripe failure never loses the order: the customer
+ * lands on the order page, which offers "Pay now" again.
+ */
+async function startOnlinePayment(
+  restaurant: NonNullable<Awaited<ReturnType<typeof getRestaurantBySlug>>>,
+  orderId: string
+): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { error } = await supabase
+    .from("orders")
+    .update({ online_payment_status: "pending" })
+    .eq("restaurant_id", restaurant.id)
+    .eq("id", orderId)
+    .is("online_payment_status", null)
+    .is("payment_method", null);
+  if (error) {
+    console.error("WhatsOrder online payment start failed", { code: error.code, restaurantId: restaurant.id });
+    return null;
+  }
+  try {
+    return await checkoutUrlForOrder({ restaurant, orderId, origin: await requestOrigin() });
+  } catch (stripeError) {
+    console.error("WhatsOrder Checkout Session failed", {
+      restaurantId: restaurant.id,
+      message: stripeError instanceof Error ? stripeError.message : "unknown"
+    });
+    return null;
+  }
 }
 
 async function recordOrderAttribution(
