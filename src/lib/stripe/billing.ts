@@ -3,7 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { amountDue } from "@/lib/owner-billing";
 import { getOwnerInvoice, recordPayment } from "@/lib/billing-data";
-import { getStripe, isStripeLiveMode } from "@/lib/stripe/server";
+import { getStripe, isBillingWebhookConfigured, isStripeLiveMode } from "@/lib/stripe/server";
 import { toMinorUnits } from "@/lib/stripe/order-payment-rules";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -53,7 +53,7 @@ function clients() {
 }
 
 export function isCardBillingAvailable() {
-  return Boolean(getStripe());
+  return Boolean(getStripe()) && isBillingWebhookConfigured();
 }
 
 export async function getBillingCard(restaurantId: string): Promise<BillingCard | null> {
@@ -115,6 +115,7 @@ export async function createInvoiceCheckoutUrl(input: {
   userId: string;
   origin: string;
 }): Promise<string> {
+  if (!isCardBillingAvailable()) throw new BillingCardError("not_configured");
   const invoice = await getOwnerInvoice(input.restaurantId, input.invoiceId);
   const due = invoice && invoice.status === "issued" ? amountDue(invoice) : 0;
   if (!invoice || due <= 0) throw new BillingCardError("nothing_due");
@@ -163,6 +164,7 @@ export async function createCardSetupUrl(input: {
   userId: string;
   origin: string;
 }): Promise<string> {
+  if (!isCardBillingAvailable()) throw new BillingCardError("not_configured");
   const { stripe } = clients();
   const card = await ensureBillingCustomer(input);
   const metadata = {
@@ -378,7 +380,7 @@ export async function runAutopay(now: Date = new Date()): Promise<AutopaySummary
   const summary: AutopaySummary = { attempted: 0, charged: 0, failed: 0 };
   const stripe = getStripe();
   const admin = getSupabaseAdmin();
-  if (!stripe || !admin) return summary;
+  if (!stripe || !admin || !isBillingWebhookConfigured()) return summary;
 
   const { data: cards } = await admin
     .from("restaurant_billing_cards")

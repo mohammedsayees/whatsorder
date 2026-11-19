@@ -6,11 +6,15 @@ import {
   runAutopay
 } from "@/lib/stripe/billing";
 import { getOwnerInvoice, recordPayment } from "@/lib/billing-data";
-import { getStripe } from "@/lib/stripe/server";
+import { getStripe, isBillingWebhookConfigured } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 vi.mock("@/lib/supabase", () => ({ getSupabaseAdmin: vi.fn() }));
-vi.mock("@/lib/stripe/server", () => ({ getStripe: vi.fn(), isStripeLiveMode: () => false }));
+vi.mock("@/lib/stripe/server", () => ({
+  getStripe: vi.fn(),
+  isStripeLiveMode: () => false,
+  isBillingWebhookConfigured: vi.fn(() => true)
+}));
 vi.mock("@/lib/billing-data", () => ({ getOwnerInvoice: vi.fn(), recordPayment: vi.fn(async () => ({ ok: true })) }));
 
 const restaurantId = "2f100000-0000-0000-0000-000000000001";
@@ -171,6 +175,18 @@ describe("WhatsOrder invoices by card", () => {
     const attempt = calls.filter((call) => call.op === "update" && call.table === "invoices").at(-1);
     expect(attempt?.payload).toMatchObject({ autopay_attempts: 1, autopay_last_error: "insufficient_funds" });
     expect(attempt?.filters).toEqual([["restaurant_id", restaurantId], ["id", invoiceId]]);
+  });
+
+  it("takes no card money until the billing webhook is configured", async () => {
+    mockDb({ restaurant_billing_cards: card });
+    const stripe = mockStripe();
+    vi.mocked(getOwnerInvoice).mockResolvedValue(issuedInvoice as never);
+    vi.mocked(isBillingWebhookConfigured).mockReturnValueOnce(false);
+    await expect(createInvoiceCheckoutUrl({ restaurantId, restaurantName: "C", email: null, invoiceId, saveCardForAutopay: false, userId: "u", origin: "o" })).rejects.toMatchObject({ code: "not_configured" });
+    vi.mocked(isBillingWebhookConfigured).mockReturnValueOnce(false);
+    expect(await runAutopay(new Date())).toEqual({ attempted: 0, charged: 0, failed: 0 });
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
   });
 
   it("spaces retries and stops after three attempts", () => {

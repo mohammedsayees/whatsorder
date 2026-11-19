@@ -3,7 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { canAcceptOnlinePayments, supportsOnlinePayments } from "@/lib/stripe/connect";
 import { getRestaurantStripeAccount } from "@/lib/stripe/connect-data";
-import { getStripe } from "@/lib/stripe/server";
+import { getStripe, isOrderPaymentWebhookConfigured } from "@/lib/stripe/server";
 import { isPushAuthorizationConfigured } from "@/lib/push-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
@@ -27,7 +27,12 @@ type OnlinePaymentRestaurant = {
 
 /** The restaurant's Stripe account when it can take card payments right now. */
 export async function getOnlinePaymentAccount(restaurant: Pick<OnlinePaymentRestaurant, "id" | "country_code">) {
-  if (!supportsOnlinePayments(restaurant.country_code) || !getStripe() || !isPushAuthorizationConfigured()) {
+  if (
+    !supportsOnlinePayments(restaurant.country_code) ||
+    !getStripe() ||
+    !isOrderPaymentWebhookConfigured() ||
+    !isPushAuthorizationConfigured()
+  ) {
     return null;
   }
 
