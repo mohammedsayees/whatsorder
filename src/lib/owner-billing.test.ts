@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BANK_DETAILS_MISSING_MESSAGE,
   amountDue,
+  autopayFailureReason,
   buildPaymentReceiptMessage,
   buildTrialConversionPreview,
   canViewBilling,
@@ -288,5 +289,13 @@ describe("access", () => {
   it("validates invoice ids", () => {
     expect(isUuid("00000000-0000-4000-8000-000000000001")).toBe(true);
     expect(isUuid("1 or 1=1")).toBe(false);
+  });
+
+  it("explains autopay declines in plain language", () => {
+    expect(autopayFailureReason("insufficient_funds")).toBe("the card has insufficient funds");
+    expect(autopayFailureReason("expired_card")).toBe("the card has expired");
+    expect(autopayFailureReason("authentication_required")).toContain("confirm the payment");
+    expect(autopayFailureReason("weird_code")).toBe("the card couldn't be charged");
+    expect(autopayFailureReason(null)).toBe("the card couldn't be charged");
   });
 });

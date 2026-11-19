@@ -213,6 +213,12 @@ async function saveCardForAutopay(
     })
     .eq("restaurant_id", restaurantId)
     .eq("stripe_customer_id", customerId);
+  // A new card gets fresh autopay attempts on invoices the old card failed.
+  await admin
+    .from("invoices")
+    .update({ autopay_attempts: 0, autopay_last_error: null })
+    .eq("restaurant_id", restaurantId)
+    .eq("status", "issued");
 }
 
 /**

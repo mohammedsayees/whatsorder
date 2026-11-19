@@ -398,6 +398,7 @@ export type OwnerInvoice = Pick<
   | "due_at"
   | "paid_at"
   | "created_at"
+  | "autopay_last_error"
 > & { paid_to_date: number };
 
 export type OwnerInvoiceLineItem = Pick<
@@ -424,7 +425,30 @@ export type OwnerBillingPlan = Pick<
 >;
 
 const OWNER_INVOICE_COLUMNS =
-  "id,invoice_number,period_start,period_end,subtotal,vat_rate,vat_amount,total,currency,status,issued_at,due_at,paid_at,created_at";
+  "id,invoice_number,period_start,period_end,subtotal,vat_rate,vat_amount,total,currency,status,issued_at,due_at,paid_at,created_at,autopay_last_error";
+
+/**
+ * Latest autopay decline on a still-unpaid invoice, for the dashboard banner.
+ * Best-effort: any error reads as "no failure" so the dashboard always loads.
+ */
+export async function getAutopayFailure(restaurantId: string): Promise<string | null> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  try {
+    const { data, error } = await admin
+      .from("invoices")
+      .select("autopay_last_error")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "issued")
+      .not("autopay_last_error", "is", null)
+      .order("autopay_last_attempt_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return error ? null : ((data as { autopay_last_error?: string | null } | null)?.autopay_last_error ?? null);
+  } catch {
+    return null;
+  }
+}
 const OWNER_SUBSCRIPTION_COLUMNS =
   "plan_id,status,billing_interval,price_override,price_override_ends_at,billing_cycle_start,billing_cycle_end,trial_ends_at,grace_until,cancel_at_period_end";
 const OWNER_PLAN_COLUMNS = "name,code,monthly_price,annual_price,currency";

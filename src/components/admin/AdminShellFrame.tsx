@@ -8,6 +8,7 @@ import type { SubscriptionStatus } from "@/lib/billing";
 import type { NewOrderAlertState } from "@/lib/data";
 
 export function AdminShellFrame({
+  autopayFailure = null,
   billingHref,
   billingStatus,
   children,
@@ -17,6 +18,7 @@ export function AdminShellFrame({
   restaurantId,
   sidebar
 }: {
+  autopayFailure?: string | null;
   billingHref?: string | null;
   billingStatus?: SubscriptionStatus | null;
   children: React.ReactNode;
@@ -43,7 +45,11 @@ export function AdminShellFrame({
             realtimeAccessToken={realtimeAccessToken}
             restaurantId={restaurantId}
           >
-            <BillingBanner billingHref={billingHref} status={billingStatus ?? null} />
+            <BillingBanner
+              autopayFailure={billingHref ? autopayFailure : null}
+              billingHref={billingHref}
+              status={billingStatus ?? null}
+            />
             {children}
           </AdminAlertsProvider>
         )}

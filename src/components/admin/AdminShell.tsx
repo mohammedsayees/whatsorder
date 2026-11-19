@@ -50,6 +50,7 @@ const navItems = [
 ];
 
 export function AdminShell({
+  autopayFailure = null,
   children,
   billingStatus,
   financeVisible,
@@ -58,6 +59,7 @@ export function AdminShell({
   realtimeAccessToken,
   session
 }: {
+  autopayFailure?: string | null;
   children: React.ReactNode;
   billingStatus?: SubscriptionStatus | null;
   financeVisible: boolean;
@@ -130,6 +132,7 @@ export function AdminShell({
 
   return (
     <AdminShellFrame
+      autopayFailure={autopayFailure}
       billingHref={billingVisible ? BILLING_PAGE_HREF : null}
       billingStatus={billingStatus}
       initialNewOrderAlertState={initialNewOrderAlertState}

@@ -381,6 +381,11 @@ export default async function BillingDetailPage({
                         </td>
                         <td className="px-5 py-3">
                           <InvoiceStatusBadge status={invoice.status} />
+                          {invoice.status === "issued" && invoice.autopay_last_error ? (
+                            <span className="mt-1 block text-xs font-bold text-red-600">
+                              Autopay failed ({invoice.autopay_attempts ?? 0}/3): {invoice.autopay_last_error}
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-5 py-3 text-right">
                           {invoice.status === "issued" ? (

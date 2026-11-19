@@ -161,6 +161,10 @@ export type Invoice = {
   voided_at: string | null;
   voided_by_user_id: string | null;
   idempotency_key: string;
+  /** Card autopay (Stripe): attempts so far and the last decline code. */
+  autopay_attempts?: number;
+  autopay_last_attempt_at?: string | null;
+  autopay_last_error?: string | null;
   created_at: string;
   updated_at: string;
 };
