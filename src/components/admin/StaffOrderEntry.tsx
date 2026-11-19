@@ -2,6 +2,7 @@
 
 import { QuickProduct } from "./QuickProduct";
 import { StaffCreditCustomerSelector } from "./StaffCreditCustomerSelector";
+import { StaffDiscountControl, discountFromDraft, type StaffDiscountDraft } from "./StaffDiscountControl";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useMemo, useRef, useState, type FormEvent } from "react";
@@ -21,6 +22,11 @@ import {
   resolveOptionGroupsByItem
 } from "@/components/customer/ItemOptionsSheet";
 import { cartLineKey, configuredUnitPrice, formatLineOptions } from "@/lib/cart-line";
+import {
+  exceedsDiscountLimit,
+  orderTotalsWithDiscount,
+  type OrderDiscountType
+} from "@/lib/order-discount";
 import { formatCurrency } from "@/lib/currency";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { renderOrderTickets, type PrintKind } from "@/lib/order-print";
@@ -79,6 +85,7 @@ export function StaffOrderEntry({
   canManageCredit = false,
   creditCustomers = [],
   deliveryFee,
+  discountLimitPercent = null,
   menu,
   optionCatalog,
   orderTypes,
@@ -89,6 +96,8 @@ export function StaffOrderEntry({
   canManageCredit?: boolean;
   creditCustomers?: StaffCreditCustomerOption[];
   deliveryFee: number;
+  /** Most this user may discount (% of subtotal); null = unlimited. */
+  discountLimitPercent?: number | null;
   menu: MenuWithCategories;
   optionCatalog?: MenuOptionCatalog;
   orderTypes: FulfilmentType[];
@@ -170,7 +179,28 @@ export function StaffOrderEntry({
   const subtotal = ticketLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const itemCount = ticketLines.reduce((sum, line) => sum + line.quantity, 0);
   const appliedDeliveryFee = fulfilmentType === "delivery" ? deliveryFee : 0;
-  const total = subtotal + appliedDeliveryFee;
+  // Order-level discount lives in the draft so a held bill keeps it. Adding
+  // items to an existing order never carries a discount.
+  const discountDraft: StaffDiscountDraft = {
+    type: (draft?.fields.discount_type === "fixed" ? "fixed" : "percent") as OrderDiscountType,
+    value: draft?.fields.discount_value ?? "",
+    reason: draft?.fields.discount_reason ?? ""
+  };
+  const activeDiscount = isAddingToOrder ? null : discountFromDraft(discountDraft);
+  const { discountAmount, total } = orderTotalsWithDiscount(subtotal, appliedDeliveryFee, activeDiscount);
+  const discountOverLimit = exceedsDiscountLimit(subtotal, discountAmount, discountLimitPercent);
+  const discountNeedsReason = discountAmount > 0 && !discountDraft.reason.trim();
+  const discountBlocked = discountOverLimit || discountNeedsReason;
+  const setDiscountDraft = (next: StaffDiscountDraft) => {
+    void draftStore.patch({
+      fields: {
+        ...draft?.fields,
+        discount_type: next.type,
+        discount_value: next.value,
+        discount_reason: next.reason
+      }
+    }).catch(() => {});
+  };
 
   // Tap-to-add: option-ful items open the picker, plain items add instantly.
   function handleAdd(itemId: string) {
@@ -285,6 +315,16 @@ export function StaffOrderEntry({
       return;
     }
 
+    if (!addToOrder && !draft.attempt && discountBlocked) {
+      setFeedback({
+        kind: "error",
+        message: discountOverLimit
+          ? `The discount is above your limit of ${discountLimitPercent}%. Lower it or ask a manager.`
+          : "Add a reason for the discount."
+      });
+      return;
+    }
+
     const form = event.currentTarget;
     const submitter = (event.nativeEvent as SubmitEvent).submitter as
       | HTMLButtonElement
@@ -370,7 +410,10 @@ export function StaffOrderEntry({
       customerName: readField("customer_name"),
       customerPhone: readField("customer_phone"),
       customerId: readField("credit_customer_id"),
-      notes: readField("notes")
+      notes: readField("notes"),
+      discount: activeDiscount && discountAmount > 0
+        ? { ...activeDiscount, reason: discountDraft.reason.trim() }
+        : null
     };
 
     setPending(true);
@@ -885,6 +928,42 @@ export function StaffOrderEntry({
           </div>
           </details>
 
+          {!isAddingToOrder ? (
+            <details className="mt-3 rounded-lg border-2 border-stone-200 bg-stone-50" open={discountAmount > 0 || undefined}>
+              <summary className="focus-ring flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-base font-black text-stone-700">
+                <span>
+                  Discount{" "}
+                  {discountAmount > 0 ? (
+                    <span className="font-bold text-leaf">−{formatCurrency(discountAmount, restaurant)}</span>
+                  ) : (
+                    <span className="font-semibold text-stone-400">(optional)</span>
+                  )}
+                </span>
+                <ChevronDown size={15} />
+              </summary>
+              <div className="space-y-3 border-t border-stone-200 p-4">
+                <StaffDiscountControl
+                  disabled={Boolean(draft?.attempt)}
+                  draft={discountDraft}
+                  limitPercent={discountLimitPercent}
+                  onChange={setDiscountDraft}
+                  restaurant={restaurant}
+                  subtotal={subtotal}
+                />
+                {discountDraft.value ? (
+                  <button
+                    className="text-xs font-bold text-stone-500 underline hover:text-rose-700"
+                    disabled={Boolean(draft?.attempt)}
+                    onClick={() => setDiscountDraft({ type: discountDraft.type, value: "", reason: "" })}
+                    type="button"
+                  >
+                    Remove discount
+                  </button>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
+
           {/* Close scrollable order body */}
           </div>
 
@@ -897,6 +976,14 @@ export function StaffOrderEntry({
                 </span>
                 <span>{formatCurrency(subtotal, restaurant)}</span>
               </div>
+              {discountAmount > 0 ? (
+                <div className="flex items-center justify-between text-sm text-leaf">
+                  <span className="font-bold">
+                    Discount{activeDiscount?.type === "percent" ? ` ${activeDiscount.value}%` : ""}
+                  </span>
+                  <span className="font-bold">−{formatCurrency(discountAmount, restaurant)}</span>
+                </div>
+              ) : null}
               {appliedDeliveryFee > 0 ? (
                 <div className="flex items-center justify-between text-sm text-stone-600">
                   <span className="font-bold">Delivery fee</span>

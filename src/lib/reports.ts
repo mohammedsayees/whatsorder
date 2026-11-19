@@ -275,7 +275,8 @@ export function buildRestaurantReport(
     0
   );
   const discounts = completed.reduce(
-    (sum, order) => sum + Number(order.loyalty_discount),
+    (sum, order) =>
+      sum + Number(order.loyalty_discount) + Number(order.discount_amount ?? 0),
     0
   );
   const salesByDate = new Map<string, SalesReportRow>();
@@ -307,7 +308,8 @@ export function buildRestaurantReport(
     daily.orders += 1;
     daily.sales += Number(order.total);
     daily.deliveryFees += Number(order.delivery_fee);
-    daily.discounts += Number(order.loyalty_discount);
+    daily.discounts +=
+      Number(order.loyalty_discount) + Number(order.discount_amount ?? 0);
     daily.averageOrderValue = daily.sales / daily.orders;
     salesByDate.set(date, daily);
 

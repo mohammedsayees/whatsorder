@@ -86,6 +86,8 @@ export type PublicRestaurant = Partial<RestaurantLocalization> & {
 };
 
 export type Restaurant = PublicRestaurant & {
+  /** Most the `staff` role may discount an order, as % of its subtotal. */
+  staff_discount_max_percent?: number;
   order_target_minutes?: Partial<Record<FulfilmentType, number>>;
   owner_name?: string | null;
   owner_email?: string | null;
@@ -332,6 +334,11 @@ export type Order = {
   points_earned: number;
   points_redeemed: number;
   loyalty_discount: number;
+  /** Order-level discount on the subtotal; 0/null when none. */
+  discount_amount?: number;
+  discount_type?: "percent" | "fixed" | null;
+  discount_value?: number | null;
+  discount_reason?: string | null;
   status: OrderStatus;
   source?: "customer" | "staff" | "whatsapp_chat";
   whatsapp_message: string;

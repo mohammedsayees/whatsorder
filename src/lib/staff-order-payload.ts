@@ -1,3 +1,8 @@
+import {
+  orderTotalsWithDiscount,
+  parseOrderDiscount,
+  type OrderDiscountInput
+} from "@/lib/order-discount";
 import type {
   CartLine,
   FulfilmentType,
@@ -37,6 +42,9 @@ export type StaffOrderPayload = {
   customerName: string;
   customerPhone: string;
   notes: string;
+  // Optional order-level discount. Re-validated (including the staff role's
+  // limit) on the server when the payload is submitted or replayed.
+  discount?: OrderDiscountInput | null;
 };
 
 export function isStaffOrderActionKind(value: unknown): value is StaffOrderActionKind {
@@ -106,6 +114,9 @@ export function staffPayloadToPrintableOrder(payload: StaffOrderPayload): Order 
     (sum, item) => sum + Number(item.price) * Number(item.quantity),
     0
   );
+  const parsedDiscount = parseOrderDiscount(payload.discount);
+  const discount = parsedDiscount.ok ? parsedDiscount.discount : null;
+  const totals = orderTotalsWithDiscount(subtotal, 0, discount);
   const outcome = ACTION_OUTCOME[payload.action] ?? ACTION_OUTCOME.kitchen;
   const createdAt = clampPunchedAt(payload.punchedAt);
 
@@ -135,10 +146,14 @@ export function staffPayloadToPrintableOrder(payload: StaffOrderPayload): Order 
     items,
     subtotal,
     delivery_fee: 0,
-    total: subtotal,
+    total: totals.total,
     points_earned: 0,
     points_redeemed: 0,
     loyalty_discount: 0,
+    discount_amount: totals.discountAmount,
+    discount_type: totals.discountAmount > 0 ? discount?.type ?? null : null,
+    discount_value: totals.discountAmount > 0 ? discount?.value ?? null : null,
+    discount_reason: totals.discountAmount > 0 ? discount?.reason ?? null : null,
     status: outcome.status,
     source: "staff",
     whatsapp_message: "",

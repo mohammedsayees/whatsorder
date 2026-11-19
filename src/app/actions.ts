@@ -842,6 +842,17 @@ export async function deleteMenuOfferAction(formData: FormData) {
   revalidateMenuPaths(restaurant);
 }
 
+// Most the `staff` role may discount an order (% of subtotal). Omitted when
+// the field is absent or invalid so the stored limit is left unchanged.
+function staffDiscountLimitValue(formData: FormData) {
+  const raw = stringValue(formData, "staff_discount_max_percent");
+  const value = Number(raw);
+  if (!raw || !Number.isFinite(value) || value < 0 || value > 100) {
+    return {};
+  }
+  return { staff_discount_max_percent: Math.round(value * 100) / 100 };
+}
+
 export async function updateRestaurantSettingsAction(formData: FormData) {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const restaurant = session.restaurant;
@@ -891,6 +902,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
       longitude: decimalValue(formData, "longitude"),
       delivery_radius_km: positiveDecimalValue(formData, "delivery_radius_km"),
       commission_rate: commissionRateValue(formData, "commission_rate"),
+      ...staffDiscountLimitValue(formData),
       is_active: formData.get("is_active") === "on"
     })
     .eq("id", restaurant.id);

@@ -244,6 +244,11 @@ export function SettingsForm({
           <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.minimum_order_amount} disabled={!canWrite} min="0" name="minimum_order_amount" step="0.01" type="number" required />
         </label>
         <label className="block">
+          <span className="text-sm font-bold">Staff discount limit (%)</span>
+          <input className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2" defaultValue={restaurant.staff_discount_max_percent ?? 10} disabled={!canWrite} max="100" min="0" name="staff_discount_max_percent" step="0.5" type="number" />
+          <span className="mt-1 block text-xs text-stone-500">Most a cashier (staff role) can take off an order at the POS. Owners and managers have no limit.</span>
+        </label>
+        <label className="block">
           <span className="text-sm font-bold">Aggregator commission rate (%)</span>
           <input
             className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"

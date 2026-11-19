@@ -20,3 +20,7 @@ export async function createQuickProduct(input: unknown) {
  if (!result.ok) throw new Error("Connection interrupted");
  return result.json();
 }
+export async function applyOrderDiscountAction(orderId: string, input: unknown) {
+ const result = await fetch("/__discount", { method: "POST", body: JSON.stringify({ orderId, input }) });
+ return result.json();
+}

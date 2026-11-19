@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Plus, Search, X } from "lucide-react";
+import { discountLimitPercentForRole } from "@/lib/order-discount";
 import { OrderList } from "@/components/admin/OrderList";
 import { PaginationNav } from "@/components/admin/PaginationNav";
 import { CurrentShiftBanner } from "@/components/admin/CurrentShiftBanner";
@@ -325,6 +326,10 @@ export default async function AdminOrdersPage({
           <OrderList
             customers={customers}
             customerCredit={customerCredit}
+            discountLimitPercent={discountLimitPercentForRole(
+              session.role,
+              restaurant.staff_discount_max_percent
+            )}
             highlightedOrderId={visibleHighlightedOrderId}
             orders={ordersPage.items}
             paymentChanges={paymentChanges}

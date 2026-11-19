@@ -5,6 +5,7 @@ export function canReduceStaffOrderItems(
     Order,
     | "items"
     | "loyalty_discount"
+    | "discount_amount"
     | "payment_method"
     | "points_earned"
     | "points_redeemed"
@@ -23,6 +24,9 @@ export function canReduceStaffOrderItems(
     // points_redeemed). A missing value counts as 0 here; the database
     // function re-checks loyalty on the saved order before any change.
     Number(order.loyalty_discount ?? 0) === 0 &&
+    // Discounted tickets must drop the discount before items change (the
+    // database refuses item changes underneath a discount).
+    Number(order.discount_amount ?? 0) === 0 &&
     Number(order.points_redeemed ?? 0) === 0 &&
     Number(order.points_earned ?? 0) === 0 &&
     quantity > 1

@@ -6,6 +6,7 @@ import { enabledFulfilmentTypes } from "@/lib/fulfilment";
 import { getCurrentShiftView } from "@/lib/shift-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 import { getSelectableCreditCustomers } from "@/lib/customer-credit-data";
+import { discountLimitPercentForRole } from "@/lib/order-discount";
 
 export default async function NewStaffOrderPage() {
   const session = await requireRestaurantAdmin();
@@ -56,6 +57,10 @@ export default async function NewStaffOrderPage() {
             canManageCredit={session.role !== "staff"}
             creditCustomers={creditCustomers}
             deliveryFee={session.restaurant.delivery_fee}
+            discountLimitPercent={discountLimitPercentForRole(
+              session.role,
+              session.restaurant.staff_discount_max_percent
+            )}
             key={`${session.restaurantId}:${session.userId}`}
             menu={menu}
             optionCatalog={optionCatalog}

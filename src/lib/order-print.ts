@@ -1,3 +1,4 @@
+import { orderDiscountLabel } from "@/lib/order-discount";
 import type { Order, Restaurant } from "@/lib/types";
 import { formatCurrency } from "@/lib/currency";
 
@@ -188,6 +189,11 @@ function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
       ${itemsTable(restaurant, order, true)}
       <div class="totals">
         <div><span>Subtotal</span><span>${escapeHtml(formatCurrency(order.subtotal, restaurant))}</span></div>
+        ${
+          Number(order.discount_amount ?? 0) > 0
+            ? `<div><span>${escapeHtml(orderDiscountLabel(order))}</span><span>-${escapeHtml(formatCurrency(Number(order.discount_amount), restaurant))}</span></div>`
+            : ""
+        }
         ${
           Number(order.delivery_fee) > 0
             ? `<div><span>Delivery fee</span><span>${escapeHtml(formatCurrency(order.delivery_fee, restaurant))}</span></div>`
