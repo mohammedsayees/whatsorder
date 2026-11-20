@@ -39,6 +39,10 @@ begin
     raise exception 'First shift recorded a previous count: %', row_to_json(saved);
   end if;
   perform public.close_restaurant_shift_v4(r, first_shift, 80, 0, null, '[]'::jsonb, 'Recount', manager);
+  -- Every call here shares one transaction, so now() is identical for all
+  -- closes. Real closes happen in separate transactions; backdate this one so
+  -- "the last count" below is deterministic instead of a closed_at tie.
+  update public.restaurant_shifts set closed_at = closed_at - interval '1 minute' where id = first_shift;
 
   -- Matching the last count needs no reason; a stray reason is dropped.
   second_shift := public.open_restaurant_shift_v3(r, 'Second', 80, null, 'not needed', manager);

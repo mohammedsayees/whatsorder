@@ -27,7 +27,7 @@ begin
   -- v4 with 'all' matches v3, apart from the discount/online-payment fields
   -- added to each item by the staff order discounts migration.
   if result - 'items' <> public.get_admin_orders_page_v3(r, 'active', 'all', 1, 25, 'oldest', null) - 'items'
-    or (select jsonb_agg(item - array['discount_amount','discount_type','discount_value','discount_reason','online_payment_status'])
+    or (select jsonb_agg(item - array['discount_amount','discount_type','discount_value','discount_reason','online_payment_status','promo_code'])
         from jsonb_array_elements(result->'items') item)
       <> public.get_admin_orders_page_v3(r, 'active', 'all', 1, 25, 'oldest', null)->'items' then
     raise exception 'v4 (all sources) differs from v3'; end if;

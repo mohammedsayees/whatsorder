@@ -26,6 +26,8 @@ type MessageInput = {
   subtotal: number;
   deliveryFee: number;
   total: number;
+  /** Promo code discount taken off the subtotal, if any. */
+  promo?: { code: string; amount: number } | null;
   language?: CustomerLanguage;
 };
 
@@ -88,6 +90,7 @@ export function buildWhatsAppMessage(input: MessageInput) {
       ...lines,
       "",
       `المجموع الفرعي: ${formatCurrency(input.subtotal, input.restaurant)}`,
+      ...(input.promo && input.promo.amount > 0 ? [`خصم (${input.promo.code}): -${formatCurrency(input.promo.amount, input.restaurant)}`] : []),
       ...(input.deliveryFee > 0 ? [`رسوم التوصيل: ${formatCurrency(input.deliveryFee, input.restaurant)}`] : []),
       `الإجمالي: ${formatCurrency(input.total, input.restaurant)}`,
       "",
@@ -138,6 +141,7 @@ export function buildWhatsAppMessage(input: MessageInput) {
     ...lines,
     "",
     `Subtotal: ${formatCurrency(input.subtotal, input.restaurant)}`,
+    ...(input.promo && input.promo.amount > 0 ? [`Promo ${input.promo.code}: -${formatCurrency(input.promo.amount, input.restaurant)}`] : []),
     ...(input.deliveryFee > 0 ? [`Delivery Fee: ${formatCurrency(input.deliveryFee, input.restaurant)}`] : []),
     `Total: ${formatCurrency(input.total, input.restaurant)}`,
     "",

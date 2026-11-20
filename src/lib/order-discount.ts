@@ -141,8 +141,12 @@ export function orderTotalsWithDiscount(
 
 /** Short label for tickets and order cards, e.g. "Discount 10%". */
 export function orderDiscountLabel(
-  order: Pick<Order, "discount_type" | "discount_value">
+  order: Pick<Order, "discount_type" | "discount_value" | "promo_code">
 ): string {
+  if (order.promo_code) {
+    return `Promo ${order.promo_code}`;
+  }
+
   if (order.discount_type === "percent" && order.discount_value) {
     return `Discount ${Number(order.discount_value)}%`;
   }
@@ -159,6 +163,7 @@ export function canDiscountOrder(
     | "online_payment_status"
     | "loyalty_discount"
     | "points_redeemed"
+    | "promo_code"
   >
 ): boolean {
   return (
@@ -167,6 +172,8 @@ export function canDiscountOrder(
     order.payment_method === null &&
     !order.online_payment_status &&
     Number(order.loyalty_discount ?? 0) === 0 &&
-    Number(order.points_redeemed ?? 0) === 0
+    Number(order.points_redeemed ?? 0) === 0 &&
+    // A customer's promo discount is tied to its redemption record.
+    !order.promo_code
   );
 }

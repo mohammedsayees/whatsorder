@@ -339,6 +339,8 @@ export type Order = {
   discount_type?: "percent" | "fixed" | null;
   discount_value?: number | null;
   discount_reason?: string | null;
+  /** Customer promo code behind the discount (snapshot), if any. */
+  promo_code?: string | null;
   status: OrderStatus;
   source?: "customer" | "staff" | "whatsapp_chat";
   whatsapp_message: string;

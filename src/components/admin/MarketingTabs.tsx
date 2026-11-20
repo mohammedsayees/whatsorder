@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { ImageIcon, Megaphone, QrCode, Tag } from "lucide-react";
+import { ImageIcon, Megaphone, QrCode, Tag, TicketPercent } from "lucide-react";
 
-// One Marketing section: posters, campaigns, the QR share kit and offers.
+// One Marketing section: posters, campaigns, the QR share kit, offers and promo codes.
 const TABS = [
   { id: "posters", label: "Posters", href: "/admin/marketing", icon: ImageIcon },
   { id: "campaigns", label: "Campaigns", href: "/admin/campaigns/new", icon: Megaphone },
   { id: "share", label: "Share kit", href: "/admin/share", icon: QrCode },
-  { id: "offers", label: "Offers", href: "/admin/marketing/offers", icon: Tag }
+  { id: "offers", label: "Offers", href: "/admin/marketing/offers", icon: Tag },
+  { id: "promo", label: "Promo codes", href: "/admin/marketing/promo-codes", icon: TicketPercent }
 ] as const;
 
 export type MarketingTabId = (typeof TABS)[number]["id"];

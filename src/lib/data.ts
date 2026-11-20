@@ -104,6 +104,7 @@ const orderListColumns = [
   "discount_type",
   "discount_value",
   "discount_reason",
+  "promo_code",
   "status",
   "source",
   "consent_order_processing",
@@ -143,6 +144,7 @@ const adminOrderListColumns = [
   "discount_type",
   "discount_value",
   "discount_reason",
+  "promo_code",
   "status",
   // Needed by the order card's source badge and canReduceStaffOrderItems
   // (the "Remove items" button only shows for staff-punched orders).
