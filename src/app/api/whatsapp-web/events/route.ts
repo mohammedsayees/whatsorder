@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import {
   getChatConversationByPhone,
+  getChatMessages,
   isRecentDuplicateBotReply,
   isChatAutomationActive,
   maskCustomerLinkToken,
@@ -14,6 +15,7 @@ import {
   getWhatsAppChatbotSettings,
   shouldSendWhatsAppWelcome
 } from "@/lib/whatsapp-ai";
+import { storeChatMediaBytes } from "@/lib/chat-media";
 import { withdrawMarketingConsentByPhone } from "@/lib/marketing/consent";
 import {
   isMarketingOptOutKeyword,
@@ -86,11 +88,26 @@ async function runReceptionist(input: {
   );
   if (!conversation || !isChatAutomationActive(conversation)) return;
 
+  // Last few messages (this one included, so drop it) give the AI context.
+  const recent = await getChatMessages(input.restaurantId, conversation.id, 11);
+  const history = recent
+    .slice(0, -1)
+    .map((m) => ({
+      from: m.direction === "inbound" ? ("customer" as const) : ("restaurant" as const),
+      text:
+        m.message_type === "text"
+          ? m.body.slice(0, 300)
+          : `[${m.message_type}]`
+    }));
+
   const result = await generateWhatsAppAiReply({
     restaurantId: input.restaurantId,
     text: input.text,
     baseUrl: input.baseUrl,
     settings,
+    phone: input.phone,
+    history,
+    isVoiceNote: input.type === "audio",
     allowWelcome: shouldSendWhatsAppWelcome(conversation.last_bot_reply_at),
     ...(input.audioBase64 && input.audioMime
       ? { audio: { base64: input.audioBase64, mimeType: input.audioMime } }
@@ -250,6 +267,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const audioBase64 = message.audioBase64?.slice(0, 3_500_000);
   const audioMime = message.audioMime?.slice(0, 100);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  // Keep the voice note so staff can play it in the inbox (a voice note is
+  // often the order itself). Runs on retries too: the upload is an upsert.
+  if (type === "audio" && audioBase64) {
+    const restaurantId = event.restaurantId;
+    after(() =>
+      storeChatMediaBytes(
+        restaurantId,
+        messageId,
+        Buffer.from(audioBase64, "base64"),
+        audioMime || "audio/ogg"
+      )
+    );
+  }
   // Persist a pilot command and its reply before acknowledging the connector.
   // Retried inbound IDs may still need processing after a previous failed attempt.
   // Marketing opt-out keyword: withdraw consent for this restaurant only,
