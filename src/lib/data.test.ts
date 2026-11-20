@@ -35,6 +35,30 @@ describe("restaurant analytics", () => {
     expect(analytics.averageOrderValue).toBe(20);
     expect(analytics.topSellingItem).toBe("Karak");
   });
+
+  it("picks the top-selling item from the last 90 days only", () => {
+    const old = {
+      ...order("Completed", 10, "Old Favourite"),
+      created_at: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString()
+    } as Order;
+    const analytics = getAnalytics(
+      [old, old, old, order("Completed", 20, "Karak")],
+      [] as Customer[]
+    );
+
+    expect(analytics.topSellingItem).toBe("Karak");
+    // Totals other than the top item are unchanged (still all-time).
+    expect(analytics.completedOrders).toBe(4);
+  });
+
+  it("reports no sales when nothing completed in the last 90 days", () => {
+    const old = {
+      ...order("Completed", 10, "Old Favourite"),
+      created_at: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString()
+    } as Order;
+
+    expect(getAnalytics([old], [] as Customer[]).topSellingItem).toBe("No sales yet");
+  });
 });
 
 describe("dashboard trend fallback", () => {

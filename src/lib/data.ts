@@ -1866,6 +1866,8 @@ export function getDashboardTrendFromOrders(
   };
 }
 
+const TOP_SELLING_ITEM_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
 export function getAnalytics(orders: Order[], customers: Customer[]): Analytics {
   const now = new Date();
   const todaysOrders = orders.filter((order) =>
@@ -1876,8 +1878,14 @@ export function getAnalytics(orders: Order[], customers: Customer[]): Analytics 
     isSameUaeCalendarDay(order.created_at, now)
   );
   const itemCounts = new Map<string, number>();
+  // Matches get_restaurant_dashboard_analytics: best seller over a rolling
+  // 90-day window, not all-time.
+  const topItemSince = now.getTime() - TOP_SELLING_ITEM_WINDOW_MS;
 
   completed.forEach((order) => {
+    if (new Date(order.created_at).getTime() < topItemSince) {
+      return;
+    }
     order.items.forEach((item) => {
       itemCounts.set(item.name, (itemCounts.get(item.name) ?? 0) + item.quantity);
     });
