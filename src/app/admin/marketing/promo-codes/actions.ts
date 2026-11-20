@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isManagementBlocked } from "@/lib/billing";
+import { isManagementBlocked, tenantHasFeature } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
+import { planUpgradeMessage } from "@/lib/plan-gates";
 import { parsePromoCodeForm } from "@/lib/promo-code-form";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
@@ -15,8 +16,8 @@ export type PromoCodeActionState = {
 const PROMO_PATH = "/admin/marketing/promo-codes";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Owners/managers only. Writes go through the service-role client and are
-// always scoped to the session's restaurant.
+// Owners/managers on a plan with Marketing (Growth) only. Writes go through
+// the service-role client and are always scoped to the session's restaurant.
 async function promoContext() {
   const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const supabase = getSupabaseAdmin();
@@ -26,6 +27,9 @@ async function promoContext() {
   const access = await getTenantAccess(session.restaurantId);
   if (isManagementBlocked(access.access)) {
     return { error: "Your subscription needs attention before you can change promo codes." } as const;
+  }
+  if (!tenantHasFeature(access, "campaigns")) {
+    return { error: planUpgradeMessage("campaigns") } as const;
   }
   return { session, supabase } as const;
 }
