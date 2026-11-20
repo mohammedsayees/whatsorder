@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PosterBrandingForm } from "@/components/admin/PosterBrandingForm";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
 import { RiderSettings } from "@/components/admin/RiderSettings";
@@ -7,7 +6,6 @@ import { StoreLinkForm } from "@/components/admin/StoreLinkForm";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
 import { getCountryProfile } from "@/lib/localization";
-import { previewPosterPalette } from "@/lib/poster/subjects";
 import { getDeliveryRiders } from "@/lib/rider-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
@@ -64,8 +62,6 @@ export default async function AdminSettingsPage({
   searchParams: Promise<{
     slug_saved?: string;
     slug_error?: string;
-    branding_saved?: string;
-    branding_error?: string;
   }>;
 }) {
   const query = await searchParams;
@@ -76,10 +72,9 @@ export default async function AdminSettingsPage({
   const canManagePayments = session.role === "owner" || session.role === "restaurant_admin";
   const directPayments =
     session.role !== "staff" && getDirectRestaurantId() === session.restaurantId;
-  const [access, riders, posterPalette, onlinePayments, directPaymentsLive] = await Promise.all([
+  const [access, riders, onlinePayments, directPaymentsLive] = await Promise.all([
     getTenantAccess(session.restaurantId),
     getDeliveryRiders(session.restaurantId),
-    canEditPosterBranding ? previewPosterPalette(restaurant) : Promise.resolve(null),
     session.role !== "staff"
       ? loadOnlinePaymentsView(session.restaurantId, restaurant.country_code, canManagePayments)
       : Promise.resolve(null),
@@ -158,17 +153,23 @@ export default async function AdminSettingsPage({
           </Link>
         </div>
       ) : null}
-      {canEditPosterBranding && posterPalette ? (
-        <div className="mt-6">
-          <PosterBrandingForm
-            brandColor={restaurant.poster_brand_color ?? null}
-            canWrite={canWrite}
-            failed={query.branding_error === "1"}
-            preview={posterPalette}
-            saved={query.branding_saved === "1"}
-            theme={restaurant.poster_theme ?? null}
-          />
-        </div>
+      {canEditPosterBranding ? (
+        <section
+          className="mt-6 max-w-2xl scroll-mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm"
+          id="poster-branding"
+        >
+          <h2 className="text-lg font-black">Poster branding</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Poster colours and the default look are now in Marketing, next to your posters, with
+            a live preview.
+          </p>
+          <Link
+            className="focus-ring mt-3 inline-flex rounded-lg px-3 py-2 text-sm font-bold text-leaf hover:underline"
+            href="/admin/marketing/brand"
+          >
+            Edit brand look in Marketing
+          </Link>
+        </section>
       ) : null}
     </main>
   );
