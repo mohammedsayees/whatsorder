@@ -3,14 +3,18 @@ import { MarketingTabs } from "@/components/admin/MarketingTabs";
 import { PromoCodesManager } from "@/components/admin/PromoCodesManager";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
+import { requirePlanFeature } from "@/lib/plan-gates";
 import { listPromoCodes } from "@/lib/promo-code-data";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
 
-// Promo codes customers can enter at the menu-link checkout.
+// Promo codes customers can enter at the menu-link checkout. Managing them is
+// part of Marketing (Growth plan); codes already shared keep working at
+// checkout on any plan, because customer ordering is never plan-gated.
 export default async function PromoCodesPage() {
   const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  await requirePlanFeature(restaurant.id, "campaigns");
   const access = await getTenantAccess(restaurant.id);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Promo codes" />;
