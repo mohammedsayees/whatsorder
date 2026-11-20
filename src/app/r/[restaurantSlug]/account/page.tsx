@@ -7,7 +7,9 @@ import { loadCustomerAddresses } from "@/lib/customer-addresses-data";
 import { loadCustomerVouchers } from "@/lib/customer-vouchers-data";
 import { getRestaurantBySlug } from "@/lib/data";
 import { currentSlugForReleasedSlug } from "@/lib/slug-history";
+import { customerSignInNumber, SIGN_IN_KEYWORD } from "@/lib/customer-auth/sign-in-keyword";
 import { cloudNumberOwnerSlug } from "@/lib/whatsapp-cloud-tenant";
+import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 
 // Per-customer and cookie-driven: never cache or index.
@@ -43,14 +45,21 @@ export default async function CustomerAccountPage({
       ])
     : [[], []];
 
-  // Sign-in links are sent by the WhatsApp Cloud number, which today answers
-  // for one café only. Elsewhere, explain instead of offering a dead end.
-  const signInUrl =
-    result.status === "signed_out" &&
-    restaurant.slug === cloudNumberOwnerSlug() &&
-    restaurant.whatsapp_number
-      ? buildWhatsAppUrl(restaurant.whatsapp_number, "Hi", restaurant.phone_country_code)
+  // "Sign in with WhatsApp" opens a chat, pre-filled with the sign-in
+  // keyword, on a number that answers with a link: the café's WhatsApp Web
+  // connector, or the shared Cloud number for the café that owns it.
+  // Elsewhere, explain instead of offering a dead end.
+  const signInNumber =
+    result.status === "signed_out"
+      ? customerSignInNumber({
+          integration: await getWhatsAppIntegration(restaurant.id),
+          ownsCloudNumber: restaurant.slug === cloudNumberOwnerSlug(),
+          whatsappNumber: restaurant.whatsapp_number
+        })
       : null;
+  const signInUrl = signInNumber
+    ? buildWhatsAppUrl(signInNumber, SIGN_IN_KEYWORD, restaurant.phone_country_code)
+    : null;
 
   return (
     <CartProvider restaurantSlug={restaurant.slug}>

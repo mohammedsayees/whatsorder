@@ -3,6 +3,7 @@ import {
   getChatConversationByPhone,
   isRecentDuplicateBotReply,
   isChatAutomationActive,
+  maskCustomerLinkToken,
   recordBotReply,
   recordInboundChatMessages,
   recordOutboundChatMessage,
@@ -18,6 +19,12 @@ import {
   isMarketingOptOutKeyword,
   optOutConfirmationMessage
 } from "@/lib/marketing/opt-out";
+import {
+  isCustomerSignInKeyword,
+  signInReplyMessage
+} from "@/lib/customer-auth/sign-in-keyword";
+import { mintLinkToken } from "@/lib/customer-auth/tokens";
+import { buildCustomerLinkUrl } from "@/lib/customer-auth/whatsapp-cloud";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
 import { handleWhatsAppOrderMessage } from "@/lib/whatsapp-ordering";
 import { planAllowsOrFalse } from "@/lib/plan-gates";
@@ -276,6 +283,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           senderType: "system"
         });
       }
+    }
+    return NextResponse.json({ ok: true });
+  }
+  // "Login" (the account page's Sign in with WhatsApp button): reply with a
+  // one-time sign-in link for this sender at this café, and nothing else.
+  // The sender is the phone WhatsApp delivered from (the connector drops
+  // non-phone LIDs), so the link signs them into their own history only.
+  if (type === "text" && isCustomerSignInKeyword(body)) {
+    if (existing) {
+      return NextResponse.json({ ok: true });
+    }
+    const restaurantId = event.restaurantId;
+    const { data: restaurant } = await admin
+      .from("restaurants")
+      .select("name, slug")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    const cafe = restaurant as { name?: string; slug?: string } | null;
+    if (!cafe?.slug) {
+      return NextResponse.json({ ok: true });
+    }
+    try {
+      const token = await mintLinkToken({ restaurantId, phone });
+      const reply = signInReplyMessage(
+        cafe.name ?? "",
+        buildCustomerLinkUrl(baseUrl, token, cafe.slug, "account")
+      );
+      const sent = await sendRestaurantWhatsAppText(restaurantId, phone, reply);
+      if (sent) {
+        await recordOutboundChatMessage({
+          restaurantId,
+          phone,
+          // Stored copy is redacted: staff reading the thread must not get
+          // a usable customer-login link.
+          body: maskCustomerLinkToken(reply),
+          waMessageId: sent,
+          senderType: "system"
+        });
+      }
+    } catch {
+      console.error("WhatsOrder sign-in link could not be sent");
     }
     return NextResponse.json({ ok: true });
   }

@@ -21,10 +21,11 @@ const GRAPH_VERSION = "v21.0";
 export function buildCustomerLinkUrl(
   baseUrl: string,
   token: string,
-  slug: string
+  slug: string,
+  landing: "menu" | "account" = "menu"
 ): string {
   const base = baseUrl.replace(/\/$/, "");
-  const next = encodeURIComponent(`/r/${slug}`);
+  const next = encodeURIComponent(landing === "account" ? `/r/${slug}/account` : `/r/${slug}`);
   return `${base}/api/customer/link?token=${token}&next=${next}`;
 }
 
