@@ -70,3 +70,23 @@ export function stampMessage(lookup: StampLookup): StampMessage | null {
     text: `${who}${lookup.stamps}/${lookup.required} stamps · ${left} more for a free ${reward}`
   };
 }
+
+/** One-line stamp status for the collapsed counter chip, e.g. "4/10 stamps". */
+export function stampSummary(lookup: StampLookup): string | null {
+  if (lookup.status === "off") {
+    return null;
+  }
+  if (lookup.status === "new") {
+    return "New · first stamp";
+  }
+  const who = lookup.name ? `${lookup.name} · ` : "";
+  return lookup.stamps >= lookup.required
+    ? `${who}Reward ready 🎁`
+    : `${who}${lookup.stamps}/${lookup.required} stamps`;
+}
+
+/** Masks a typed phone for the collapsed chip: "050…123". */
+export function maskedPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length <= 6 ? digits : `${digits.slice(0, 3)}…${digits.slice(-3)}`;
+}
