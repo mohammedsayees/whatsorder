@@ -70,3 +70,24 @@ describe("staff_order_stamps migration", () => {
     expect(sql).toContain("on conflict (order_id) where type = 'earned' and order_id is not null");
   });
 });
+
+describe("counter_reward_redemption migration", () => {
+  const sql = readFileSync(
+    new URL("../../supabase/migrations/20261203090000_counter_reward_redemption.sql", import.meta.url),
+    "utf8"
+  ).toLowerCase();
+
+  it("redeems at most once per order and never changes totals", () => {
+    expect(sql).toContain("idx_loyalty_one_redeemed_transaction_per_order");
+    expect(sql).toContain("on conflict (order_id) where type = 'redeemed' and order_id is not null");
+    expect(sql).not.toMatch(/set[^;]*\btotal\s*=/);
+    expect(sql).not.toMatch(/set[^;]*\bsubtotal\s*=/);
+  });
+
+  it("is service-role only and scoped to the restaurant", () => {
+    expect(sql).toContain("from public, anon, authenticated");
+    expect(sql).toContain("to service_role");
+    expect(sql).toContain("where id = p_order_id\n    and restaurant_id = p_restaurant_id");
+    expect(sql).toContain("where restaurant_id = p_restaurant_id\n    and phone = order_record.customer_phone");
+  });
+});

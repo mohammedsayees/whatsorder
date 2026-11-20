@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Gift, Loader2, Stamp } from "lucide-react";
+import { Check, Gift, Loader2, Stamp } from "lucide-react";
 import { lookupStampCustomerAction } from "@/app/admin/orders/actions";
 import { stampLookupPhone, stampMessage, type StampMessage } from "@/lib/stamp-lookup";
 
@@ -19,15 +19,20 @@ const TONES: Record<StampMessage["tone"], string> = {
 export function StaffStampPhone({
   onChange,
   onGreetingName,
+  onRedeemChange,
   phoneCountryCode,
   readOnly,
+  redeem,
   value
 }: {
   onChange: (value: string) => void;
   /** Called with a returning customer's first name so the ticket can use it. */
   onGreetingName: (name: string) => void;
+  /** Staff chose (or cleared) "redeem the reward on this order". */
+  onRedeemChange: (redeem: boolean) => void;
   phoneCountryCode: string;
   readOnly: boolean;
+  redeem: boolean;
   value: string;
 }) {
   const [message, setMessage] = useState<StampMessage | null>(null);
@@ -36,9 +41,17 @@ export function StaffStampPhone({
   const latest = useRef<string | null>(null);
   const greet = useRef(onGreetingName);
   greet.current = onGreetingName;
+  const setRedeem = useRef(onRedeemChange);
+  setRedeem.current = onRedeemChange;
+  const [rewardLabel, setRewardLabel] = useState<string | null>(null);
+  const redeemRef = useRef(redeem);
+  redeemRef.current = redeem;
 
   useEffect(() => {
     latest.current = lookupFor;
+    // A different (or incomplete) number never keeps a reward chosen for the last one.
+    setRewardLabel(null);
+    if (redeemRef.current) setRedeem.current(false);
     if (!lookupFor) {
       setMessage(null);
       setChecking(false);
@@ -51,6 +64,11 @@ export function StaffStampPhone({
           if (latest.current !== lookupFor) return;
           setMessage(lookup ? stampMessage(lookup) : null);
           if (lookup?.status === "known" && lookup.name) greet.current(lookup.name);
+          setRewardLabel(
+            lookup?.status === "known" && lookup.stamps >= lookup.required
+              ? lookup.reward?.trim() || "reward"
+              : null
+          );
         })
         .catch(() => {
           // Offline or unavailable: the stamp is still given when the order syncs.
@@ -91,7 +109,22 @@ export function StaffStampPhone({
           {message.tone === "ready" ? <Gift aria-hidden size={16} /> : <Stamp aria-hidden size={16} />}
           {message.text}
         </p>
-      ) : !value.trim() ? (
+      ) : null}
+      {!checking && rewardLabel ? (
+        <button
+          aria-pressed={redeem}
+          className={`focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-black ${
+            redeem ? "bg-amber-500 text-white" : "border-2 border-amber-400 bg-white text-amber-900"
+          }`}
+          disabled={readOnly}
+          onClick={() => onRedeemChange(!redeem)}
+          type="button"
+        >
+          {redeem ? <Check size={16} /> : <Gift size={16} />}
+          {redeem ? `Free ${rewardLabel} on this order · tap to undo` : `Redeem free ${rewardLabel} on this order`}
+        </button>
+      ) : null}
+      {!checking && !message && !value.trim() ? (
         <p className="mt-1.5 text-xs font-semibold text-stone-500">
           Ask: &ldquo;Collect a stamp? What&apos;s your number?&rdquo; Paid orders earn the stamp straight away.
         </p>

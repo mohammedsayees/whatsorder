@@ -158,6 +158,57 @@ function field(formData: FormData, key: string, maxLength: number) {
 export async function submitStaffOrderAction(
   payload: StaffOrderPayload
 ): Promise<StaffOrderState> {
+  const result = await saveStaffOrder(payload);
+  if (payload?.redeemReward !== true || !result.order || result.error) {
+    return result;
+  }
+  return redeemRewardOnSavedOrder(result);
+}
+
+// Stamp-card reward chosen at the counter. Runs after the order is saved (also
+// on a replay), so the order never depends on it: a refused redemption keeps
+// the order and tells staff why. The database re-checks the balance and
+// redeems at most once per order.
+async function redeemRewardOnSavedOrder(saved: StaffOrderState): Promise<StaffOrderState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const order = saved.order as Order;
+  if (!supabase) {
+    return { ...saved, success: `${saved.success ?? "Order saved."} Reward not redeemed: try again from Customers.` };
+  }
+
+  const { data, error } = await supabase.rpc("redeem_loyalty_reward_for_order", {
+    p_restaurant_id: session.restaurantId,
+    p_order_id: order.id
+  });
+  const outcome = (data ?? {}) as { ok?: boolean; reason?: string; reward?: string | null };
+  if (error || outcome.ok !== true) {
+    if (error) console.error("WhatsOrder counter reward redemption failed", error.code);
+    const why =
+      outcome.reason === "not_enough_stamps"
+        ? "the card isn't full"
+        : outcome.reason === "no_phone"
+          ? "the order has no phone number"
+          : "it could not be confirmed";
+    return { ...saved, success: `${saved.success ?? "Order saved."} Reward NOT redeemed: ${why}.` };
+  }
+
+  // Reload so the printed KOT/receipt carries the reward note.
+  const { data: refreshed } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("id", order.id)
+    .maybeSingle();
+  const reward = outcome.reward?.trim() || "reward";
+  return {
+    ...saved,
+    success: `${saved.success ?? "Order saved."} Reward redeemed: free ${reward}.`,
+    order: (refreshed as Order | null) ?? order
+  };
+}
+
+async function saveStaffOrder(payload: StaffOrderPayload): Promise<StaffOrderState> {
   const session = await requireRestaurantAdmin();
   const supabase = getSupabaseAdmin();
 
