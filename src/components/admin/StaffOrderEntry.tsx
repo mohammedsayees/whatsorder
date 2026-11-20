@@ -2,6 +2,7 @@
 
 import { QuickProduct } from "./QuickProduct";
 import { StaffCreditCustomerSelector } from "./StaffCreditCustomerSelector";
+import { StaffStampPhone } from "./StaffStampPhone";
 import { StaffDiscountControl, discountFromDraft, type StaffDiscountDraft } from "./StaffDiscountControl";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
@@ -900,19 +901,6 @@ export function StaffOrderEntry({
               />
             </label>
             <label className="block text-base font-bold text-stone-700">
-              Phone <span className="font-normal text-stone-400">(optional)</span>
-              <input
-                className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
-                inputMode="tel"
-                maxLength={24}
-                name="customer_phone"
-                value={draft?.fields.customer_phone ?? addToOrder?.customer_phone ?? ""}
-                onChange={event => { void draftStore.patch({ fields: { ...draft?.fields, customer_phone: event.target.value } }).catch(() => {}); }}
-                readOnly={isAddingToOrder || !!draft?.attempt || Boolean(selectedCreditCustomerId)}
-                type="tel"
-              />
-            </label>
-            <label className="block text-base font-bold text-stone-700">
               Notes <span className="font-normal text-stone-400">(optional)</span>
               <input
                 className="focus-ring mt-1.5 block min-h-12 w-full rounded-lg border-2 border-stone-300 bg-white px-4 py-3 text-base"
@@ -1057,6 +1045,25 @@ export function StaffOrderEntry({
                   </>
                 )}
               </div>
+            ) : null}
+
+            {!isAddingToOrder ? (
+              <StaffStampPhone
+                onChange={(value) => {
+                  void draftStore.patch({ fields: { ...draft?.fields, customer_phone: value } }).catch(() => {});
+                }}
+                onGreetingName={(name) => {
+                  // Only fill an empty name; never overwrite what staff typed.
+                  if (!draft?.fields.customer_name?.trim()) {
+                    void draftStore
+                      .patch({ fields: { ...draft?.fields, customer_name: name } })
+                      .catch(() => {});
+                  }
+                }}
+                phoneCountryCode={restaurant.phone_country_code ?? "971"}
+                readOnly={!!draft?.attempt || Boolean(selectedCreditCustomerId)}
+                value={draft?.fields.customer_phone ?? ""}
+              />
             ) : null}
 
             {isAddingToOrder ? (

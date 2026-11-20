@@ -27,6 +27,11 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeCustomerPhone } from "@/lib/whatsapp";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import {
+  stampGreetingName,
+  stampLookupPhone,
+  type StampLookup
+} from "@/lib/stamp-lookup";
 import type {
   CartLine,
   FulfilmentType,
@@ -879,5 +884,57 @@ export async function changeOrderPaymentMethodAction(
 
   return {
     success: `Payment changed to ${newMethod === "Cash on Delivery" ? "Cash" : newMethod === "UPI" ? "UPI" : "Card"}.`
+  };
+}
+
+// ── Counter stamp-card lookup ───────────────────────────────────────────────
+// Staff type the customer's complete number at the counter and see their
+// stamp progress. Exact match only, within the session's restaurant; the
+// response carries a first name and stamp counts, never other customer data.
+
+export async function lookupStampCustomerAction(rawPhone: string): Promise<StampLookup | null> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+  const phone = stampLookupPhone(String(rawPhone ?? ""), session.restaurant.phone_country_code);
+  if (!supabase || !phone) {
+    return null;
+  }
+
+  const [restaurant, customer] = await Promise.all([
+    supabase
+      .from("restaurants")
+      .select("loyalty_enabled, loyalty_stamps_required, loyalty_reward_description")
+      .eq("id", session.restaurantId)
+      .maybeSingle(),
+    supabase
+      .from("customers")
+      .select("name, loyalty_points_balance")
+      .eq("restaurant_id", session.restaurantId)
+      .eq("phone", phone)
+      .maybeSingle()
+  ]);
+  if (restaurant.error || customer.error || !restaurant.data) {
+    return null;
+  }
+
+  const settings = restaurant.data as {
+    loyalty_enabled: boolean | null;
+    loyalty_stamps_required: number | null;
+    loyalty_reward_description: string | null;
+  };
+  const required = Number(settings.loyalty_stamps_required ?? 0);
+  if (settings.loyalty_enabled === false || !(required > 0)) {
+    return { status: "off" };
+  }
+  if (!customer.data) {
+    return { status: "new", required, reward: settings.loyalty_reward_description };
+  }
+  const row = customer.data as { name: string | null; loyalty_points_balance: number | null };
+  return {
+    status: "known",
+    name: stampGreetingName(row.name),
+    stamps: Math.max(0, Number(row.loyalty_points_balance ?? 0)),
+    required,
+    reward: settings.loyalty_reward_description
   };
 }
