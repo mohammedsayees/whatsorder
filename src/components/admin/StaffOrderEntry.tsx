@@ -7,7 +7,7 @@ import { StaffDiscountControl, discountFromDraft, type StaffDiscountDraft } from
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Banknote, BookUser, ChefHat, ChevronDown, CreditCard, Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
+import { Banknote, BookUser, ChefHat, ChevronDown, CreditCard, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import { recordOrderPrintEventsAction } from "@/app/actions";
 import {
   addItemsToOrderAction,
@@ -32,6 +32,7 @@ import { formatCurrency } from "@/lib/currency";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
 import { renderOrderTickets, type PrintKind } from "@/lib/order-print";
 import { printHtmlDocument } from "@/lib/print-ticket";
+import { submitPrintKinds } from "@/lib/staff-submit-print";
 import {
   isStaffOrderActionKind,
   type StaffOrderPayload
@@ -82,10 +83,10 @@ const DENSITY_STORAGE_KEY = "whatsorder:pos-ticket-density";
 
 // How the punch submit resolved, shown in the ticket footer. "queued" means
 // the internet was down or too slow, so the order is safely stored on the
-// device and will sync automatically — staff can keep punching. On success the
-// saved order rides along so its KOT/receipt can be printed on the spot.
+// device and will sync automatically — staff can keep punching. Printing is
+// automatic on submit; reprints live on the Orders list.
 type SubmitFeedback =
-  | { kind: "success"; message: string; order?: Order; stampClaimQr?: string }
+  | { kind: "success"; message: string }
   | { kind: "queued"; message: string }
   | { kind: "error"; message: string };
 
@@ -134,6 +135,9 @@ export function StaffOrderEntry({
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<SubmitFeedback | null>(null);
   const [printCustomerBill, setPrintCustomerBill] = useState(false);
+  // Paid-now sales print a KOT by default; staff untick it for counter items
+  // handed over on the spot (tea, water) to save paper.
+  const [printKot, setPrintKot] = useState(true);
   const [showPaymentPanel, setShowPaymentPanel] = useState(false);
   const additionAttemptIdRef = useRef<string | null>(null);
   const [density, setDensity] = useState<TicketDensity>("compact");
@@ -192,9 +196,15 @@ export function StaffOrderEntry({
 
   async function runDraftOperation(operation: () => Promise<void>) {
     setPending(true);
-    try { await operation(); setFeedback(null); setShowPaymentPanel(false); setPrintCustomerBill(false); }
+    try { await operation(); setFeedback(null); resetPaymentPanel(); }
     catch { setFeedback({ kind: "error", message: "Could not update the draft. Keep this page open and retry." }); }
     finally { setPending(false); }
+  }
+
+  function resetPaymentPanel() {
+    setShowPaymentPanel(false);
+    setPrintCustomerBill(false);
+    setPrintKot(true);
   }
 
   async function clearTicket() {
@@ -236,6 +246,12 @@ export function StaffOrderEntry({
       : orderedCategories.filter((category) => category.id === selectedCategoryId);
 
   const ticketLines = Object.values(lines);
+  // The "saved" message belongs to the previous order: drop it as soon as the
+  // next bill gets its first item so it is never mistaken for the current one.
+  const hasTicketLines = ticketLines.length > 0;
+  useEffect(() => {
+    if (hasTicketLines) setFeedback((current) => (current?.kind === "success" ? null : current));
+  }, [hasTicketLines]);
   const subtotal = ticketLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const itemCount = ticketLines.reduce((sum, line) => sum + line.quantity, 0);
   const appliedDeliveryFee = fulfilmentType === "delivery" ? deliveryFee : 0;
@@ -444,11 +460,7 @@ export function StaffOrderEntry({
         }
 
         await clearTicket();
-        setFeedback({
-          kind: "success",
-          message: result.success ?? "Items added.",
-          order: result.order
-        });
+        setFeedback({ kind: "success", message: result.success ?? "Items added." });
 
         if (result.order) {
           printSavedOrder(result.order, ["kot"]);
@@ -529,25 +541,20 @@ export function StaffOrderEntry({
       } else {
         await clearTicket();
         const stampClaimQr = result.stampClaim?.qrDataUrl;
+        const orderRef = result.order ? ` #${result.order.id.slice(-8).toUpperCase()}` : "";
         setFeedback({
           kind: "success",
-          message: result.success ?? "Order saved.",
-          order: result.order,
-          stampClaimQr
+          message: `${orderRef ? `Order${orderRef}: ` : ""}${result.success ?? "Order saved."}`
         });
-        // Fire the kitchen copy automatically the moment a ticket is sent to
-        // the kitchen — staff shouldn't need a second tap. The Print buttons
-        // stay for reprints and the customer bill. (Paid-now sales don't
-        // auto-print; the counter decides whether a bill is needed.)
-        if (action === "kitchen" && result.order) {
-          printSavedOrder(
-            result.order,
-            printCustomerBill ? ["receipt", "kot"] : ["kot"],
-            stampClaimQr
-          );
-        } else if (action !== "kitchen" && result.order && printCustomerBill) {
-          printSavedOrder(result.order, ["receipt"], stampClaimQr);
+        // Print automatically so staff never need a second tap. Send KOT always
+        // prints the kitchen copy; Pay prints it unless "Print KOT" was
+        // unticked. The bill prints when "Print customer bill" is ticked.
+        // Reprints are done from the Orders list.
+        const kinds = submitPrintKinds({ action, printKot, printCustomerBill });
+        if (result.order && kinds.length > 0) {
+          printSavedOrder(result.order, kinds, stampClaimQr);
         }
+        resetPaymentPanel();
       }
     } catch {
       // Timed out or the request threw (offline / slow) — queue it.
@@ -1118,54 +1125,6 @@ export function StaffOrderEntry({
               </p>
             ) : null}
 
-            {/* Print the order that was just saved, without leaving the screen. */}
-            {feedback?.kind === "success" && feedback.order ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
-                <p className="mb-2 text-center text-xs font-black uppercase tracking-wide text-emerald-700">
-                  Print for order #{feedback.order.id.slice(-8).toUpperCase()}
-                </p>
-                {isAddingToOrder ? (
-                  <button
-                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
-                    onClick={() => printSavedOrder(feedback.order!, ["kot"])}
-                    type="button"
-                  >
-                    <Printer size={15} />
-                    Reprint add-on KOT
-                  </button>
-                ) : (
-                  <>
-                  <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
-                    onClick={() => printSavedOrder(feedback.order!, ["kot"])}
-                    type="button"
-                  >
-                    <Printer size={15} />
-                    Print KOT
-                  </button>
-                  <button
-                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
-                    onClick={() => printSavedOrder(feedback.order!, ["receipt"], feedback.stampClaimQr)}
-                    type="button"
-                  >
-                    <ReceiptText size={15} />
-                    Print Bill
-                  </button>
-                </div>
-                <button
-                  className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-200"
-                  onClick={() => printSavedOrder(feedback.order!, ["kot", "receipt"], feedback.stampClaimQr)}
-                  type="button"
-                >
-                  <Files size={15} />
-                  Print Both
-                </button>
-                  </>
-                )}
-              </div>
-            ) : null}
-
             {!isAddingToOrder ? (
               <StaffStampPhone
                 onChange={(value) => {
@@ -1208,12 +1167,18 @@ export function StaffOrderEntry({
                     <p className="text-sm font-black">Collect payment</p>
                     <p className="text-xs font-semibold text-stone-500">Amount due {formatCurrency(total, restaurant)}</p>
                   </div>
-                  <button className="rounded-lg px-2 py-1 text-xs font-bold text-stone-500 hover:bg-white" onClick={() => { setShowPaymentPanel(false); setPrintCustomerBill(false); }} type="button">Cancel</button>
+                  <button className="rounded-lg px-2 py-1 text-xs font-bold text-stone-500 hover:bg-white" onClick={resetPaymentPanel} type="button">Cancel</button>
                 </div>
-                <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-stone-600">
-                  <input checked={printCustomerBill} className="h-4 w-4 accent-emerald-600" onChange={(event) => setPrintCustomerBill(event.target.checked)} type="checkbox" />
-                  <ReceiptText size={15} /> Print customer bill
-                </label>
+                <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-stone-600">
+                    <input checked={printKot} className="h-4 w-4 accent-emerald-600" onChange={(event) => setPrintKot(event.target.checked)} type="checkbox" />
+                    <Printer size={15} /> Print KOT
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-stone-600">
+                    <input checked={printCustomerBill} className="h-4 w-4 accent-emerald-600" onChange={(event) => setPrintCustomerBill(event.target.checked)} type="checkbox" />
+                    <ReceiptText size={15} /> Print customer bill
+                  </label>
+                </div>
                 {selectedCreditCustomer ? (
                   <div className="mb-2">
                     <button className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-3 text-sm font-black text-white disabled:opacity-50" disabled={pending || ticketLines.length === 0 || needsReview || total > selectedCreditCustomer.available} name="action" type="submit" value="paid_credit">
