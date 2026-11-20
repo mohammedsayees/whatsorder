@@ -45,6 +45,7 @@ import {
   MAX_SAVED_ADDRESSES,
   type SavedAddress
 } from "@/lib/customer-addresses";
+import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -121,6 +122,7 @@ type PendingWhatsAppOrder = {
 
 export function CheckoutForm({
   attributionSource = null,
+  initialPromoCode = null,
   initialTableNumber = "",
   onboardingTest = false,
   onlinePaymentAvailable = false,
@@ -128,10 +130,13 @@ export function CheckoutForm({
   restaurant,
   savedAddresses = [],
   signedIn = false,
-  suggestions = null
+  suggestions = null,
+  vouchers = []
 }: {
   /** Validated ?src= token from the store link, stored on the order. */
   attributionSource?: string | null;
+  /** Validated ?promo= from a voucher link; applied once the cart loads. */
+  initialPromoCode?: string | null;
   initialTableNumber?: string;
   onboardingTest?: boolean;
   /** The restaurant's Stripe account can take card payments now. */
@@ -144,6 +149,8 @@ export function CheckoutForm({
   signedIn?: boolean;
   /** "Goes well with your order" data; null hides the suggestion. */
   suggestions?: CheckoutSuggestions | null;
+  /** Signed-in customer's usable vouchers at this café. */
+  vouchers?: CustomerVoucher[];
 }) {
   const router = useRouter();
   const cart = useCart();
@@ -895,11 +902,13 @@ export function CheckoutForm({
           <div className="mt-3 border-t border-stone-200 pt-3">
             <PromoCodeField
               applied={appliedPromo}
+              initialCode={initialPromoCode}
               language={language}
               lines={cart.lines}
               onChange={setAppliedPromo}
               restaurant={restaurant}
               subtotal={cart.subtotal}
+              vouchers={vouchers}
             />
           </div>
           <div className="mt-3 space-y-1.5 border-t border-stone-200 pt-3 text-sm">

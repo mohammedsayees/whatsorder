@@ -93,6 +93,38 @@ export async function setPromoCodeActiveAction(formData: FormData): Promise<Prom
   return { success: isActive ? "Promo code turned on." : "Promo code turned off." };
 }
 
+// Whether signed-in customers see this code on their account page and as a
+// one-tap voucher at checkout. Redemption rules are unchanged either way.
+export async function setPromoCodeVisibilityAction(formData: FormData): Promise<PromoCodeActionState> {
+  const context = await promoContext();
+  if ("error" in context) {
+    return { error: context.error };
+  }
+  const { session, supabase } = context;
+  const id = String(formData.get("id") ?? "");
+  if (!UUID_PATTERN.test(id)) {
+    return { error: "Promo code not found." };
+  }
+
+  const showInAccount = formData.get("show_in_account") === "true";
+  const { error } = await supabase
+    .from("promo_codes")
+    .update({ show_in_account: showInAccount, updated_at: new Date().toISOString() })
+    .eq("restaurant_id", session.restaurantId)
+    .eq("id", id);
+
+  if (error) {
+    return { error: "The promo code could not be updated. Please try again." };
+  }
+
+  revalidatePath(PROMO_PATH);
+  return {
+    success: showInAccount
+      ? "Signed-in customers can now see this code."
+      : "This code is hidden from customers again."
+  };
+}
+
 // Only unused codes can be deleted; used codes keep their redemption history
 // (the database refuses the delete) and are turned off instead.
 export async function deletePromoCodeAction(formData: FormData): Promise<PromoCodeActionState> {

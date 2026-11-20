@@ -17,6 +17,7 @@ export type PromoCodeInsert = {
   max_redemptions: number | null;
   max_redemptions_per_customer: number | null;
   first_order_only: boolean;
+  show_in_account: boolean;
 };
 
 export type PromoFormResult =
@@ -109,7 +110,8 @@ export function parsePromoCodeForm(
       ends_at: endsAt,
       max_redemptions: maxRedemptions as number | null,
       max_redemptions_per_customer: perCustomer as number | null,
-      first_order_only: formData.get("first_order_only") === "on"
+      first_order_only: formData.get("first_order_only") === "on",
+      show_in_account: formData.get("show_in_account") === "on"
     }
   };
 }

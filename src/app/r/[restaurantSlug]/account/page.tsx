@@ -4,6 +4,7 @@ import { CartProvider } from "@/components/customer/CartProvider";
 import { CustomerAccountView } from "@/components/customer/CustomerAccount";
 import { loadCustomerAccount } from "@/lib/customer-account-data";
 import { loadCustomerAddresses } from "@/lib/customer-addresses-data";
+import { loadCustomerVouchers } from "@/lib/customer-vouchers-data";
 import { getRestaurantBySlug } from "@/lib/data";
 import { currentSlugForReleasedSlug } from "@/lib/slug-history";
 import { cloudNumberOwnerSlug } from "@/lib/whatsapp-cloud-tenant";
@@ -30,11 +31,17 @@ export default async function CustomerAccountPage({
   }
 
   const result = await loadCustomerAccount(restaurant.id);
-  // An address book needs a customers row (created by the first order).
-  const addresses =
-    result.status === "ok" && result.account.profile
-      ? await loadCustomerAddresses({ restaurantId: restaurant.id, phone: result.account.phone })
-      : [];
+  const identity =
+    result.status === "ok" ? { restaurantId: restaurant.id, phone: result.account.phone } : null;
+  const [addresses, vouchers] = identity
+    ? await Promise.all([
+        // An address book needs a customers row (created by the first order).
+        result.status === "ok" && result.account.profile
+          ? loadCustomerAddresses(identity)
+          : Promise.resolve([]),
+        loadCustomerVouchers(identity)
+      ])
+    : [[], []];
 
   // Sign-in links are sent by the WhatsApp Cloud number, which today answers
   // for one café only. Elsewhere, explain instead of offering a dead end.
@@ -53,6 +60,7 @@ export default async function CustomerAccountPage({
         loadFailed={result.status === "error"}
         restaurant={restaurant}
         signInUrl={signInUrl}
+        vouchers={vouchers}
       />
     </CartProvider>
   );

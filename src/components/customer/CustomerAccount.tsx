@@ -14,6 +14,7 @@ import {
   Receipt,
   RotateCcw,
   Settings,
+  TicketPercent,
   ShoppingBag,
   UserRound
 } from "lucide-react";
@@ -25,6 +26,8 @@ import {
 } from "@/app/r/[restaurantSlug]/account/actions";
 import { useCart } from "@/components/customer/CartProvider";
 import { CustomerAddressBook } from "@/components/customer/CustomerAddressBook";
+import { CustomerVouchers } from "@/components/customer/CustomerVouchers";
+import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
@@ -48,7 +51,7 @@ import type { CustomerLoyalty } from "@/lib/customer-auth/context";
 import { getRestaurantLocalization } from "@/lib/localization";
 import type { PublicRestaurant } from "@/lib/types";
 
-type Tab = "orders" | "payments" | "rewards" | "addresses" | "settings";
+type Tab = "orders" | "payments" | "rewards" | "vouchers" | "addresses" | "settings";
 type Translate = (en: string, ar: string) => string;
 
 const STATUS_LABELS: Record<string, [string, string]> = {
@@ -92,13 +95,15 @@ export function CustomerAccountView({
   addresses = [],
   loadFailed,
   restaurant,
-  signInUrl
+  signInUrl,
+  vouchers = []
 }: {
   account: CustomerAccount | null;
   addresses?: SavedAddress[];
   loadFailed: boolean;
   restaurant: PublicRestaurant;
   signInUrl: string | null;
+  vouchers?: CustomerVoucher[];
 }) {
   const { language, setLanguage } = useCustomerLanguage();
   const isAr = language === "ar";
@@ -130,6 +135,7 @@ export function CustomerAccountView({
             isAr={isAr}
             restaurant={restaurant}
             t={t}
+            vouchers={vouchers}
           />
         ) : loadFailed ? (
           <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
@@ -205,10 +211,12 @@ function SignedInAccount({
   addresses,
   isAr,
   restaurant,
-  t
+  t,
+  vouchers
 }: {
   account: CustomerAccount;
   addresses: SavedAddress[];
+  vouchers: CustomerVoucher[];
   isAr: boolean;
   restaurant: PublicRestaurant;
   t: Translate;
@@ -237,6 +245,11 @@ function SignedInAccount({
     { id: "orders", label: t("Orders", "الطلبات"), icon: ShoppingBag },
     { id: "payments", label: t("Payments", "المدفوعات"), icon: Receipt },
     ...(showRewards ? [{ id: "rewards" as Tab, label: t("Rewards", "المكافآت"), icon: Gift }] : []),
+    {
+      id: "vouchers",
+      label: vouchers.length > 0 ? `${t("Vouchers", "القسائم")} (${vouchers.length})` : t("Vouchers", "القسائم"),
+      icon: TicketPercent
+    },
     ...(profile ? [{ id: "addresses" as Tab, label: t("Addresses", "العناوين"), icon: MapPin }] : []),
     { id: "settings", label: t("Profile", "الملف"), icon: Settings }
   ];
@@ -374,6 +387,17 @@ function SignedInAccount({
             history={account.loyaltyHistory}
             loyalty={account.loyalty}
             t={t}
+          />
+        ) : null}
+
+        {tab === "vouchers" ? (
+          <CustomerVouchers
+            formatDate={formatDate}
+            language={isAr ? "ar" : "en"}
+            money={money}
+            restaurantSlug={restaurant.slug}
+            t={t}
+            vouchers={vouchers}
           />
         ) : null}
 

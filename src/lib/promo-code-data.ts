@@ -150,6 +150,8 @@ export async function evaluatePromoCode(
 
 export type PromoCodeWithUsage = PromoCode & {
   createdAt: string;
+  /** Listed for signed-in customers (account page and checkout chips). */
+  showInAccount: boolean;
   timesUsed: number;
   totalDiscount: number;
 };
@@ -164,7 +166,7 @@ export async function listPromoCodes(restaurantId: string): Promise<PromoCodeWit
   const [codes, redemptions] = await Promise.all([
     supabase
       .from("promo_codes")
-      .select(`${PROMO_COLUMNS}, created_at`)
+      .select(`${PROMO_COLUMNS}, created_at, show_in_account`)
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false }),
     supabase
@@ -185,9 +187,10 @@ export async function listPromoCodes(restaurantId: string): Promise<PromoCodeWit
     usage.set(row.promo_code_id, current);
   }
 
-  return ((codes.data ?? []) as Array<PromoCodeRow & { created_at: string }>).map((row) => ({
+  return ((codes.data ?? []) as Array<PromoCodeRow & { created_at: string; show_in_account?: boolean }>).map((row) => ({
     ...rowToPromo(row),
     createdAt: row.created_at,
+    showInAccount: row.show_in_account === true,
     timesUsed: usage.get(row.id)?.count ?? 0,
     totalDiscount: Math.round((usage.get(row.id)?.total ?? 0) * 100) / 100
   }));
