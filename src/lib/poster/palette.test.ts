@@ -8,6 +8,7 @@ import {
   contrastRatio,
   hexToHsl,
   hslToHex,
+  isTooLightForBrand,
   normalizeHex
 } from "./palette";
 import { POSTER_THEME_IDS, themesForGeneration } from "./themes";
@@ -88,6 +89,24 @@ describe("poster palettes", () => {
   it("keeps the brand hue as the primary colour", () => {
     const palette = buildPalette("#1d4ed8");
     expect(Math.abs(hexToHsl(palette.primary).h - hexToHsl("#1d4ed8").h)).toBeLessThan(3);
+  });
+
+  it("deepens a pale tint so the brand colour stands apart from the paper", () => {
+    for (const brand of ["#efd9cc", "#e8c9b5", "#f9a8d4", "#dbeafe"]) {
+      const palette = buildPalette(brand);
+      expect(contrastRatio(palette.primary, palette.light), brand).toBeGreaterThanOrEqual(2);
+      expect(Math.abs(hexToHsl(palette.primary).h - hexToHsl(brand).h), brand).toBeLessThan(4);
+    }
+  });
+
+  it("leaves ordinary brand colours untouched", () => {
+    for (const brand of ["#e0412f", "#1d4ed8", "#facc15", "#c77a4c"]) {
+      expect(isTooLightForBrand(brand), brand).toBe(false);
+    }
+    expect(buildPalette("#c77a4c").primary).toBe("#c77a4c");
+    expect(isTooLightForBrand("#efd9cc")).toBe(true);
+    expect(isTooLightForBrand("#f5f5f5")).toBe(false); // grey → default palette, not deepened
+    expect(isTooLightForBrand(null)).toBe(false);
   });
 
   it("never pairs a yellow/orange brand with a lime highlight", () => {

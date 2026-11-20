@@ -21,6 +21,7 @@ import {
   textableFill,
   type PosterPalette
 } from "./palette";
+import { schemeFor, type PosterField, type PosterScheme } from "./scheme";
 import {
   DEFAULT_POSTER_THEME,
   POSTER_THEMES,
@@ -91,66 +92,10 @@ export function paletteOf(branding: PosterBranding): PosterPalette {
 
 // ── colour scheme ───────────────────────────────────────────────────────────
 
-export type PosterField = "hero" | "bleed" | "stat" | "arch" | "price";
-
-/**
- * Every colour a composition uses, resolved from the palette for one field.
- * Text colours are always chosen against the surface they sit on.
- */
-export type PosterScheme = {
-  palette: PosterPalette;
-  bg: string;
-  /** Main text on bg. */
-  text: string;
-  /** Accent text on bg (prices, the sold count) — a brand colour when it passes. */
-  accent: string;
-  /** Decoration fills (never carry body text). */
-  decoA: string;
-  decoB: string;
-  /** Ring around circular photos. */
-  ring: string;
-  stampFill: string;
-  stampText: string;
-  /** Text on decoA, e.g. lettering inside a band or an arch. */
-  onDecoA: string;
-  /** Accent text on decoA (struck price inside a filled arch). */
-  accentOnDecoA: string;
-  /** Solid area below a full-bleed photo, and text on it. */
-  base: string;
-  onBase: string;
-  accentOnBase: string;
-};
+export type { PosterField, PosterScheme } from "./scheme";
 
 export function posterScheme(branding: PosterBranding, field: PosterField): PosterScheme {
-  const palette = paletteOf(branding);
-  const theme = themeOf(branding);
-  const bgRole = theme.fields[field];
-  const bg = textableFill(palette[bgRole], palette.dark, palette.light);
-  const decoRoles = (["primary", "secondary", "primaryDeep", "dark", "light"] as PaletteRole[]).filter(
-    (role) => palette[role] !== bg
-  );
-  const decoA = textableFill(palette[decoRoles[0]], palette.dark, palette.light);
-  const decoB = palette[decoRoles[1]];
-  const accents = theme.accents.map((role) => palette[role]);
-  // Stamps sit on the field (or a photo); give them a fill that stands out.
-  const stampFill = textableFill(bgRole === "dark" ? palette.secondary : decoA, palette.dark, palette.light);
-  const base = palette.dark;
-  return {
-    palette,
-    bg,
-    text: textOn(bg, palette),
-    accent: textOn(bg, palette, accents),
-    decoA,
-    decoB,
-    ring: bgRole === "light" ? palette.dark : palette.light,
-    stampFill,
-    stampText: textOn(stampFill, palette),
-    onDecoA: textOn(decoA, palette),
-    accentOnDecoA: textOn(decoA, palette, [palette.secondary, palette.light]),
-    base,
-    onBase: textOn(base, palette, [palette.light]),
-    accentOnBase: textOn(base, palette, accents)
-  };
+  return schemeFor(paletteOf(branding), themeOf(branding), field);
 }
 
 /** "#rrggbb" → "r,g,b" for rgba() gradients. */

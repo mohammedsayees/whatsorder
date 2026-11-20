@@ -742,7 +742,7 @@ export function PosterStudio({
               {label}
             </button>
           ))}
-          <a className="text-xs font-semibold text-leaf underline" href="/admin/settings#poster-branding">
+          <a className="text-xs font-semibold text-leaf underline" href="/admin/marketing/brand">
             Change colours &amp; default look
           </a>
         </div>
