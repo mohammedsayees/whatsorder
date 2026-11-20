@@ -5,8 +5,13 @@ import { useEffect, useState } from "react";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import { updateUnreadConversationIds } from "@/lib/chat-unread";
 
+// Polling only backs up realtime. While the channel is live it is a slow
+// safety net; the fast interval applies only while realtime is unavailable.
 const fallbackRefreshIntervalMs = 60 * 1_000;
+const liveReconcileIntervalMs = 5 * 60 * 1_000;
 const realtimeTokenRefreshIntervalMs = 30 * 60 * 1_000;
+
+type ConnectionState = "connecting" | "live" | "offline";
 
 async function createBrowserSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -45,6 +50,8 @@ export function ChatUnreadNavBadge({
   const [unreadConversationIds, setUnreadConversationIds] = useState(
     initialUnreadConversationIds
   );
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("connecting");
 
   useEffect(() => {
     let active = true;
@@ -80,9 +87,23 @@ export function ChatUnreadNavBadge({
         })
         .catch(() => undefined);
     };
-    const interval = window.setInterval(refresh, fallbackRefreshIntervalMs);
-    return () => window.clearInterval(interval);
-  }, []);
+    // Hidden tabs (e.g. a kitchen tablet left on another screen) skip polls
+    // entirely and catch up once when staff come back.
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        refresh();
+      }
+    };
+    const interval = window.setInterval(
+      refreshIfVisible,
+      connectionState === "live" ? liveReconcileIntervalMs : fallbackRefreshIntervalMs
+    );
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [connectionState]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -151,9 +172,25 @@ export function ChatUnreadNavBadge({
             },
             (payload) => applyConversationUpdate(payload.new)
           )
-          .subscribe();
+          .subscribe((status) => {
+            if (!active) {
+              return;
+            }
+            setConnectionState(
+              status === "SUBSCRIBED"
+                ? "live"
+                : status === "CLOSED" ||
+                    status === "CHANNEL_ERROR" ||
+                    status === "TIMED_OUT"
+                  ? "offline"
+                  : "connecting"
+            );
+          });
       } catch {
         // The periodic server reconciliation remains available if realtime is offline.
+        if (active) {
+          setConnectionState("offline");
+        }
       }
     };
 
