@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import { markChatReadAction } from "@/app/admin/chats/actions";
+import {
+  parseMessageBroadcast,
+  privateChannelConfig,
+  restaurantChatsTopic
+} from "@/lib/realtime-topics";
 
 // Push-based live updates for /admin/chats: a postgres_changes subscription on
 // whatsapp_messages (RLS-gated per subscriber) triggers a debounced
@@ -143,39 +148,27 @@ export function ChatsLive({
         if (!active) {
           return;
         }
+        // Private, per-restaurant Broadcast channel (src/lib/realtime-topics.ts).
+        // The badge in the nav joins the same topic for conversation events;
+        // supabase-js keeps the two subscriptions on separate client
+        // instances, so each gets its own callbacks.
         channel = supabase
-          .channel(`chats-live-${restaurantId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "whatsapp_messages"
-            },
-            (payload) => {
-              if (payload.new.restaurant_id !== restaurantId) {
-                return;
-              }
-              if (
-                payload.new.direction === "inbound" &&
-                soundAlertsEnabled(restaurantId)
-              ) {
-                playChime();
-              }
+          .channel(restaurantChatsTopic(restaurantId), privateChannelConfig)
+          .on("broadcast", { event: "message_created" }, ({ payload }) => {
+            const message = parseMessageBroadcast(payload);
+            if (!message) {
+              return;
+            }
+            if (message.direction === "inbound" && soundAlertsEnabled(restaurantId)) {
+              playChime();
+            }
+            scheduleRefresh();
+          })
+          .on("broadcast", { event: "message_updated" }, ({ payload }) => {
+            if (parseMessageBroadcast(payload)) {
               scheduleRefresh();
             }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "whatsapp_messages"
-            },
-            () => scheduleRefresh()
-          )
+          })
           .subscribe((status) => {
             if (active) {
               setLive(status === "SUBSCRIBED");
