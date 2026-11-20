@@ -27,6 +27,26 @@ describe("dominantLogoColor", () => {
     expect(hexToHsl(colour!).h < 15 || hexToHsl(colour!).h > 345).toBe(true);
   });
 
+  it("prefers a small strong accent over a large pale tinted background", async () => {
+    // Chai Xpress-style logo: peach background filling the canvas, tan mark.
+    const uri = await logo(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#efd9cc"/><circle cx="100" cy="100" r="30" fill="#c77a4c"/></svg>`
+    );
+    const colour = await dominantLogoColor(uri);
+    expect(colour).not.toBeNull();
+    expect(hexToHsl(colour!).l).toBeLessThan(0.7);
+    expect(Math.abs(hexToHsl(colour!).h - hexToHsl("#c77a4c").h)).toBeLessThan(8);
+  });
+
+  it("falls back to a pale tint when the logo has nothing stronger", async () => {
+    const uri = await logo(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="80" fill="#efd9cc"/></svg>`
+    );
+    const colour = await dominantLogoColor(uri);
+    expect(colour).not.toBeNull();
+    expect(Math.abs(hexToHsl(colour!).h - hexToHsl("#efd9cc").h)).toBeLessThan(8);
+  });
+
   it("returns null for monochrome logos and bad input", async () => {
     const mono = await logo(
       `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#fff"/><text x="20" y="120" font-size="90">CX</text></svg>`

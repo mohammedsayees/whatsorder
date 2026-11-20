@@ -164,6 +164,27 @@ export function textableFill(fill: string, dark: string, light: string): string 
 }
 
 /**
+ * Brand fills lighter than this are pale tints that blur into the paper
+ * colour (a #efd9cc peach sits at 1.2:1 against its own paper), so the
+ * palette uses a deeper shade of the same hue instead.
+ */
+export const MAX_BRAND_LIGHTNESS = 0.72;
+/** Where a too-light brand colour is deepened to. */
+const DEEPENED_BRAND_LIGHTNESS = 0.62;
+
+/**
+ * True when `brand` is a pale tint that buildPalette will deepen. Neutral
+ * colours (greys, near-white) are excluded: they fall back to the default
+ * food palette instead.
+ */
+export function isTooLightForBrand(brand: string | null | undefined): boolean {
+  const hex = normalizeHex(brand);
+  if (!hex) return false;
+  const { s, l } = hexToHsl(hex);
+  return s >= 0.12 && l <= 0.94 && l > MAX_BRAND_LIGHTNESS;
+}
+
+/**
  * Full palette from one brand colour. Greys and near-black/near-white brands
  * keep a neutral base with the default warm highlight, so the poster still
  * reads as food.
@@ -176,9 +197,12 @@ export function buildPalette(brand: string | null | undefined): PosterPalette {
 
   const dark = neutral ? DEFAULT_PALETTE.dark : hslToHex({ h, s: Math.min(s, 0.35), l: 0.09 });
   const light = neutral ? DEFAULT_PALETTE.light : hslToHex({ h, s: Math.min(0.7, s), l: 0.95 });
+  // A pale tint keeps its hue but is deepened so brand fields stand out
+  // from the paper instead of looking washed out.
+  const brandFill = isTooLightForBrand(hex) ? hslToHex({ h, s, l: DEEPENED_BRAND_LIGHTNESS }) : hex;
   const primary = neutral
     ? textableFill(l < 0.5 ? hex : DEFAULT_PALETTE.dark, dark, light)
-    : textableFill(hex, dark, light);
+    : textableFill(brandFill, dark, light);
   const primaryHsl = hexToHsl(primary);
   const primaryDeep = hslToHex({ ...primaryHsl, l: Math.max(0.16, primaryHsl.l * 0.62) });
   // A bright companion hue that stays appetising: red/pink brands get a

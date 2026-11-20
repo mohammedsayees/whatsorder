@@ -3,6 +3,8 @@ import type { PosterPalette } from "@/lib/poster/palette";
 import { POSTER_THEMES, POSTER_THEME_IDS, DEFAULT_POSTER_THEME } from "@/lib/poster/themes";
 import type { PaletteSource } from "@/lib/poster/subjects";
 
+import { PosterColourChoice } from "./PosterColourChoice";
+
 const SOURCE_LABEL: Record<PaletteSource, string> = {
   brand_color: "From your chosen colour",
   logo: "Picked from your logo",
@@ -45,37 +47,11 @@ export function PosterBrandingForm({
         automatically so they stay readable.
       </p>
 
-      <fieldset className="mt-4">
-        <legend className="text-sm font-bold">Colour</legend>
-        <label className="mt-2 flex items-center gap-3">
-          <input
-            defaultChecked={!brandColor}
-            disabled={!canWrite}
-            name="colour_source"
-            type="radio"
-            value="logo"
-          />
-          <span className="text-sm">Use my logo&apos;s colour</span>
-        </label>
-        <label className="mt-2 flex items-center gap-3">
-          <input
-            defaultChecked={Boolean(brandColor)}
-            disabled={!canWrite}
-            name="colour_source"
-            type="radio"
-            value="custom"
-          />
-          <span className="text-sm">Choose a colour</span>
-          <input
-            aria-label="Brand colour"
-            className="h-9 w-14 cursor-pointer rounded border border-stone-200"
-            defaultValue={brandColor ?? preview.palette.primary}
-            disabled={!canWrite}
-            name="poster_brand_color"
-            type="color"
-          />
-        </label>
-      </fieldset>
+      <PosterColourChoice
+        brandColor={brandColor}
+        canWrite={canWrite}
+        logoColor={preview.palette.primary}
+      />
 
       <div className="mt-4">
         <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
