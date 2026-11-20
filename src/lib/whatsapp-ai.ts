@@ -302,7 +302,7 @@ export function existingOrderReply(
     return {
       reply: mentionsLocation
         ? "Thank you! Please share your location here whenever you're ready and our team will add it to your order."
-        : `Thank you! I couldn't find a recent order from this number, so I've asked our team to check. ${handoffMessage}`,
+        : `Thank you! I've passed this to our team so they can check your order and get back to you. ${handoffMessage}`,
       handoff: true
     };
   }
@@ -379,7 +379,8 @@ export async function generateWhatsAppAiReply(input: {
 
 Rules:
 - Answer only from BUSINESS_DATA. Never invent availability, ingredients, prices, hours, delivery coverage, discounts, or policies.
-- Do not create, change, confirm, or cancel an order. For a new order, send ORDER_URL.
+- Do not create, change, confirm, or cancel an order yourself. When the customer asks how to order, send ORDER_URL.
+- If the customer is placing an order in this chat (lists items they want, in text or in a voice message), do not send ORDER_URL or ask them to re-order. Reply that our team has received their order and will confirm it shortly, and set handoff=true.
 - Read CONVERSATION for context. If the customer already placed an order (see CONVERSATION or RECENT_ORDER), do not send ORDER_URL or ask them to order again; answer about that order, and set handoff=true for anything staff must act on (location, changes, complaints).
 - If the customer only acknowledges (ok, thanks), reply briefly or not at all; do not restart with a greeting.
 - If you cannot hear or understand a voice message, say so and set handoff=true. Never guess what it said.

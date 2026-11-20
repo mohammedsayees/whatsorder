@@ -36,6 +36,10 @@ vi.mock("@/lib/whatsapp-integration", () => ({
 vi.mock("@/lib/whatsapp-ordering", () => ({
   handleWhatsAppOrderMessage: (...args: unknown[]) => handleOrder(...args)
 }));
+const storeMedia = vi.fn(async (..._args: unknown[]) => true);
+vi.mock("@/lib/chat-media", () => ({
+  storeChatMediaBytes: (...args: unknown[]) => storeMedia(...args)
+}));
 vi.mock("@/lib/marketing/consent", () => ({
   withdrawMarketingConsentByPhone: (...args: unknown[]) => withdraw(...args)
 }));
@@ -85,7 +89,7 @@ function messageEvent(body: string) {
 
 beforeEach(() => {
   existingMessage = null;
-  for (const mock of [withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, vi.mocked(after)]) {
+  for (const mock of [storeMedia, withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, vi.mocked(after)]) {
     mock.mockClear();
   }
 });
@@ -159,5 +163,22 @@ describe("WhatsApp Web connector sign-in keyword", () => {
     await POST(messageEvent("my account shows the wrong order"));
     expect(mintLink).not.toHaveBeenCalled();
     expect(handleOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("WhatsApp Web connector voice notes", () => {
+  it("stores the voice note so staff can play it, then runs the receptionist", async () => {
+    const audio = Buffer.from("voice-bytes").toString("base64");
+    await POST(new NextRequest("https://app.test/api/whatsapp-web/events", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "message", restaurantId: "rest-1", sessionId: "s1",
+        message: { id: "a1", from: "971500000001", type: "audio", audioBase64: audio, audioMime: "audio/ogg; codecs=opus" }
+      })
+    }));
+    expect(after).toHaveBeenCalledTimes(2);
+    await (vi.mocked(after).mock.calls[0][0] as () => unknown)();
+    expect(storeMedia).toHaveBeenCalledWith("rest-1", "web:a1", Buffer.from("voice-bytes"), "audio/ogg; codecs=opus");
+    expect(handleOrder).not.toHaveBeenCalled();
   });
 });

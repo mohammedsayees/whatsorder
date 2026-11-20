@@ -99,6 +99,6 @@ describe("WhatsApp receptionist conversation fixes", () => {
   it("asks staff to check when no recent order is found for the number", () => {
     const result = existingOrderReply("I already ordered", null, "Our team will reply shortly.");
     expect(result.handoff).toBe(true);
-    expect(result.reply).toMatch(/couldn't find a recent order/);
+    expect(result.reply).toMatch(/passed this to our team/);
   });
 });

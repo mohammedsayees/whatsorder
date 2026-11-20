@@ -100,32 +100,56 @@ export async function downloadChatMedia(
         continue;
       }
 
-      // 3) Store privately; upsert so webhook redeliveries don't error.
-      const path = chatMediaPath(restaurantId, job.waMessageId);
-      const contentType = meta.mime_type ?? "application/octet-stream";
-      const { error: uploadError } = await admin.storage
-        .from(CHAT_MEDIA_BUCKET)
-        .upload(path, bytes, { contentType, upsert: true });
-      if (uploadError) {
-        console.error("WhatsOrder chat media: upload failed", uploadError.message);
-        continue;
-      }
-
-      // 4) Attach to the message row.
-      const { error: updateError } = await admin
-        .from("whatsapp_messages")
-        .update({ media_path: path, media_mime: contentType })
-        .eq("wa_message_id", job.waMessageId)
-        .eq("restaurant_id", restaurantId);
-      if (updateError) {
-        console.error(
-          "WhatsOrder chat media: message update failed",
-          updateError.code
-        );
-      }
+      // 3) Store privately and attach to the message row.
+      await storeChatMediaBytes(
+        restaurantId,
+        job.waMessageId,
+        bytes,
+        meta.mime_type ?? "application/octet-stream"
+      );
     } catch (error) {
       console.error("WhatsOrder chat media: job error", error);
     }
+  }
+}
+
+/**
+ * Store media bytes already in hand (the WhatsApp Web connector sends voice
+ * notes inline) and point the message row at them. Upsert, so connector
+ * retries are harmless. Never throws; returns whether it was stored.
+ */
+export async function storeChatMediaBytes(
+  restaurantId: string,
+  waMessageId: string,
+  bytes: Buffer,
+  contentType: string
+): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  if (!admin || bytes.byteLength === 0 || bytes.byteLength > MAX_MEDIA_BYTES) {
+    return false;
+  }
+  try {
+    const path = chatMediaPath(restaurantId, waMessageId);
+    const { error: uploadError } = await admin.storage
+      .from(CHAT_MEDIA_BUCKET)
+      .upload(path, bytes, { contentType, upsert: true });
+    if (uploadError) {
+      console.error("WhatsOrder chat media: upload failed", uploadError.message);
+      return false;
+    }
+    const { error: updateError } = await admin
+      .from("whatsapp_messages")
+      .update({ media_path: path, media_mime: contentType })
+      .eq("wa_message_id", waMessageId)
+      .eq("restaurant_id", restaurantId);
+    if (updateError) {
+      console.error("WhatsOrder chat media: message update failed", updateError.code);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("WhatsOrder chat media: store error", error);
+    return false;
   }
 }
 
