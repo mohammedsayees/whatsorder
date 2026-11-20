@@ -13,7 +13,40 @@ import {
 import { groupSizeVariants } from "@/lib/size-variants";
 import { attachSizeOptionGroups } from "@/lib/menu-size-groups";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { requireRestaurantRole } from "@/lib/super-admin-auth";
+import { requireRestaurantRole, requireSuperAdmin } from "@/lib/super-admin-auth";
+import type { Restaurant } from "@/lib/types";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type MenuImportSession = { restaurantId: string; restaurant: Restaurant };
+
+/**
+ * Who is importing, and for which restaurant. Restaurant staff act on their own
+ * session's restaurant. A Super Admin passes `actingRestaurantId` (the same
+ * pattern as the menu editor's `restaurant_id` field) and must pass the
+ * super-admin check before that restaurant is loaded. Returns null for an
+ * unknown restaurant; never trusts a client restaurant id without that check.
+ */
+async function requireMenuImportSession(
+  actingRestaurantId?: string | null
+): Promise<MenuImportSession | null> {
+  if (actingRestaurantId) {
+    await requireSuperAdmin();
+    const supabase = getSupabaseAdmin();
+    if (!supabase || !UUID_PATTERN.test(actingRestaurantId)) {
+      return null;
+    }
+    const { data } = await supabase
+      .from("restaurants")
+      .select("*")
+      .eq("id", actingRestaurantId)
+      .maybeSingle();
+    return data ? { restaurantId: String(data.id), restaurant: data as Restaurant } : null;
+  }
+
+  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  return { restaurantId: session.restaurantId, restaurant: session.restaurant };
+}
 
 export type ExtractPageResult =
   | { ok: true; items: DraftMenuItem[] }
@@ -36,9 +69,12 @@ export type DescriptionResult =
   | { ok: false; error: string };
 
 export async function generateMenuDescriptionsAction(
-  items: { name: string; category: string }[]
+  items: { name: string; category: string }[],
+  actingRestaurantId?: string | null
 ): Promise<DescriptionResult> {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  if (!(await requireMenuImportSession(actingRestaurantId))) {
+    return { ok: false, error: "Restaurant not found." };
+  }
 
   if (!process.env.GEMINI_API_KEY) {
     return { ok: false, error: "AI descriptions aren't configured yet." };
@@ -64,8 +100,11 @@ export type SingleDescriptionResult =
 export async function generateItemDescriptionAction(input: {
   name: string;
   category: string;
+  actingRestaurantId?: string | null;
 }): Promise<SingleDescriptionResult> {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  if (!(await requireMenuImportSession(input?.actingRestaurantId))) {
+    return { ok: false, error: "Restaurant not found." };
+  }
 
   if (!process.env.GEMINI_API_KEY) {
     return { ok: false, error: "AI descriptions aren't configured yet." };
@@ -96,8 +135,11 @@ export type TranslationResult =
 export async function translateItemAction(input: {
   name: string;
   description?: string | null;
+  actingRestaurantId?: string | null;
 }): Promise<TranslationResult> {
-  await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  if (!(await requireMenuImportSession(input?.actingRestaurantId))) {
+    return { ok: false, error: "Restaurant not found." };
+  }
 
   if (!process.env.GEMINI_API_KEY) {
     return { ok: false, error: "AI translation isn't configured yet." };
@@ -130,8 +172,13 @@ const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 export async function extractMenuPageAction(input: {
   imageBase64: string;
   mimeType: string;
+  actingRestaurantId?: string | null;
 }): Promise<ExtractPageResult> {
-  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const importSession = await requireMenuImportSession(input?.actingRestaurantId);
+  if (!importSession) {
+    return { ok: false, error: "Restaurant not found." };
+  }
+  const { restaurant } = importSession;
 
   if (!process.env.GEMINI_API_KEY) {
     return { ok: false, error: "Menu import is not configured yet. Contact WhatsOrder support." };
@@ -193,8 +240,14 @@ export async function extractMenuPageAction(input: {
   }
 }
 
-export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<ImportResult> {
-  const session = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+export async function importDraftMenuAction(
+  rows: DraftImportRow[],
+  actingRestaurantId?: string | null
+): Promise<ImportResult> {
+  const session = await requireMenuImportSession(actingRestaurantId);
+  if (!session) {
+    return { ok: false, message: "Restaurant not found." };
+  }
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
@@ -311,6 +364,7 @@ export async function importDraftMenuAction(rows: DraftImportRow[]): Promise<Imp
 
   revalidatePath("/admin/menu");
   revalidatePath(`/r/${session.restaurant.slug}`);
+  revalidatePath(`/super-admin/restaurants/${session.restaurantId}`);
   revalidatePublicRestaurantCache(session.restaurant);
 
   return {
