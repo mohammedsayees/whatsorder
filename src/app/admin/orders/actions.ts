@@ -9,6 +9,12 @@ import {
   verifyCartAgainstMenu,
   verifyCombinedOfferLimits
 } from "@/lib/order-pricing";
+import {
+  discountLimitPercentForRole,
+  exceedsDiscountLimit,
+  orderTotalsWithDiscount,
+  parseOrderDiscount
+} from "@/lib/order-discount";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import {
   clampPunchedAt,
@@ -300,10 +306,33 @@ export async function submitStaffOrderAction(
   }
 
   const notes = payloadField(payload.notes, 1000);
-  const subtotal = verified.subtotal;
   const deliveryFee =
     fulfilmentType === "delivery" ? Number(session.restaurant.delivery_fee) || 0 : 0;
-  const total = subtotal + deliveryFee;
+
+  // The discount is recomputed from the verified (server-priced) subtotal and
+  // checked against the session's role, never the device's numbers.
+  const parsedDiscount = parseOrderDiscount(payload.discount);
+  if (!parsedDiscount.ok) {
+    return { error: parsedDiscount.error };
+  }
+  const discount = parsedDiscount.discount;
+  const { subtotal, discountAmount, total } = orderTotalsWithDiscount(
+    verified.subtotal,
+    deliveryFee,
+    discount
+  );
+  if (
+    exceedsDiscountLimit(
+      subtotal,
+      discountAmount,
+      discountLimitPercentForRole(session.role, session.restaurant.staff_discount_max_percent)
+    )
+  ) {
+    return {
+      error: `This discount is above your limit of ${discountLimitPercentForRole(session.role, session.restaurant.staff_discount_max_percent)}%. Ask a manager.`
+    };
+  }
+  const hasDiscount = discountAmount > 0 && discount !== null;
 
   // The database resolves and locks the shift at punched_at during insertion.
   // Looking up the current shift here races closure and misattributes replays.
@@ -337,6 +366,12 @@ export async function submitStaffOrderAction(
       subtotal,
       delivery_fee: deliveryFee,
       total,
+      discount_amount: hasDiscount ? discountAmount : 0,
+      discount_type: hasDiscount ? discount.type : null,
+      discount_value: hasDiscount ? discount.value : null,
+      discount_reason: hasDiscount ? discount.reason : null,
+      discounted_by: hasDiscount ? session.userId : null,
+      discounted_at: hasDiscount ? new Date().toISOString() : null,
       status: orderAction.status,
       source: "staff",
 
@@ -417,7 +452,8 @@ export async function addItemsToOrderAction(
     revalidatePath("/admin/orders");
     return { success: "Items already added.", mode: replay.data.mode, order: {
       ...saved.data, items: replay.data.added_items, subtotal: Number(replay.data.added_subtotal), total: Number(replay.data.added_subtotal), delivery_fee: 0,
-      notes: `ADD-ON ITEMS · Original #${orderId.slice(-8).toUpperCase()}`, payment_method: null, status: "Preparing", loyalty_discount: 0, points_earned: 0, points_redeemed: 0
+      notes: `ADD-ON ITEMS · Original #${orderId.slice(-8).toUpperCase()}`, payment_method: null, status: "Preparing", loyalty_discount: 0, points_earned: 0, points_redeemed: 0,
+      discount_amount: 0, discount_type: null, discount_value: null, discount_reason: null
     } as Order };
   }
 
@@ -487,7 +523,8 @@ export async function addItemsToOrderAction(
     const knownMessages = [
       "Order not found",
       "Items cannot be added to a cancelled order",
-      "Items cannot be added to a completed unpaid order"
+      "Items cannot be added to a completed unpaid order",
+      "Remove the discount before changing items"
     ];
     return {
       retryUnchanged: !knownMessages.some(message => error.message.includes(message)),
@@ -518,7 +555,11 @@ export async function addItemsToOrderAction(
     points_redeemed: 0,
     status: "Preparing",
     subtotal: verified.subtotal,
-    total: verified.subtotal
+    total: verified.subtotal,
+    discount_amount: 0,
+    discount_type: null,
+    discount_value: null,
+    discount_reason: null
   };
 
   revalidatePath("/admin");
@@ -602,6 +643,7 @@ export async function reduceItemsFromOrderAction(
       "Paid orders require a refund and cannot be reduced",
       "Completed or cancelled orders cannot be reduced",
       "Orders with loyalty activity cannot be reduced here",
+      "Remove the discount before changing items",
       "The order items changed. Refresh before removing items",
       "Cannot remove more than the ordered quantity",
       "Cancel the order instead of removing every item",
@@ -638,6 +680,82 @@ export async function reduceItemsFromOrderAction(
     order: result.order,
     removedItems: result.removed_items,
     reason: result.reason ?? reason
+  };
+}
+
+export type OrderDiscountState = {
+  error?: string;
+  success?: string;
+  order?: Order;
+};
+
+const discountErrors = [
+  "Order not found",
+  "Completed or cancelled orders cannot be discounted",
+  "Paid orders cannot be discounted",
+  "Orders with an online payment cannot be discounted",
+  "Orders with loyalty activity cannot be discounted",
+  "Discount exceeds the staff limit",
+  "A discount reason is required",
+  "Enter a valid discount"
+];
+
+// Adds, changes or removes (remove=true) the discount on an open, unpaid
+// order before payment is collected. The database function locks the order,
+// re-applies the staff limit for the session's role and writes the audit row.
+export async function applyOrderDiscountAction(
+  orderId: string,
+  input: { type?: unknown; value?: unknown; reason?: unknown; remove?: boolean }
+): Promise<OrderDiscountState> {
+  const session = await requireRestaurantAdmin();
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return { error: "Order service is unavailable." };
+  }
+
+  if (!isClientOrderId(orderId)) {
+    return { error: "Order not found. Refresh and try again." };
+  }
+
+  let discount = null;
+  if (!input?.remove) {
+    const parsed = parseOrderDiscount({ type: input?.type, value: input?.value, reason: input?.reason });
+    if (!parsed.ok) {
+      return { error: parsed.error };
+    }
+    if (!parsed.discount) {
+      return { error: "Enter a discount greater than zero." };
+    }
+    discount = parsed.discount;
+  }
+
+  const { data, error } = await supabase.rpc("apply_order_discount", {
+    target_restaurant_id: session.restaurantId,
+    target_order_id: orderId,
+    requested_type: discount?.type ?? null,
+    requested_value: discount?.value ?? null,
+    requested_reason: discount?.reason ?? null,
+    event_actor_user_id: session.userId,
+    event_actor_role: session.role
+  });
+
+  if (error || !data) {
+    const known = discountErrors.find((message) => error?.message.includes(message));
+    if (known === "Discount exceeds the staff limit") {
+      return {
+        error: `This discount is above your limit of ${discountLimitPercentForRole(session.role, session.restaurant.staff_discount_max_percent)}%. Ask a manager.`
+      };
+    }
+    return { error: known ?? "The discount could not be saved. Refresh and try again." };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/orders");
+
+  return {
+    success: discount ? "Discount applied." : "Discount removed.",
+    order: data as Order
   };
 }
 

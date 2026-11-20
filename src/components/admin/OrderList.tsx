@@ -41,6 +41,8 @@ import type { OrderPaymentChange } from "@/lib/data";
 import { RiderAssignmentControl } from "@/components/admin/RiderAssignmentControl";
 import type { CustomerCreditMaps } from "@/lib/customer-credit-data";
 import { canReduceStaffOrderItems } from "@/lib/order-item-reductions";
+import { canDiscountOrder, orderDiscountLabel } from "@/lib/order-discount";
+import { OrderDiscountAction } from "@/components/admin/OrderDiscountAction";
 import { orderSource } from "@/lib/order-source";
 
 export function OrderList({
@@ -51,6 +53,7 @@ export function OrderList({
   riderAssignments = {},
   customers = [],
   customerCredit = { byCustomerId: {}, byPhone: {} },
+  discountLimitPercent = null,
   paymentChanges = {}
 }: {
   highlightedOrderId?: string;
@@ -60,6 +63,8 @@ export function OrderList({
   riderAssignments?: Record<string, OrderRiderAssignment>;
   customers?: Customer[];
   customerCredit?: CustomerCreditMaps;
+  /** Most this user may discount (% of subtotal); null = unlimited. */
+  discountLimitPercent?: number | null;
   paymentChanges?: Record<string, OrderPaymentChange>;
 }) {
   const customersByPhone = new Map(customers.map((customer) => [customer.phone, customer]));
@@ -96,9 +101,13 @@ export function OrderList({
         const timing = orderTiming(order, target, Date.now());
         const shortOrderId = order.id.slice(-8).toUpperCase();
         const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
+        const hasDiscount = Number(order.discount_amount ?? 0) > 0;
+        // Items cannot change underneath a discount on an unpaid ticket; a
+        // paid ticket's additions become a separate (undiscounted) order.
         const canAddItems =
           order.status !== "Cancelled" &&
-          !(order.status === "Completed" && order.payment_method === null);
+          !(order.status === "Completed" && order.payment_method === null) &&
+          !(hasDiscount && order.payment_method === null);
         const canRemoveItems = canReduceStaffOrderItems(order);
         const isOperational = !["Completed", "Cancelled"].includes(order.status);
 
@@ -172,6 +181,22 @@ export function OrderList({
                   </span>
                   <p className="text-lg font-black">{formatCurrency(order.total, restaurant)}</p>
                 </div>
+                {hasDiscount ? (
+                  <p className="mt-0.5 text-right text-xs font-bold text-leaf" title={order.discount_reason ?? undefined}>
+                    {orderDiscountLabel(order)} −{formatCurrency(Number(order.discount_amount), restaurant)}
+                    {order.discount_reason ? <span className="font-semibold text-stone-500"> · {order.discount_reason}</span> : null}
+                  </p>
+                ) : null}
+                {isOperational && canDiscountOrder(order) ? (
+                  <div className="text-right">
+                    <OrderDiscountAction
+                      key={`${order.id}-${order.discount_amount ?? 0}`}
+                      limitPercent={discountLimitPercent}
+                      order={order}
+                      restaurant={restaurant}
+                    />
+                  </div>
+                ) : null}
                 {order.status === "Completed" && Number(order.points_earned ?? 0) > 0 ? (
                   <p className="mt-1 flex items-center justify-end gap-1 text-sm font-bold text-leaf">
                     <Gift size={15} />

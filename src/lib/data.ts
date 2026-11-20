@@ -100,6 +100,10 @@ const orderListColumns = [
   "points_earned",
   "points_redeemed",
   "loyalty_discount",
+  "discount_amount",
+  "discount_type",
+  "discount_value",
+  "discount_reason",
   "status",
   "source",
   "consent_order_processing",
@@ -135,6 +139,10 @@ const adminOrderListColumns = [
   "points_earned",
   "points_redeemed",
   "loyalty_discount",
+  "discount_amount",
+  "discount_type",
+  "discount_value",
+  "discount_reason",
   "status",
   // Needed by the order card's source badge and canReduceStaffOrderItems
   // (the "Remove items" button only shows for staff-punched orders).
