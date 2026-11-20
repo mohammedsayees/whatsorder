@@ -6,7 +6,7 @@ import { StaffStampPhone } from "./StaffStampPhone";
 import { StaffDiscountControl, discountFromDraft, type StaffDiscountDraft } from "./StaffDiscountControl";
 import { useStaffDraft } from "./useStaffDraft";
 import { ItemGrid } from "./StaffItemGrid";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Banknote, BookUser, ChefHat, ChevronDown, CreditCard, Files, Minus, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import { recordOrderPrintEventsAction } from "@/app/actions";
 import {
@@ -67,6 +67,19 @@ const fulfilmentLabels: Record<FulfilmentType, string> = {
   dine_in: "Dine-in"
 };
 
+// Short labels for the one-row order-type control on narrow ticket columns.
+const fulfilmentShortLabels: Record<FulfilmentType, string> = {
+  delivery: "Delivery",
+  takeaway: "Takeaway",
+  car_pickup: "Car",
+  dine_in: "Dine-in"
+};
+
+// Per-device ticket density: a small counter tablet wants "compact", a big
+// screen can afford "comfortable". Stored locally; never synced.
+type TicketDensity = "comfortable" | "compact";
+const DENSITY_STORAGE_KEY = "whatsorder:pos-ticket-density";
+
 // How the punch submit resolved, shown in the ticket footer. "queued" means
 // the internet was down or too slow, so the order is safely stored on the
 // device and will sync automatically — staff can keep punching. On success the
@@ -123,6 +136,52 @@ export function StaffOrderEntry({
   const [printCustomerBill, setPrintCustomerBill] = useState(false);
   const [showPaymentPanel, setShowPaymentPanel] = useState(false);
   const additionAttemptIdRef = useRef<string | null>(null);
+  const [density, setDensity] = useState<TicketDensity>("compact");
+  // The line just added/incremented: scrolled into view and briefly
+  // highlighted so staff can confirm the tap landed in a dense list.
+  const [flash, setFlash] = useState<{ key: string; n: number } | null>(null);
+  const ticketScrollRef = useRef<HTMLDivElement>(null);
+  const lineRefs = useRef(new Map<string, HTMLDivElement>());
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+      if (stored === "comfortable" || stored === "compact") setDensity(stored);
+    } catch {
+      // Storage blocked: keep the default.
+    }
+  }, []);
+
+  function toggleDensity() {
+    const next: TicketDensity = density === "compact" ? "comfortable" : "compact";
+    setDensity(next);
+    try {
+      window.localStorage.setItem(DENSITY_STORAGE_KEY, next);
+    } catch {
+      // Not persisted; fine for this session.
+    }
+  }
+
+  useEffect(() => {
+    if (!flash) return;
+    const box = ticketScrollRef.current;
+    const row = lineRefs.current.get(flash.key);
+    // Only scroll the ticket's own list (desktop/tablet layout). On phones the
+    // ticket sits below the menu and page-scrolling there on every tap would
+    // yank staff away from the menu.
+    if (box && row && box.scrollHeight > box.clientHeight) {
+      const boxRect = box.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top < boxRect.top) box.scrollTop -= boxRect.top - rowRect.top + 8;
+      else if (rowRect.bottom > boxRect.bottom) box.scrollTop += rowRect.bottom - boxRect.bottom + 8;
+    }
+    const timer = window.setTimeout(() => setFlash(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
+  function flashLine(key: string) {
+    setFlash((current) => ({ key, n: (current?.n ?? 0) + 1 }));
+  }
 
   const { queue, syncingId, enqueue, retry, discard } = useStaffOrderQueue(restaurantId);
 
@@ -253,6 +312,7 @@ export function StaffOrderEntry({
         }
       };
     });
+    flashLine(key);
   }
 
   function changeQuantity(lineKey: string, delta: number) {
@@ -276,6 +336,15 @@ export function StaffOrderEntry({
       }
       return { ...current, [lineKey]: { ...existing, quantity: nextQuantity } };
     });
+  }
+
+  // Typed quantity (tap the number, enter 6 for six chai). 0 removes the line.
+  function setLineQuantity(lineKey: string, quantity: number) {
+    const existing = lines[lineKey];
+    if (!existing || !Number.isFinite(quantity) || quantity === existing.quantity) {
+      return;
+    }
+    changeQuantity(lineKey, Math.max(0, Math.min(999, Math.floor(quantity))) - existing.quantity);
   }
 
   function removeItem(lineKey: string) {
@@ -664,7 +733,18 @@ export function StaffOrderEntry({
               <h2 className="text-lg font-black">Current bill</h2>
               <p className="text-xs font-semibold text-stone-500">{draft?.fields.customer_name || (draft?.fields.table_number ? `Table ${draft.fields.table_number}` : "Walk-in customer")}</p>
             </div>
-            <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-600">{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                aria-label={`Ticket density: ${density}. Switch to ${density === "compact" ? "comfortable" : "compact"}`}
+                className="focus-ring rounded-full px-2 py-1 text-[11px] font-bold text-stone-500 hover:bg-stone-100"
+                onClick={toggleDensity}
+                title="Row size on this device"
+                type="button"
+              >
+                {density === "compact" ? "Compact" : "Comfortable"}
+              </button>
+              <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-600">{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+            </div>
           </div>
           {needsReview ? <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             {menuReview.ok ? "Menu prices have changed since this bill was saved." : menuReview.error}
@@ -674,26 +754,29 @@ export function StaffOrderEntry({
           </div> : null}
 
           {/* Order type stays visible while the item list scrolls. */}
-          <fieldset className="mt-3 shrink-0">
+          <fieldset className="mt-2 shrink-0">
             <legend className="sr-only">Order type</legend>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex gap-0.5 rounded-lg bg-stone-100 p-0.5">
               {orderTypes.map((type) => (
                 <button
-                  className={`focus-ring rounded-lg border px-2 py-2 text-xs font-black ${fulfilmentType === type ? "border-leaf bg-mint text-leaf" : "border-stone-200 text-stone-600 hover:bg-stone-50"}`}
+                  aria-label={fulfilmentLabels[type]}
+                  aria-pressed={fulfilmentType === type}
+                  className={`focus-ring min-h-9 min-w-0 flex-1 truncate rounded-md px-1.5 text-xs font-black ${fulfilmentType === type ? "bg-white text-leaf shadow-sm ring-1 ring-leaf/40" : "text-stone-600 hover:bg-white/60"}`}
                   key={type}
                   disabled={isAddingToOrder || !!draft?.attempt}
                   onClick={() => setFulfilmentType(type)}
+                  title={fulfilmentLabels[type]}
                   type="button"
                 >
-                  {fulfilmentLabels[type]}
+                  {fulfilmentShortLabels[type]}
                 </button>
               ))}
             </div>
           </fieldset>
 
           {/* Scrollable order body — totals and actions stay pinned below */}
-          <div className="mt-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <div className="space-y-2">
+          <div className="mt-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1" ref={ticketScrollRef}>
+          <div className="divide-y divide-stone-100">
             {ticketLines.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500">
                 Tap menu items to build the order.
@@ -705,60 +788,91 @@ export function StaffOrderEntry({
                   options: line.options
                 });
                 const optionsText = formatLineOptions(line.options);
+                const compact = density === "compact";
+                const stepperSize = compact ? "h-8 w-8" : "h-9 w-9";
 
                 return (
                   <div
-                    className="min-w-0 rounded-lg border border-stone-100 px-3 py-2"
+                    className={`flex min-w-0 items-center gap-1.5 rounded-md px-1.5 transition-colors duration-500 ${compact ? "min-h-11 py-1" : "min-h-14 py-2"} ${flash?.key === lineKey ? "bg-amber-100" : "bg-transparent"}`}
                     key={lineKey}
+                    ref={(node) => {
+                      if (node) lineRefs.current.set(lineKey, node);
+                      else lineRefs.current.delete(lineKey);
+                    }}
                   >
-                    <div className="flex min-w-0 items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className="line-clamp-2 break-words text-sm font-bold leading-tight"
-                          title={line.name}
-                        >
-                          {line.name}
-                        </p>
-                        {optionsText ? (
-                          <p className="truncate text-xs text-stone-500">{optionsText}</p>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`truncate font-semibold leading-tight ${compact ? "text-sm" : "text-[15px]"}`}
+                        title={line.name}
+                      >
+                        {line.name}
+                        {line.quantity > 1 ? (
+                          <span className="ml-1 text-xs font-medium text-stone-400">
+                            @{formatCurrency(line.price, restaurant)}
+                          </span>
                         ) : null}
-                        <p className="mt-0.5 text-xs text-stone-500">
-                          {formatCurrency(line.price, restaurant)}
-                        </p>
-                      </div>
+                      </p>
+                      {optionsText ? (
+                        <p className="truncate text-xs text-stone-500" title={optionsText}>{optionsText}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5">
                       <button
-                        aria-label={`Remove ${line.name}`}
-                        className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600"
-                        onClick={() => removeItem(lineKey)}
+                        aria-label={`Reduce ${line.name}`}
+                        className={`focus-ring grid ${stepperSize} place-items-center rounded-md border border-stone-200 hover:bg-stone-50`}
+                        onClick={() => changeQuantity(lineKey, -1)}
                         type="button"
                       >
-                        <Trash2 size={15} />
+                        <Minus size={14} />
+                      </button>
+                      <input
+                        aria-label={`Quantity of ${line.name}`}
+                        className={`focus-ring ${compact ? "h-8" : "h-9"} w-8 rounded-md bg-transparent text-center text-sm font-black tabular-nums hover:bg-stone-50 focus:bg-white`}
+                        defaultValue={line.quantity}
+                        inputMode="numeric"
+                        key={line.quantity}
+                        maxLength={3}
+                        onBlur={(event) => {
+                          const typed = Number.parseInt(event.target.value, 10);
+                          if (Number.isNaN(typed)) event.target.value = String(line.quantity);
+                          else setLineQuantity(lineKey, typed);
+                        }}
+                        onFocus={(event) => event.target.select()}
+                        onKeyDown={(event) => {
+                          // Enter commits the quantity instead of submitting the ticket.
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          } else if (event.key === "Escape") {
+                            event.currentTarget.value = String(line.quantity);
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        type="text"
+                      />
+                      <button
+                        aria-label={`Add ${line.name}`}
+                        className={`focus-ring grid ${stepperSize} place-items-center rounded-md border border-stone-200 hover:bg-stone-50`}
+                        onClick={() => {
+                          changeQuantity(lineKey, 1);
+                          flashLine(lineKey);
+                        }}
+                        type="button"
+                      >
+                        <Plus size={14} />
                       </button>
                     </div>
-                    <div className="mt-2 flex items-center gap-2 border-t border-stone-100 pt-2">
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          aria-label={`Reduce ${line.name}`}
-                          className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                          onClick={() => changeQuantity(lineKey, -1)}
-                          type="button"
-                        >
-                          <Minus size={15} />
-                        </button>
-                        <span className="w-6 text-center text-sm font-black">{line.quantity}</span>
-                        <button
-                          aria-label={`Add ${line.name}`}
-                          className="focus-ring grid h-8 w-8 place-items-center rounded-lg border border-stone-200 hover:bg-stone-50"
-                          onClick={() => changeQuantity(lineKey, 1)}
-                          type="button"
-                        >
-                          <Plus size={15} />
-                        </button>
-                      </div>
-                      <span className="ml-auto shrink-0 whitespace-nowrap text-right text-sm font-black">
-                        {formatCurrency(line.price * line.quantity, restaurant)}
-                      </span>
-                    </div>
+                    <span className={`w-[4.75rem] shrink-0 whitespace-nowrap text-right font-black tabular-nums ${compact ? "text-sm" : "text-[15px]"}`}>
+                      {formatCurrency(line.price * line.quantity, restaurant)}
+                    </span>
+                    <button
+                      aria-label={`Remove ${line.name}`}
+                      className={`focus-ring grid ${stepperSize} shrink-0 place-items-center rounded-md text-stone-400 hover:bg-rose-50 hover:text-rose-600`}
+                      onClick={() => removeItem(lineKey)}
+                      type="button"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 );
               })
@@ -961,14 +1075,14 @@ export function StaffOrderEntry({
           </div>
 
           {/* Pinned footer: totals + actions stay visible without scrolling */}
-          <div className="mt-3 shrink-0 space-y-3 border-t border-stone-100 pt-3">
+          <div className="mt-2 shrink-0 space-y-2 border-t border-stone-100 pt-2">
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-sm text-stone-600">
-                <span className="font-bold">
-                  {itemCount} item{itemCount === 1 ? "" : "s"}
-                </span>
-                <span>{formatCurrency(subtotal, restaurant)}</span>
-              </div>
+              {discountAmount > 0 || appliedDeliveryFee > 0 ? (
+                <div className="flex items-center justify-between text-sm text-stone-600">
+                  <span className="font-bold">Subtotal</span>
+                  <span>{formatCurrency(subtotal, restaurant)}</span>
+                </div>
+              ) : null}
               {discountAmount > 0 ? (
                 <div className="flex items-center justify-between text-sm text-leaf">
                   <span className="font-bold">

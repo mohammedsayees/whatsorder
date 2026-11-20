@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { stampGreetingName, stampLookupPhone, stampMessage } from "./stamp-lookup";
+import { maskedPhone, stampGreetingName, stampLookupPhone, stampMessage, stampSummary } from "./stamp-lookup";
 
 describe("stampLookupPhone", () => {
   it("normalizes complete UAE numbers the same way orders are saved", () => {
@@ -68,6 +68,20 @@ describe("staff_order_stamps migration", () => {
 
   it("awards at most one stamp per order", () => {
     expect(sql).toContain("on conflict (order_id) where type = 'earned' and order_id is not null");
+  });
+});
+
+describe("stampSummary / maskedPhone", () => {
+  it("fits the collapsed counter chip on one line", () => {
+    expect(stampSummary({ status: "off" })).toBeNull();
+    expect(stampSummary({ status: "new", required: 10, reward: "chai" })).toBe("New · first stamp");
+    expect(stampSummary({ status: "known", name: "Sara", stamps: 4, required: 10, reward: null })).toBe("Sara · 4/10 stamps");
+    expect(stampSummary({ status: "known", name: null, stamps: 10, required: 10, reward: null })).toBe("Reward ready 🎁");
+  });
+
+  it("masks the middle of the number", () => {
+    expect(maskedPhone("050 123 4123")).toBe("050…123");
+    expect(maskedPhone("0501")).toBe("0501");
   });
 });
 
