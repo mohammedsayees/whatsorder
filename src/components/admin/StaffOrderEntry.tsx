@@ -412,6 +412,7 @@ export function StaffOrderEntry({
       customerPhone: readField("customer_phone"),
       customerId: readField("credit_customer_id"),
       notes: readField("notes"),
+      redeemReward: readField("redeem_reward") === "1" && readField("customer_phone") !== "",
       discount: activeDiscount && discountAmount > 0
         ? { ...activeDiscount, reason: discountDraft.reason.trim() }
         : null
@@ -1060,8 +1061,14 @@ export function StaffOrderEntry({
                       .catch(() => {});
                   }
                 }}
+                onRedeemChange={(redeem) => {
+                  void draftStore
+                    .patch({ fields: { ...draft?.fields, redeem_reward: redeem ? "1" : "" } })
+                    .catch(() => {});
+                }}
                 phoneCountryCode={restaurant.phone_country_code ?? "971"}
                 readOnly={!!draft?.attempt || Boolean(selectedCreditCustomerId)}
+                redeem={draft?.fields.redeem_reward === "1"}
                 value={draft?.fields.customer_phone ?? ""}
               />
             ) : null}

@@ -45,6 +45,9 @@ export type StaffOrderPayload = {
   // Optional order-level discount. Re-validated (including the staff role's
   // limit) on the server when the payload is submitted or replayed.
   discount?: OrderDiscountInput | null;
+  // Staff chose "Redeem reward" for a customer whose card is full. The
+  // server re-checks the balance and redeems once per order (idempotent).
+  redeemReward?: boolean;
 };
 
 export function isStaffOrderActionKind(value: unknown): value is StaffOrderActionKind {
