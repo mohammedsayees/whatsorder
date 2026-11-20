@@ -28,3 +28,7 @@ export async function checkPromoCodeAction(slug: string, code: string, items: st
  const result = await fetch("/__promo", { method: "POST", body: JSON.stringify({ slug, code, items }) });
  return result.json();
 }
+// Counter stamp-card lookup: the fixture has no customers, so nothing to show.
+export async function lookupStampCustomerAction(_phone: string) {
+  return null;
+}
