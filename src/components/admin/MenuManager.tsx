@@ -837,7 +837,8 @@ function ItemForm({
     setAiStatus("Writing a description...");
     const result = await generateItemDescriptionAction({
       name: itemName,
-      category: categoryName(categories, categoryId)
+      category: categoryName(categories, categoryId),
+      actingRestaurantId: restaurantId
     });
     setIsGenerating(false);
 
@@ -864,7 +865,8 @@ function ItemForm({
     setAiStatus("Translating to Arabic...");
     const result = await translateItemAction({
       name: itemName,
-      description
+      description,
+      actingRestaurantId: restaurantId
     });
     setIsTranslating(false);
 

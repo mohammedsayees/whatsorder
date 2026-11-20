@@ -173,7 +173,22 @@ function kotCorrectionTicket(
   `;
 }
 
-function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
+// Only a server-generated PNG data URL is ever embedded (never a remote URL).
+function stampClaimBlock(restaurant: Restaurant, qrDataUrl: string | null | undefined) {
+  if (!qrDataUrl || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(qrDataUrl)) {
+    return "";
+  }
+  const reward = restaurant.loyalty_reward_description?.trim();
+  return `
+      <div class="stamp-claim">
+        <div class="stamp-claim-title">Collect your stamp</div>
+        <img alt="" src="${qrDataUrl}">
+        <div>Scan within 24 hours and confirm your number on WhatsApp.</div>
+        ${reward ? `<div>Collect ${escapeHtml(String(restaurant.loyalty_stamps_required ?? ""))} for a free ${escapeHtml(reward)}.</div>` : ""}
+      </div>`;
+}
+
+function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean, stampClaimQr?: string | null) {
   return `
     <section class="ticket">
       ${ticketHeader(restaurant, order, "ORDER RECEIPT", reprint)}
@@ -210,6 +225,7 @@ function receiptTicket(restaurant: Restaurant, order: Order, reprint: boolean) {
         <div>Payment: ${escapeHtml(order.payment_method === "Online Payment" ? "PAID ONLINE" : order.payment_method ?? "Unpaid")}</div>
         ${order.notes ? `<div>Notes: ${escapeHtml(order.notes)}</div>` : ""}
       </div>
+      ${stampClaimBlock(restaurant, stampClaimQr)}
       <footer>Thank you for your order.<br>This is an order receipt, not a tax invoice.</footer>
     </section>
   `;
@@ -247,6 +263,9 @@ function printableDocument(content: string, title: string) {
           .totals { border-top: 1px dashed #000; padding: 7px 0; }
           .totals > div { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
           .grand-total { border-top: 2px solid #000; margin-top: 6px !important; padding-top: 6px; font-size: 16px; font-weight: 900; }
+          .stamp-claim { border-bottom: 1px dashed #000; padding: 8px 0; text-align: center; font-size: 11px; }
+          .stamp-claim img { display: block; width: 32mm; height: 32mm; margin: 4px auto; }
+          .stamp-claim-title { font-size: 14px; font-weight: 900; }
           footer { border-top: 2px dashed #000; margin-top: 8px; padding-top: 8px; text-align: center; font-size: 10px; }
           @media screen {
             body { margin: 16px auto; box-shadow: 0 0 20px rgba(0,0,0,.15); padding: 4mm; min-height: 100vh; }
@@ -262,18 +281,21 @@ export function renderOrderTickets({
   order,
   restaurant,
   kinds,
-  reprint
+  reprint,
+  stampClaimQr = null
 }: {
   order: Order;
   restaurant: Restaurant;
   kinds: PrintKind[];
   reprint: Record<PrintKind, boolean>;
+  /** Receipt-only "Scan to collect your stamp" QR (PNG data URL). */
+  stampClaimQr?: string | null;
 }): string {
   const content = kinds
     .map((kind) =>
       kind === "kot"
         ? kotTicket(restaurant, order, reprint.kot)
-        : receiptTicket(restaurant, order, reprint.receipt)
+        : receiptTicket(restaurant, order, reprint.receipt, stampClaimQr)
     )
     .join("");
 

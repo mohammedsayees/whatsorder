@@ -85,7 +85,7 @@ const DENSITY_STORAGE_KEY = "whatsorder:pos-ticket-density";
 // device and will sync automatically — staff can keep punching. On success the
 // saved order rides along so its KOT/receipt can be printed on the spot.
 type SubmitFeedback =
-  | { kind: "success"; message: string; order?: Order }
+  | { kind: "success"; message: string; order?: Order; stampClaimQr?: string }
   | { kind: "queued"; message: string }
   | { kind: "error"; message: string };
 
@@ -481,6 +481,7 @@ export function StaffOrderEntry({
       customerPhone: readField("customer_phone"),
       customerId: readField("credit_customer_id"),
       notes: readField("notes"),
+      redeemReward: readField("redeem_reward") === "1" && readField("customer_phone") !== "",
       discount: activeDiscount && discountAmount > 0
         ? { ...activeDiscount, reason: discountDraft.reason.trim() }
         : null
@@ -527,10 +528,12 @@ export function StaffOrderEntry({
         setFeedback({ kind: "error", message: result.error });
       } else {
         await clearTicket();
+        const stampClaimQr = result.stampClaim?.qrDataUrl;
         setFeedback({
           kind: "success",
           message: result.success ?? "Order saved.",
-          order: result.order
+          order: result.order,
+          stampClaimQr
         });
         // Fire the kitchen copy automatically the moment a ticket is sent to
         // the kitchen — staff shouldn't need a second tap. The Print buttons
@@ -539,10 +542,11 @@ export function StaffOrderEntry({
         if (action === "kitchen" && result.order) {
           printSavedOrder(
             result.order,
-            printCustomerBill ? ["receipt", "kot"] : ["kot"]
+            printCustomerBill ? ["receipt", "kot"] : ["kot"],
+            stampClaimQr
           );
         } else if (action !== "kitchen" && result.order && printCustomerBill) {
-          printSavedOrder(result.order, ["receipt"]);
+          printSavedOrder(result.order, ["receipt"], stampClaimQr);
         }
       }
     } catch {
@@ -557,13 +561,14 @@ export function StaffOrderEntry({
   // Prints the just-saved order's KOT and/or receipt from the punch screen, so
   // staff never have to navigate back to the orders list. Reprints are tracked
   // the same way the orders list does.
-  function printSavedOrder(order: Order, kinds: PrintKind[]) {
+  function printSavedOrder(order: Order, kinds: PrintKind[], stampClaimQr?: string) {
     printHtmlDocument(
       renderOrderTickets({
         order,
         restaurant,
         kinds,
-        reprint: { kot: false, receipt: false }
+        reprint: { kot: false, receipt: false },
+        stampClaimQr
       })
     );
 
@@ -1141,7 +1146,7 @@ export function StaffOrderEntry({
                   </button>
                   <button
                     className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-50"
-                    onClick={() => printSavedOrder(feedback.order!, ["receipt"])}
+                    onClick={() => printSavedOrder(feedback.order!, ["receipt"], feedback.stampClaimQr)}
                     type="button"
                   >
                     <ReceiptText size={15} />
@@ -1150,7 +1155,7 @@ export function StaffOrderEntry({
                 </div>
                 <button
                   className="focus-ring mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 px-3 py-2 text-xs font-black text-stone-700 hover:bg-stone-200"
-                  onClick={() => printSavedOrder(feedback.order!, ["kot", "receipt"])}
+                  onClick={() => printSavedOrder(feedback.order!, ["kot", "receipt"], feedback.stampClaimQr)}
                   type="button"
                 >
                   <Files size={15} />
@@ -1174,8 +1179,14 @@ export function StaffOrderEntry({
                       .catch(() => {});
                   }
                 }}
+                onRedeemChange={(redeem) => {
+                  void draftStore
+                    .patch({ fields: { ...draft?.fields, redeem_reward: redeem ? "1" : "" } })
+                    .catch(() => {});
+                }}
                 phoneCountryCode={restaurant.phone_country_code ?? "971"}
                 readOnly={!!draft?.attempt || Boolean(selectedCreditCustomerId)}
+                redeem={draft?.fields.redeem_reward === "1"}
                 value={draft?.fields.customer_phone ?? ""}
               />
             ) : null}

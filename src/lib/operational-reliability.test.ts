@@ -256,6 +256,6 @@ describe("restaurant operational reliability boundaries", () => {
     expect(entry).toContain(
       'action !== "kitchen" && result.order && printCustomerBill'
     );
-    expect(entry).toContain('printSavedOrder(result.order, ["receipt"])');
+    expect(entry).toContain('printSavedOrder(result.order, ["receipt"], stampClaimQr)');
   });
 });

@@ -12,6 +12,7 @@ vi.mock("@/lib/super-admin-auth", () => ({ requireRestaurantAdmin: vi.fn() }));
 vi.mock("@/lib/data", () => ({ getMenu: vi.fn(), getMenuOffers: vi.fn(), getMenuOptionCatalog: vi.fn() }));
 vi.mock("@/lib/notification-jobs", () => ({ scheduleOrderNotifications: vi.fn() }));
 vi.mock("@/lib/web-push", () => ({ sendOrderStatusPushNotification: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 const rid = "23000000-0000-0000-0000-000000000001";
 const oid = "43000000-0000-0000-0000-000000000001";
 const payload = { restaurantId: rid, clientOrderId: oid, items: [] } as unknown as StaffOrderPayload;

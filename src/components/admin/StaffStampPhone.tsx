@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Gift, Loader2, Phone, Plus, Stamp } from "lucide-react";
+import { Check, Gift, Loader2, Phone, Plus, Stamp } from "lucide-react";
 import { lookupStampCustomerAction } from "@/app/admin/orders/actions";
 import {
   maskedPhone,
@@ -23,20 +23,25 @@ const TONES: Record<StampMessage["tone"], string> = {
  * one-line chip so it doesn't eat ticket space: "+ Add customer phone for
  * stamp" when empty, "050…123 · 4/10 stamps" once entered. A complete number
  * is looked up (exact match, this café only) to show stamp progress; saving
- * the order gives the stamp.
+ * the order gives the stamp. A full card offers "Redeem free … on this order".
  */
 export function StaffStampPhone({
   onChange,
   onGreetingName,
+  onRedeemChange,
   phoneCountryCode,
   readOnly,
+  redeem,
   value
 }: {
   onChange: (value: string) => void;
   /** Called with a returning customer's first name so the ticket can use it. */
   onGreetingName: (name: string) => void;
+  /** Staff chose (or cleared) "redeem the reward on this order". */
+  onRedeemChange: (redeem: boolean) => void;
   phoneCountryCode: string;
   readOnly: boolean;
+  redeem: boolean;
   value: string;
 }) {
   const [lookup, setLookup] = useState<StampLookup | null>(null);
@@ -46,9 +51,17 @@ export function StaffStampPhone({
   const latest = useRef<string | null>(null);
   const greet = useRef(onGreetingName);
   greet.current = onGreetingName;
+  const setRedeem = useRef(onRedeemChange);
+  setRedeem.current = onRedeemChange;
+  const [rewardLabel, setRewardLabel] = useState<string | null>(null);
+  const redeemRef = useRef(redeem);
+  redeemRef.current = redeem;
 
   useEffect(() => {
     latest.current = lookupFor;
+    // A different (or incomplete) number never keeps a reward chosen for the last one.
+    setRewardLabel(null);
+    if (redeemRef.current) setRedeem.current(false);
     if (!lookupFor) {
       setLookup(null);
       setChecking(false);
@@ -61,6 +74,11 @@ export function StaffStampPhone({
           if (latest.current !== lookupFor) return;
           setLookup(result ?? null);
           if (result?.status === "known" && result.name) greet.current(result.name);
+          setRewardLabel(
+            result?.status === "known" && result.stamps >= result.required
+              ? result.reward?.trim() || "reward"
+              : null
+          );
         })
         .catch(() => {
           // Offline or unavailable: the stamp is still given when the order syncs.
@@ -76,6 +94,26 @@ export function StaffStampPhone({
   const message = lookup ? stampMessage(lookup) : null;
   const summary = lookup ? stampSummary(lookup) : null;
   const hasValue = value.trim() !== "";
+
+  const redeemButton =
+    !checking && rewardLabel ? (
+      <button
+        aria-pressed={redeem}
+        className={`focus-ring mt-1.5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-black ${
+          redeem ? "bg-amber-500 text-white" : "border-2 border-amber-400 bg-white text-amber-900"
+        }`}
+        disabled={readOnly}
+        onClick={() => onRedeemChange(!redeem)}
+        onMouseDown={(event) => {
+          // Keep the phone field from blurring/collapsing before the click lands.
+          event.preventDefault();
+        }}
+        type="button"
+      >
+        {redeem ? <Check size={16} /> : <Gift size={16} />}
+        {redeem ? `Free ${rewardLabel} on this order · tap to undo` : `Redeem free ${rewardLabel} on this order`}
+      </button>
+    ) : null;
 
   if (editing && !readOnly) {
     return (
@@ -117,12 +155,13 @@ export function StaffStampPhone({
             Ask: &ldquo;Collect a stamp? What&apos;s your number?&rdquo;
           </p>
         ) : null}
+        {redeemButton}
       </div>
     );
   }
 
   return (
-    <>
+    <div>
       <input name="customer_phone" type="hidden" value={value} />
       {hasValue ? (
         <button
@@ -151,6 +190,7 @@ export function StaffStampPhone({
           <Plus aria-hidden size={15} /> Add customer phone for stamp
         </button>
       )}
-    </>
+      {redeemButton}
+    </div>
   );
 }
