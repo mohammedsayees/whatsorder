@@ -27,6 +27,7 @@ import {
 import { useCart } from "@/components/customer/CartProvider";
 import { CustomerAddressBook } from "@/components/customer/CustomerAddressBook";
 import { CustomerVouchers } from "@/components/customer/CustomerVouchers";
+import { PendingStampClaim } from "@/components/customer/StampClaim";
 import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -292,6 +293,7 @@ function SignedInAccount({
 
   return (
     <>
+      <PendingStampClaim restaurantSlug={restaurant.slug} t={t} />
       <section className="mt-4 grid grid-cols-3 gap-2 text-center">
         <Stat label={t("Orders", "الطلبات")} value={String(profile?.total_orders ?? orders.length)} />
         <Stat label={t("Spent", "الإنفاق")} value={money(profile?.total_spend)} />

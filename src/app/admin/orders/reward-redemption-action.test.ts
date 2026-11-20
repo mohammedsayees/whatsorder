@@ -10,6 +10,7 @@ vi.mock("@/lib/super-admin-auth", () => ({ requireRestaurantAdmin: vi.fn() }));
 vi.mock("@/lib/data", () => ({ getMenu: vi.fn(), getMenuOffers: vi.fn(), getMenuOptionCatalog: vi.fn() }));
 vi.mock("@/lib/notification-jobs", () => ({ scheduleOrderNotifications: vi.fn() }));
 vi.mock("@/lib/web-push", () => ({ sendOrderStatusPushNotification: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 
 import { submitStaffOrderAction } from "./actions";
 
@@ -104,5 +105,50 @@ describe("counter reward redemption", () => {
 
     expect(result.error).toContain("different restaurant");
     expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("receipt stamp-claim QR", () => {
+  it("attaches a claim link and QR to a saved order without a phone", async () => {
+    vi.stubEnv("CUSTOMER_AUTH_SECRET", "x".repeat(48));
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.test");
+    vi.mocked(requireRestaurantAdmin).mockResolvedValue({
+      restaurantId: rid,
+      userId: "actor",
+      role: "staff",
+      restaurant: { id: rid, slug: "chaixpress", country_code: "AE", loyalty_enabled: true, loyalty_stamps_required: 7 }
+    } as never);
+    const walkIn = { id: oid, customer_phone: "", status: "Completed" };
+    const query = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: walkIn, error: null })
+    };
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from: vi.fn(() => query), rpc: vi.fn() } as never);
+
+    const result = await submitStaffOrderAction(payload(false));
+
+    expect(result.stampClaim?.url).toMatch(/^https:\/\/app\.test\/r\/chaixpress\/stamp\?t=/);
+    expect(result.stampClaim?.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+    vi.unstubAllEnvs();
+  });
+
+  it("adds no QR when the order already has a phone or loyalty is off", async () => {
+    vi.stubEnv("CUSTOMER_AUTH_SECRET", "x".repeat(48));
+    mockDb({ data: null, error: null });
+    expect((await submitStaffOrderAction(payload(false))).stampClaim).toBeUndefined();
+
+    vi.mocked(requireRestaurantAdmin).mockResolvedValue({
+      restaurantId: rid,
+      restaurant: { id: rid, slug: "chaixpress", loyalty_enabled: false, loyalty_stamps_required: 7 }
+    } as never);
+    const query = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: oid, customer_phone: "", status: "Completed" }, error: null })
+    };
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from: vi.fn(() => query) } as never);
+    expect((await submitStaffOrderAction(payload(false))).stampClaim).toBeUndefined();
+    vi.unstubAllEnvs();
   });
 });

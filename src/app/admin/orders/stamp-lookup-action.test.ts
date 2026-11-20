@@ -9,6 +9,7 @@ vi.mock("@/lib/super-admin-auth", () => ({ requireRestaurantAdmin: vi.fn() }));
 vi.mock("@/lib/data", () => ({ getMenu: vi.fn(), getMenuOffers: vi.fn(), getMenuOptionCatalog: vi.fn() }));
 vi.mock("@/lib/notification-jobs", () => ({ scheduleOrderNotifications: vi.fn() }));
 vi.mock("@/lib/web-push", () => ({ sendOrderStatusPushNotification: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 
 import { lookupStampCustomerAction } from "./actions";
 
