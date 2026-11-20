@@ -1,11 +1,12 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Loader2, Plus, TicketPercent, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Plus, TicketPercent, Trash2 } from "lucide-react";
 import {
   createPromoCodeAction,
   deletePromoCodeAction,
   setPromoCodeActiveAction,
+  setPromoCodeVisibilityAction,
   type PromoCodeActionState
 } from "@/app/admin/marketing/promo-codes/actions";
 import { formatCurrency } from "@/lib/currency";
@@ -107,6 +108,15 @@ export function PromoCodesManager({
           <input className="h-4 w-4 accent-emerald-600" name="first_order_only" type="checkbox" />
           First order only (new customers)
         </label>
+        <label className="flex items-start gap-2 text-sm font-bold">
+          <input className="mt-0.5 h-4 w-4 accent-emerald-600" name="show_in_account" type="checkbox" />
+          <span>
+            Show to signed-in customers
+            <span className="block text-xs font-normal text-stone-500">
+              Listed on their account page and offered at checkout. Leave off for codes you share privately.
+            </span>
+          </span>
+        </label>
         <label className="block">
           <span className="text-sm font-bold">Note <span className="font-normal text-stone-400">(only you see this)</span></span>
           <input className={inputClass} maxLength={200} name="description" placeholder="e.g. Instagram launch" />
@@ -145,6 +155,11 @@ export function PromoCodesManager({
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-mono text-lg font-black tracking-wide">{code.code}</h3>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${status.className}`}>{status.label}</span>
+                      {code.showInAccount ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-black text-sky-800">
+                          <Eye size={12} /> Shown to customers
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-0.5 text-sm font-bold text-leaf">{describePromo(code, money)}</p>
                     {rules.length > 0 ? <p className="mt-0.5 text-xs text-stone-500">{rules.join(" · ")}</p> : null}
@@ -163,6 +178,14 @@ export function PromoCodesManager({
                     <input name="is_active" type="hidden" value={code.isActive ? "false" : "true"} />
                     <button className="focus-ring rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:opacity-50" disabled={rowPending} type="submit">
                       {code.isActive ? "Turn off" : "Turn on"}
+                    </button>
+                  </form>
+                  <form action={(data) => runRowAction(setPromoCodeVisibilityAction, data)}>
+                    <input name="id" type="hidden" value={code.id} />
+                    <input name="show_in_account" type="hidden" value={code.showInAccount ? "false" : "true"} />
+                    <button className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:opacity-50" disabled={rowPending} type="submit">
+                      {code.showInAccount ? <EyeOff size={13} /> : <Eye size={13} />}
+                      {code.showInAccount ? "Hide from customers" : "Show to customers"}
                     </button>
                   </form>
                   {code.timesUsed === 0 ? (

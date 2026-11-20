@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { Loader2, TicketPercent, X } from "lucide-react";
 import { checkPromoCodeAction } from "@/app/r/[restaurantSlug]/checkout/actions";
 import { formatCurrency } from "@/lib/currency";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
 import { computePromoDiscount, describePromo, type PromoTerms } from "@/lib/promo-codes";
+import { describeVoucher, type CustomerVoucher } from "@/lib/customer-vouchers";
 import type { CartLine, PublicRestaurant } from "@/lib/types";
 
 const copy = {
@@ -15,7 +16,8 @@ const copy = {
     apply: "Apply",
     remove: "Remove promo code",
     belowMinimum: (amount: string) => `Add ${amount} more to use this code.`,
-    failed: "The code could not be checked. Please try again."
+    failed: "The code could not be checked. Please try again.",
+    yourVouchers: "Your vouchers"
   },
   ar: {
     toggle: "هل لديك رمز خصم؟",
@@ -23,7 +25,8 @@ const copy = {
     apply: "تطبيق",
     remove: "إزالة رمز الخصم",
     belowMinimum: (amount: string) => `أضف ${amount} لاستخدام هذا الرمز.`,
-    failed: "تعذر التحقق من الرمز. حاول مرة أخرى."
+    failed: "تعذر التحقق من الرمز. حاول مرة أخرى.",
+    yourVouchers: "قسائمك"
   }
 } as const;
 
@@ -32,18 +35,24 @@ const copy = {
 // re-checked (with the customer's phone) when the order is sent.
 export function PromoCodeField({
   applied,
+  initialCode = null,
   language,
   lines,
   onChange,
   restaurant,
-  subtotal
+  subtotal,
+  vouchers = []
 }: {
   applied: PromoTerms | null;
+  /** Validated ?promo= from a voucher link: applied once on mount. */
+  initialCode?: string | null;
   language: CustomerLanguage;
   lines: CartLine[];
   onChange: (terms: PromoTerms | null) => void;
   restaurant: PublicRestaurant;
   subtotal: number;
+  /** Signed-in customer's usable vouchers, offered as one-tap chips. */
+  vouchers?: CustomerVoucher[];
 }) {
   const t = copy[language];
   const id = useId();
@@ -51,6 +60,18 @@ export function PromoCodeField({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, startCheck] = useTransition();
+  const autoApplied = useRef(false);
+
+  useEffect(() => {
+    if (autoApplied.current || !initialCode || applied || lines.length === 0) {
+      return;
+    }
+    autoApplied.current = true;
+    setOpen(true);
+    apply(initialCode);
+    // Runs once, when the cart first has items.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode, lines.length]);
 
   if (applied) {
     const amount = computePromoDiscount(applied, subtotal);
@@ -79,21 +100,49 @@ export function PromoCodeField({
     );
   }
 
+  const voucherChips =
+    vouchers.length > 0 ? (
+      <div className="mb-2">
+        <p className="text-xs font-black text-stone-500">{t.yourVouchers}</p>
+        <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
+          {vouchers.map((voucher) => (
+            <button
+              className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-full border border-leaf/40 bg-mint/40 px-3 py-1.5 text-xs font-black text-leaf disabled:opacity-50"
+              disabled={checking}
+              key={voucher.code}
+              onClick={() => apply(voucher.code)}
+              type="button"
+            >
+              <TicketPercent size={13} />
+              <span dir="ltr">{voucher.code}</span>
+              <span className="font-semibold text-stone-600">
+                · {describeVoucher(voucher, language, (value) => formatCurrency(value, restaurant))}
+              </span>
+            </button>
+          ))}
+        </div>
+        {!open && error ? <p className="mt-1 text-xs font-bold text-rose-700" role="alert">{error}</p> : null}
+      </div>
+    ) : null;
+
   if (!open) {
     return (
-      <button
-        className="focus-ring inline-flex items-center gap-1.5 rounded px-1 text-sm font-bold text-leaf hover:underline"
-        onClick={() => setOpen(true)}
-        type="button"
-      >
-        <TicketPercent size={15} />
-        {t.toggle}
-      </button>
+      <div>
+        {voucherChips}
+        <button
+          className="focus-ring inline-flex items-center gap-1.5 rounded px-1 text-sm font-bold text-leaf hover:underline"
+          onClick={() => setOpen(true)}
+          type="button"
+        >
+          <TicketPercent size={15} />
+          {t.toggle}
+        </button>
+      </div>
     );
   }
 
-  function apply() {
-    const trimmed = code.trim();
+  function apply(codeToApply?: string) {
+    const trimmed = (codeToApply ?? code).trim();
     if (!trimmed || checking) {
       return;
     }
@@ -115,6 +164,7 @@ export function PromoCodeField({
 
   return (
     <div>
+      {voucherChips}
       <label className="sr-only" htmlFor={`${id}-code`}>{t.label}</label>
       <div className="flex gap-2">
         <input
@@ -137,7 +187,7 @@ export function PromoCodeField({
         <button
           className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-ink px-4 text-sm font-black text-white disabled:opacity-50"
           disabled={checking || !code.trim()}
-          onClick={apply}
+          onClick={() => apply()}
           type="button"
         >
           {checking ? <Loader2 className="animate-spin" size={15} /> : null}

@@ -98,9 +98,18 @@ describe("parsePromoCodeForm", () => {
         code: "EID10", description: null, discount_type: "percent", discount_value: 10,
         max_discount: 5, min_subtotal: 20,
         starts_at: "2026-11-30T20:00:00.000Z", ends_at: "2026-12-03T19:59:59.000Z",
-        max_redemptions: 100, max_redemptions_per_customer: 1, first_order_only: true
+        max_redemptions: 100, max_redemptions_per_customer: 1, first_order_only: true,
+        show_in_account: false
       }
     });
+  });
+
+  it("keeps codes private unless the owner opts in to showing them", () => {
+    const base = { code: "SHOWME", discount_type: "fixed", discount_value: "5" };
+    const hidden = parsePromoCodeForm(form(base), dubai);
+    const shown = parsePromoCodeForm(form({ ...base, show_in_account: "on" }), dubai);
+    expect(hidden.ok && hidden.value.show_in_account).toBe(false);
+    expect(shown.ok && shown.value.show_in_account).toBe(true);
   });
 
   it("treats blank limits as unlimited and ignores a cap on fixed codes", () => {

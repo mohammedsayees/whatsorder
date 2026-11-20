@@ -23,6 +23,7 @@ import {
   Share2,
   ShoppingBag,
   Star,
+  UserRound,
   Users,
   X
 } from "lucide-react";
@@ -672,6 +673,14 @@ export function RestaurantMenu({
 
               <div className="flex items-center gap-2">
                 <LanguageToggle language={language} setLanguage={setLanguage} />
+                <Link
+                  aria-label={t.myAccount}
+                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
+                  href={`/r/${restaurant.slug}/account`}
+                  prefetch={false}
+                >
+                  <UserRound size={18} />
+                </Link>
                 <button
                   aria-label={t.shareMenu}
                   className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"

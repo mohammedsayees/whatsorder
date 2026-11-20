@@ -18,6 +18,7 @@ import {
   Utensils
 } from "lucide-react";
 import { createOrderAction } from "@/app/r/[restaurantSlug]/checkout/actions";
+import { saveCustomerAddressAction } from "@/app/r/[restaurantSlug]/account/actions";
 import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import {
   ADDRESS_LIMITS,
@@ -38,6 +39,13 @@ import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
 import { FulfilmentSelector } from "@/components/customer/FulfilmentSelector";
 import { PromoCodeField } from "@/components/customer/PromoCodeField";
+import { SavedAddressPicker, SaveAddressToggle } from "@/components/customer/SavedAddressPicker";
+import {
+  isSameAddress,
+  MAX_SAVED_ADDRESSES,
+  type SavedAddress
+} from "@/lib/customer-addresses";
+import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
@@ -53,6 +61,19 @@ type CapturedLocation = {
   mapsUrl: string;
 };
 
+function savedPinLocation(
+  address: Pick<SavedAddress, "latitude" | "longitude">
+): CapturedLocation | null {
+  if (address.latitude === null || address.longitude === null) {
+    return null;
+  }
+  return {
+    latitude: address.latitude,
+    longitude: address.longitude,
+    mapsUrl: `https://www.google.com/maps?q=${address.latitude},${address.longitude}`
+  };
+}
+
 // Checkout-only copy, kept out of customer-i18n so the menu bundle stays small.
 const ADDRESS_COPY = {
   en: {
@@ -65,6 +86,8 @@ const ADDRESS_COPY = {
     remember: "Remember my details on this device for next time",
     usingSaved: "Using details saved on this device.",
     savedPin: "Using your saved location pin.",
+    homeLabel: "Home",
+    addressLabel: "Address",
     forget: "Forget them"
   },
   ar: {
@@ -77,6 +100,8 @@ const ADDRESS_COPY = {
     remember: "تذكر بياناتي على هذا الجهاز للمرة القادمة",
     usingSaved: "نستخدم البيانات المحفوظة على هذا الجهاز.",
     savedPin: "نستخدم موقعك المحفوظ.",
+    homeLabel: "المنزل",
+    addressLabel: "عنوان",
     forget: "احذفها"
   }
 } as const;
@@ -97,23 +122,35 @@ type PendingWhatsAppOrder = {
 
 export function CheckoutForm({
   attributionSource = null,
+  initialPromoCode = null,
   initialTableNumber = "",
   onboardingTest = false,
   onlinePaymentAvailable = false,
   prefill = null,
   restaurant,
-  suggestions = null
+  savedAddresses = [],
+  signedIn = false,
+  suggestions = null,
+  vouchers = []
 }: {
   /** Validated ?src= token from the store link, stored on the order. */
   attributionSource?: string | null;
+  /** Validated ?promo= from a voucher link; applied once the cart loads. */
+  initialPromoCode?: string | null;
   initialTableNumber?: string;
   onboardingTest?: boolean;
   /** The restaurant's Stripe account can take card payments now. */
   onlinePaymentAvailable?: boolean;
   prefill?: CustomerProfile | null;
   restaurant: PublicRestaurant;
+  /** Signed-in customer's address book at this café (default first). */
+  savedAddresses?: SavedAddress[];
+  /** A customer session exists for this café (enables "save address"). */
+  signedIn?: boolean;
   /** "Goes well with your order" data; null hides the suggestion. */
   suggestions?: CheckoutSuggestions | null;
+  /** Signed-in customer's usable vouchers at this café. */
+  vouchers?: CustomerVoucher[];
 }) {
   const router = useRouter();
   const cart = useCart();
@@ -148,18 +185,37 @@ export function CheckoutForm({
     }
   }, [restaurant.slug]);
   // Contact and address fields are controlled so details remembered on this
-  // device can fill them after mount. A signed-in profile seeds them first.
-  const [details, setDetails] = useState<SavedCustomerDetails>(() => ({
-    name: prefill?.name ?? "",
-    phone: prefill?.phone ?? "",
-    area: prefill?.delivery_area ?? "",
-    building: "",
-    flat: "",
-    details: prefill?.delivery_address ?? prefill?.default_address_text ?? "",
-    landmark: prefill?.default_landmark ?? "",
-    latitude: null,
-    longitude: null
-  }));
+  // device can fill them after mount. A signed-in profile seeds them first;
+  // a saved account address (default first) beats the profile's last address.
+  const accountAddress =
+    savedAddresses.find((address) => address.is_default) ?? savedAddresses[0] ?? null;
+  const [details, setDetails] = useState<SavedCustomerDetails>(() =>
+    accountAddress
+      ? {
+          name: prefill?.name ?? "",
+          phone: prefill?.phone ?? "",
+          area: accountAddress.area,
+          building: accountAddress.building,
+          flat: accountAddress.flat,
+          details: accountAddress.details,
+          landmark: accountAddress.landmark,
+          latitude: accountAddress.latitude,
+          longitude: accountAddress.longitude
+        }
+      : {
+          name: prefill?.name ?? "",
+          phone: prefill?.phone ?? "",
+          area: prefill?.delivery_area ?? "",
+          building: "",
+          flat: "",
+          details: prefill?.delivery_address ?? prefill?.default_address_text ?? "",
+          landmark: prefill?.default_landmark ?? "",
+          latitude: null,
+          longitude: null
+        }
+  );
+  const [saveAddressToAccount, setSaveAddressToAccount] = useState(true);
+  const [newAddressLabel, setNewAddressLabel] = useState("");
   const [rememberDetails, setRememberDetails] = useState(true);
   const [hasSavedDetails, setHasSavedDetails] = useState(false);
   const detailsStorageKey = savedDetailsStorageKey(restaurant.slug);
@@ -172,8 +228,12 @@ export function CheckoutForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [fallbackWhatsappUrl, setFallbackWhatsappUrl] = useState<string | null>(null);
-  const [location, setLocation] = useState<CapturedLocation | null>(null);
-  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [location, setLocation] = useState<CapturedLocation | null>(() =>
+    accountAddress ? savedPinLocation(accountAddress) : null
+  );
+  const [locationMessage, setLocationMessage] = useState<string | null>(() =>
+    accountAddress && accountAddress.latitude !== null ? ADDRESS_COPY.en.savedPin : null
+  );
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
@@ -210,6 +270,84 @@ export function CheckoutForm({
   const addressCopy = ADDRESS_COPY[language];
   const composedAddress = composeDeliveryAddress(details, language);
 
+  const hasAccountAddress = accountAddress !== null;
+  // The highlighted saved address is whichever one the fields still match.
+  const selectedAddressId =
+    savedAddresses.find((address) => isSameAddress(address, details))?.id ?? null;
+  const showSaveAddress =
+    signedIn &&
+    fulfilmentType === "delivery" &&
+    selectedAddressId === null &&
+    savedAddresses.length < MAX_SAVED_ADDRESSES &&
+    Boolean(details.area.trim() || details.building.trim() || details.details.trim());
+
+  function applySavedAddress(address: SavedAddress) {
+    setDetails((current) => ({
+      ...current,
+      area: address.area,
+      building: address.building,
+      flat: address.flat,
+      details: address.details,
+      landmark: address.landmark,
+      latitude: address.latitude,
+      longitude: address.longitude
+    }));
+    const pin = savedPinLocation(address);
+    setLocation(pin);
+    setLocationError(null);
+    setLocationMessage(pin ? addressCopy.savedPin : null);
+  }
+
+  function startNewAddress() {
+    setDetails((current) => ({
+      ...current,
+      area: "",
+      building: "",
+      flat: "",
+      details: "",
+      landmark: "",
+      latitude: null,
+      longitude: null
+    }));
+    setLocation(null);
+    setLocationError(null);
+    setLocationMessage(null);
+  }
+
+  // Best-effort after the order is saved: never blocks or fails the order.
+  async function saveAddressAfterOrder() {
+    if (!showSaveAddress || !saveAddressToAccount) {
+      return;
+    }
+    const label =
+      newAddressLabel.trim() ||
+      (savedAddresses.length === 0
+        ? addressCopy.homeLabel
+        : `${addressCopy.addressLabel} ${savedAddresses.length + 1}`);
+    try {
+      await Promise.race([
+        saveCustomerAddressAction(
+          restaurant.slug,
+          null,
+          {
+            label,
+            area: details.area,
+            building: details.building,
+            flat: details.flat,
+            details: details.details,
+            landmark: details.landmark,
+            latitude: location?.latitude ?? null,
+            longitude: location?.longitude ?? null
+          },
+          false
+        ),
+        new Promise((resolve) => window.setTimeout(resolve, 2500))
+      ]);
+    } catch {
+      // Saving the address is a convenience; the order is already placed.
+    }
+  }
+
   useEffect(() => {
     let saved: SavedCustomerDetails | null = null;
 
@@ -225,20 +363,29 @@ export function CheckoutForm({
 
     const restored = saved;
     setHasSavedDetails(true);
-    // Fill only what the signed-in profile left blank.
-    setDetails((current) => ({
-      name: current.name || restored.name,
-      phone: current.phone || restored.phone,
-      area: current.area || restored.area,
-      building: current.building || restored.building,
-      flat: current.flat || restored.flat,
-      details: current.details || restored.details,
-      landmark: current.landmark || restored.landmark,
-      latitude: restored.latitude,
-      longitude: restored.longitude
-    }));
+    // Fill only what the signed-in profile left blank. A saved account
+    // address owns the address fields; the device copy only adds contact info.
+    setDetails((current) =>
+      hasAccountAddress
+        ? {
+            ...current,
+            name: current.name || restored.name,
+            phone: current.phone || restored.phone
+          }
+        : {
+            name: current.name || restored.name,
+            phone: current.phone || restored.phone,
+            area: current.area || restored.area,
+            building: current.building || restored.building,
+            flat: current.flat || restored.flat,
+            details: current.details || restored.details,
+            landmark: current.landmark || restored.landmark,
+            latitude: restored.latitude,
+            longitude: restored.longitude
+          }
+    );
 
-    if (restored.latitude !== null && restored.longitude !== null) {
+    if (!hasAccountAddress && restored.latitude !== null && restored.longitude !== null) {
       const { latitude, longitude } = restored;
       setLocationMessage(ADDRESS_COPY[language].savedPin);
       setLocation((current) =>
@@ -428,6 +575,7 @@ export function CheckoutForm({
       }
 
       persistDetails();
+      await saveAddressAfterOrder();
 
       if (groupHandoff?.organiserToken) {
         // Lets colleagues see "placed"; best-effort, never blocks the order.
@@ -754,11 +902,13 @@ export function CheckoutForm({
           <div className="mt-3 border-t border-stone-200 pt-3">
             <PromoCodeField
               applied={appliedPromo}
+              initialCode={initialPromoCode}
               language={language}
               lines={cart.lines}
               onChange={setAppliedPromo}
               restaurant={restaurant}
               subtotal={cart.subtotal}
+              vouchers={vouchers}
             />
           </div>
           <div className="mt-3 space-y-1.5 border-t border-stone-200 pt-3 text-sm">
@@ -912,6 +1062,14 @@ export function CheckoutForm({
                 </p>
               ) : null}
 
+              <SavedAddressPicker
+                addresses={savedAddresses}
+                language={language}
+                onNew={startNewAddress}
+                onSelect={applySavedAddress}
+                selectedId={selectedAddressId}
+              />
+
               <div className="mt-4 space-y-4">
                 <input name="delivery_address" readOnly type="hidden" value={composedAddress} />
                 <label className="block">
@@ -979,6 +1137,15 @@ export function CheckoutForm({
                     value={details.landmark}
                   />
                 </details>
+                {showSaveAddress ? (
+                  <SaveAddressToggle
+                    checked={saveAddressToAccount}
+                    label={newAddressLabel}
+                    language={language}
+                    onCheckedChange={setSaveAddressToAccount}
+                    onLabelChange={setNewAddressLabel}
+                  />
+                ) : null}
               </div>
             </section>
           ) : fulfilmentType === "takeaway" ? (

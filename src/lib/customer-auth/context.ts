@@ -10,8 +10,7 @@
 // hits get_customer_context (service_role-only, bypasses RLS), so this must
 // stay server-only.
 
-import { getCustomerSession } from "@/lib/customer-auth/cookies";
-import { isSessionRevoked } from "@/lib/customer-auth/one-time";
+import { resolveCustomerSession } from "@/lib/customer-auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { CartLine } from "@/lib/types";
 
@@ -75,29 +74,15 @@ const COLD_OPEN: CustomerContext = {
 export async function loadCustomerContext(
   restaurantId: string
 ): Promise<CustomerContext> {
-  const identity = await getCustomerSession(restaurantId);
-  if (!identity) {
+  const session = await resolveCustomerSession(restaurantId);
+  if (session.status === "signed_out") {
     return COLD_OPEN;
   }
+  const { identity } = session;
 
   const supabase = getSupabaseAdmin();
-  if (!supabase) {
+  if (session.status === "unavailable" || !supabase) {
     return { ...COLD_OPEN, signedIn: true, phone: identity.phone, error: "service_unavailable" };
-  }
-
-  // Staff can sign a customer out on every device (e.g. a forwarded login
-  // link). Fail closed: if the check can't run, treat as signed out.
-  const { data: revocation, error: revocationError } = await supabase
-    .from("customer_session_revocations")
-    .select("revoked_before")
-    .eq("restaurant_id", identity.restaurantId)
-    .eq("phone", identity.phone)
-    .maybeSingle();
-  if (
-    revocationError ||
-    isSessionRevoked(identity.issuedAt, revocation?.revoked_before as string | undefined)
-  ) {
-    return COLD_OPEN;
   }
 
   const { data, error } = await supabase.rpc("get_customer_context", {

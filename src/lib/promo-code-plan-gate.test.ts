@@ -22,7 +22,7 @@ describe("promo code plan gate", () => {
     );
     expect(context).toContain('if (!tenantHasFeature(access, "campaigns")) {');
     expect(context).toContain('planUpgradeMessage("campaigns")');
-    for (const action of ["createPromoCodeAction", "setPromoCodeActiveAction", "deletePromoCodeAction"]) {
+    for (const action of ["createPromoCodeAction", "setPromoCodeActiveAction", "setPromoCodeVisibilityAction", "deletePromoCodeAction"]) {
       const body = actions.slice(actions.indexOf(`export async function ${action}`));
       expect(body.slice(0, body.indexOf("supabase"))).toContain("await promoContext()");
     }

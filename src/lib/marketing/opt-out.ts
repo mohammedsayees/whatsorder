@@ -48,7 +48,8 @@ export function isMarketingOptOutKeyword(text: string | null | undefined): boole
 
 export type MarketingConsentSource =
   | "restaurant_recorded_stop"
-  | "customer_replied_stop";
+  | "customer_replied_stop"
+  | "customer_account";
 
 /** The customers-row update that withdraws marketing consent. */
 export function marketingConsentWithdrawalFields(
