@@ -58,7 +58,10 @@ export default async function NewCampaignPage({
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-      <MarketingTabs active="campaigns" />
+      <MarketingTabs
+        active="campaigns"
+        canEditLoyalty={session.role === "owner" || session.role === "restaurant_admin"}
+      />
       <Link
         className="focus-ring mt-4 inline-flex items-center gap-2 text-sm font-black text-stone-600 hover:text-ink"
         href={`/admin/customers?segment=${activeSegment}${query.q ? `&q=${encodeURIComponent(query.q)}` : ""}`}

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // part of Marketing (Growth plan); codes already shared keep working at
 // checkout on any plan, because customer ordering is never plan-gated.
 export default async function PromoCodesPage() {
-  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const { restaurant, role } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   await requirePlanFeature(restaurant.id, "campaigns");
   const access = await getTenantAccess(restaurant.id);
   if (isManagementBlocked(access.access)) {
@@ -23,7 +23,7 @@ export default async function PromoCodesPage() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <MarketingTabs active="promo" />
+      <MarketingTabs active="promo" canEditLoyalty={role === "owner" || role === "restaurant_admin"} />
       <h1 className="mt-4 text-2xl font-black text-ink">Promo codes</h1>
       <p className="mt-1 text-sm text-stone-600">
         Customers enter a code at checkout on your menu link. The discount comes off the items, never the delivery fee.

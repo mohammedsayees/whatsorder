@@ -10,7 +10,7 @@ import { requireRestaurantRole } from "@/lib/super-admin-auth";
 // Offers inside the Marketing section. Same OffersManager (and the same
 // server actions) as the Menu page, so both stay in step.
 export default async function MarketingOffersPage() {
-  const { restaurant } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
+  const { restaurant, role } = await requireRestaurantRole(["restaurant_admin", "owner", "manager"]);
   const access = await getTenantAccess(restaurant.id);
   if (isManagementBlocked(access.access)) {
     return <BillingSoftBlock surface="Offers" />;
@@ -21,7 +21,10 @@ export default async function MarketingOffersPage() {
   ]);
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <MarketingTabs active="offers" />
+      <MarketingTabs
+        active="offers"
+        canEditLoyalty={role === "owner" || role === "restaurant_admin"}
+      />
       <h1 className="mt-4 text-2xl font-black text-ink">Offers</h1>
       <p className="mt-1 text-sm text-stone-600">
         Active offers show on your menu and can be turned into posters.

@@ -5,7 +5,7 @@ import { getStoreShareAssets } from "@/lib/store-share-assets";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
 export default async function StoreSharePage() {
-  const { restaurant } = await requireRestaurantRole([
+  const { restaurant, role } = await requireRestaurantRole([
     "owner",
     "restaurant_admin",
     "manager"
@@ -18,7 +18,7 @@ export default async function StoreSharePage() {
   return (
     <>
       <div className="mx-auto max-w-5xl px-4 pt-6 lg:px-8">
-        <MarketingTabs active="share" />
+        <MarketingTabs active="share" canEditLoyalty={role === "owner" || role === "restaurant_admin"} />
       </div>
       <StoreShareKit
         linkUrl={assets.linkUrl}
