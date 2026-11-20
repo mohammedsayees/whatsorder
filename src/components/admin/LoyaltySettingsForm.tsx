@@ -13,7 +13,6 @@ export function LoyaltySettingsForm({
       action={updateLoyaltySettingsAction}
       className="max-w-2xl rounded-lg border border-stone-200 bg-white p-5 shadow-sm"
     >
-      <h2 className="text-lg font-black">Loyalty stamp card</h2>
       <p className="mt-1 text-sm text-stone-500">
         Customers collect one stamp per completed order. Only the owner or restaurant admin can
         change these terms.
@@ -98,7 +97,7 @@ export function LoyaltySettingsForm({
         disabled={!canWrite}
         type="submit"
       >
-        Save loyalty terms
+        Save changes
       </button>
     </form>
   );

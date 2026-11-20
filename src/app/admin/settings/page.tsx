@@ -1,4 +1,4 @@
-import { LoyaltySettingsForm } from "@/components/admin/LoyaltySettingsForm";
+import Link from "next/link";
 import { PosterBrandingForm } from "@/components/admin/PosterBrandingForm";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
@@ -150,7 +150,12 @@ export default async function AdminSettingsPage({
       ) : null}
       {canEditLoyalty ? (
         <div className="mt-6">
-          <LoyaltySettingsForm restaurant={restaurant} canWrite={canWrite} />
+          <Link
+            className="focus-ring inline-flex rounded-lg px-3 py-2 text-sm font-bold text-leaf hover:underline"
+            href="/admin/marketing/loyalty"
+          >
+            Manage loyalty in Marketing
+          </Link>
         </div>
       ) : null}
       {canEditPosterBranding && posterPalette ? (

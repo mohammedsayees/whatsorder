@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { MarketingTabs } from "@/components/admin/MarketingTabs";
 import { PosterStudio } from "@/components/admin/PosterStudio";
 import { formatCurrency } from "@/lib/currency";
@@ -18,7 +20,7 @@ import {
   POSTER_THEME_IDS,
   isPosterThemeId
 } from "@/lib/poster/themes";
-import { requirePlanFeature } from "@/lib/plan-gates";
+import { planAllows, planUpgradeMessage, upgradeHref } from "@/lib/plan-gates";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
@@ -130,7 +132,22 @@ export default async function MarketingPage() {
     "owner",
     "manager"
   ]);
-  await requirePlanFeature(session.restaurantId, "campaigns");
+  const canEditLoyalty = session.role === "owner" || session.role === "restaurant_admin";
+  if (!(await planAllows(session.restaurantId, "campaigns"))) {
+    return (
+      <main className="mx-auto max-w-5xl px-4 py-6 lg:px-8">
+        <MarketingTabs active="posters" canEditLoyalty={canEditLoyalty} />
+        <h1 className="mt-4 text-2xl font-black text-ink">Posters</h1>
+        <p className="mt-1 text-sm text-stone-600">{planUpgradeMessage("campaigns")}</p>
+        <Link
+          className="focus-ring mt-4 inline-flex rounded-lg px-3 py-2 text-sm font-bold text-leaf hover:underline"
+          href={upgradeHref("campaigns")}
+        >
+          View upgrade options
+        </Link>
+      </main>
+    );
+  }
 
   const [bestsellers, newItems, allOffers, history, sendAvailability] = await Promise.all([
     getBestsellerOptions(session.restaurantId, session.restaurant),
@@ -163,7 +180,10 @@ export default async function MarketingPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 lg:px-8">
-      <MarketingTabs active="posters" />
+      <MarketingTabs
+        active="posters"
+        canEditLoyalty={canEditLoyalty}
+      />
       <h1 className="mt-4 text-2xl font-black text-ink">Marketing</h1>
       <p className="mt-1 text-sm text-stone-600">
         Turn your menu into ready-to-post WhatsApp posters — no design work.

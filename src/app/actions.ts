@@ -953,7 +953,8 @@ export async function updateLoyaltySettingsAction(formData: FormData) {
     .eq("id", restaurant.id);
   databaseFailure("Loyalty settings update", error);
 
-  revalidatePath("/admin/settings");
+  revalidatePath("/admin/marketing/loyalty");
+  revalidatePath("/admin/marketing");
   revalidatePath("/admin/customers");
 }
 
