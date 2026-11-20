@@ -10,6 +10,7 @@ import {
   Circle,
   ClipboardList,
   Mail,
+  MessageCircle,
   ShoppingBag,
   UserPlus,
   Users
@@ -31,6 +32,11 @@ import { OffersManager } from "@/components/admin/OffersManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
+import {
+  buildOwnerHandoverMessage,
+  buildWhatsAppUrl,
+  getOwnerAccessState
+} from "@/lib/owner-handover";
 import { getPublicAppUrl, getSuperAdminRestaurant } from "@/lib/super-admin-data";
 
 const tabs = [
@@ -88,6 +94,18 @@ export default async function SuperAdminRestaurantDetailPage({
   const formatDate = (value: string | null | undefined) =>
     value ? formatRestaurantShortDateTime(value, restaurant) : "Not available";
   const menuUrl = `${getPublicAppUrl()}/r/${restaurant.slug}`;
+  const ownerAccessState = getOwnerAccessState(ownerMembership);
+  const ownerHandoverWhatsAppUrl = buildWhatsAppUrl(
+    buildOwnerHandoverMessage({
+      restaurantName: restaurant.name,
+      ownerName: restaurant.owner_name,
+      ownerEmail: ownerMembership?.email ?? restaurant.owner_email,
+      storeUrl: menuUrl,
+      loginUrl: `${getPublicAppUrl()}/admin-login`,
+      accessState: ownerAccessState
+    }),
+    restaurant.owner_phone
+  );
   const onboardingPercent =
     restaurant.onboarding_total > 0
       ? Math.round((restaurant.onboarding_completed / restaurant.onboarding_total) * 100)
@@ -329,6 +347,34 @@ export default async function SuperAdminRestaurantDetailPage({
                     Add owner email
                   </Link>
                 )}
+              </div>
+            </article>
+
+            <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="text-leaf" size={18} />
+                    <h2 className="text-lg font-black">Send handover on WhatsApp</h2>
+                  </div>
+                  <p className="mt-2 text-sm text-stone-500">
+                    {restaurant.owner_phone
+                      ? `Opens a chat with ${restaurant.owner_phone} with the store link and dashboard sign-in ready to send.`
+                      : "No owner phone saved, so WhatsApp will ask you to pick the contact. Add one in Settings to skip that."}
+                    {ownerAccessState === "not_invited"
+                      ? " Send the email invite first so the owner can set a password."
+                      : null}
+                  </p>
+                </div>
+                <a
+                  className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-3 text-sm font-black text-ink"
+                  href={ownerHandoverWhatsAppUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <MessageCircle size={17} />
+                  Send on WhatsApp
+                </a>
               </div>
             </article>
 
