@@ -175,8 +175,8 @@ function SignedOut({
         <>
           <p className="mt-1 text-sm font-semibold text-stone-600">
             {t(
-              `Send ${restaurantName} a message on WhatsApp and we'll reply with your sign-in link.`,
-              `أرسل رسالة إلى ${restaurantName} على واتساب وسنرد عليك برابط تسجيل الدخول.`
+              `Tap below: WhatsApp opens a chat with ${restaurantName} with "Login" already typed. Press send and we'll reply with your sign-in link.`,
+              `اضغط أدناه: سيفتح واتساب محادثة مع ${restaurantName} مع كتابة "Login". اضغط إرسال وسنرد عليك برابط تسجيل الدخول.`
             )}
           </p>
           <a

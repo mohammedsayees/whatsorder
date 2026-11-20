@@ -6,6 +6,7 @@ const sendText = vi.fn(async (..._args: unknown[]) => "web:reply");
 const handleOrder = vi.fn(async (..._args: unknown[]) => false);
 const generateAi = vi.fn();
 const recordOutbound = vi.fn(async (..._args: unknown[]) => undefined);
+const mintLink = vi.fn(async (..._args: unknown[]) => "tok-123");
 let existingMessage: { id: string } | null = null;
 
 vi.mock("@/lib/whatsapp-web-signing", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/lib/chat-inbox", () => ({
   getChatConversationByPhone: vi.fn(),
   isRecentDuplicateBotReply: vi.fn(),
   isChatAutomationActive: vi.fn(),
+  maskCustomerLinkToken: (body: string) => body.replace(/([?&]token=)[^&\s]+/g, "$1•••"),
   recordBotReply: vi.fn(),
   recordInboundChatMessages: vi.fn(async () => undefined),
   recordOutboundChatMessage: (...args: unknown[]) => recordOutbound(...args),
@@ -36,6 +38,9 @@ vi.mock("@/lib/whatsapp-ordering", () => ({
 vi.mock("@/lib/marketing/consent", () => ({
   withdrawMarketingConsentByPhone: (...args: unknown[]) => withdraw(...args)
 }));
+vi.mock("@/lib/customer-auth/tokens", () => ({
+  mintLinkToken: (...args: unknown[]) => mintLink(...args)
+}));
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return { ...actual, after: vi.fn() };
@@ -51,7 +56,7 @@ function query(table: string) {
         return { data: { restaurant_id: "rest-1", connector_session_id: "s1" } };
       }
       if (table === "whatsapp_messages") return { data: existingMessage };
-      if (table === "restaurants") return { data: { name: "Chai Xpress" } };
+      if (table === "restaurants") return { data: { name: "Chai Xpress", slug: "chaixpress" } };
       return { data: null };
     },
     then: (resolve: (value: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve)
@@ -79,7 +84,7 @@ function messageEvent(body: string) {
 
 beforeEach(() => {
   existingMessage = null;
-  for (const mock of [withdraw, sendText, handleOrder, generateAi, recordOutbound, vi.mocked(after)]) {
+  for (const mock of [withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, vi.mocked(after)]) {
     mock.mockClear();
   }
 });
@@ -115,5 +120,43 @@ describe("WhatsApp Web connector STOP handling", () => {
     expect(withdraw).not.toHaveBeenCalled();
     expect(handleOrder).toHaveBeenCalledTimes(1);
     expect(after).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("WhatsApp Web connector sign-in keyword", () => {
+  it("replies with a one-time link to the account page and skips ordering and the AI", async () => {
+    const response = await POST(messageEvent("Login"));
+    expect(response.status).toBe(200);
+    expect(mintLink).toHaveBeenCalledWith({ restaurantId: "rest-1", phone: "971500000001" });
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [restaurantId, to, reply] = sendText.mock.calls[0] as [string, string, string];
+    expect(restaurantId).toBe("rest-1");
+    expect(to).toBe("971500000001");
+    expect(reply).toContain("Chai Xpress");
+    expect(reply).toContain("/api/customer/link?token=tok-123&next=%2Fr%2Fchaixpress%2Faccount");
+    expect(handleOrder).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("stores only a redacted copy of the link in the chat history", async () => {
+    await POST(messageEvent("حسابي"));
+    const stored = recordOutbound.mock.calls[0][0] as { body: string; senderType: string };
+    expect(stored.body).toContain("token=•••");
+    expect(stored.body).not.toContain("tok-123");
+    expect(stored.senderType).toBe("system");
+  });
+
+  it("does not send a second link on a connector retry", async () => {
+    existingMessage = { id: "row" };
+    await POST(messageEvent("login"));
+    expect(mintLink).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(handleOrder).not.toHaveBeenCalled();
+  });
+
+  it("leaves sentences that merely mention an account to ordering and the AI", async () => {
+    await POST(messageEvent("my account shows the wrong order"));
+    expect(mintLink).not.toHaveBeenCalled();
+    expect(handleOrder).toHaveBeenCalledTimes(1);
   });
 });
