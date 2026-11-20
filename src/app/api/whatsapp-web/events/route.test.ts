@@ -16,6 +16,7 @@ vi.mock("@/lib/whatsapp-web-signing", () => ({
 }));
 vi.mock("@/lib/chat-inbox", () => ({
   getChatConversationByPhone: vi.fn(),
+  getChatMessages: vi.fn(async () => []),
   isRecentDuplicateBotReply: vi.fn(),
   isChatAutomationActive: vi.fn(),
   maskCustomerLinkToken: (body: string) => body.replace(/([?&]token=)[^&\s]+/g, "$1•••"),

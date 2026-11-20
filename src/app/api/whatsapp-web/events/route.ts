@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import {
   getChatConversationByPhone,
+  getChatMessages,
   isRecentDuplicateBotReply,
   isChatAutomationActive,
   maskCustomerLinkToken,
@@ -86,11 +87,26 @@ async function runReceptionist(input: {
   );
   if (!conversation || !isChatAutomationActive(conversation)) return;
 
+  // Last few messages (this one included, so drop it) give the AI context.
+  const recent = await getChatMessages(input.restaurantId, conversation.id, 11);
+  const history = recent
+    .slice(0, -1)
+    .map((m) => ({
+      from: m.direction === "inbound" ? ("customer" as const) : ("restaurant" as const),
+      text:
+        m.message_type === "text"
+          ? m.body.slice(0, 300)
+          : `[${m.message_type}]`
+    }));
+
   const result = await generateWhatsAppAiReply({
     restaurantId: input.restaurantId,
     text: input.text,
     baseUrl: input.baseUrl,
     settings,
+    phone: input.phone,
+    history,
+    isVoiceNote: input.type === "audio",
     allowWelcome: shouldSendWhatsAppWelcome(conversation.last_bot_reply_at),
     ...(input.audioBase64 && input.audioMime
       ? { audio: { base64: input.audioBase64, mimeType: input.audioMime } }
