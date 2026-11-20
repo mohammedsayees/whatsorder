@@ -7,6 +7,8 @@ import { useStaffOrderQueue } from "@/components/admin/StaffOrderQueue";
 import { demoRestaurant } from "@/lib/demo-data";
 import type { StaffOrderPayload } from "@/lib/staff-order-payload";
 import { StaffOrderEntry } from "@/components/admin/StaffOrderEntry";
+import { PromoCodeField } from "@/components/customer/PromoCodeField";
+import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
 import { BillingBanner } from "@/components/admin/BillingBanner";
 import type { MenuCategory, MenuItem, MenuOptionCatalog, MenuWithCategories } from "@/lib/types";
@@ -39,6 +41,14 @@ function Queue({ restaurantId }: { restaurantId: string }) {
  return <><button onClick={() => enqueue({ restaurantId, clientOrderId: crypto.randomUUID(), items: [], action: "kitchen" } as unknown as StaffOrderPayload, 5)}>Queue ticket</button>
  <p data-testid="queue-count">{queue.length}</p><p data-testid="attempts">{queue[0]?.attempts ?? 0}</p>{queue.map(entry => <p key={entry.clientOrderId}>{entry.restaurantId}</p>)}</>;
 }
+function PromoFixture() {
+ const [terms, setTerms] = useState<PromoTerms | null>(null);
+ const [subtotal, setSubtotal] = useState(30);
+ const discount = terms ? computePromoDiscount(terms, subtotal) : 0;
+ return <><PromoCodeField applied={terms} language="en" lines={[{ item_id: "tea", name: "Tea", price: 10, quantity: subtotal / 10 }]} onChange={setTerms} restaurant={demoRestaurant} subtotal={subtotal} />
+  <button onClick={() => setSubtotal(10)}>Shrink cart</button>
+  <p data-testid="discount">{discount}</p><p data-testid="total">{subtotal - discount}</p></>;
+}
 function Fixture() {
  const mode = new URLSearchParams(location.search).get("mode");
  const [restaurantId, setRestaurantId] = useState("restaurant-a");
@@ -53,6 +63,7 @@ function Fixture() {
   const stale = mode === "status-rider-stale";
   return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000cc", status: "Out for Delivery", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Rider order", created_at: new Date(Date.now() - 25 * 60_000).toISOString(), fulfilment_type:"delivery", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: { name: "Ravi", phone: "971501234567", location: stale ? null : { distanceKm: 1.24, updatedAt: new Date(Date.now() - 30_000).toISOString(), mapsUrl: "https://www.google.com/maps?q=25.4,55.5" } } }} />;
  }
+ if (mode === "promo") return <PromoFixture />;
  if (mode === "billing-autopay-failed") return <BillingBanner autopayFailure="insufficient_funds" billingHref="/admin/billing" status="active" />;
  if (mode === "status-paying" || mode === "status-paid") {
   const paid = mode === "status-paid";

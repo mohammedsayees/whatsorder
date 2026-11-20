@@ -24,3 +24,7 @@ export async function applyOrderDiscountAction(orderId: string, input: unknown) 
  const result = await fetch("/__discount", { method: "POST", body: JSON.stringify({ orderId, input }) });
  return result.json();
 }
+export async function checkPromoCodeAction(slug: string, code: string, items: string) {
+ const result = await fetch("/__promo", { method: "POST", body: JSON.stringify({ slug, code, items }) });
+ return result.json();
+}

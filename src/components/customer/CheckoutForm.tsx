@@ -37,6 +37,8 @@ import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { evaluateDeliveryRange } from "@/lib/geo";
 import { useCart } from "@/components/customer/CartProvider";
 import { FulfilmentSelector } from "@/components/customer/FulfilmentSelector";
+import { PromoCodeField } from "@/components/customer/PromoCodeField";
+import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
@@ -176,7 +178,10 @@ export function CheckoutForm({
   const [isLocating, setIsLocating] = useState(false);
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<PendingWhatsAppOrder | null>(null);
   const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
-  const total = cart.subtotal + appliedDeliveryFee;
+  // Preview only: the server re-checks the code and recomputes the amount.
+  const [appliedPromo, setAppliedPromo] = useState<PromoTerms | null>(null);
+  const promoAmount = appliedPromo ? computePromoDiscount(appliedPromo, cart.subtotal) : 0;
+  const total = Math.round((cart.subtotal - promoAmount + appliedDeliveryFee) * 100) / 100;
   const amountRemaining = minimumOrderRemaining(
     cart.subtotal,
     restaurant.minimum_order_amount
@@ -746,11 +751,27 @@ export function CheckoutForm({
               </div>
             </div>
           ) : null}
+          <div className="mt-3 border-t border-stone-200 pt-3">
+            <PromoCodeField
+              applied={appliedPromo}
+              language={language}
+              lines={cart.lines}
+              onChange={setAppliedPromo}
+              restaurant={restaurant}
+              subtotal={cart.subtotal}
+            />
+          </div>
           <div className="mt-3 space-y-1.5 border-t border-stone-200 pt-3 text-sm">
             <div className="flex justify-between">
               <span>{t.subtotal}</span>
               <strong>{formatCurrency(cart.subtotal, restaurant)}</strong>
             </div>
+            {appliedPromo && promoAmount > 0 ? (
+              <div className="flex justify-between text-leaf">
+                <span>{language === "ar" ? `خصم (${appliedPromo.code})` : `Promo ${appliedPromo.code}`}</span>
+                <strong>−{formatCurrency(promoAmount, restaurant)}</strong>
+              </div>
+            ) : null}
             {fulfilmentType === "delivery" ? (
               <div className="flex justify-between">
                 <span>{t.deliveryFee}</span>
@@ -780,6 +801,8 @@ export function CheckoutForm({
           ) : null}
           <input name="submission_token" readOnly type="hidden" value={submissionToken} />
           <input name="fulfilment_type" readOnly type="hidden" value={fulfilmentType} />
+          {/* Sent only while the code actually discounts this cart. */}
+          <input name="promo_code" readOnly type="hidden" value={appliedPromo && promoAmount > 0 ? appliedPromo.code : ""} />
           <input name="items" type="hidden" />
           <input name="notes" readOnly type="hidden" value={combinedNotes} />
           <input name="delivery_latitude" readOnly type="hidden" value={location?.latitude ?? ""} />

@@ -23,6 +23,13 @@ import { getCustomerLanguage } from "@/lib/customer-i18n";
 import { isRestaurantOpen } from "@/lib/opening-hours";
 import { isValidCustomerPhone, parseAndValidateCart } from "@/lib/security";
 import { verifyCartAgainstMenu } from "@/lib/order-pricing";
+import { evaluatePromoCode } from "@/lib/promo-code-data";
+import {
+  normalizePromoCode,
+  promoErrorFromDatabase,
+  PROMO_ERRORS,
+  type PromoTerms
+} from "@/lib/promo-codes";
 import { loyaltyLineForOrder } from "@/lib/loyalty-progress";
 import {
   getConfiguredWebPushPublicKey,
@@ -71,7 +78,10 @@ function decimalValue(formData: FormData, key: string) {
 
 type OrderRateLimitResult = "allowed" | "blocked" | "unavailable";
 
-async function checkOrderRateLimit(restaurantId: string): Promise<OrderRateLimitResult> {
+async function checkOrderRateLimit(
+  restaurantId: string,
+  scope: "order" | "promo" = "order"
+): Promise<OrderRateLimitResult> {
   const requestHeaders = await headers();
   const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = requestHeaders.get("x-real-ip")?.trim();
@@ -89,13 +99,15 @@ async function checkOrderRateLimit(restaurantId: string): Promise<OrderRateLimit
     return process.env.NODE_ENV === "production" ? "unavailable" : "allowed";
   }
 
+  // Promo checks use their own bucket so trying a code never eats into the
+  // order allowance (and vice versa), and codes cannot be guessed quickly.
   const fingerprint = createHash("sha256")
-    .update(`${restaurantId}:${clientIp}`)
+    .update(scope === "order" ? `${restaurantId}:${clientIp}` : `${restaurantId}:promo:${clientIp}`)
     .digest("hex");
   const { data, error } = await supabase.rpc("check_order_submission_rate_limit", {
     target_restaurant_id: restaurantId,
     target_client_fingerprint: fingerprint,
-    attempt_limit: 8,
+    attempt_limit: scope === "order" ? 8 : 15,
     window_size_seconds: 600
   });
 
@@ -329,7 +341,26 @@ export async function createOrderAction(
   }
 
   const appliedDeliveryFee = fulfilmentType === "delivery" ? restaurant.delivery_fee : 0;
-  const total = subtotal + appliedDeliveryFee;
+
+  // Promo code: checked on the server-priced subtotal (after the minimum
+  // order check, which uses the pre-discount subtotal) and for this phone.
+  // create_order_with_customer_v6 re-checks it under a lock when saving.
+  const promoCode = normalizePromoCode(stringValue(formData, "promo_code"));
+  let promo: { code: string; amount: number } | null = null;
+  if (promoCode) {
+    const evaluation = await evaluatePromoCode(restaurant.id, promoCode, subtotal, customerPhone);
+    if (!evaluation.ok) {
+      return {
+        ok: false,
+        error: evaluation.unavailable
+          ? evaluation.error
+          : `${evaluation.error} Remove the code to order without it.`
+      };
+    }
+    promo = { code: evaluation.promo.code, amount: evaluation.amount };
+  }
+  const promoAmount = promo?.amount ?? 0;
+  const total = Math.round((subtotal - promoAmount + appliedDeliveryFee) * 100) / 100;
   // Future payment gateway support can reserve an unpaid payment intent here before WhatsApp opens.
   const message = buildWhatsAppMessage({
     restaurant,
@@ -349,6 +380,7 @@ export async function createOrderAction(
     subtotal,
     deliveryFee: appliedDeliveryFee,
     total,
+    promo,
     language: orderLanguage
   });
   const consentTimestamp = new Date().toISOString();
@@ -394,7 +426,7 @@ export async function createOrderAction(
   const loyaltyLine = await loyaltyLineForOrder(supabase, restaurant.id, customerPhone);
   const whatsappMessage = loyaltyLine ? `${message}\n\n${loyaltyLine}` : message;
 
-  const { data, error } = await supabase.rpc("create_order_with_customer_v5", {
+  const { data, error } = await supabase.rpc("create_order_with_customer_v6", {
     target_restaurant_id: restaurant.id,
     order_customer_name: customerName,
     order_customer_phone: customerPhone,
@@ -423,8 +455,22 @@ export async function createOrderAction(
     order_consent_processing: consentOrderProcessing,
     order_consent_marketing: consentMarketing,
     order_consent_timestamp: consentTimestamp,
-    order_submission_token: submissionToken
+    order_submission_token: submissionToken,
+    order_promo_code: promo?.code ?? null,
+    order_discount_amount: promoAmount
   });
+
+  // A promo the database refused (used up meanwhile, already used, changed):
+  // nothing was saved. No WhatsApp fallback — its text carries the discount.
+  const promoError = error ? promoErrorFromDatabase(error.message) : null;
+  if (promoError) {
+    return {
+      ok: false,
+      error: promoError === PROMO_ERRORS.changed
+        ? promoError
+        : `${promoError} Remove the code to order without it.`
+    };
+  }
 
   if (error) {
     console.error("WhatsOrder order persistence failed", {
@@ -568,4 +614,59 @@ async function recordOrderAttribution(
       restaurantId
     });
   }
+}
+
+export type CheckPromoCodeResult =
+  | { ok: true; terms: PromoTerms; amount: number }
+  | { ok: false; error: string };
+
+// The checkout's "Apply" button. Re-prices the cart like createOrderAction
+// so the preview uses trusted prices; nothing is saved. Per-customer rules
+// (already used, first order only) are checked again when the order is sent.
+export async function checkPromoCodeAction(
+  restaurantSlug: string,
+  rawCode: string,
+  itemsJson: string
+): Promise<CheckPromoCodeResult> {
+  const restaurant = await getRestaurantBySlug(restaurantSlug);
+  if (!restaurant) {
+    return { ok: false, error: "Restaurant not found." };
+  }
+
+  const code = normalizePromoCode(rawCode);
+  if (!code) {
+    return { ok: false, error: "Enter a promo code." };
+  }
+
+  const rateLimit = await checkOrderRateLimit(restaurant.id, "promo");
+  if (rateLimit !== "allowed") {
+    return { ok: false, error: "Too many attempts. Please wait a few minutes and try again." };
+  }
+
+  let items: CartLine[];
+  try {
+    items = parseAndValidateCart(itemsJson);
+  } catch {
+    return { ok: false, error: "Your cart could not be read. Please refresh and try again." };
+  }
+  if (items.length === 0) {
+    return { ok: false, error: "Add items before applying a promo code." };
+  }
+
+  const [menu, offers, optionCatalog] = await Promise.all([
+    getMenu(restaurant.id),
+    getMenuOffers(restaurant.id),
+    getMenuOptionCatalog(restaurant.id, { failClosed: true })
+  ]);
+  const verified = verifyCartAgainstMenu(items, menu, offers, optionCatalog);
+  if (!verified.ok) {
+    return { ok: false, error: verified.error };
+  }
+
+  const evaluation = await evaluatePromoCode(restaurant.id, code, verified.subtotal, null);
+  if (!evaluation.ok) {
+    return { ok: false, error: evaluation.error };
+  }
+
+  return { ok: true, terms: evaluation.terms, amount: evaluation.amount };
 }

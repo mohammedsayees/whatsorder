@@ -9,8 +9,8 @@ describe("order attribution (customer path)", () => {
 
   it("leaves the order RPC and its arguments unchanged", () => {
     const rpcCall = actions.slice(
-      actions.indexOf('supabase.rpc("create_order_with_customer_v5"'),
-      actions.indexOf("if (error) {", actions.indexOf('supabase.rpc("create_order_with_customer_v5"'))
+      actions.indexOf('supabase.rpc("create_order_with_customer_v6"'),
+      actions.indexOf("if (error) {", actions.indexOf('supabase.rpc("create_order_with_customer_v6"'))
     );
     expect(rpcCall).not.toContain("attribution");
   });

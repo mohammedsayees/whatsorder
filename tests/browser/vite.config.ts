@@ -9,6 +9,7 @@ export default defineConfig({
   { find: "@/app/admin/orders/quick-product-actions", replacement: path("./fixture/actions.ts") },
   { find: "@/app/admin/orders/actions", replacement: path("./fixture/actions.ts") },
   { find: "@/app/actions", replacement: path("./fixture/actions.ts") },
+  { find: "@/app/r/[restaurantSlug]/checkout/actions", replacement: path("./fixture/actions.ts") },
   { find: "next/link", replacement: path("./fixture/link.tsx") },
   { find: "next/image", replacement: path("./fixture/image.tsx") },
   { find: "next/navigation", replacement: path("./fixture/navigation.ts") },
