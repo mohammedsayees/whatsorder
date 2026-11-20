@@ -118,7 +118,17 @@ async function downscaleToFile(file: File, maxEdge: number): Promise<File> {
   return blob ? new File([blob], "menu-item.jpg", { type: "image/jpeg" }) : file;
 }
 
-export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
+export function MenuImport({
+  restaurant,
+  actingRestaurantId,
+  doneHref = "/admin/menu"
+}: {
+  restaurant: Restaurant;
+  /** Set only on the Super Admin page: the restaurant being built for. */
+  actingRestaurantId?: string;
+  /** Where to go after publishing. */
+  doneHref?: string;
+}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -178,7 +188,8 @@ export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
       try {
         const result = await extractMenuPageAction({
           imageBase64: dataUrlToBase64(page.dataUrl),
-          mimeType: "image/jpeg"
+          mimeType: "image/jpeg",
+          actingRestaurantId
         });
 
         if (result.ok) {
@@ -230,6 +241,9 @@ export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
       const formData = new FormData();
       formData.set("image", optimized);
       formData.set("item_name", rows.find((row) => row.id === id)?.name || "menu-item");
+      if (actingRestaurantId) {
+        formData.set("restaurant_id", actingRestaurantId);
+      }
       const result = await uploadMenuItemImageAction(formData);
       if (result.ok) {
         updateRow(id, { imageUrl: result.publicUrl });
@@ -251,7 +265,8 @@ export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
     setWritingDescriptions(true);
     setError(null);
     const result = await generateMenuDescriptionsAction(
-      targets.map((row) => ({ name: row.name, category: row.category }))
+      targets.map((row) => ({ name: row.name, category: row.category })),
+      actingRestaurantId
     );
     setWritingDescriptions(false);
 
@@ -281,12 +296,13 @@ export function MenuImport({ restaurant }: { restaurant: Restaurant }) {
         price: row.price,
         is_featured: row.is_featured,
         image_url: row.imageUrl
-      }))
+      })),
+      actingRestaurantId
     );
     setPublishing(false);
 
     if (result.ok) {
-      router.push("/admin/menu");
+      router.push(doneHref);
       router.refresh();
     } else {
       setError(result.message);

@@ -12,6 +12,7 @@ import {
   Mail,
   MessageCircle,
   ShoppingBag,
+  Sparkles,
   UserPlus,
   Users
 } from "lucide-react";
@@ -524,6 +525,27 @@ export default async function SuperAdminRestaurantDetailPage({
 
         {activeTab === "menu" ? (
           <div className="space-y-6">
+            <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="text-leaf" size={18} />
+                    <h2 className="text-lg font-black">Build the menu with AI</h2>
+                  </div>
+                  <p className="mt-2 text-sm text-stone-500">
+                    Upload a photo or PDF of the printed menu. The AI reads items, prices and Arabic
+                    names, and you review everything before it goes live.
+                  </p>
+                </div>
+                <Link
+                  className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white"
+                  href={`/super-admin/restaurants/${restaurant.id}/menu-import`}
+                >
+                  <Sparkles size={17} />
+                  Import menu with AI
+                </Link>
+              </div>
+            </article>
             <OffersManager
               canWrite
               items={items}
