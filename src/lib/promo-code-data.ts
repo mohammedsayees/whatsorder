@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { countCodeRecipients } from "@/lib/promo-assignment-data";
 import {
   checkPromoAvailability,
   computePromoDiscount,
@@ -26,10 +27,11 @@ type PromoCodeRow = {
   max_redemptions_per_customer: number | null;
   first_order_only: boolean;
   is_active: boolean;
+  audience?: string | null;
 };
 
 const PROMO_COLUMNS =
-  "id, code, description, discount_type, discount_value, max_discount, min_subtotal, starts_at, ends_at, max_redemptions, max_redemptions_per_customer, first_order_only, is_active";
+  "id, code, description, discount_type, discount_value, max_discount, min_subtotal, starts_at, ends_at, max_redemptions, max_redemptions_per_customer, first_order_only, is_active, audience";
 
 function rowToPromo(row: PromoCodeRow): PromoCode {
   return {
@@ -45,7 +47,8 @@ function rowToPromo(row: PromoCodeRow): PromoCode {
     maxRedemptions: row.max_redemptions,
     maxRedemptionsPerCustomer: row.max_redemptions_per_customer,
     firstOrderOnly: row.first_order_only,
-    isActive: row.is_active
+    isActive: row.is_active,
+    audience: row.audience === "assigned" ? "assigned" : "everyone"
   };
 }
 
@@ -104,9 +107,14 @@ export async function evaluatePromoCode(
     return availability;
   }
 
+  // Assigned (personal) codes are checked against the phone at submit; the
+  // phone-less "Apply" preview defers that, like the per-customer limits.
   const needsUsage =
     promo.maxRedemptions !== null ||
-    (customerPhone !== null && (promo.maxRedemptionsPerCustomer !== null || promo.firstOrderOnly));
+    (customerPhone !== null &&
+      (promo.maxRedemptionsPerCustomer !== null ||
+        promo.firstOrderOnly ||
+        promo.audience === "assigned"));
 
   if (needsUsage) {
     const usage = await supabase.rpc("get_promo_code_usage", {
@@ -122,6 +130,7 @@ export async function evaluatePromoCode(
       total_used: number;
       customer_used: number;
       customer_has_orders: boolean;
+      customer_assigned?: boolean;
     };
     if (promo.maxRedemptions !== null && Number(counts.total_used) >= promo.maxRedemptions) {
       return { ok: false, error: PROMO_ERRORS.fullyUsed };
@@ -135,6 +144,9 @@ export async function evaluatePromoCode(
       }
       if (promo.firstOrderOnly && counts.customer_has_orders) {
         return { ok: false, error: PROMO_ERRORS.firstOrderOnly };
+      }
+      if (promo.audience === "assigned" && counts.customer_assigned !== true) {
+        return { ok: false, error: PROMO_ERRORS.notForYou };
       }
     }
   }
@@ -152,6 +164,8 @@ export type PromoCodeWithUsage = PromoCode & {
   createdAt: string;
   /** Listed for signed-in customers (account page and checkout chips). */
   showInAccount: boolean;
+  /** For personal (assigned) codes: how many customers have it. */
+  recipientCount: number;
   timesUsed: number;
   totalDiscount: number;
 };
@@ -163,7 +177,7 @@ export async function listPromoCodes(restaurantId: string): Promise<PromoCodeWit
     return [];
   }
 
-  const [codes, redemptions] = await Promise.all([
+  const [codes, redemptions, recipients] = await Promise.all([
     supabase
       .from("promo_codes")
       .select(`${PROMO_COLUMNS}, created_at, show_in_account`)
@@ -172,7 +186,8 @@ export async function listPromoCodes(restaurantId: string): Promise<PromoCodeWit
     supabase
       .from("promo_code_redemptions")
       .select("promo_code_id, discount_amount")
-      .eq("restaurant_id", restaurantId)
+      .eq("restaurant_id", restaurantId),
+    countCodeRecipients(supabase, restaurantId)
   ]);
 
   if (codes.error) {
@@ -191,6 +206,7 @@ export async function listPromoCodes(restaurantId: string): Promise<PromoCodeWit
     ...rowToPromo(row),
     createdAt: row.created_at,
     showInAccount: row.show_in_account === true,
+    recipientCount: recipients.get(row.id) ?? 0,
     timesUsed: usage.get(row.id)?.count ?? 0,
     totalDiscount: Math.round((usage.get(row.id)?.total ?? 0) * 100) / 100
   }));

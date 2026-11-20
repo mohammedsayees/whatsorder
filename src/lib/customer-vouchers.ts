@@ -17,6 +17,8 @@ export interface CustomerVoucher {
   minSubtotal: number;
   endsAt: string | null;
   firstOrderOnly: boolean;
+  /** Assigned to this customer by the café (not a public code). */
+  personal: boolean;
   /** Remaining uses for this customer; null = no per-customer limit. */
   usesLeft: number | null;
 }
@@ -52,6 +54,7 @@ export function parseCustomerVouchers(data: unknown): CustomerVoucher[] {
         minSubtotal: Math.max(0, money(source.min_subtotal) ?? 0),
         endsAt: typeof source.ends_at === "string" ? source.ends_at : null,
         firstOrderOnly: source.first_order_only === true,
+        personal: source.personal === true,
         usesLeft: usesLeft === null ? null : Math.max(0, Math.floor(usesLeft))
       }
     ];

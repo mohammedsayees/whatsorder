@@ -26,7 +26,8 @@ const save10: PromoCode = {
   maxRedemptions: null,
   maxRedemptionsPerCustomer: 1,
   firstOrderOnly: false,
-  isActive: true
+  isActive: true,
+  audience: "everyone"
 };
 
 describe("promo code format", () => {
@@ -99,7 +100,7 @@ describe("parsePromoCodeForm", () => {
         max_discount: 5, min_subtotal: 20,
         starts_at: "2026-11-30T20:00:00.000Z", ends_at: "2026-12-03T19:59:59.000Z",
         max_redemptions: 100, max_redemptions_per_customer: 1, first_order_only: true,
-        show_in_account: false
+        show_in_account: false, audience: "everyone"
       }
     });
   });
@@ -110,6 +111,23 @@ describe("parsePromoCodeForm", () => {
     const shown = parsePromoCodeForm(form({ ...base, show_in_account: "on" }), dubai);
     expect(hidden.ok && hidden.value.show_in_account).toBe(false);
     expect(shown.ok && shown.value.show_in_account).toBe(true);
+  });
+
+  it("makes personal codes private to their recipients", () => {
+    const personal = parsePromoCodeForm(
+      form({ code: "JUSTYOU", discount_type: "fixed", discount_value: "5", audience: "assigned", show_in_account: "on" }),
+      dubai
+    );
+    expect(personal.ok && personal.value.audience).toBe("assigned");
+    // Never listed publicly, even if the box was ticked.
+    expect(personal.ok && personal.value.show_in_account).toBe(false);
+    const unknown = parsePromoCodeForm(form({ code: "ANYONE", discount_type: "fixed", discount_value: "5", audience: "vip" }), dubai);
+    expect(unknown.ok && unknown.value.audience).toBe("everyone");
+  });
+
+  it("maps the personal-code refusal before the generic invalid message", () => {
+    expect(promoErrorFromDatabase("Promo code is not valid for this customer")).toBe(PROMO_ERRORS.notForYou);
+    expect(promoErrorFromDatabase("Promo code is not valid")).toBe(PROMO_ERRORS.invalid);
   });
 
   it("treats blank limits as unlimited and ignores a cap on fixed codes", () => {
