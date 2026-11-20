@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Eye, EyeOff, Loader2, Plus, TicketPercent, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Plus, TicketPercent, Trash2, Users } from "lucide-react";
+import { PromoCodeRecipients } from "@/components/admin/PromoCodeRecipients";
 import {
   createPromoCodeAction,
   deletePromoCodeAction,
@@ -36,6 +37,8 @@ export function PromoCodesManager({
 }) {
   const [state, formAction, saving] = useActionState<PromoCodeActionState, FormData>(createPromoCodeAction, {});
   const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
+  const [audience, setAudience] = useState<"everyone" | "assigned">("everyone");
+  const [openRecipients, setOpenRecipients] = useState<string | null>(null);
   const [rowMessage, setRowMessage] = useState<PromoCodeActionState | null>(null);
   const [rowPending, startRowAction] = useTransition();
   const money = (value: number) => formatCurrency(value, restaurant);
@@ -108,15 +111,44 @@ export function PromoCodesManager({
           <input className="h-4 w-4 accent-emerald-600" name="first_order_only" type="checkbox" />
           First order only (new customers)
         </label>
-        <label className="flex items-start gap-2 text-sm font-bold">
-          <input className="mt-0.5 h-4 w-4 accent-emerald-600" name="show_in_account" type="checkbox" />
-          <span>
-            Show to signed-in customers
-            <span className="block text-xs font-normal text-stone-500">
-              Listed on their account page and offered at checkout. Leave off for codes you share privately.
+        <fieldset>
+          <legend className="text-sm font-bold">Who can use it</legend>
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            {(["everyone", "assigned"] as const).map((option) => (
+              <label
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold ${
+                  audience === option ? "border-leaf bg-mint/40" : "border-stone-200"
+                }`}
+                key={option}
+              >
+                <input
+                  checked={audience === option}
+                  className="accent-emerald-600"
+                  name="audience"
+                  onChange={() => setAudience(option)}
+                  type="radio"
+                  value={option}
+                />
+                {option === "everyone" ? "Anyone with the code" : "Only customers I choose"}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {audience === "everyone" ? (
+          <label className="flex items-start gap-2 text-sm font-bold">
+            <input className="mt-0.5 h-4 w-4 accent-emerald-600" name="show_in_account" type="checkbox" />
+            <span>
+              Show to signed-in customers
+              <span className="block text-xs font-normal text-stone-500">
+                Listed on their account page and offered at checkout. Leave off for codes you share privately.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        ) : (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+            After creating the code, use <strong>Customers</strong> on it to choose who gets it. Only they can use it, and it shows under Vouchers in their account.
+          </p>
+        )}
         <label className="block">
           <span className="text-sm font-bold">Note <span className="font-normal text-stone-400">(only you see this)</span></span>
           <input className={inputClass} maxLength={200} name="description" placeholder="e.g. Instagram launch" />
@@ -155,6 +187,11 @@ export function PromoCodesManager({
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-mono text-lg font-black tracking-wide">{code.code}</h3>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${status.className}`}>{status.label}</span>
+                      {code.audience === "assigned" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-black text-amber-800">
+                          <Users size={12} /> Personal · {code.recipientCount} {code.recipientCount === 1 ? "customer" : "customers"}
+                        </span>
+                      ) : null}
                       {code.showInAccount ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-black text-sky-800">
                           <Eye size={12} /> Shown to customers
@@ -180,14 +217,25 @@ export function PromoCodesManager({
                       {code.isActive ? "Turn off" : "Turn on"}
                     </button>
                   </form>
-                  <form action={(data) => runRowAction(setPromoCodeVisibilityAction, data)}>
-                    <input name="id" type="hidden" value={code.id} />
-                    <input name="show_in_account" type="hidden" value={code.showInAccount ? "false" : "true"} />
-                    <button className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:opacity-50" disabled={rowPending} type="submit">
-                      {code.showInAccount ? <EyeOff size={13} /> : <Eye size={13} />}
-                      {code.showInAccount ? "Hide from customers" : "Show to customers"}
+                  {code.audience === "assigned" ? (
+                    <button
+                      aria-expanded={openRecipients === code.id}
+                      className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-black text-stone-700 hover:bg-stone-50"
+                      onClick={() => setOpenRecipients((current) => (current === code.id ? null : code.id))}
+                      type="button"
+                    >
+                      <Users size={13} /> Customers
                     </button>
-                  </form>
+                  ) : (
+                    <form action={(data) => runRowAction(setPromoCodeVisibilityAction, data)}>
+                      <input name="id" type="hidden" value={code.id} />
+                      <input name="show_in_account" type="hidden" value={code.showInAccount ? "false" : "true"} />
+                      <button className="focus-ring inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-black text-stone-700 hover:bg-stone-50 disabled:opacity-50" disabled={rowPending} type="submit">
+                        {code.showInAccount ? <EyeOff size={13} /> : <Eye size={13} />}
+                        {code.showInAccount ? "Hide from customers" : "Show to customers"}
+                      </button>
+                    </form>
+                  )}
                   {code.timesUsed === 0 ? (
                     <form action={(data) => {
                       if (window.confirm(`Delete ${code.code}?`)) runRowAction(deletePromoCodeAction, data);
@@ -199,6 +247,9 @@ export function PromoCodesManager({
                     </form>
                   ) : null}
                 </div>
+                {code.audience === "assigned" && openRecipients === code.id ? (
+                  <PromoCodeRecipients code={code.code} promoCodeId={code.id} />
+                ) : null}
               </article>
             );
           })

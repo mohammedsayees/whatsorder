@@ -34,6 +34,7 @@ describe("parseCustomerVouchers", () => {
         minSubtotal: 20,
         endsAt: "2026-12-01T00:00:00Z",
         firstOrderOnly: false,
+        personal: false,
         usesLeft: 2
       },
       {
@@ -44,9 +45,17 @@ describe("parseCustomerVouchers", () => {
         minSubtotal: 0,
         endsAt: null,
         firstOrderOnly: false,
+        personal: false,
         usesLeft: null
       }
     ]);
+  });
+
+  it("flags personal vouchers", () => {
+    const [voucher] = parseCustomerVouchers([
+      { code: "JUSTYOU", discount_type: "fixed", discount_value: 5, personal: true }
+    ]);
+    expect(voucher.personal).toBe(true);
   });
 
   it("drops malformed rows", () => {

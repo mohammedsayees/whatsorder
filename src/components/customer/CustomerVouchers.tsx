@@ -65,8 +65,13 @@ export function CustomerVouchers({
               <TicketPercent size={22} />
             </div>
             <div className="min-w-0 flex-1 p-4">
-              <p className="text-base font-black text-ink">
+              <p className="flex flex-wrap items-center gap-2 text-base font-black text-ink">
                 {describeVoucher(voucher, language, (amount) => money(amount))}
+                {voucher.personal ? (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-black text-amber-800">
+                    {t("Just for you", "خاص بك")}
+                  </span>
+                ) : null}
               </p>
               <p className="mt-0.5 font-mono text-sm font-black tracking-wide text-leaf" dir="ltr">
                 {voucher.code}

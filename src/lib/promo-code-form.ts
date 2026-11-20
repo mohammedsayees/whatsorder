@@ -18,6 +18,7 @@ export type PromoCodeInsert = {
   max_redemptions_per_customer: number | null;
   first_order_only: boolean;
   show_in_account: boolean;
+  audience: "everyone" | "assigned";
 };
 
 export type PromoFormResult =
@@ -96,6 +97,8 @@ export function parsePromoCodeForm(
   }
 
   const description = text(formData, "description").slice(0, 200);
+  // Personal codes are only ever shown to the customers they're sent to.
+  const audience = text(formData, "audience") === "assigned" ? "assigned" : "everyone";
 
   return {
     ok: true,
@@ -111,7 +114,8 @@ export function parsePromoCodeForm(
       max_redemptions: maxRedemptions as number | null,
       max_redemptions_per_customer: perCustomer as number | null,
       first_order_only: formData.get("first_order_only") === "on",
-      show_in_account: formData.get("show_in_account") === "on"
+      show_in_account: audience === "everyone" && formData.get("show_in_account") === "on",
+      audience
     }
   };
 }

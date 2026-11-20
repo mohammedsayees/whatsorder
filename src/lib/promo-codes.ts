@@ -14,8 +14,12 @@ export type PromoTerms = {
   minSubtotal: number;
 };
 
+/** Who may redeem a code: anyone with it, or only assigned customers. */
+export type PromoAudience = "everyone" | "assigned";
+
 export type PromoCode = PromoTerms & {
   id: string;
+  audience: PromoAudience;
   description: string | null;
   startsAt: string | null;
   endsAt: string | null;
@@ -108,11 +112,14 @@ export const PROMO_ERRORS = {
   fullyUsed: "This promo code has been fully used.",
   alreadyUsed: "You've already used this promo code.",
   firstOrderOnly: "This promo code is for first orders only.",
+  notForYou: "This promo code isn't available for your number.",
   changed: "This promo code has changed. Please apply it again."
 } as const;
 
 // Maps create_order_with_customer_v6 exceptions to customer messages.
+// More specific messages first: the first match wins.
 const DATABASE_PROMO_ERRORS: Array<[string, string]> = [
+  ["Promo code is not valid for this customer", PROMO_ERRORS.notForYou],
   ["Promo code is not valid", PROMO_ERRORS.invalid],
   ["Promo code is not active yet", PROMO_ERRORS.notStarted],
   ["Promo code has expired", PROMO_ERRORS.expired],
