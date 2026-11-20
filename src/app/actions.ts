@@ -21,6 +21,12 @@ import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
 import { marketingConsentWithdrawalFields } from "@/lib/marketing/opt-out";
 import {
+  CATEGORY_NAME_MAX_LENGTH,
+  categoryDeleteBlockedMessage,
+  isReservedCategoryName,
+  nextCategoryDisplayOrder
+} from "@/lib/menu-categories";
+import {
   requireRestaurantAdmin,
   requireRestaurantRole,
   requireSuperAdmin
@@ -55,6 +61,9 @@ type UploadMenuImageResult =
   | { ok: false; error: string };
 
 type RestaurantBrandImageKind = "logo" | "cover";
+
+const RESERVED_CATEGORY_MESSAGE =
+  "Best Sellers is created automatically from product tags. Add the product to its normal category and enable its Best Seller tag.";
 
 async function getOfferActionContext(formData: FormData) {
   const requestedRestaurantId = stringValue(formData, "restaurant_id");
@@ -966,25 +975,130 @@ export async function addCategoryAction(formData: FormData) {
   }
 
   const { restaurant, supabase } = context;
-  const name = stringValue(formData, "name");
-  const normalizedName = name.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  const name = limitedStringValue(formData, "name", CATEGORY_NAME_MAX_LENGTH);
 
-  if (normalizedName === "best seller" || normalizedName === "best sellers") {
-    throw new Error(
-      "Best Sellers is created automatically from product tags. Add the product to its normal category and enable its Best Seller tag."
-    );
+  if (!name) {
+    throw new Error("Category name is required.");
   }
 
-  const menu = await getMenu(restaurant.id, { admin: true });
+  if (isReservedCategoryName(name)) {
+    throw new Error(RESERVED_CATEGORY_MESSAGE);
+  }
+
   const { error } = await supabase.from("menu_categories").insert({
     restaurant_id: restaurant.id,
     name,
-    name_ar: stringValue(formData, "name_ar") || null,
-    display_order: menu.categories.length + 1,
+    name_ar: limitedStringValue(formData, "name_ar", CATEGORY_NAME_MAX_LENGTH) || null,
+    display_order: await nextDisplayOrderForRestaurant(supabase, restaurant.id),
     is_active: true
   });
   databaseFailure("Menu category creation", error);
   await completeOnboardingTasks(supabase, restaurant.id, ["categories_created"]);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function updateCategoryAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const categoryId = stringValue(formData, "category_id");
+
+  if (!context || !categoryId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+  const name = limitedStringValue(formData, "name", CATEGORY_NAME_MAX_LENGTH);
+
+  if (!name) {
+    throw new Error("Category name is required.");
+  }
+
+  if (isReservedCategoryName(name)) {
+    throw new Error(RESERVED_CATEGORY_MESSAGE);
+  }
+
+  if (!(await categoryBelongsToRestaurant(supabase, restaurant.id, categoryId))) {
+    throw new Error("The selected category does not belong to this restaurant.");
+  }
+
+  const { error } = await supabase
+    .from("menu_categories")
+    .update({
+      name,
+      name_ar: limitedStringValue(formData, "name_ar", CATEGORY_NAME_MAX_LENGTH) || null
+    })
+    .eq("id", categoryId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu category update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function setCategoryVisibilityAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const categoryId = stringValue(formData, "category_id");
+  const visibility = stringValue(formData, "is_active");
+
+  if (!context || !categoryId || !["true", "false"].includes(visibility)) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+
+  if (!(await categoryBelongsToRestaurant(supabase, restaurant.id, categoryId))) {
+    throw new Error("The selected category does not belong to this restaurant.");
+  }
+
+  const isActive = visibility === "true";
+  // A re-shown category goes to the end of the menu; its old slot may have
+  // been taken while it was hidden.
+  const update = isActive
+    ? { is_active: true, display_order: await nextDisplayOrderForRestaurant(supabase, restaurant.id) }
+    : { is_active: false };
+  const { error } = await supabase
+    .from("menu_categories")
+    .update(update)
+    .eq("id", categoryId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu category visibility update", error);
+
+  revalidateMenuPaths(restaurant);
+}
+
+export async function deleteCategoryAction(formData: FormData) {
+  const context = await getMenuActionContext(formData);
+  const categoryId = stringValue(formData, "category_id");
+
+  if (!context || !categoryId) {
+    return;
+  }
+
+  const { restaurant, supabase } = context;
+
+  if (!(await categoryBelongsToRestaurant(supabase, restaurant.id, categoryId))) {
+    throw new Error("The selected category does not belong to this restaurant.");
+  }
+
+  // Never delete a category that still holds items: depending on which
+  // foreign key is in place the delete either fails or cascades and silently
+  // removes the items, so require the category to be empty first.
+  const { count, error: countError } = await supabase
+    .from("menu_items")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", categoryId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu category item check", countError);
+
+  if ((count ?? 0) > 0) {
+    throw new Error(categoryDeleteBlockedMessage(count ?? 0));
+  }
+
+  const { error } = await supabase
+    .from("menu_categories")
+    .delete()
+    .eq("id", categoryId)
+    .eq("restaurant_id", restaurant.id);
+  databaseFailure("Menu category deletion", error);
 
   revalidateMenuPaths(restaurant);
 }
@@ -1440,6 +1554,18 @@ export async function setItemOptionGroupsAction(formData: FormData) {
   );
 
   revalidateMenuPaths(restaurant);
+}
+
+async function nextDisplayOrderForRestaurant(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  restaurantId: string
+) {
+  const { data, error } = await supabase
+    .from("menu_categories")
+    .select("display_order")
+    .eq("restaurant_id", restaurantId);
+  databaseFailure("Category order lookup", error);
+  return nextCategoryDisplayOrder(data ?? []);
 }
 
 function updateCategoryDisplayOrder(

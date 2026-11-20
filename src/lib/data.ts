@@ -9,6 +9,7 @@ import {
   isSameUaeCalendarDay
 } from "@/lib/date-time";
 import { isOfferOrderable } from "@/lib/order-pricing";
+import { itemsInActiveCategories } from "@/lib/menu-categories";
 import { ARRIVAL_ACTIVE_STATUSES, type WaitingArrival } from "@/lib/car-arrival";
 import { orderSource, type OrderSourceView } from "@/lib/order-source";
 import {
@@ -416,8 +417,30 @@ async function readMenu(
 
   return {
     categories: categories as MenuCategory[],
-    items: items as MenuItem[]
+    items: itemsInActiveCategories(categories as MenuCategory[], items as MenuItem[])
   };
+}
+
+// Hidden (is_active = false) categories for the menu editor only. The admin
+// snapshot RPC returns active categories, which staff order entry and price
+// checks rely on, so hidden ones are read separately here.
+export async function getHiddenMenuCategories(restaurantId: string): Promise<MenuCategory[]> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("menu_categories")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .eq("is_active", false)
+    .order("display_order");
+
+  if (error) {
+    console.error("WhatsOrder hidden categories read failed", { code: error.code, restaurantId });
+    return [];
+  }
+
+  return (data ?? []) as MenuCategory[];
 }
 
 // Cached public-menu read for the customer path (menu page + order

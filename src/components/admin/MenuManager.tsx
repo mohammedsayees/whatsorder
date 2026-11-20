@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   addCategoryAction,
   addMenuItemAction,
+  deleteCategoryAction,
   deleteMenuItemAction,
   importMenuRowsAction,
   moveCategoryAction,
   removeMenuItemImageAction,
+  setCategoryVisibilityAction,
   toggleMenuItemAvailabilityAction,
+  updateCategoryAction,
   updateMenuItemAction,
   uploadMenuItemImageAction
 } from "@/app/actions";
@@ -20,18 +23,22 @@ import {
 import { AiImageGenerator } from "@/components/admin/AiImageGenerator";
 import { formatCurrency } from "@/lib/currency";
 import { compressMenuImage } from "@/lib/image-compression";
+import { CATEGORY_NAME_MAX_LENGTH, categoryDeleteBlockedMessage } from "@/lib/menu-categories";
 import type { MenuCategory, MenuItem, MenuOptionCatalog, Restaurant } from "@/lib/types";
 import {
   ArrowDown,
   ArrowUp,
   Download,
   Eye,
+  EyeOff,
   FileSpreadsheet,
   ImageIcon,
+  Pencil,
   Plus,
   Search,
   Sparkles,
   Tags,
+  Trash2,
   X
 } from "lucide-react";
 
@@ -211,10 +218,118 @@ export function MenuManager({
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateName>("Cafeteria");
   const [isPending, startTransition] = useTransition();
-  const sortedCategories = useMemo(
-    () => [...categories].sort((first, second) => first.display_order - second.display_order),
+  const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
+  const [editCategoryError, setEditCategoryError] = useState<string | null>(null);
+  const [categoryActionError, setCategoryActionError] = useState<string | null>(null);
+  const shownCategories = useMemo(
+    () =>
+      categories
+        .filter((category) => category.is_active)
+        .sort((first, second) => first.display_order - second.display_order),
     [categories]
   );
+  const hiddenCategories = useMemo(
+    () =>
+      categories
+        .filter((category) => !category.is_active)
+        .sort((first, second) => first.display_order - second.display_order),
+    [categories]
+  );
+  const sortedCategories = useMemo(
+    () => [...shownCategories, ...hiddenCategories],
+    [shownCategories, hiddenCategories]
+  );
+  const itemCountByCategoryId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.category_id, (counts.get(item.category_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [items]);
+
+  function categoryFormData(category: MenuCategory, fields: Record<string, string> = {}) {
+    const formData = new FormData();
+    if (restaurantId) formData.set("restaurant_id", restaurantId);
+    formData.set("category_id", category.id);
+    for (const [key, value] of Object.entries(fields)) formData.set(key, value);
+    return formData;
+  }
+
+  function runCategoryAction(action: () => Promise<void>, fallbackMessage: string) {
+    setCategoryActionError(null);
+    startTransition(async () => {
+      try {
+        await action();
+        router.refresh();
+      } catch (error) {
+        setCategoryActionError(error instanceof Error ? error.message : fallbackMessage);
+      }
+    });
+  }
+
+  function setCategoryVisibility(category: MenuCategory, isActive: boolean) {
+    runCategoryAction(
+      () => setCategoryVisibilityAction(categoryFormData(category, { is_active: String(isActive) })),
+      isActive ? "Category could not be shown." : "Category could not be hidden."
+    );
+  }
+
+  function deleteCategory(category: MenuCategory) {
+    const itemCount = itemCountByCategoryId.get(category.id) ?? 0;
+    if (itemCount > 0) {
+      setCategoryActionError(categoryDeleteBlockedMessage(itemCount));
+      return;
+    }
+    if (!window.confirm(`Delete the category "${category.name}"? This cannot be undone.`)) {
+      return;
+    }
+    runCategoryAction(
+      () => deleteCategoryAction(categoryFormData(category)),
+      "Category could not be deleted."
+    );
+  }
+
+  function renderCategoryControls(category: MenuCategory) {
+    const iconButton =
+      "focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-stone-700 disabled:cursor-not-allowed disabled:opacity-35";
+    return (
+      <>
+        <button
+          aria-label={`Edit ${category.name}`}
+          className={iconButton}
+          disabled={!canWrite || isPending}
+          onClick={() => {
+            setEditCategoryError(null);
+            setEditingCategory(category);
+          }}
+          title="Rename"
+          type="button"
+        >
+          <Pencil size={16} />
+        </button>
+        <button
+          aria-label={category.is_active ? `Hide ${category.name}` : `Show ${category.name}`}
+          className={iconButton}
+          disabled={!canWrite || isPending}
+          onClick={() => setCategoryVisibility(category, !category.is_active)}
+          title={category.is_active ? "Hide from customer menu" : "Show on customer menu"}
+          type="button"
+        >
+          {category.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+        <button
+          aria-label={`Delete ${category.name}`}
+          className={`${iconButton} hover:border-red-200 hover:text-red-600`}
+          disabled={!canWrite || isPending}
+          onClick={() => deleteCategory(category)}
+          title="Delete"
+          type="button"
+        >
+          <Trash2 size={16} />
+        </button>
+      </>
+    );
+  }
   const uploadedImageCount = items.filter((item) => item.image_url).length;
   const missingImageCount = items.length - uploadedImageCount;
 
@@ -393,13 +508,21 @@ export function MenuManager({
           </p>
         </div>
 
+        {categoryActionError ? (
+          <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+            {categoryActionError}
+          </p>
+        ) : null}
+
         {sortedCategories.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-stone-300 p-5 text-sm font-semibold text-stone-500">
             Add a category to start arranging your menu.
           </div>
-        ) : (
+        ) : null}
+
+        {shownCategories.length > 0 ? (
           <div className="mt-4 divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200">
-            {sortedCategories.map((category, index) => (
+            {shownCategories.map((category, index) => (
               <div
                 className="grid gap-3 px-4 py-3 sm:grid-cols-[40px_1fr_auto] sm:items-center"
                 key={category.id}
@@ -414,8 +537,11 @@ export function MenuManager({
                       {category.name_ar}
                     </p>
                   ) : null}
+                  <p className="mt-1 text-xs font-semibold text-stone-400">
+                    {itemCountByCategoryId.get(category.id) ?? 0} items
+                  </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <form action={moveCategoryAction}>
                     {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
                     <input name="category_id" type="hidden" value={category.id} />
@@ -436,17 +562,53 @@ export function MenuManager({
                     <button
                       aria-label={`Move ${category.name} down`}
                       className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-stone-700 disabled:cursor-not-allowed disabled:opacity-35"
-                      disabled={!canWrite || index === sortedCategories.length - 1}
+                      disabled={!canWrite || index === shownCategories.length - 1}
                       type="submit"
                     >
                       <ArrowDown size={17} />
                     </button>
                   </form>
+                  {renderCategoryControls(category)}
                 </div>
               </div>
             ))}
           </div>
-        )}
+        ) : null}
+
+        {hiddenCategories.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="text-sm font-black text-stone-600">Hidden from customers</h3>
+            <p className="mt-1 text-xs text-stone-500">
+              These categories and their items are not shown or orderable on the customer menu.
+            </p>
+            <div className="mt-2 divide-y divide-stone-200 overflow-hidden rounded-lg border border-dashed border-stone-300 bg-stone-50">
+              {hiddenCategories.map((category) => (
+                <div
+                  className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center"
+                  key={category.id}
+                >
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 font-black text-stone-500">
+                      {category.name}
+                      <span className="rounded-full bg-stone-200 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-stone-600">
+                        Hidden
+                      </span>
+                    </p>
+                    {category.name_ar ? (
+                      <p className="mt-1 text-sm font-semibold text-stone-400" dir="rtl">
+                        {category.name_ar}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs font-semibold text-stone-400">
+                      {itemCountByCategoryId.get(category.id) ?? 0} items
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">{renderCategoryControls(category)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -672,6 +834,67 @@ export function MenuManager({
             ) : null}
             <button className="focus-ring w-full rounded-lg bg-ink px-4 py-2 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
               Add category
+            </button>
+          </form>
+        </Dialog>
+      ) : null}
+
+      {editingCategory ? (
+        <Dialog
+          title={`Edit ${editingCategory.name}`}
+          onClose={() => {
+            setEditingCategory(null);
+            setEditCategoryError(null);
+          }}
+        >
+          <form
+            action={async (formData) => {
+              setEditCategoryError(null);
+
+              try {
+                await updateCategoryAction(formData);
+                setEditingCategory(null);
+                router.refresh();
+              } catch (error) {
+                setEditCategoryError(
+                  error instanceof Error ? error.message : "Category could not be updated."
+                );
+              }
+            }}
+            className="space-y-3"
+          >
+            {restaurantId ? <input name="restaurant_id" type="hidden" value={restaurantId} /> : null}
+            <input name="category_id" type="hidden" value={editingCategory.id} />
+            <label className="block text-sm font-bold text-stone-700">
+              Name
+              <input
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2"
+                defaultValue={editingCategory.name}
+                disabled={!canWrite}
+                maxLength={CATEGORY_NAME_MAX_LENGTH}
+                name="name"
+                required
+              />
+            </label>
+            <label className="block text-sm font-bold text-stone-700">
+              Arabic name
+              <input
+                className="focus-ring mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-right"
+                defaultValue={editingCategory.name_ar ?? ""}
+                dir="rtl"
+                disabled={!canWrite}
+                maxLength={CATEGORY_NAME_MAX_LENGTH}
+                name="name_ar"
+                placeholder="اسم القسم بالعربية"
+              />
+            </label>
+            {editCategoryError ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {editCategoryError}
+              </p>
+            ) : null}
+            <button className="focus-ring w-full rounded-lg bg-ink px-4 py-2 font-bold text-white disabled:opacity-50" disabled={!canWrite} type="submit">
+              Save category
             </button>
           </form>
         </Dialog>
@@ -1034,7 +1257,7 @@ function ItemForm({
         <select className="focus-ring w-full rounded-lg border border-stone-200 px-3 py-2" disabled={!canWrite} name="category_id" onChange={(event) => setCategoryId(event.target.value)} required value={categoryId}>
           {sortedCategories.map((category) => (
             <option key={category.id} value={category.id}>
-              {category.name}
+              {category.is_active ? category.name : `${category.name} (hidden)`}
             </option>
           ))}
         </select>
