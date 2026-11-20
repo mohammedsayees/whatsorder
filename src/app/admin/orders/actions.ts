@@ -27,6 +27,12 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeCustomerPhone } from "@/lib/whatsapp";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
+import { headers } from "next/headers";
+import QRCode from "qrcode";
+import {
+  buildStampClaimUrl,
+  mintStampClaimToken
+} from "@/lib/customer-auth/stamp-claim";
 import {
   stampGreetingName,
   stampLookupPhone,
@@ -48,6 +54,9 @@ export type StaffOrderState = {
   // The saved order, returned so the punch screen can print its KOT/receipt
   // without navigating away. Absent on errors.
   order?: Order;
+  // "Scan to collect your stamp" for a counter order saved without a phone:
+  // the signed claim link and its QR (PNG data URL) for the printed receipt.
+  stampClaim?: { url: string; qrDataUrl: string };
 };
 
 export type AddOrderItemsPayload = {
@@ -158,11 +167,49 @@ function field(formData: FormData, key: string, maxLength: number) {
 export async function submitStaffOrderAction(
   payload: StaffOrderPayload
 ): Promise<StaffOrderState> {
-  const result = await saveStaffOrder(payload);
-  if (payload?.redeemReward !== true || !result.order || result.error) {
+  const saved = await saveStaffOrder(payload);
+  const result =
+    payload?.redeemReward === true && saved.order && !saved.error
+      ? await redeemRewardOnSavedOrder(saved)
+      : saved;
+  return withStampClaim(result);
+}
+
+// Receipt QR for walk-ins who didn't give a number: they can scan it later
+// (within 24h), confirm their number with WhatsApp and get this order's stamp.
+// Best-effort: the order never depends on it.
+async function withStampClaim(result: StaffOrderState): Promise<StaffOrderState> {
+  const order = result.order;
+  if (!order || result.error || order.customer_phone?.trim() || order.status === "Cancelled") {
     return result;
   }
-  return redeemRewardOnSavedOrder(result);
+  try {
+    const session = await requireRestaurantAdmin();
+    const restaurant = session.restaurant;
+    if (restaurant.loyalty_enabled === false || !(Number(restaurant.loyalty_stamps_required ?? 0) > 0)) {
+      return result;
+    }
+    const token = await mintStampClaimToken({ restaurantId: session.restaurantId, orderId: order.id });
+    if (!token) {
+      return result;
+    }
+    const url = buildStampClaimUrl(await appBaseUrl(), restaurant.slug, token);
+    const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 220, errorCorrectionLevel: "M" });
+    return { ...result, stampClaim: { url, qrDataUrl } };
+  } catch {
+    return result;
+  }
+}
+
+async function appBaseUrl(): Promise<string> {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
+  return host ? `${protocol}://${host}` : "https://whatsorder.app";
 }
 
 // Stamp-card reward chosen at the counter. Runs after the order is saved (also
