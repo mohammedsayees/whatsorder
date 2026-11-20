@@ -250,12 +250,12 @@ describe("restaurant operational reliability boundaries", () => {
     expect(entry).toContain("Send KOT");
   });
 
-  it("prints an optional receipt after an immediate staff payment", () => {
+  it("auto-prints on submit, with Print KOT / Print customer bill tickboxes on Pay", () => {
     const entry = source("src/components/admin/StaffOrderEntry.tsx");
 
-    expect(entry).toContain(
-      'action !== "kitchen" && result.order && printCustomerBill'
-    );
-    expect(entry).toContain('printSavedOrder(result.order, ["receipt"], stampClaimQr)');
+    expect(entry).toContain("submitPrintKinds({ action, printKot, printCustomerBill })");
+    expect(entry).toContain("printSavedOrder(result.order, kinds, stampClaimQr)");
+    expect(entry).toContain("Print customer bill");
+    expect(entry).not.toContain("Print for order");
   });
 });
