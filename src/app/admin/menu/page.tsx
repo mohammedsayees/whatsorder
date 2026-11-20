@@ -7,7 +7,7 @@ import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
 import { BulkAiPhotos } from "@/components/admin/BulkAiPhotos";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
-import { getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
+import { getHiddenMenuCategories, getMenu, getMenuOffers, getMenuOptionCatalog } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
@@ -19,10 +19,11 @@ export default async function AdminMenuPage() {
     return <BillingSoftBlock surface="Menu management" />;
   }
 
-  const [menu, offers, optionCatalog] = await Promise.all([
+  const [menu, offers, optionCatalog, hiddenCategories] = await Promise.all([
     getMenu(restaurant.id, { admin: true }),
     getMenuOffers(restaurant.id, { admin: true }),
-    getMenuOptionCatalog(restaurant.id, { admin: true })
+    getMenuOptionCatalog(restaurant.id, { admin: true }),
+    getHiddenMenuCategories(restaurant.id)
   ]);
   const hasDatabaseAccess = Boolean(getSupabaseAdmin());
   const canWrite =
@@ -97,7 +98,7 @@ export default async function AdminMenuPage() {
         <OptionGroupsManager canWrite={canWrite} catalog={optionCatalog} restaurant={restaurant} />
       </div>
       <div className="mt-6">
-        <MenuManager categories={menu.categories} items={menu.items} canWrite={canWrite} optionCatalog={optionCatalog} restaurant={restaurant} restaurantSlug={restaurant.slug} />
+        <MenuManager categories={[...menu.categories, ...hiddenCategories]} items={menu.items} canWrite={canWrite} optionCatalog={optionCatalog} restaurant={restaurant} restaurantSlug={restaurant.slug} />
       </div>
     </main>
   );
