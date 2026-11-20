@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   Gift,
   LogOut,
+  MapPin,
   MessageCircle,
   Receipt,
   RotateCcw,
@@ -23,6 +24,8 @@ import {
   updateCustomerNameAction
 } from "@/app/r/[restaurantSlug]/account/actions";
 import { useCart } from "@/components/customer/CartProvider";
+import { CustomerAddressBook } from "@/components/customer/CustomerAddressBook";
+import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import { formatOrderItemName } from "@/lib/cart-line";
@@ -45,7 +48,7 @@ import type { CustomerLoyalty } from "@/lib/customer-auth/context";
 import { getRestaurantLocalization } from "@/lib/localization";
 import type { PublicRestaurant } from "@/lib/types";
 
-type Tab = "orders" | "payments" | "rewards" | "settings";
+type Tab = "orders" | "payments" | "rewards" | "addresses" | "settings";
 type Translate = (en: string, ar: string) => string;
 
 const STATUS_LABELS: Record<string, [string, string]> = {
@@ -86,11 +89,13 @@ function orderPageHref(restaurantSlug: string, orderId: string, isAr: boolean): 
 
 export function CustomerAccountView({
   account,
+  addresses = [],
   loadFailed,
   restaurant,
   signInUrl
 }: {
   account: CustomerAccount | null;
+  addresses?: SavedAddress[];
   loadFailed: boolean;
   restaurant: PublicRestaurant;
   signInUrl: string | null;
@@ -119,7 +124,13 @@ export function CustomerAccountView({
         <p className="text-sm font-semibold text-stone-500">{restaurantName}</p>
 
         {account ? (
-          <SignedInAccount account={account} isAr={isAr} restaurant={restaurant} t={t} />
+          <SignedInAccount
+            account={account}
+            addresses={addresses}
+            isAr={isAr}
+            restaurant={restaurant}
+            t={t}
+          />
         ) : loadFailed ? (
           <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
             {t(
@@ -191,11 +202,13 @@ function SignedOut({
 
 function SignedInAccount({
   account,
+  addresses,
   isAr,
   restaurant,
   t
 }: {
   account: CustomerAccount;
+  addresses: SavedAddress[];
   isAr: boolean;
   restaurant: PublicRestaurant;
   t: Translate;
@@ -224,6 +237,7 @@ function SignedInAccount({
     { id: "orders", label: t("Orders", "الطلبات"), icon: ShoppingBag },
     { id: "payments", label: t("Payments", "المدفوعات"), icon: Receipt },
     ...(showRewards ? [{ id: "rewards" as Tab, label: t("Rewards", "المكافآت"), icon: Gift }] : []),
+    ...(profile ? [{ id: "addresses" as Tab, label: t("Addresses", "العناوين"), icon: MapPin }] : []),
     { id: "settings", label: t("Profile", "الملف"), icon: Settings }
   ];
 
@@ -359,6 +373,27 @@ function SignedInAccount({
             formatDate={formatDate}
             history={account.loyaltyHistory}
             loyalty={account.loyalty}
+            t={t}
+          />
+        ) : null}
+
+        {tab === "addresses" && profile ? (
+          <CustomerAddressBook
+            initialAddresses={addresses}
+            lastUsedAddress={
+              profile.delivery_area || profile.default_address_text || profile.delivery_address
+                ? {
+                    area: profile.delivery_area ?? "",
+                    building: "",
+                    flat: "",
+                    details: profile.default_address_text ?? profile.delivery_address ?? "",
+                    landmark: profile.default_landmark ?? "",
+                    latitude: null,
+                    longitude: null
+                  }
+                : null
+            }
+            restaurantSlug={restaurant.slug}
             t={t}
           />
         ) : null}

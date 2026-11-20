@@ -13,6 +13,15 @@ import { loadCustomerAccount } from "@/lib/customer-account-data";
 import { cleanCustomerName, type CustomerAccountPage } from "@/lib/customer-account";
 import { marketingConsentWithdrawalFields } from "@/lib/marketing/opt-out";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { cleanSavedAddressInput, type SavedAddress } from "@/lib/customer-addresses";
+import {
+  deleteCustomerAddress,
+  loadCustomerAddresses,
+  saveCustomerAddress,
+  setDefaultCustomerAddress,
+  type AddressWriteError
+} from "@/lib/customer-addresses-data";
+import { isClientOrderId } from "@/lib/staff-order-payload";
 
 export type AccountActionResult = { ok: true } | { ok: false; error: AccountActionError };
 export type AccountActionError = "signed_out" | "invalid" | "failed";
@@ -128,4 +137,84 @@ export async function signOutCustomerAction(restaurantSlug: string): Promise<Acc
   }
   await clearCustomerSession(restaurant.id);
   return { ok: true };
+}
+
+// ── Saved addresses ─────────────────────────────────────────────────────────
+// Each action returns the customer's fresh address list so the page can
+// re-render without a second round trip.
+
+export type AddressActionResult =
+  | { ok: true; id?: string; addresses: SavedAddress[] }
+  | { ok: false; error: AddressWriteError | "signed_out" };
+
+async function addressResult(
+  identity: { restaurantId: string; phone: string },
+  result: { ok: true; id?: string } | { ok: false; error: AddressWriteError },
+  restaurantSlug: string
+): Promise<AddressActionResult> {
+  if (!result.ok) {
+    return result;
+  }
+  revalidatePath(`/r/${restaurantSlug}/account`);
+  return { ok: true, id: result.id, addresses: await loadCustomerAddresses(identity) };
+}
+
+export async function saveCustomerAddressAction(
+  restaurantSlug: string,
+  addressId: string | null,
+  input: unknown,
+  makeDefault = false
+): Promise<AddressActionResult> {
+  const address = cleanSavedAddressInput(input);
+  if (!address || (addressId !== null && !isClientOrderId(addressId))) {
+    return { ok: false, error: "invalid" };
+  }
+  const customer = await signedInCustomer(restaurantSlug);
+  if (!customer) {
+    return { ok: false, error: "signed_out" };
+  }
+  const identity = { restaurantId: customer.restaurant.id, phone: customer.phone };
+  return addressResult(
+    identity,
+    await saveCustomerAddress(identity, addressId, address, makeDefault === true),
+    customer.restaurant.slug
+  );
+}
+
+export async function setDefaultCustomerAddressAction(
+  restaurantSlug: string,
+  addressId: string
+): Promise<AddressActionResult> {
+  if (!isClientOrderId(addressId)) {
+    return { ok: false, error: "invalid" };
+  }
+  const customer = await signedInCustomer(restaurantSlug);
+  if (!customer) {
+    return { ok: false, error: "signed_out" };
+  }
+  const identity = { restaurantId: customer.restaurant.id, phone: customer.phone };
+  return addressResult(
+    identity,
+    await setDefaultCustomerAddress(identity, addressId),
+    customer.restaurant.slug
+  );
+}
+
+export async function deleteCustomerAddressAction(
+  restaurantSlug: string,
+  addressId: string
+): Promise<AddressActionResult> {
+  if (!isClientOrderId(addressId)) {
+    return { ok: false, error: "invalid" };
+  }
+  const customer = await signedInCustomer(restaurantSlug);
+  if (!customer) {
+    return { ok: false, error: "signed_out" };
+  }
+  const identity = { restaurantId: customer.restaurant.id, phone: customer.phone };
+  return addressResult(
+    identity,
+    await deleteCustomerAddress(identity, addressId),
+    customer.restaurant.slug
+  );
 }
