@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   accessTokenCookieName,
+  longSessionCookieName,
+  refreshCookieMaxAgeSeconds,
   refreshTokenCookieName,
 } from "@/lib/auth-cookies";
 
@@ -97,6 +99,7 @@ export async function middleware(request: NextRequest) {
   if (!session) {
     response.cookies.delete(accessTokenCookieName);
     response.cookies.delete(refreshTokenCookieName);
+    response.cookies.delete(longSessionCookieName);
     return response;
   }
 
@@ -110,10 +113,16 @@ export async function middleware(request: NextRequest) {
     ...cookieOptions,
     maxAge: Math.max(60, session.expires_in)
   });
+  // Sessions started with WhatsApp login keep their 90-day refresh cookie.
+  const longSession = request.cookies.get(longSessionCookieName)?.value === "1";
+  const refreshMaxAge = refreshCookieMaxAgeSeconds(longSession);
   response.cookies.set(refreshTokenCookieName, session.refresh_token, {
     ...cookieOptions,
-    maxAge: 60 * 60 * 24 * 30
+    maxAge: refreshMaxAge
   });
+  if (longSession) {
+    response.cookies.set(longSessionCookieName, "1", { ...cookieOptions, maxAge: refreshMaxAge });
+  }
 
   return response;
 }

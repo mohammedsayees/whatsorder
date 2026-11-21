@@ -1,4 +1,5 @@
 import { getWhatsAppIntegration } from "@/lib/whatsapp-integration";
+import { AddToHomeScreenTip } from "@/components/admin/AddToHomeScreenTip";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { AnalyticsCards } from "@/components/admin/AnalyticsCards";
@@ -33,6 +34,7 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<{
     welcome?: string;
+    signed_in?: string;
     verified?: string;
     settings?: string;
     error?: string;
@@ -78,6 +80,7 @@ export default async function AdminDashboardPage({
         </section>
       ) : null}
       {canViewBilling(role) ? <TrialEndingNotice restaurantId={restaurant.id} /> : null}
+      {query.signed_in === "whatsapp" ? <AddToHomeScreenTip /> : null}
       {query.welcome ? (
         <section className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-900">
           <h2 className="text-lg font-black">You&apos;re live. Welcome to WhatsOrder.</h2>

@@ -41,3 +41,25 @@ export function isOwnerWhatsAppLinkEnabled(
 export function canReceiveOwnerLoginLink(role: string): boolean {
   return (OWNER_LOGIN_LINK_ROLES as readonly string[]).includes(role);
 }
+
+// ── Step 2: owner types their phone and gets a code ─────────────────────────
+
+export const OWNER_LOGIN_CODE_TTL_SECONDS = 10 * 60;
+/** Per phone: at most 3 codes in 15 minutes (and the 10/day phone cap above). */
+export const OWNER_LOGIN_CODES_PER_PHONE = { max: 3, windowSeconds: 15 * 60 };
+export const OWNER_LOGIN_CODES_PER_IP = { max: 10, windowSeconds: 60 * 60 };
+export const OWNER_LOGIN_CODE_MAX_ATTEMPTS = 5;
+export const OWNER_LOGIN_RESEND_COOLDOWN_SECONDS = 60;
+/** Every code request takes at least this long, known number or not. */
+export const OWNER_LOGIN_REQUEST_MIN_MS = 1500;
+/** Refresh-cookie life for sessions started with WhatsApp. */
+export const OWNER_WHATSAPP_SESSION_DAYS = 90;
+
+export const OWNER_LOGIN_CODE_TEMPLATE =
+  process.env.WHATSAPP_OWNER_LOGIN_CODE_TEMPLATE || "owner_login_code";
+
+export function isOwnerWhatsAppCodeEnabled(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return ownerWhatsAppLoginMode(env) === "step2" && isOwnerWhatsAppLinkEnabled(env);
+}

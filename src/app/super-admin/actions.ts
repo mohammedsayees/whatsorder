@@ -19,6 +19,7 @@ import {
 import type { RestaurantStatus } from "@/lib/types";
 import { getTenantAccess } from "@/lib/billing-data";
 import { revokeCurrentAuthSession } from "@/lib/auth-session-revocation";
+import { longSessionCookieName } from "@/lib/auth-cookies";
 import {
   executeStorageCleanup,
   memberUserIds,
@@ -127,6 +128,7 @@ export async function logoutSuperAdminAction() {
   const cookieStore = await cookies();
   cookieStore.delete(superAdminCookieName);
   cookieStore.delete(refreshTokenCookieName);
+  cookieStore.delete(longSessionCookieName);
   redirect("/super-admin/login");
 }
 

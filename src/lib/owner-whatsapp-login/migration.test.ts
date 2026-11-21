@@ -45,3 +45,34 @@ describe("owner WhatsApp login migration", () => {
     expect(sql).toMatch(/set used_at = now\(\)[\s\S]*r\.used_at is null[\s\S]*r\.expires_at > now\(\)/);
   });
 });
+
+const step2 = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261213090000_owner_whatsapp_code_login.sql"),
+  "utf8"
+).toLowerCase();
+
+describe("owner WhatsApp code login migration", () => {
+  it("adds no policies or anon/authenticated grants", () => {
+    expect(step2).not.toContain("create policy");
+    expect(step2).not.toMatch(/grant [^;]*to (anon|authenticated)/);
+    expect(step2).toContain("revoke all on table public.owner_login_ip_attempts from anon, authenticated");
+  });
+
+  it("restricts every new function to the service role", () => {
+    for (const fn of ["check_owner_login_ip_rate_limit", "start_owner_code_verification", "finish_owner_code_login"]) {
+      expect(step2).toMatch(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\)\\s*from public, anon, authenticated`));
+      expect(step2).toMatch(new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\)\\s*to service_role`));
+    }
+  });
+
+  it("counts an attempt before verification and stops at the cap", () => {
+    expect(step2).toContain("r.attempts < max_attempts");
+    expect(step2).toContain("set attempts = r.attempts + 1");
+    expect(step2).toContain("r.kind = 'code'");
+  });
+
+  it("stores only hashed IPs", () => {
+    expect(step2).toContain("ip_hash    text not null");
+    expect(step2).not.toMatch(/\bip\s+(inet|text)/);
+  });
+});

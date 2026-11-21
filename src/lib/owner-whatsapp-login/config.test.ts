@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canReceiveOwnerLoginLink,
+  isOwnerWhatsAppCodeEnabled,
   isOwnerWhatsAppLinkEnabled,
   ownerWhatsAppLoginMode
 } from "./config";
@@ -34,5 +35,13 @@ describe("owner WhatsApp login flag", () => {
     expect(canReceiveOwnerLoginLink("manager")).toBe(true);
     expect(canReceiveOwnerLoginLink("staff")).toBe(false);
     expect(canReceiveOwnerLoginLink("super_admin")).toBe(false);
+  });
+
+  it("offers phone + code login only in step 2 with everything configured", () => {
+    expect(isOwnerWhatsAppCodeEnabled(ready)).toBe(false);
+    expect(isOwnerWhatsAppCodeEnabled({ ...ready, OWNER_WHATSAPP_LOGIN: "step2" })).toBe(true);
+    expect(
+      isOwnerWhatsAppCodeEnabled({ ...ready, OWNER_WHATSAPP_LOGIN: "step2", SUPABASE_SEND_SMS_HOOK_SECRET: undefined })
+    ).toBe(false);
   });
 });
