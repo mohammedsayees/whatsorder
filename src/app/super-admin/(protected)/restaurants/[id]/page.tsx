@@ -37,6 +37,7 @@ import {
   isOwnerWhatsAppLinkEnabled,
   ownerWhatsAppLoginMode
 } from "@/lib/owner-whatsapp-login/config";
+import { ownerLoginSenderReady } from "@/lib/owner-whatsapp-login/server";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -106,7 +107,8 @@ export default async function SuperAdminRestaurantDetailPage({
   const menuUrl = `${getPublicAppUrl()}/r/${restaurant.slug}`;
   const ownerAccessState = getOwnerAccessState(ownerMembership);
   const whatsAppLoginOn = ownerWhatsAppLoginMode() !== "off";
-  const whatsAppLinkEnabled = isOwnerWhatsAppLinkEnabled();
+  const loginSenderReady = whatsAppLoginOn ? await ownerLoginSenderReady() : false;
+  const whatsAppLinkEnabled = isOwnerWhatsAppLinkEnabled() && loginSenderReady;
   const ownerLabel = ownerMembership ? memberLabel(ownerMembership) : null;
   const ownerHandoverWhatsAppUrl = buildWhatsAppUrl(
     buildOwnerHandoverMessage({
@@ -428,6 +430,13 @@ export default async function SuperAdminRestaurantDetailPage({
                 </button>
               </form>
 
+              {whatsAppLoginOn && !loginSenderReady ? (
+                <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                  WhatsOrder&apos;s login WhatsApp number is not connected, so login links can&apos;t be
+                  sent. Reconnect it by scanning the QR in the WhatsOrder restaurant&apos;s WhatsApp
+                  settings.
+                </p>
+              ) : null}
               {whatsAppLoginOn ? (
                 <AddMemberByPhoneForm hasOwner={Boolean(ownerMembership)} restaurantId={restaurant.id} />
               ) : null}

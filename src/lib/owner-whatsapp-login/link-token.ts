@@ -10,7 +10,7 @@ const CODE = /^\d{6}$/;
 
 export type OwnerLoginLinkToken = { requestId: string; code: string };
 
-/** The dynamic suffix for the template's URL button. */
+/** The "<request id>.<code>" part of the login link. */
 export function buildOwnerLoginLinkSuffix(requestId: string, code: string): string {
   if (!UUID.test(requestId) || !CODE.test(code)) {
     throw new Error("Invalid owner login link parts");

@@ -27,13 +27,21 @@ function chain(table: string) {
 const rpc = vi.fn();
 const signInWithOtp = vi.fn();
 const verifyOtp = vi.fn();
-const sendWhatsAppTemplate = vi.fn();
+const sendRestaurantWhatsAppText = vi.fn();
+const getWhatsAppIntegration = vi.fn();
+const SENDER_ID = "55555555-5555-4555-8555-555555555555";
+const ACTIVE_SENDER = {
+  provider: "whatsapp_web",
+  status: "active",
+  connector_session_id: "session-1"
+};
 
 vi.mock("@/lib/supabase", () => ({
   getSupabaseAdmin: () => ({ rpc, from: (table: string) => chain(table) }),
   createEphemeralAuthClient: () => ({ auth: { signInWithOtp, verifyOtp } })
 }));
-vi.mock("@/lib/customer-auth/whatsapp-cloud", () => ({ sendWhatsAppTemplate }));
+vi.mock("@/lib/whatsapp-integration", () => ({ getWhatsAppIntegration, sendRestaurantWhatsAppText }));
+vi.mock("@/lib/super-admin-data", () => ({ getPublicAppUrl: () => "https://app.example" }));
 
 const { handleSendSmsHook, requestOwnerLoginCode, verifyOwnerLoginCode } = await import("./server");
 
@@ -47,8 +55,9 @@ const payload = { user: { phone: "971501234567" }, sms: { otp: "123456" } };
 
 function enable(mode: "step1" | "step2") {
   vi.stubEnv("OWNER_WHATSAPP_LOGIN", mode);
-  vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
-  vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "123");
+  vi.stubEnv("OWNER_LOGIN_SENDER_RESTAURANT_ID", SENDER_ID);
+  vi.stubEnv("WHATSAPP_WEB_CONNECTOR_URL", "https://connector.example");
+  vi.stubEnv("WHATSAPP_WEB_CONNECTOR_SECRET", "secret");
   vi.stubEnv("SUPABASE_SEND_SMS_HOOK_SECRET", "v1,whsec_abc");
 }
 
@@ -62,7 +71,8 @@ beforeEach(() => {
   rpc.mockReset();
   signInWithOtp.mockReset().mockResolvedValue({ error: null });
   verifyOtp.mockReset();
-  sendWhatsAppTemplate.mockReset();
+  sendRestaurantWhatsAppText.mockReset();
+  getWhatsAppIntegration.mockReset().mockResolvedValue(ACTIVE_SENDER);
   for (const key of Object.keys(tableResults)) delete tableResults[key];
   for (const key of Object.keys(tableCalls)) delete tableCalls[key];
   tableResults.restaurants = { data: { name: "Chai Xpress" }, error: null };
@@ -82,7 +92,7 @@ describe("handleSendSmsHook", () => {
       target_phone_e164: "+971501234567",
       max_age_seconds: 120
     });
-    expect(sendWhatsAppTemplate).not.toHaveBeenCalled();
+    expect(sendRestaurantWhatsAppText).not.toHaveBeenCalled();
   });
 
   it("rejects malformed payloads before touching the database", async () => {
@@ -95,42 +105,54 @@ describe("handleSendSmsHook", () => {
   it("does not send code requests unless step 2 is on", async () => {
     rpc.mockResolvedValue({ data: [{ ...REQUEST, request_kind: "code" }], error: null });
     expect((await handleSendSmsHook(payload)).ok).toBe(false);
-    expect(sendWhatsAppTemplate).not.toHaveBeenCalled();
+    expect(sendRestaurantWhatsAppText).not.toHaveBeenCalled();
   });
 
-  it("sends the code template with the code in body and copy-code button when step 2 is on", async () => {
+  it("sends the code as plain text from WhatsOrder's number when step 2 is on", async () => {
     enable("step2");
     rpc.mockResolvedValue({ data: [{ ...REQUEST, request_kind: "code" }], error: null });
-    sendWhatsAppTemplate.mockResolvedValue("wamid.2");
+    sendRestaurantWhatsAppText.mockResolvedValue("web:2");
     expect(await handleSendSmsHook(payload)).toEqual({ ok: true });
-    expect(sendWhatsAppTemplate).toHaveBeenCalledWith("971501234567", "owner_login_code", "en", [
-      { type: "body", parameters: [{ type: "text", text: "123456" }] },
-      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: "123456" }] }
-    ]);
-    expect(events()).toEqual([expect.objectContaining({ event: "code_sent", wamid: "wamid.2" })]);
+    expect(getWhatsAppIntegration).toHaveBeenCalledWith(SENDER_ID);
+    const [sender, to, body] = sendRestaurantWhatsAppText.mock.calls[0];
+    expect(sender).toBe(SENDER_ID);
+    expect(to).toBe("971501234567");
+    expect(body).toContain("\n\n123456\n\n");
+    expect(events()).toEqual([expect.objectContaining({ event: "code_sent", wamid: "web:2" })]);
     expect(JSON.stringify(events())).not.toContain("123456");
   });
 
-  it("sends the link template with the request id and code, and logs the send", async () => {
+  it("sends the one-tap link as plain text, and logs the send", async () => {
     rpc.mockResolvedValue({ data: [REQUEST], error: null });
-    sendWhatsAppTemplate.mockResolvedValue("wamid.1");
+    sendRestaurantWhatsAppText.mockResolvedValue("web:1");
     expect(await handleSendSmsHook(payload)).toEqual({ ok: true });
-    expect(sendWhatsAppTemplate).toHaveBeenCalledWith("971501234567", "owner_login_link", "en", [
-      { type: "body", parameters: [{ type: "text", text: "Chai Xpress" }] },
-      {
-        type: "button",
-        sub_type: "url",
-        index: "0",
-        parameters: [{ type: "text", text: `${REQUEST.request_id}.123456` }]
-      }
-    ]);
-    expect(events()).toEqual([expect.objectContaining({ event: "link_sent", wamid: "wamid.1" })]);
+    const [sender, to, body] = sendRestaurantWhatsAppText.mock.calls[0];
+    expect(sender).toBe(SENDER_ID);
+    expect(to).toBe("971501234567");
+    expect(body).toContain(`https://app.example/auth/wa/${REQUEST.request_id}.123456`);
+    expect(body).toContain("Chai Xpress");
+    expect(events()).toEqual([expect.objectContaining({ event: "link_sent", wamid: "web:1" })]);
     expect(JSON.stringify(events())).not.toContain("123456");
+  });
+
+  it("never sends when WhatsOrder's number is disconnected", async () => {
+    rpc.mockResolvedValue({ data: [REQUEST], error: null });
+    getWhatsAppIntegration.mockResolvedValue({ ...ACTIVE_SENDER, status: "disconnected" });
+    expect(await handleSendSmsHook(payload)).toEqual({ ok: false, status: 502, message: "WhatsApp send failed" });
+    expect(sendRestaurantWhatsAppText).not.toHaveBeenCalled();
+    expect(events()).toEqual([expect.objectContaining({ event: "link_send_failed" })]);
+  });
+
+  it("never sends from a café's Cloud number or anything but the web connector", async () => {
+    rpc.mockResolvedValue({ data: [REQUEST], error: null });
+    getWhatsAppIntegration.mockResolvedValue({ ...ACTIVE_SENDER, provider: "cloud_api" });
+    expect((await handleSendSmsHook(payload)).ok).toBe(false);
+    expect(sendRestaurantWhatsAppText).not.toHaveBeenCalled();
   });
 
   it("reports a failed WhatsApp send to Supabase", async () => {
     rpc.mockResolvedValue({ data: [REQUEST], error: null });
-    sendWhatsAppTemplate.mockResolvedValue(null);
+    sendRestaurantWhatsAppText.mockResolvedValue(null);
     expect(await handleSendSmsHook(payload)).toEqual({ ok: false, status: 502, message: "WhatsApp send failed" });
     expect(events()).toEqual([expect.objectContaining({ event: "link_send_failed" })]);
   });
@@ -160,6 +182,12 @@ describe("requestOwnerLoginCode", () => {
 
   it("is off unless step 2 is switched on", async () => {
     enable("step1");
+    expect(await requestOwnerLoginCode({ phoneInput: "0501234567", ip: "1.2.3.4" })).toEqual({ status: "not_configured" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("is unavailable for every number while WhatsOrder's number is disconnected", async () => {
+    getWhatsAppIntegration.mockResolvedValue(null);
     expect(await requestOwnerLoginCode({ phoneInput: "0501234567", ip: "1.2.3.4" })).toEqual({ status: "not_configured" });
     expect(rpc).not.toHaveBeenCalled();
   });
