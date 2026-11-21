@@ -9,7 +9,8 @@
 //      owner_login_requests row, asks Supabase to start a phone OTP.
 //   2. Supabase calls the Send SMS hook with the code -> handleSendSmsHook
 //      claims that request (only requests WhatsOrder made can be claimed) and
-//      sends the login-link template on WhatsApp.
+//      sends the login link as plain WhatsApp text from WhatsOrder's own
+//      number (WhatsApp Web connector).
 //   3. The owner taps the link -> redeemOwnerLoginLink consumes the request
 //      once and verifies the code with Supabase, which creates the session.
 
@@ -18,26 +19,26 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { getSupabaseAdmin, createEphemeralAuthClient } from "@/lib/supabase";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
-import { sendWhatsAppTemplate } from "@/lib/customer-auth/whatsapp-cloud";
+import { getPublicAppUrl } from "@/lib/super-admin-data";
+import { getWhatsAppIntegration, sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
+import { ownerLoginCodeMessage, ownerLoginLinkMessage } from "@/lib/owner-whatsapp-login/messages";
 import type { RestaurantStatus } from "@/lib/types";
 import {
   OWNER_LOGIN_CLAIM_MAX_AGE_SECONDS,
   OWNER_LOGIN_CODE_MAX_ATTEMPTS,
-  OWNER_LOGIN_CODE_TEMPLATE,
   OWNER_LOGIN_CODE_TTL_SECONDS,
   OWNER_LOGIN_CODES_PER_IP,
   OWNER_LOGIN_CODES_PER_PHONE,
   OWNER_LOGIN_RESEND_COOLDOWN_SECONDS,
-  OWNER_LOGIN_LINK_TEMPLATE,
   OWNER_LOGIN_LINK_TTL_SECONDS,
   OWNER_LOGIN_LINKS_PER_MEMBER,
   OWNER_LOGIN_SENDS_PER_PHONE,
-  OWNER_LOGIN_TEMPLATE_LANGUAGE,
   canReceiveOwnerLoginLink,
   isOwnerWhatsAppCodeEnabled,
-  isOwnerWhatsAppLinkEnabled
+  isOwnerWhatsAppLinkEnabled,
+  ownerLoginSenderRestaurantId
 } from "@/lib/owner-whatsapp-login/config";
-import { buildOwnerLoginLinkSuffix } from "@/lib/owner-whatsapp-login/link-token";
+import { buildOwnerLoginLinkUrl } from "@/lib/owner-whatsapp-login/link-token";
 import {
   fromSupabasePhone,
   isE164,
@@ -84,6 +85,35 @@ export async function recordOwnerAuthEvent(
     // Audit failures are logged, never fatal to the login itself.
     console.error("WhatsOrder owner auth event not recorded", event.event, error.code);
   }
+}
+
+// ── Sender: WhatsOrder's own number on the WhatsApp Web connector ──────────
+
+/** True when WhatsOrder's login number is connected and can send. */
+export async function ownerLoginSenderReady(): Promise<boolean> {
+  const senderId = ownerLoginSenderRestaurantId();
+  if (!senderId) {
+    return false;
+  }
+  const integration = await getWhatsAppIntegration(senderId);
+  return Boolean(
+    integration?.provider === "whatsapp_web" &&
+      integration.status === "active" &&
+      integration.connector_session_id
+  );
+}
+
+/**
+ * Send a login message as plain text from WhatsOrder's connected number.
+ * Never falls back to any other number. Returns the message id or null.
+ * The message is not copied into any chat inbox: it carries a login secret.
+ */
+async function sendOwnerLoginMessage(phoneE164: string, body: string): Promise<string | null> {
+  const senderId = ownerLoginSenderRestaurantId();
+  if (!senderId || !(await ownerLoginSenderReady())) {
+    return null;
+  }
+  return sendRestaurantWhatsAppText(senderId, toSupabasePhone(phoneE164), body);
 }
 
 type MembershipRow = {
@@ -211,6 +241,13 @@ export async function requestOwnerLoginLink(
     return { ok: false, error: "This restaurant is paused or unavailable, so no login link was sent." };
   }
 
+  if (!(await ownerLoginSenderReady())) {
+    return {
+      ok: false,
+      error: "WhatsOrder's login WhatsApp number is not connected. Reconnect it (scan the QR) in the WhatsOrder restaurant's WhatsApp settings, then try again."
+    };
+  }
+
   const { data: requestId, error: reserveError } = await admin.rpc("reserve_owner_login_request", {
     target_kind: "link",
     target_phone_e164: membership.phone_e164,
@@ -256,7 +293,7 @@ export async function requestOwnerLoginLink(
     });
     return {
       ok: false,
-      error: "WhatsApp did not accept the login link. Check the number is on WhatsApp and try again."
+      error: "The login link could not be sent on WhatsApp. Check the number is on WhatsApp and that WhatsOrder's login number is still connected, then try again."
     };
   }
 
@@ -297,45 +334,25 @@ export async function handleSendSmsHook(payload: unknown): Promise<SendSmsHookRe
   if (claimError || !request) {
     return { ok: false, status: 403, message: "No login was requested for this number" };
   }
-  let wamid: string | null;
+  let message: string;
   if (request.request_kind === "code") {
     if (!isOwnerWhatsAppCodeEnabled()) {
       return { ok: false, status: 403, message: "Login codes are not enabled" };
     }
-    // Authentication template: the code in the body and in the copy-code
-    // button, as Meta requires.
-    wamid = await sendWhatsAppTemplate(
-      toSupabasePhone(phoneE164),
-      OWNER_LOGIN_CODE_TEMPLATE,
-      OWNER_LOGIN_TEMPLATE_LANGUAGE,
-      [
-        { type: "body", parameters: [{ type: "text", text: otp }] },
-        { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: otp }] }
-      ]
-    );
+    message = ownerLoginCodeMessage(otp);
   } else {
     const { data: restaurant } = await admin
       .from("restaurants")
       .select("name")
       .eq("id", request.restaurant_id)
       .maybeSingle();
-    const restaurantName = String(restaurant?.name ?? "").trim() || "your restaurant";
-
-    wamid = await sendWhatsAppTemplate(
-      toSupabasePhone(phoneE164),
-      OWNER_LOGIN_LINK_TEMPLATE,
-      OWNER_LOGIN_TEMPLATE_LANGUAGE,
-      [
-        { type: "body", parameters: [{ type: "text", text: restaurantName }] },
-        {
-          type: "button",
-          sub_type: "url",
-          index: "0",
-          parameters: [{ type: "text", text: buildOwnerLoginLinkSuffix(request.request_id, otp) }]
-        }
-      ]
+    message = ownerLoginLinkMessage(
+      String(restaurant?.name ?? ""),
+      buildOwnerLoginLinkUrl(getPublicAppUrl(), request.request_id, otp)
     );
   }
+
+  const wamid = await sendOwnerLoginMessage(phoneE164, message);
 
   await recordOwnerAuthEvent(admin, {
     restaurantId: request.restaurant_id,
@@ -452,6 +469,10 @@ export async function requestOwnerLoginCode(input: {
   const phoneE164 = toE164(input.phoneInput);
   if (!phoneE164) {
     return { status: "invalid_phone" };
+  }
+  // Same answer for every number while the sender is down.
+  if (!(await ownerLoginSenderReady())) {
+    return { status: "not_configured" };
   }
 
   // Counted for every request, known number or not.

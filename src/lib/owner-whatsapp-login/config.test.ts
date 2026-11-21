@@ -3,13 +3,15 @@ import {
   canReceiveOwnerLoginLink,
   isOwnerWhatsAppCodeEnabled,
   isOwnerWhatsAppLinkEnabled,
+  ownerLoginSenderRestaurantId,
   ownerWhatsAppLoginMode
 } from "./config";
 
 const ready = {
   OWNER_WHATSAPP_LOGIN: "step1",
-  WHATSAPP_ACCESS_TOKEN: "token",
-  WHATSAPP_PHONE_NUMBER_ID: "123",
+  OWNER_LOGIN_SENDER_RESTAURANT_ID: "55555555-5555-4555-8555-555555555555",
+  WHATSAPP_WEB_CONNECTOR_URL: "https://connector.example",
+  WHATSAPP_WEB_CONNECTOR_SECRET: "secret",
   SUPABASE_SEND_SMS_HOOK_SECRET: "v1,whsec_abc"
 };
 
@@ -21,7 +23,13 @@ describe("owner WhatsApp login flag", () => {
     expect(ownerWhatsAppLoginMode({ OWNER_WHATSAPP_LOGIN: "step2" })).toBe("step2");
   });
 
-  it("sends links only when the flag, WhatsApp and the hook secret are all set", () => {
+  it("needs a valid sender restaurant id", () => {
+    expect(ownerLoginSenderRestaurantId(ready)).toBe("55555555-5555-4555-8555-555555555555");
+    expect(ownerLoginSenderRestaurantId({ OWNER_LOGIN_SENDER_RESTAURANT_ID: "chaixpress" })).toBeNull();
+    expect(isOwnerWhatsAppLinkEnabled({ ...ready, OWNER_LOGIN_SENDER_RESTAURANT_ID: "chaixpress" })).toBe(false);
+  });
+
+  it("sends links only when the flag, the web connector, the sender and the hook secret are all set", () => {
     expect(isOwnerWhatsAppLinkEnabled(ready)).toBe(true);
     for (const key of Object.keys(ready)) {
       expect(isOwnerWhatsAppLinkEnabled({ ...ready, [key]: undefined })).toBe(false);
