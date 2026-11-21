@@ -60,8 +60,9 @@ export const MenuItemCard = memo(function MenuItemCard({
     ? cartLineKey({ item_id: item.id, offer_id: activeOffer.id })
     : cartLineKey({ item_id: item.id });
   const itemName = language === "ar" && item.name_ar ? item.name_ar : item.name;
-  const itemDescription =
-    language === "ar" && item.description_ar ? item.description_ar : item.description;
+  const itemDescription = (
+    language === "ar" && item.description_ar ? item.description_ar : item.description
+  )?.trim();
 
   return (
     <article
@@ -87,9 +88,9 @@ export const MenuItemCard = memo(function MenuItemCard({
             ) : null}
           </div>
 
-          <p className="mt-2 text-sm leading-6 text-stone-500">
-            {itemDescription || t.itemDescriptionFallback}
-          </p>
+          {itemDescription ? (
+            <p className="mt-2 text-sm leading-6 text-stone-500">{itemDescription}</p>
+          ) : null}
 
           <div className="mt-3 flex items-center justify-between gap-3">
             <div>
