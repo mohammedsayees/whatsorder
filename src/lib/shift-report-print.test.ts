@@ -67,9 +67,17 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("SHIFT BALANCED — OK");
     expect(html).toContain("Opening cash");
     expect(html).toContain("Cash paid-outs");
-    expect(html).toContain("Terminal total");
-    expect(html).toContain("Talabat");
-    expect(html).toContain("Cancelled in shift window");
+    // A balanced card check is one line, not the full working.
+    expect(html).toContain("Card = terminal · balanced");
+    expect(html).not.toContain("CARD RECONCILIATION");
+    expect(html).toContain("Talabat (1 order)");
+    expect(html).toContain("Noon: confirmed zero");
+    // Zero cancellations and repeated totals stay off the paper.
+    expect(html).not.toContain("Cancelled in shift window");
+    expect(html).not.toContain("Total receipts");
+    expect(html).not.toContain("Other income");
+    // Sections are not kept whole across pages: the slip is one page.
+    expect(html).not.toContain("break-inside: avoid; page-break-inside");
     expect(html).toContain("Chai &amp; Xpress");
     expect(html).toContain("Morning &lt;shift&gt;");
     expect(html).not.toContain("<table");
@@ -90,12 +98,13 @@ describe("renderShiftCloseThermalReport", () => {
 
     expect(html).toContain("*** ACTION REQUIRED ***");
     expect(html).toContain("SHORT");
+    expect(html).not.toContain("confirmed zero");
     expect(html).toContain("UNAVAILABLE");
     expect(html).toContain("Portal offline");
   });
 
   it("prints the notes-and-coins breakdown under the cash drawer when there is one", () => {
-    expect(renderShiftCloseThermalReport(report)).not.toContain("Counted by notes");
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Notes &amp; coins total");
 
     const counted = {
       ...report,
@@ -108,8 +117,11 @@ describe("renderShiftCloseThermalReport", () => {
       { minor: 25, count: 3 }
     ];
     const html = renderShiftCloseThermalReport(counted, { cashDenominations: breakdown });
-    expect(html).toContain("Counted by notes &amp; coins");
-    expect(html).toContain("× 2");
+    // Grid only: denomination × count, without a line amount per row.
+    expect(html).toContain("<span>500×2</span>");
+    expect(html).toContain("<span>20×3</span>");
+    expect(html).toContain("<span>0.25×3</span>");
+    expect(html).not.toContain("AED 1,000");
     expect(html).toContain("Notes &amp; coins total");
     expect(html).not.toContain("later corrected");
 
@@ -121,8 +133,8 @@ describe("renderShiftCloseThermalReport", () => {
     expect(corrected).toContain("later corrected");
   });
 
-  it("itemizes paid-outs and other income when the snapshot has them", () => {
-    expect(renderShiftCloseThermalReport(report)).not.toContain("PAID-OUTS");
+  it("itemizes paid-outs under the cash drawer and other income under sales", () => {
+    expect(renderShiftCloseThermalReport(report)).not.toContain("Milk");
 
     const html = renderShiftCloseThermalReport({
       ...report,
@@ -134,18 +146,32 @@ describe("renderShiftCloseThermalReport", () => {
         { id: "o1", category: "used_oil_sale", payment_method: "cash", amount: 30, description: "10 L", reference: null, customer_id: null, recorded_at: "2026-07-17T07:00:00Z", voided_at: null, void_reason: null }
       ]
     });
-    expect(html).toContain("PAID-OUTS");
+    expect(html).not.toContain("PAID-OUTS");
     expect(html).toContain("Milk &lt;supplier&gt;");
+    expect(html.indexOf("Milk &lt;supplier&gt;")).toBeGreaterThan(html.indexOf("Cash paid-outs"));
+    expect(html.indexOf("Milk &lt;supplier&gt;")).toBeLessThan(html.indexOf("Expected cash"));
     expect(html).not.toContain("Milk duplicate");
     expect(html).toContain("1 voided paid-out not counted.");
-    expect(html).toContain("OTHER INCOME");
     expect(html).toContain("Used oil sale: 10 L");
+    expect(html).toContain("Total receipts");
   });
 
   it("prints sales by payment and a credit block without customer names", () => {
     const plain = renderShiftCloseThermalReport(report);
-    expect(plain).toContain("SALES BY PAYMENT");
+    expect(plain).toContain("WhatsOrder sales");
+    expect(plain).not.toContain("SALES BY PAYMENT");
     expect(plain).not.toContain("CUSTOMER CREDIT");
+
+    // Credit sold with nothing collected is just the payment line.
+    const soldOnly = renderShiftCloseThermalReport({
+      ...report,
+      credit_sales: [
+        { order_id: "o1", customer_id: "c1", amount: 15, due_date: null, completed_at: "2026-07-17T05:00:00Z" }
+      ]
+    });
+    expect(soldOnly).toContain("Customer credit (1)");
+    expect(soldOnly).not.toContain("CUSTOMER CREDIT");
+    expect(soldOnly).not.toContain("c1");
 
     const html = renderShiftCloseThermalReport({
       ...report,
@@ -201,7 +227,7 @@ describe("renderShiftCloseThermalReport", () => {
       ]
     });
     expect(html).toContain("Unbilled sales (no order)");
-    expect(html).toContain("UNBILLED SALES");
+    expect(html).not.toContain("UNBILLED SALES");
     expect(html).toContain("4 teas no bill (cash)");
     expect(html).toContain("Unbilled cash sales");
     // Other income keeps only the oil sale.
@@ -218,6 +244,36 @@ describe("renderShiftCloseThermalReport", () => {
       cash_other_income_total: 25
     });
     expect(html).toContain("Cash other income");
+  });
+
+  it("prints the full card working only when the terminal disagrees", () => {
+    const html = renderShiftCloseThermalReport({
+      ...report,
+      card_terminal_total: 90,
+      card_difference_amount: -3.5
+    });
+    expect(html).toContain("CARD RECONCILIATION");
     expect(html).toContain("Expected card receipts");
+    expect(html).toContain("Terminal total");
+    expect(html).toContain("*** ACTION REQUIRED ***");
+  });
+
+  it("keeps cancellations and multiple order types when there are any", () => {
+    const html = renderShiftCloseThermalReport({ ...report, cancelled_order_count: 2 });
+    expect(html).toContain("Cancelled in shift window");
+    expect(html).toContain("Completed orders");
+    expect(html).toContain("Dine-in");
+
+    const single = renderShiftCloseThermalReport({
+      ...report,
+      fulfilment_breakdown: { takeaway: { orders: 60, sales: 195 } }
+    });
+    expect(single).toContain("Orders (Takeaway)");
+    expect(single).not.toContain("Completed orders");
+  });
+
+  it("shows the closing time only when the shift ends on the same day", () => {
+    const html = renderShiftCloseThermalReport(report);
+    expect(html).toMatch(/17 Jul 2026, [^<]+ → \d/);
   });
 });
