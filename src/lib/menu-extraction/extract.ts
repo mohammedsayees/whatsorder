@@ -1,5 +1,7 @@
 import "server-only";
 
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
+
 // A single extracted menu line. Prices are numeric values in the tenant's
 // configured currency; size variants are split into separate items.
 export type DraftMenuItem = {
@@ -171,7 +173,9 @@ async function fetchGeminiWithRetry(
 export async function extractMenuPageItems(
   imageBase64: string,
   mimeType: string,
-  currencyCode = "AED"
+  currencyCode = "AED",
+  /** Restaurant the AI call is billed to (null on the public /try demo). */
+  usage?: AiUsageScope
 ): Promise<DraftMenuItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -205,6 +209,7 @@ export async function extractMenuPageItems(
   // to the user as "Couldn't read this page" even though the page was fine.
   const response = await fetchGeminiWithRetry(endpoint, requestBody, "menu extraction");
   const payload = (await response.json()) as GeminiResponse;
+  await recordGeminiUsage("menu_extract", defaultModel(), payload, usage);
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
   if (!text) {
@@ -225,7 +230,9 @@ export async function extractMenuPageItems(
  * Used to fill in descriptions for menus that print only names and prices.
  */
 export async function generateItemDescriptions(
-  items: { name: string; category: string }[]
+  items: { name: string; category: string }[],
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope
 ): Promise<Record<string, string>> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -262,6 +269,7 @@ ${list}`;
 
   const response = await fetchGeminiWithRetry(endpoint, requestBody, "description generation");
   const payload = (await response.json()) as GeminiResponse;
+  await recordGeminiUsage("menu_descriptions", defaultModel(), payload, usage);
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const map: Record<string, string> = {};
 
@@ -303,14 +311,16 @@ ${list}`;
  */
 export async function generateSingleItemDescription(
   name: string,
-  category: string
+  category: string,
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope
 ): Promise<string | null> {
   const trimmed = name.trim();
   if (!trimmed) {
     return null;
   }
 
-  const map = await generateItemDescriptions([{ name: trimmed, category: category.trim() }]);
+  const map = await generateItemDescriptions([{ name: trimmed, category: category.trim() }], usage);
   return map[trimmed] ?? null;
 }
 
@@ -328,6 +338,8 @@ export type ItemTranslation = {
 export async function translateItemToArabic(input: {
   name: string;
   description?: string | null;
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope;
 }): Promise<ItemTranslation> {
   const apiKey = process.env.GEMINI_API_KEY;
   const name = input.name.trim();
@@ -363,6 +375,7 @@ English description: ${description || "(none)"}`;
 
   const response = await fetchGeminiWithRetry(endpoint, requestBody, "item translation");
   const payload = (await response.json()) as GeminiResponse;
+  await recordGeminiUsage("menu_translate", defaultModel(), payload, input.usage);
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
   if (!text) {

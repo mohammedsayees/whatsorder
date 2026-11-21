@@ -219,7 +219,8 @@ export async function buildDemoStoreAction(input: {
   let drafts;
   try {
     const perPage = await mapWithConcurrency(pages, DEMO_EXTRACTION_CONCURRENCY, (page) =>
-      extractMenuPageItems(page.imageBase64, page.mimeType, country.currencyCode)
+      // No restaurant exists yet on the public demo: recorded unattributed.
+      extractMenuPageItems(page.imageBase64, page.mimeType, country.currencyCode, { restaurantId: null })
     );
     // "Karak (Small)" + "Karak (Large)" become one item with a Size choice.
     drafts = groupSizeVariants(dedupeDraftItems(perPage.flat()));

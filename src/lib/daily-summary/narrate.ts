@@ -10,6 +10,7 @@ import {
   MIN_BASELINE_TRADING_DAYS,
   type CoachRestaurant
 } from "./coach";
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
 import type { DailyNumbers } from "./types";
 
 // Narration provider is Gemini today (same key/harness as menu extraction in
@@ -76,7 +77,7 @@ Hard rules (never break these):
  * the menu-extraction harness. Throws on missing key or hard failure so the
  * caller can fall back to the deterministic template.
  */
-async function geminiGenerate(prompt: string): Promise<string> {
+async function geminiGenerate(prompt: string, usage?: AiUsageScope): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("DAILY_SUMMARY_NARRATION_NOT_CONFIGURED");
@@ -118,6 +119,7 @@ async function geminiGenerate(prompt: string): Promise<string> {
       const payload = (await response.json()) as {
         candidates?: { content?: { parts?: { text?: string }[] } }[];
       };
+      await recordGeminiUsage("daily_summary", defaultModel(), payload, usage);
       return (payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
     }
 
@@ -553,7 +555,9 @@ function buildDailyCoachMessage(
 export async function narrate(
   numbers: DailyNumbers,
   name: string,
-  restaurant?: CoachRestaurant | null
+  restaurant?: CoachRestaurant | null,
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope
 ): Promise<string> {
   const localization = getRestaurantLocalization(restaurant);
   const template = buildTemplateMessage(numbers, name, restaurant);
@@ -567,7 +571,7 @@ export async function narrate(
     const prompt = `${systemPrompt(localization.country_code, localization.currency_code)}\n\nCafé name: ${name}\nNumbers JSON:\n${JSON.stringify(
       numbers
     )}`;
-    const text = await geminiGenerate(prompt);
+    const text = await geminiGenerate(prompt, usage);
     if (text && currencyAmountsGrounded(text, numbers, localization.currency_code)) {
       return text;
     }

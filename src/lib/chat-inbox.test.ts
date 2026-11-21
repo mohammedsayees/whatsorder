@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_REPLY_LIMITS,
+  aiReplyBudgetExceeded,
   chatMessagePreview,
   isChatConversationFilter,
   isChatAutomationActive,
@@ -162,5 +164,36 @@ describe("isChatAutomationActive", () => {
         Date.parse("2026-07-23T01:00:00.000Z")
       )
     ).toBe(false);
+  });
+});
+
+describe("aiReplyBudgetExceeded", () => {
+  const within = { conversationLastHour: 0, restaurantLastDay: 0 };
+
+  it("allows replies under both limits", () => {
+    expect(aiReplyBudgetExceeded(within)).toBe(false);
+    expect(
+      aiReplyBudgetExceeded({
+        conversationLastHour: AI_REPLY_LIMITS.perConversationPerHour - 1,
+        restaurantLastDay: AI_REPLY_LIMITS.perRestaurantPerDay - 1
+      })
+    ).toBe(false);
+  });
+
+  it("stops a single conversation that hits its hourly limit", () => {
+    expect(
+      aiReplyBudgetExceeded({ ...within, conversationLastHour: AI_REPLY_LIMITS.perConversationPerHour })
+    ).toBe(true);
+  });
+
+  it("stops a restaurant that hits its daily limit", () => {
+    expect(
+      aiReplyBudgetExceeded({ ...within, restaurantLastDay: AI_REPLY_LIMITS.perRestaurantPerDay })
+    ).toBe(true);
+  });
+
+  it("keeps limits generous for real customers", () => {
+    expect(AI_REPLY_LIMITS.perConversationPerHour).toBeGreaterThanOrEqual(15);
+    expect(AI_REPLY_LIMITS.perRestaurantPerDay).toBeGreaterThanOrEqual(300);
   });
 });

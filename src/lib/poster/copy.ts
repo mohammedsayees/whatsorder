@@ -15,6 +15,7 @@ export const CAPTION_MAX = 160;
 export const COPY_VARIANT_COUNT = 3;
 
 import type { PosterCopy, PosterLanguage, PosterTemplateId } from "./types";
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
 
 /** Everything the model may talk about. Nothing else exists for it. */
 export type PosterCopyFacts = {
@@ -338,7 +339,7 @@ Hard rules: character caps are absolute. ${
   } Never invent numbers, prices, ingredients, or claims not in the facts.`;
 }
 
-async function geminiGenerate(prompt: string): Promise<string> {
+async function geminiGenerate(prompt: string, usage?: AiUsageScope): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("POSTER_COPY_NOT_CONFIGURED");
@@ -380,6 +381,7 @@ async function geminiGenerate(prompt: string): Promise<string> {
       const payload = (await response.json()) as {
         candidates?: { content?: { parts?: { text?: string }[] } }[];
       };
+      await recordGeminiUsage("poster_copy", defaultModel(), payload, usage);
       return (payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
     }
 
@@ -396,10 +398,12 @@ async function geminiGenerate(prompt: string): Promise<string> {
 
 /** Always returns exactly COPY_VARIANT_COUNT variants; never throws. */
 export async function generateCopyVariants(
-  facts: PosterCopyFacts
+  facts: PosterCopyFacts,
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope
 ): Promise<PosterCopy[]> {
   try {
-    const raw = await geminiGenerate(copyPrompt(facts));
+    const raw = await geminiGenerate(copyPrompt(facts), usage);
     return normalizeCopyVariants(raw, facts);
   } catch (error) {
     console.error("WhatsOrder poster copy generation failed, using fallback", {

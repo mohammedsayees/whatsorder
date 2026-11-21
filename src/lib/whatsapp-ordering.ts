@@ -59,7 +59,9 @@ function createChatOrderParser(admin: Admin, scope: { restaurantId: string; conv
 
     const model = process.env.WHATSAPP_ORDER_AI_MODEL ?? process.env.WHATSAPP_AI_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
     const { catalog, aliases } = buildParserCatalog(menu);
-    const call = await callGeminiChatParser(text, catalog, { apiKey, model });
+    const call = await callGeminiChatParser(text, catalog, {
+      apiKey, model, usage: { restaurantId: scope.restaurantId }
+    });
     const validated: ValidatedParse = call.raw === null
       ? { result: fast, outcome: "error", reason: call.error ?? "no output" }
       : validateParserOutput(call.raw, text, aliases);

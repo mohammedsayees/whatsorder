@@ -17,6 +17,7 @@ vi.mock("@/lib/whatsapp-web-signing", () => ({
 vi.mock("@/lib/chat-inbox", () => ({
   getChatConversationByPhone: vi.fn(),
   getChatMessages: vi.fn(async () => []),
+  isAiReplyBudgetExhausted: vi.fn(async () => false),
   isRecentDuplicateBotReply: vi.fn(),
   isChatAutomationActive: vi.fn(),
   maskCustomerLinkToken: (body: string) => body.replace(/([?&]token=)[^&\s]+/g, "$1•••"),
@@ -45,6 +46,11 @@ vi.mock("@/lib/marketing/consent", () => ({
 }));
 vi.mock("@/lib/customer-auth/tokens", () => ({
   mintLinkToken: (...args: unknown[]) => mintLink(...args)
+}));
+// Off by default so the AI receptionist only runs in tests that opt in.
+let planAllowed = false;
+vi.mock("@/lib/plan-gates", () => ({
+  planAllowsOrFalse: vi.fn(async () => planAllowed)
 }));
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -89,6 +95,7 @@ function messageEvent(body: string) {
 
 beforeEach(() => {
   existingMessage = null;
+  planAllowed = false;
   for (const mock of [storeMedia, withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, vi.mocked(after)]) {
     mock.mockClear();
   }
@@ -180,5 +187,39 @@ describe("WhatsApp Web connector voice notes", () => {
     await (vi.mocked(after).mock.calls[0][0] as () => unknown)();
     expect(storeMedia).toHaveBeenCalledWith("rest-1", "web:a1", Buffer.from("voice-bytes"), "audio/ogg; codecs=opus");
     expect(handleOrder).not.toHaveBeenCalled();
+  });
+});
+
+const chatInbox = await import("@/lib/chat-inbox");
+const whatsappAi = await import("@/lib/whatsapp-ai");
+
+describe("WhatsApp Web connector AI reply budget", () => {
+  async function runReceptionistFor(body: string) {
+    planAllowed = true;
+    vi.mocked(whatsappAi.getWhatsAppChatbotSettings).mockResolvedValue({
+      enabled: true,
+      answer_text: true,
+      answer_audio: true
+    } as never);
+    vi.mocked(chatInbox.getChatConversationByPhone).mockResolvedValue({ id: "conv-1" } as never);
+    vi.mocked(chatInbox.isChatAutomationActive).mockReturnValue(true);
+    await POST(messageEvent(body));
+    for (const [task] of vi.mocked(after).mock.calls) {
+      await (task as () => unknown)();
+    }
+  }
+
+  it("skips the paid AI call once the budget is used up", async () => {
+    vi.mocked(chatInbox.isAiReplyBudgetExhausted).mockResolvedValueOnce(true);
+    await runReceptionistFor("is the karak ready?");
+    expect(chatInbox.isAiReplyBudgetExhausted).toHaveBeenCalledWith("rest-1", "conv-1");
+    expect(generateAi).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it("still answers while within budget", async () => {
+    vi.mocked(chatInbox.isAiReplyBudgetExhausted).mockResolvedValueOnce(false);
+    await runReceptionistFor("is the karak ready?");
+    expect(generateAi).toHaveBeenCalledTimes(1);
   });
 });

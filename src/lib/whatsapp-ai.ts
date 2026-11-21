@@ -1,3 +1,4 @@
+import { recordGeminiUsage } from "@/lib/ai/usage";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const CHAT_ORDERING_MODES = ["off", "approved", "everyone"] as const;
@@ -434,6 +435,7 @@ CUSTOMER_TEXT=${JSON.stringify(text || "[voice message]")}`;
     const payload = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
+    await recordGeminiUsage("chatbot_reply", model, payload, { restaurantId: input.restaurantId });
     const modelText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     return parseModelReply(modelText) ?? safeFallback(context, input.baseUrl);
   } catch (error) {

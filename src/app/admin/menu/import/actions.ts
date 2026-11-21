@@ -72,7 +72,8 @@ export async function generateMenuDescriptionsAction(
   items: { name: string; category: string }[],
   actingRestaurantId?: string | null
 ): Promise<DescriptionResult> {
-  if (!(await requireMenuImportSession(actingRestaurantId))) {
+  const importSession = await requireMenuImportSession(actingRestaurantId);
+  if (!importSession) {
     return { ok: false, error: "Restaurant not found." };
   }
 
@@ -82,7 +83,8 @@ export async function generateMenuDescriptionsAction(
 
   try {
     const descriptions = await generateItemDescriptions(
-      (Array.isArray(items) ? items : []).slice(0, 200)
+      (Array.isArray(items) ? items : []).slice(0, 200),
+      { restaurantId: importSession.restaurantId }
     );
     return { ok: true, descriptions };
   } catch {
@@ -102,7 +104,8 @@ export async function generateItemDescriptionAction(input: {
   category: string;
   actingRestaurantId?: string | null;
 }): Promise<SingleDescriptionResult> {
-  if (!(await requireMenuImportSession(input?.actingRestaurantId))) {
+  const importSession = await requireMenuImportSession(input?.actingRestaurantId);
+  if (!importSession) {
     return { ok: false, error: "Restaurant not found." };
   }
 
@@ -116,7 +119,9 @@ export async function generateItemDescriptionAction(input: {
   }
 
   try {
-    const description = await generateSingleItemDescription(name, String(input?.category ?? ""));
+    const description = await generateSingleItemDescription(name, String(input?.category ?? ""), {
+      restaurantId: importSession.restaurantId
+    });
     if (!description) {
       return { ok: false, error: "AI couldn't write a description just now. Try again." };
     }
@@ -137,7 +142,8 @@ export async function translateItemAction(input: {
   description?: string | null;
   actingRestaurantId?: string | null;
 }): Promise<TranslationResult> {
-  if (!(await requireMenuImportSession(input?.actingRestaurantId))) {
+  const importSession = await requireMenuImportSession(input?.actingRestaurantId);
+  if (!importSession) {
     return { ok: false, error: "Restaurant not found." };
   }
 
@@ -153,7 +159,8 @@ export async function translateItemAction(input: {
   try {
     const translation = await translateItemToArabic({
       name,
-      description: input?.description ?? null
+      description: input?.description ?? null,
+      usage: { restaurantId: importSession.restaurantId }
     });
     if (!translation.name_ar && !translation.description_ar) {
       return { ok: false, error: "AI couldn't translate just now. Try again." };
@@ -207,7 +214,8 @@ export async function extractMenuPageAction(input: {
     const items = await extractMenuPageItems(
       input.imageBase64,
       input.mimeType,
-      restaurant.currency_code ?? "AED"
+      restaurant.currency_code ?? "AED",
+      { restaurantId: importSession.restaurantId }
     );
     return { ok: true, items };
   } catch (error) {

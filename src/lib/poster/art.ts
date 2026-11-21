@@ -236,6 +236,7 @@ export async function generatePosterArt(
   try {
     generated = await generate({
       prompt,
+      usage: { feature: "poster_art", restaurantId: target.restaurantId },
       ...(target.kind === "cutout" && target.sourcePhoto
         ? {
             inputImage: {

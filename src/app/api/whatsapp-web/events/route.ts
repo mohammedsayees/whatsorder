@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import {
   getChatConversationByPhone,
   getChatMessages,
+  isAiReplyBudgetExhausted,
   isRecentDuplicateBotReply,
   isChatAutomationActive,
   maskCustomerLinkToken,
@@ -87,6 +88,9 @@ async function runReceptionist(input: {
     input.phone
   );
   if (!conversation || !isChatAutomationActive(conversation)) return;
+  // Paid AI call: stop auto-replying to a spamming number or a bot loop.
+  // The message is already in the inbox for staff.
+  if (await isAiReplyBudgetExhausted(input.restaurantId, conversation.id)) return;
 
   // Last few messages (this one included, so drop it) give the AI context.
   const recent = await getChatMessages(input.restaurantId, conversation.id, 11);
