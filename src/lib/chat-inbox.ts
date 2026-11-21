@@ -907,6 +907,57 @@ export async function getChatMetrics(restaurantId: string): Promise<ChatMetrics>
   };
 }
 
+// Each AI reply is a paid Gemini call carrying the whole menu as context.
+// Cap them so a spamming number (or a bot loop) can't run up the AI bill:
+// past either limit the message still lands in the inbox for staff, it just
+// gets no automatic reply. Generous for real customers, who send a handful
+// of messages per order.
+export const AI_REPLY_LIMITS = {
+  perConversationPerHour: 20,
+  perRestaurantPerDay: 500
+} as const;
+
+export function aiReplyBudgetExceeded(
+  counts: { conversationLastHour: number; restaurantLastDay: number },
+  limits: { perConversationPerHour: number; perRestaurantPerDay: number } = AI_REPLY_LIMITS
+): boolean {
+  return (
+    counts.conversationLastHour >= limits.perConversationPerHour ||
+    counts.restaurantLastDay >= limits.perRestaurantPerDay
+  );
+}
+
+/**
+ * True when this conversation or restaurant has used up its AI reply budget.
+ * Fails closed (no paid AI call) when the counts can't be read, matching the
+ * plan gate in front of it.
+ */
+export async function isAiReplyBudgetExhausted(
+  restaurantId: string,
+  conversationId: string,
+  now = Date.now()
+): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return true;
+  const aiReplies = () =>
+    admin
+      .from("whatsapp_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("sender_type", "ai");
+  const [conversation, restaurant] = await Promise.all([
+    aiReplies()
+      .eq("conversation_id", conversationId)
+      .gte("created_at", new Date(now - 60 * 60 * 1000).toISOString()),
+    aiReplies().gte("created_at", new Date(now - 24 * 60 * 60 * 1000).toISOString())
+  ]);
+  if (conversation.error || restaurant.error) return true;
+  return aiReplyBudgetExceeded({
+    conversationLastHour: conversation.count ?? 0,
+    restaurantLastDay: restaurant.count ?? 0
+  });
+}
+
 export async function isRecentDuplicateBotReply(
   restaurantId: string,
   conversationId: string,
