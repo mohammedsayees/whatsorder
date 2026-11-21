@@ -10,6 +10,10 @@ import { aiImageAllowanceMessage, aiImagesUsedThisMonth } from "@/lib/ai/image-a
 import { aiImageAllowanceRemaining } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
+import {
+  IMMUTABLE_UPLOAD_CACHE_SECONDS,
+  normalizeImageBuffer
+} from "@/lib/server-image-upload";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   requireRestaurantRole,
@@ -222,15 +226,31 @@ export async function generateMenuItemImageAction(input: {
     return { ok: false, error: friendlyGenerationError(error) };
   }
 
-  const extension = EXTENSION_BY_MIME[generated.mimeType] ?? "png";
+  // The model returns a full-size PNG (~850 KB). Store it the same way as a
+  // device upload — WebP, longest edge 1,200 px — so the customer menu,
+  // admin thumbnails and the image optimizer never pull the raw file. If the
+  // bytes can't be decoded, keep the original rather than lose the image.
+  let upload: { bytes: Buffer; contentType: string; extension: string };
+  try {
+    upload = await normalizeImageBuffer(generated.imageBuffer, { maximumEdge: 1_200 });
+  } catch {
+    upload = {
+      bytes: generated.imageBuffer,
+      contentType: generated.mimeType,
+      extension: EXTENSION_BY_MIME[generated.mimeType] ?? "png"
+    };
+  }
+
   const bucketName = "menu-images";
   const itemSlug = slugify(item.name) || "menu-item";
-  const filePath = `restaurants/${restaurant.slug}/menu-items/ai-generated/${itemSlug}-${Date.now()}.${extension}`;
+  const filePath = `restaurants/${restaurant.slug}/menu-items/ai-generated/${itemSlug}-${Date.now()}.${upload.extension}`;
 
   const { error: uploadError } = await supabase.storage
     .from(bucketName)
-    .upload(filePath, generated.imageBuffer, {
-      contentType: generated.mimeType,
+    .upload(filePath, upload.bytes, {
+      contentType: upload.contentType,
+      // Unique path per generation, never overwritten.
+      cacheControl: IMMUTABLE_UPLOAD_CACHE_SECONDS,
       upsert: false
     });
 

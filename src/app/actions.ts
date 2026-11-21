@@ -15,7 +15,10 @@ import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
 import { revalidatePublicRestaurantCache } from "@/lib/public-cache";
 import { restaurantDateBoundaryIso } from "@/lib/localization";
-import { normalizeImageUpload } from "@/lib/server-image-upload";
+import {
+  IMMUTABLE_UPLOAD_CACHE_SECONDS,
+  normalizeImageUpload
+} from "@/lib/server-image-upload";
 import { ownedStoragePath } from "@/lib/storage-ownership";
 import { configuredMarketplaceChannels } from "@/lib/shift-reconciliation";
 import { parseDailySummaryPhones } from "@/lib/daily-summary/recipients";
@@ -441,6 +444,8 @@ export async function uploadMenuItemImageAction(formData: FormData): Promise<Upl
     .from(bucketName)
     .upload(filePath, normalizedImage.bytes, {
       contentType: normalizedImage.contentType,
+      // Unique path per upload, never overwritten.
+      cacheControl: IMMUTABLE_UPLOAD_CACHE_SECONDS,
       upsert: false
     });
 
@@ -511,6 +516,8 @@ export async function uploadRestaurantBrandImageAction(
     normalizedImage.bytes,
     {
       contentType: normalizedImage.contentType,
+      // Unique path per upload, never overwritten.
+      cacheControl: IMMUTABLE_UPLOAD_CACHE_SECONDS,
       upsert: false
     }
   );
