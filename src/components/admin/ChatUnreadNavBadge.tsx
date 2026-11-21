@@ -4,6 +4,11 @@ import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import { updateUnreadConversationIds } from "@/lib/chat-unread";
+import {
+  parseConversationBroadcast,
+  privateChannelConfig,
+  restaurantChatsTopic
+} from "@/lib/realtime-topics";
 
 // Polling only backs up realtime. While the channel is live it is a slow
 // safety net; the fast interval applies only while realtime is unavailable.
@@ -124,25 +129,6 @@ export function ChatUnreadNavBadge({
     let active = true;
     let channel: RealtimeChannel | null = null;
 
-    const applyConversationUpdate = (value: Record<string, unknown>) => {
-      const id = typeof value.id === "string" ? value.id : null;
-      const unreadCount = Number(value.unread_count);
-      if (
-        value.restaurant_id !== restaurantId ||
-        !id ||
-        !Number.isFinite(unreadCount)
-      ) {
-        return;
-      }
-
-      setUnreadConversationIds((current) =>
-        updateUnreadConversationIds(current, {
-          id,
-          unread_count: unreadCount
-        })
-      );
-    };
-
     const subscribe = async () => {
       try {
         await supabase.realtime.setAuth(activeToken);
@@ -150,28 +136,17 @@ export function ChatUnreadNavBadge({
           return;
         }
 
+        // Private, per-restaurant Broadcast channel (src/lib/realtime-topics.ts).
         channel = supabase
-          .channel(`chat-nav-unread-${restaurantId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "whatsapp_conversations"
-            },
-            (payload) => applyConversationUpdate(payload.new)
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "whatsapp_conversations"
-            },
-            (payload) => applyConversationUpdate(payload.new)
-          )
+          .channel(restaurantChatsTopic(restaurantId), privateChannelConfig)
+          .on("broadcast", { event: "conversation_changed" }, ({ payload }) => {
+            const conversation = parseConversationBroadcast(payload);
+            if (conversation) {
+              setUnreadConversationIds((current) =>
+                updateUnreadConversationIds(current, conversation)
+              );
+            }
+          })
           .subscribe((status) => {
             if (!active) {
               return;

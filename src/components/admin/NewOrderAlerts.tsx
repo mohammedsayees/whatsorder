@@ -8,6 +8,11 @@ import { waitingLabel, type WaitingArrival } from "@/lib/car-arrival";
 import { getRealtimeAccessTokenAction } from "@/app/admin/alerts/actions";
 import type { NewOrderAlertState } from "@/lib/data";
 import {
+  parseOrderBroadcast,
+  privateChannelConfig,
+  restaurantOrdersTopic
+} from "@/lib/realtime-topics";
+import {
   createInitialSeenOrderIds,
   findUnseenOrderIds,
   rememberOrderIds
@@ -576,68 +581,52 @@ export function NewOrderAlertsProvider({
           return;
         }
 
+        // Private, per-restaurant Broadcast channel fed by a database trigger
+        // (see src/lib/realtime-topics.ts). Joining is authorized once by
+        // the realtime.messages policy, so the topic itself is tenant-scoped.
         channel = supabase
-          .channel(`orders-alerts-${restaurantId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "INSERT",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "orders"
-            },
-            (payload) => {
-              const orderId = String(payload.new.id ?? "");
+          .channel(restaurantOrdersTopic(restaurantId), privateChannelConfig)
+          .on("broadcast", { event: "order_created" }, ({ payload }) => {
+            const order = parseOrderBroadcast(payload);
 
-              if (
-                !orderId ||
-                payload.new.restaurant_id !== restaurantId ||
-                // Only alert for genuinely new customer orders. Staff-entered
-                // tickets are created already accepted (Preparing), so they
-                // should not ring the new-order alert.
-                payload.new.status !== "New" ||
-                seenOrderIdsRef.current.has(orderId)
-              ) {
-                return;
-              }
-
-              setNewOrderCount((count) => count + 1);
-              surfaceNewOrders([orderId]);
+            if (
+              !order ||
+              // Only alert for genuinely new customer orders. Staff-entered
+              // tickets are created already accepted (Preparing), so they
+              // should not ring the new-order alert.
+              order.status !== "New" ||
+              seenOrderIdsRef.current.has(order.id)
+            ) {
+              return;
             }
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              filter: `restaurant_id=eq.${restaurantId}`,
-              schema: "public",
-              table: "orders"
-            },
-            (payload) => {
-              // A car-pickup customer just tapped "I've arrived": reconcile
-              // now instead of waiting for the next slow poll.
-              const orderId = String(payload.new.id ?? "");
 
-              const arrived =
-                payload.new.fulfilment_type === "car_pickup" &&
-                payload.new.customer_arrived_at &&
-                !knownArrivalIdsRef.current.has(orderId);
-              // Stripe confirmed a "Pay online" order: tell staff now.
-              const paidOnline =
-                payload.new.online_payment_status === "paid" &&
-                !knownOnlinePaymentIdsRef.current.has(orderId);
+            setNewOrderCount((count) => count + 1);
+            surfaceNewOrders([order.id]);
+          })
+          .on("broadcast", { event: "order_updated" }, ({ payload }) => {
+            const order = parseOrderBroadcast(payload);
 
-              if (
-                payload.new.restaurant_id === restaurantId &&
-                orderId &&
-                (arrived || paidOnline)
-              ) {
-                void refreshAlertStateRef.current().catch(() => {
-                  // The next poll retries.
-                });
-              }
+            if (!order) {
+              return;
             }
-          )
+
+            // A car-pickup customer just tapped "I've arrived": reconcile
+            // now instead of waiting for the next slow poll.
+            const arrived =
+              order.fulfilment_type === "car_pickup" &&
+              Boolean(order.customer_arrived_at) &&
+              !knownArrivalIdsRef.current.has(order.id);
+            // Stripe confirmed a "Pay online" order: tell staff now.
+            const paidOnline =
+              order.online_payment_status === "paid" &&
+              !knownOnlinePaymentIdsRef.current.has(order.id);
+
+            if (arrived || paidOnline) {
+              void refreshAlertStateRef.current().catch(() => {
+                // The next poll retries.
+              });
+            }
+          })
           .subscribe((status) => {
             if (!active) {
               return;
