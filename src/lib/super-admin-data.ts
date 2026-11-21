@@ -29,7 +29,9 @@ type RestaurantDetail = {
   ownerMembership: {
     id: string;
     user_id: string | null;
-    email: string;
+    email: string | null;
+    phone_e164: string | null;
+    phone_verified_at: string | null;
     role: string;
     invited_at: string | null;
     accepted_at: string | null;
@@ -37,7 +39,9 @@ type RestaurantDetail = {
   teamMemberships: Array<{
     id: string;
     user_id: string | null;
-    email: string;
+    email: string | null;
+    phone_e164: string | null;
+    phone_verified_at: string | null;
     role: string;
     invited_at: string | null;
     accepted_at: string | null;
@@ -162,7 +166,7 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
       .limit(20),
     supabase
       .from("restaurant_users")
-      .select("id,user_id,email,role,invited_at,accepted_at")
+      .select("id,user_id,email,phone_e164,phone_verified_at,role,invited_at,accepted_at")
       .eq("restaurant_id", id)
       .order("created_at"),
     supabase
@@ -194,7 +198,9 @@ export async function getSuperAdminRestaurant(id: string): Promise<RestaurantDet
   const normalizedTeamMemberships = (teamMemberships ?? []).map((membership) => ({
     id: String(membership.id),
     user_id: membership.user_id ? String(membership.user_id) : null,
-    email: String(membership.email),
+    email: membership.email ? String(membership.email) : null,
+    phone_e164: membership.phone_e164 ? String(membership.phone_e164) : null,
+    phone_verified_at: membership.phone_verified_at ? String(membership.phone_verified_at) : null,
     role: String(membership.role),
     invited_at: membership.invited_at ? String(membership.invited_at) : null,
     accepted_at: membership.accepted_at ? String(membership.accepted_at) : null

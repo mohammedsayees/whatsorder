@@ -101,13 +101,28 @@ export async function sendWhatsAppText(
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
-  languageCode: string
+  languageCode: string,
+  components?: WhatsAppTemplateComponent[]
 ): Promise<string | null> {
   return sendWhatsAppMessagePayload(to, {
     type: "template",
-    template: { name: templateName, language: { code: languageCode } }
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+      ...(components && components.length > 0 ? { components } : {})
+    }
   });
 }
+
+/** Body / button parameters for a template send (Cloud API shape). */
+export type WhatsAppTemplateComponent =
+  | { type: "body"; parameters: Array<{ type: "text"; text: string }> }
+  | {
+      type: "button";
+      sub_type: "url";
+      index: string;
+      parameters: Array<{ type: "text"; text: string }>;
+    };
 
 async function sendWhatsAppMessagePayload(
   to: string,

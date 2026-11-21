@@ -26,6 +26,12 @@ import {
   removeOrphanedMemberAccounts
 } from "@/lib/restaurant-deletion";
 import {
+  linkAuthUserToPhone,
+  recordOwnerAuthEvent,
+  requestOwnerLoginLink
+} from "@/lib/owner-whatsapp-login/server";
+import { maskPhone, toE164 } from "@/lib/owner-whatsapp-login/phone";
+import {
   countryProfileFields,
   getCountryProfile,
   isCountryCode
@@ -430,7 +436,7 @@ export async function revokeRestaurantUserAccessAction(formData: FormData) {
 
   const { data: membership, error: membershipLookupError } = await supabase
     .from("restaurant_users")
-    .select("id,email,role")
+    .select("id,email,phone_e164,role")
     .eq("id", membershipId)
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
@@ -466,7 +472,7 @@ export async function revokeRestaurantUserAccessAction(formData: FormData) {
   revalidatePath(`/super-admin/restaurants/${restaurantId}`);
   redirect(
     `/super-admin/restaurants/${restaurantId}?access_revoked=${queryError(
-      `Access revoked for ${membership.email}.`
+      `Access revoked for ${membership.email ?? membership.phone_e164 ?? "this user"}.`
     )}`
   );
 }
@@ -702,4 +708,256 @@ export async function deleteRestaurantPermanentlyAction(formData: FormData) {
       note ? `&note=${encodeURIComponent(note.trim())}` : ""
     }`
   );
+}
+
+// ── Owner WhatsApp login (step 1) ───────────────────────────────────────────
+// Super-admin adds and verifies a member's WhatsApp number, adds a member who
+// has no email, and sends a one-tap login link. Numbers are only verified when
+// the super-admin confirms them with the person; customer phone numbers are
+// never used for this.
+
+function teamRedirect(restaurantId: string, key: "invited" | "invite_error" | "error", message: string): never {
+  redirect(`/super-admin/restaurants/${restaurantId}?${key}=${queryError(message)}`);
+}
+
+export async function saveMemberPhoneAction(formData: FormData) {
+  const superAdmin = await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const membershipId = stringValue(formData, "membership_id");
+  const rawPhone = stringValue(formData, "phone");
+  const confirmed = formData.get("confirmed") === "on";
+
+  if (!supabase || !restaurantId || !membershipId) {
+    return;
+  }
+
+  const { data: membership, error: lookupError } = await supabase
+    .from("restaurant_users")
+    .select("id,restaurant_id,user_id,email,role,phone_e164,phone_verified_at")
+    .eq("id", membershipId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+  if (lookupError || !membership) {
+    teamRedirect(restaurantId, "invite_error", "Restaurant user could not be found.");
+  }
+
+  const previousPhone = membership.phone_e164 ? String(membership.phone_e164) : null;
+
+  if (!rawPhone) {
+    if (!membership.email) {
+      teamRedirect(restaurantId, "invite_error", "This person has no email, so their WhatsApp number cannot be removed. Revoke access instead.");
+    }
+    const { error } = await supabase
+      .from("restaurant_users")
+      .update({ phone_e164: null, phone_verified_at: null, phone_verified_by: null })
+      .eq("id", membershipId)
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      teamRedirect(restaurantId, "invite_error", error.message);
+    }
+    if (previousPhone) {
+      await recordOwnerAuthEvent(supabase, {
+        restaurantId,
+        restaurantUserId: membershipId,
+        actorUserId: superAdmin.userId,
+        event: "phone_removed",
+        channel: "super_admin"
+      });
+    }
+    revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+    teamRedirect(restaurantId, "invited", "WhatsApp number removed.");
+  }
+
+  const phone = toE164(rawPhone);
+  if (!phone) {
+    teamRedirect(restaurantId, "invite_error", "Enter a valid WhatsApp number, for example 050 123 4567 or +971501234567.");
+  }
+
+  const phoneChanged = phone !== previousPhone;
+  const update: Record<string, string | null> = { phone_e164: phone };
+  if (phoneChanged) {
+    update.phone_verified_at = null;
+    update.phone_verified_by = null;
+  }
+
+  if (confirmed) {
+    const linked = await linkAuthUserToPhone(
+      supabase,
+      { id: membershipId, user_id: membership.user_id ? String(membership.user_id) : null },
+      phone
+    );
+    if (!linked.ok) {
+      teamRedirect(restaurantId, "invite_error", linked.error);
+    }
+    update.phone_verified_at = new Date().toISOString();
+    update.phone_verified_by = superAdmin.userId;
+    if (!membership.user_id) {
+      update.user_id = linked.userId;
+    }
+  }
+
+  const { error } = await supabase
+    .from("restaurant_users")
+    .update(update)
+    .eq("id", membershipId)
+    .eq("restaurant_id", restaurantId);
+  if (error) {
+    teamRedirect(
+      restaurantId,
+      "invite_error",
+      error.code === "23505" ? "Another team member at this restaurant already uses this number." : error.message
+    );
+  }
+
+  if (phoneChanged) {
+    await recordOwnerAuthEvent(supabase, {
+      restaurantId,
+      restaurantUserId: membershipId,
+      actorUserId: superAdmin.userId,
+      event: previousPhone ? "phone_changed" : "phone_added",
+      channel: "super_admin"
+    });
+  }
+  if (confirmed) {
+    await recordOwnerAuthEvent(supabase, {
+      restaurantId,
+      restaurantUserId: membershipId,
+      actorUserId: superAdmin.userId,
+      event: "phone_verified",
+      channel: "super_admin",
+      detail: "confirmed by super-admin"
+    });
+  }
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  teamRedirect(
+    restaurantId,
+    "invited",
+    confirmed ? `WhatsApp number ${maskPhone(phone)} saved and verified.` : `WhatsApp number ${maskPhone(phone)} saved. Verify it before sending a login link.`
+  );
+}
+
+export async function addMemberByPhoneAction(formData: FormData) {
+  const superAdmin = await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const phone = toE164(stringValue(formData, "phone"));
+  const requestedRole = stringValue(formData, "role");
+  const confirmed = formData.get("confirmed") === "on";
+
+  if (!supabase || !restaurantId) {
+    return;
+  }
+  if (!phone) {
+    teamRedirect(restaurantId, "invite_error", "Enter a valid WhatsApp number, for example 050 123 4567 or +971501234567.");
+  }
+  if (!confirmed) {
+    teamRedirect(restaurantId, "invite_error", "Confirm the number with the person (for example on a call) before adding them by WhatsApp.");
+  }
+
+  const { data: memberships, error: membershipsError } = await supabase
+    .from("restaurant_users")
+    .select("id,role,phone_e164")
+    .eq("restaurant_id", restaurantId);
+  if (membershipsError) {
+    teamRedirect(restaurantId, "invite_error", membershipsError.message);
+  }
+  const existing = memberships ?? [];
+  if (existing.some((membership) => membership.phone_e164 === phone)) {
+    teamRedirect(restaurantId, "invite_error", "Someone at this restaurant already uses this WhatsApp number.");
+  }
+  const hasOwner = existing.some((membership) =>
+    ["restaurant_admin", "owner"].includes(String(membership.role))
+  );
+  const role =
+    requestedRole === "restaurant_admin" && !hasOwner
+      ? "restaurant_admin"
+      : requestedRole === "manager"
+        ? "manager"
+        : requestedRole === "restaurant_admin"
+          ? null
+          : "staff";
+  if (!role) {
+    teamRedirect(restaurantId, "invite_error", "This restaurant already has an owner. Add this person as a manager or staff member.");
+  }
+
+  const access = await getTenantAccess(restaurantId);
+  if (access.plan_code && access.limits.max_staff !== null && existing.length >= access.limits.max_staff) {
+    teamRedirect(
+      restaurantId,
+      "invite_error",
+      `${access.plan_name ?? "This plan"} allows up to ${access.limits.max_staff} staff accounts. Upgrade the contract before adding another user.`
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: inserted, error: insertError } = await supabase
+    .from("restaurant_users")
+    .insert({
+      restaurant_id: restaurantId,
+      email: null,
+      role,
+      phone_e164: phone,
+      invited_at: nowIso
+    })
+    .select("id")
+    .single();
+  if (insertError || !inserted) {
+    teamRedirect(restaurantId, "invite_error", insertError?.message ?? "The team member could not be added.");
+  }
+
+  const linked = await linkAuthUserToPhone(supabase, { id: String(inserted.id), user_id: null }, phone);
+  if (!linked.ok) {
+    // Roll back the half-made membership so the list never shows a member
+    // who can't sign in.
+    await supabase.from("restaurant_users").delete().eq("id", inserted.id).eq("restaurant_id", restaurantId);
+    teamRedirect(restaurantId, "invite_error", linked.error);
+  }
+
+  const { error: verifyError } = await supabase
+    .from("restaurant_users")
+    .update({ user_id: linked.userId, phone_verified_at: nowIso, phone_verified_by: superAdmin.userId })
+    .eq("id", inserted.id)
+    .eq("restaurant_id", restaurantId);
+  if (verifyError) {
+    teamRedirect(restaurantId, "invite_error", verifyError.message);
+  }
+
+  for (const event of ["phone_added", "phone_verified"] as const) {
+    await recordOwnerAuthEvent(supabase, {
+      restaurantId,
+      restaurantUserId: String(inserted.id),
+      actorUserId: superAdmin.userId,
+      event,
+      channel: "super_admin",
+      detail: event === "phone_verified" ? "confirmed by super-admin" : null
+    });
+  }
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  teamRedirect(restaurantId, "invited", `Added ${maskPhone(phone)}. You can now send them a login link on WhatsApp.`);
+}
+
+export async function sendOwnerWhatsAppLoginLinkAction(formData: FormData) {
+  const superAdmin = await requireSuperAdmin();
+  const supabase = getSupabaseAdmin();
+  const restaurantId = stringValue(formData, "restaurant_id");
+  const membershipId = stringValue(formData, "membership_id");
+
+  if (!supabase || !restaurantId || !membershipId) {
+    return;
+  }
+
+  const result = await requestOwnerLoginLink(supabase, {
+    restaurantId,
+    membershipId,
+    requestedBy: superAdmin.userId
+  });
+
+  revalidatePath(`/super-admin/restaurants/${restaurantId}`);
+  if (!result.ok) {
+    teamRedirect(restaurantId, "invite_error", result.error);
+  }
+  teamRedirect(restaurantId, "invited", result.message);
 }

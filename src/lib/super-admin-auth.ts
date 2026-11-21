@@ -180,7 +180,7 @@ export const resolveRestaurantAdminSession = cache(async function resolveRestaur
     membership?: {
       restaurant_id: string;
       role: RestaurantAdminSession["role"];
-      email: string;
+      email: string | null;
     } | null;
     restaurant?: Restaurant | null;
   };
@@ -211,7 +211,7 @@ export const resolveRestaurantAdminSession = cache(async function resolveRestaur
     issue: null,
     session: {
       userId: user.id,
-      email: user.email ?? membership.email,
+      email: user.email ?? membership.email ?? "",
       role: membership.role,
       restaurantId: membership.restaurant_id,
       ...splitRestaurantForStaff(restaurant)
