@@ -801,7 +801,7 @@ export async function getChatAssignees(
   if (!admin) return [];
   const { data: memberships, error } = await admin
     .from("restaurant_users")
-    .select("user_id, email, role")
+    .select("user_id, email, phone_e164, role")
     .eq("restaurant_id", restaurantId)
     .not("accepted_at", "is", null)
     .not("user_id", "is", null)
@@ -825,7 +825,7 @@ export async function getChatAssignees(
   );
   return memberships.map((membership) => ({
     user_id: String(membership.user_id),
-    email: String(membership.email),
+    email: membership.email ? String(membership.email) : String(membership.phone_e164 ?? ""),
     role: String(membership.role),
     name: names.get(String(membership.user_id)) ?? null
   }));

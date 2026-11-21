@@ -28,6 +28,15 @@ import { QrCodePanel } from "@/components/super-admin/QrCodePanel";
 import { RestaurantPlanBadge, RestaurantStatusBadge } from "@/components/super-admin/RestaurantBadge";
 import { RestaurantForm } from "@/components/super-admin/RestaurantForm";
 import { RevokeTeamAccessButton } from "@/components/super-admin/RevokeTeamAccessButton";
+import {
+  AddMemberByPhoneForm,
+  MemberWhatsAppLogin,
+  memberLabel
+} from "@/components/super-admin/MemberWhatsAppLogin";
+import {
+  isOwnerWhatsAppLinkEnabled,
+  ownerWhatsAppLoginMode
+} from "@/lib/owner-whatsapp-login/config";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -96,6 +105,9 @@ export default async function SuperAdminRestaurantDetailPage({
     value ? formatRestaurantShortDateTime(value, restaurant) : "Not available";
   const menuUrl = `${getPublicAppUrl()}/r/${restaurant.slug}`;
   const ownerAccessState = getOwnerAccessState(ownerMembership);
+  const whatsAppLoginOn = ownerWhatsAppLoginMode() !== "off";
+  const whatsAppLinkEnabled = isOwnerWhatsAppLinkEnabled();
+  const ownerLabel = ownerMembership ? memberLabel(ownerMembership) : null;
   const ownerHandoverWhatsAppUrl = buildWhatsAppUrl(
     buildOwnerHandoverMessage({
       restaurantName: restaurant.name,
@@ -316,9 +328,9 @@ export default async function SuperAdminRestaurantDetailPage({
                   </div>
                   <p className="mt-2 text-sm text-stone-500">
                     {ownerMembership?.accepted_at
-                      ? `${ownerMembership.email} has activated access to this restaurant.`
+                      ? `${ownerLabel} has activated access to this restaurant.`
                       : ownerMembership?.user_id
-                        ? `${ownerMembership.email} is linked and awaiting activation.`
+                        ? `${ownerLabel} is linked and awaiting activation.`
                       : restaurant.owner_email
                         ? `${restaurant.owner_email} has not activated an account yet.`
                         : "Add an owner email in Settings before sending an invitation."}
@@ -416,14 +428,18 @@ export default async function SuperAdminRestaurantDetailPage({
                 </button>
               </form>
 
+              {whatsAppLoginOn ? (
+                <AddMemberByPhoneForm hasOwner={Boolean(ownerMembership)} restaurantId={restaurant.id} />
+              ) : null}
+
               <div className="mt-5 divide-y divide-stone-100 rounded-lg border border-stone-200">
                 {teamMemberships.map((membership) => (
                   <div
-                    className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
                     key={membership.id}
                   >
                     <div>
-                      <p className="text-sm font-black">{membership.email}</p>
+                      <p className="text-sm font-black">{memberLabel(membership)}</p>
                       <p className="mt-0.5 text-xs capitalize text-stone-500">
                         {membership.role.replace("_", " ")}
                       </p>
@@ -445,11 +461,20 @@ export default async function SuperAdminRestaurantDetailPage({
                             : "Pending invite"}
                       </span>
                       <RevokeTeamAccessButton
-                        email={membership.email}
+                        email={memberLabel(membership)}
                         membershipId={membership.id}
                         restaurantId={restaurant.id}
                       />
                     </div>
+                    {whatsAppLoginOn ? (
+                      <div className="sm:basis-full">
+                        <MemberWhatsAppLogin
+                          linkEnabled={whatsAppLinkEnabled}
+                          member={membership}
+                          restaurantId={restaurant.id}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
                 {teamMemberships.length === 0 ? (
