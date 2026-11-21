@@ -9,6 +9,7 @@ import {
   Check,
   Circle,
   ClipboardList,
+  FileDown,
   Mail,
   MessageCircle,
   ShoppingBag,
@@ -38,8 +39,11 @@ import {
   ownerWhatsAppLoginMode
 } from "@/lib/owner-whatsapp-login/config";
 import { ownerLoginSenderReady } from "@/lib/owner-whatsapp-login/server";
+import { BulkAiPhotos } from "@/components/admin/BulkAiPhotos";
 import { MenuManager } from "@/components/admin/MenuManager";
 import { OffersManager } from "@/components/admin/OffersManager";
+import { OptionGroupsManager } from "@/components/admin/OptionGroupsManager";
+import { getMenuOptionCatalog } from "@/lib/data";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
@@ -91,6 +95,11 @@ export default async function SuperAdminRestaurantDetailPage({
     activeTab === "settings" && detail.restaurant.status === "cancelled" && deletionAdmin
       ? await getRestaurantDeletionPreview(deletionAdmin, detail.restaurant.id)
       : null;
+  // Option groups (sizes, add-ons) are only needed on the Menu tab.
+  const optionCatalog =
+    activeTab === "menu"
+      ? await getMenuOptionCatalog(detail.restaurant.id, { admin: true })
+      : undefined;
   const {
     restaurant,
     onboardingTasks,
@@ -571,15 +580,30 @@ export default async function SuperAdminRestaurantDetailPage({
                     names, and you review everything before it goes live.
                   </p>
                 </div>
-                <Link
-                  className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white"
-                  href={`/super-admin/restaurants/${restaurant.id}/menu-import`}
-                >
-                  <Sparkles size={17} />
-                  Import menu with AI
-                </Link>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Link
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm font-black text-ink hover:bg-stone-50"
+                    href={`/super-admin/restaurants/${restaurant.id}/menu-print`}
+                  >
+                    <FileDown size={17} />
+                    Print menu
+                  </Link>
+                  <Link
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-3 text-sm font-black text-white"
+                    href={`/super-admin/restaurants/${restaurant.id}/menu-import`}
+                  >
+                    <Sparkles size={17} />
+                    Import menu with AI
+                  </Link>
+                </div>
               </div>
             </article>
+            <BulkAiPhotos
+              items={items
+                .filter((item) => !item.image_url)
+                .map((item) => ({ id: item.id, name: item.name }))}
+              restaurantId={restaurant.id}
+            />
             <OffersManager
               canWrite
               items={items}
@@ -587,10 +611,19 @@ export default async function SuperAdminRestaurantDetailPage({
               restaurant={restaurant}
               restaurantId={restaurant.id}
             />
+            {optionCatalog ? (
+              <OptionGroupsManager
+                canWrite
+                catalog={optionCatalog}
+                restaurant={restaurant}
+                restaurantId={restaurant.id}
+              />
+            ) : null}
             <MenuManager
               canWrite
               categories={categories}
               items={items}
+              optionCatalog={optionCatalog}
               restaurant={restaurant}
               restaurantId={restaurant.id}
               restaurantSlug={restaurant.slug}

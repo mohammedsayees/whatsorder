@@ -16,7 +16,9 @@ type Item = { id: string; name: string };
 // single-item actions (auth, tenant scoping and the server-side daily limit
 // all apply per photo) and applies each photo as soon as it is ready. Runs
 // one at a time so progress is visible and Stop takes effect quickly.
-export function BulkAiPhotos({ items }: { items: Item[] }) {
+// `restaurantId` is set only on the super-admin menu tab; the actions then
+// require a super-admin session and act on that restaurant.
+export function BulkAiPhotos({ items, restaurantId }: { items: Item[]; restaurantId?: string }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
@@ -42,7 +44,8 @@ export function BulkAiPhotos({ items }: { items: Item[] }) {
       setCurrent(item.name);
       const generated = await generateMenuItemImageAction({
         menuItemId: item.id,
-        stylePreset: DEFAULT_AI_IMAGE_STYLE_PRESET
+        stylePreset: DEFAULT_AI_IMAGE_STYLE_PRESET,
+        restaurantId
       }).catch(() => ({ ok: false as const, error: "Couldn't generate an image just now." }));
 
       if (!generated.ok) {
@@ -55,7 +58,7 @@ export function BulkAiPhotos({ items }: { items: Item[] }) {
         continue;
       }
 
-      const applied = await confirmGeneratedMenuItemImageAction({ generationId: generated.generationId }).catch(
+      const applied = await confirmGeneratedMenuItemImageAction({ generationId: generated.generationId, restaurantId }).catch(
         () => ({ ok: false as const, error: "" })
       );
       if (applied.ok) {

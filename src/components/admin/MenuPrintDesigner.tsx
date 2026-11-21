@@ -92,19 +92,24 @@ function DesignerToggle({
 }
 
 export function MenuPrintDesigner({
+  backHref = "/admin/menu",
   categories,
   items,
   menuUrl,
   optionCatalog,
   qrDataUrl,
-  restaurant
+  restaurant,
+  superAdminRestaurantId
 }: {
+  backHref?: string;
   categories: MenuCategory[];
   items: MenuItem[];
   menuUrl: string;
   optionCatalog: MenuOptionCatalog;
   qrDataUrl: string;
   restaurant: Restaurant;
+  /** Set only on the super-admin print page; the PDF API then requires a super-admin session. */
+  superAdminRestaurantId?: string;
 }) {
   const hasArabic = categories.some((category) => category.name_ar) ||
     items.some((item) => item.name_ar || item.description_ar);
@@ -333,7 +338,10 @@ export function MenuPrintDesigner({
     setGeneratingPdf(true);
     setPdfError(null);
     try {
-      const response = await fetch("/api/menu/print-pdf", {
+      const endpoint = superAdminRestaurantId
+        ? `/api/menu/print-pdf?restaurant_id=${encodeURIComponent(superAdminRestaurantId)}`
+        : "/api/menu/print-pdf";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pdfSettings)
@@ -361,7 +369,7 @@ export function MenuPrintDesigner({
         <div>
           <Link
             className="focus-ring inline-flex items-center gap-2 text-sm font-black text-leaf"
-            href="/admin/menu"
+            href={backHref}
           >
             <ArrowLeft size={16} />
             Back to menu
