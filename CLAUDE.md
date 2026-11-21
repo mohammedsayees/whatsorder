@@ -18,7 +18,7 @@ Multi-tenant WhatsApp-ordering + restaurant dashboard SaaS (UAE). Pilot: Chai Xp
 - `src/app/admin/` (orders, orders/new staff entry, shifts, menu, menu/import AI builder, customers, reports, settings), `src/app/super-admin/`.
 - Components in `src/components/admin/`; server actions in `src/app/actions.ts` and `src/app/admin/*/actions.ts`; auth guards in `src/lib/super-admin-auth.ts` (`requireRestaurantAdmin`, `requireRestaurantRole`).
 
-> ⚠️ Changing one path must not touch the other unless the task says so. The customer bundle (`/r/[slug]`, ~129 kB first-load JS per `next build`, Nov 2026) is the load-bearing perf constraint — never add admin/AI weight to it (dynamic-import heavy libs like `pdfjs-dist`).
+> ⚠️ Changing one path must not touch the other unless the task says so. The customer bundle (`/r/[slug]`, ~133 kB first-load JS per `next build`, Nov 2026) is the load-bearing perf constraint — never add admin/AI weight to it (dynamic-import heavy libs like `pdfjs-dist`). CI enforces per-page budgets after the build (`npm run check:bundle`, budgets in `scripts/bundle-budget.mjs`); raise one only in the PR that needs it, with a reason.
 
 ## Conventions
 - **Branches:** `feature/<topic>` off `main`; merge with `git merge --no-ff`. (History also shows `codex/*`.)

@@ -39,6 +39,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Customer bundle budget
+        run: npm run check:bundle
+
       - name: Connector tests
         run: npm run test:connector
 
