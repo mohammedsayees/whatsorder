@@ -113,6 +113,15 @@ begin
     raise exception 'Chat broadcasts must not carry customer names';
   end if;
 
+  -- Step 2: dashboard tables no longer feed postgres_changes.
+  if exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public'
+      and tablename in ('orders', 'whatsapp_conversations', 'whatsapp_messages')
+  ) then
+    raise exception 'Dashboard tables must not be in the supabase_realtime publication';
+  end if;
+
   -- Tenant B saw nothing.
   if exists (select 1 from realtime.messages where topic like 'restaurant:2b000000-0000-0000-0000-000000000002:%') then
     raise exception 'Tenant A writes must not reach tenant B topics';
