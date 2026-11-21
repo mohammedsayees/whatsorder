@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import {
   accessTokenCookieName,
   activeRestaurantCookieName,
+  longSessionCookieName,
   refreshTokenCookieName
 } from "@/lib/auth-cookies";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
@@ -113,6 +114,7 @@ export async function getRealtimeAccessTokenAction(): Promise<RealtimeAccess | n
   if (error || !data.session) {
     cookieStore.delete(accessTokenCookieName);
     cookieStore.delete(refreshTokenCookieName);
+    cookieStore.delete(longSessionCookieName);
     return null;
   }
 

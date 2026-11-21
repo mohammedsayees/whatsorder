@@ -15,24 +15,33 @@
 
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { getSupabaseAdmin, createEphemeralAuthClient } from "@/lib/supabase";
 import { isRestaurantAdminAccessAllowed } from "@/lib/security";
 import { sendWhatsAppTemplate } from "@/lib/customer-auth/whatsapp-cloud";
 import type { RestaurantStatus } from "@/lib/types";
 import {
   OWNER_LOGIN_CLAIM_MAX_AGE_SECONDS,
+  OWNER_LOGIN_CODE_MAX_ATTEMPTS,
+  OWNER_LOGIN_CODE_TEMPLATE,
+  OWNER_LOGIN_CODE_TTL_SECONDS,
+  OWNER_LOGIN_CODES_PER_IP,
+  OWNER_LOGIN_CODES_PER_PHONE,
+  OWNER_LOGIN_RESEND_COOLDOWN_SECONDS,
   OWNER_LOGIN_LINK_TEMPLATE,
   OWNER_LOGIN_LINK_TTL_SECONDS,
   OWNER_LOGIN_LINKS_PER_MEMBER,
   OWNER_LOGIN_SENDS_PER_PHONE,
   OWNER_LOGIN_TEMPLATE_LANGUAGE,
   canReceiveOwnerLoginLink,
+  isOwnerWhatsAppCodeEnabled,
   isOwnerWhatsAppLinkEnabled
 } from "@/lib/owner-whatsapp-login/config";
 import { buildOwnerLoginLinkSuffix } from "@/lib/owner-whatsapp-login/link-token";
 import {
   fromSupabasePhone,
   isE164,
+  toE164,
   toSupabasePhone
 } from "@/lib/owner-whatsapp-login/phone";
 
@@ -288,39 +297,53 @@ export async function handleSendSmsHook(payload: unknown): Promise<SendSmsHookRe
   if (claimError || !request) {
     return { ok: false, status: 403, message: "No login was requested for this number" };
   }
-  if (request.request_kind !== "link") {
-    // Step 2 (codes) is not built yet.
-    return { ok: false, status: 403, message: "Login codes are not enabled" };
+  let wamid: string | null;
+  if (request.request_kind === "code") {
+    if (!isOwnerWhatsAppCodeEnabled()) {
+      return { ok: false, status: 403, message: "Login codes are not enabled" };
+    }
+    // Authentication template: the code in the body and in the copy-code
+    // button, as Meta requires.
+    wamid = await sendWhatsAppTemplate(
+      toSupabasePhone(phoneE164),
+      OWNER_LOGIN_CODE_TEMPLATE,
+      OWNER_LOGIN_TEMPLATE_LANGUAGE,
+      [
+        { type: "body", parameters: [{ type: "text", text: otp }] },
+        { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: otp }] }
+      ]
+    );
+  } else {
+    const { data: restaurant } = await admin
+      .from("restaurants")
+      .select("name")
+      .eq("id", request.restaurant_id)
+      .maybeSingle();
+    const restaurantName = String(restaurant?.name ?? "").trim() || "your restaurant";
+
+    wamid = await sendWhatsAppTemplate(
+      toSupabasePhone(phoneE164),
+      OWNER_LOGIN_LINK_TEMPLATE,
+      OWNER_LOGIN_TEMPLATE_LANGUAGE,
+      [
+        { type: "body", parameters: [{ type: "text", text: restaurantName }] },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: buildOwnerLoginLinkSuffix(request.request_id, otp) }]
+        }
+      ]
+    );
   }
-
-  const { data: restaurant } = await admin
-    .from("restaurants")
-    .select("name")
-    .eq("id", request.restaurant_id)
-    .maybeSingle();
-  const restaurantName = String(restaurant?.name ?? "").trim() || "your restaurant";
-
-  const wamid = await sendWhatsAppTemplate(
-    toSupabasePhone(phoneE164),
-    OWNER_LOGIN_LINK_TEMPLATE,
-    OWNER_LOGIN_TEMPLATE_LANGUAGE,
-    [
-      { type: "body", parameters: [{ type: "text", text: restaurantName }] },
-      {
-        type: "button",
-        sub_type: "url",
-        index: "0",
-        parameters: [{ type: "text", text: buildOwnerLoginLinkSuffix(request.request_id, otp) }]
-      }
-    ]
-  );
 
   await recordOwnerAuthEvent(admin, {
     restaurantId: request.restaurant_id,
     restaurantUserId: request.restaurant_user_id,
     actorUserId: null,
-    event: wamid ? "link_sent" : "link_send_failed",
-    wamid
+    event: wamid ? (request.request_kind === "code" ? "code_sent" : "link_sent") : "link_send_failed",
+    wamid,
+    detail: wamid || request.request_kind !== "code" ? null : "code send failed"
   });
 
   if (!wamid) {
@@ -385,6 +408,184 @@ export async function redeemOwnerLoginLink(
     .eq("id", request.restaurant_user_id)
     .eq("restaurant_id", request.restaurant_id)
     .eq("user_id", session.user.id)
+    .is("accepted_at", null);
+
+  await recordOwnerAuthEvent(admin, {
+    restaurantId: request.restaurant_id,
+    restaurantUserId: request.restaurant_user_id,
+    actorUserId: session.user.id,
+    event: "login_succeeded"
+  });
+
+  return {
+    ok: true,
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresIn: session.expires_in
+  };
+}
+
+// ── Step 2: owner asks for a code ───────────────────────────────────────────
+
+export function hashLoginIp(ip: string): string {
+  return createHash("sha256").update(`whatsorder-owner-login:${ip}`).digest("hex");
+}
+
+export type RequestOwnerLoginCodeResult =
+  // "accepted" is returned for registered AND unknown numbers alike, so the
+  // page never reveals whether a number has an account.
+  | { status: "accepted"; phoneE164: string }
+  | { status: "invalid_phone" }
+  | { status: "rate_limited" }
+  | { status: "not_configured" };
+
+export async function requestOwnerLoginCode(input: {
+  phoneInput: string;
+  ip: string;
+}): Promise<RequestOwnerLoginCodeResult> {
+  const admin = getSupabaseAdmin();
+  const authClient = createEphemeralAuthClient();
+  if (!admin || !authClient || !isOwnerWhatsAppCodeEnabled()) {
+    return { status: "not_configured" };
+  }
+
+  const phoneE164 = toE164(input.phoneInput);
+  if (!phoneE164) {
+    return { status: "invalid_phone" };
+  }
+
+  // Counted for every request, known number or not.
+  const { data: ipAllowed, error: ipError } = await admin.rpc("check_owner_login_ip_rate_limit", {
+    target_ip_hash: hashLoginIp(input.ip),
+    max_attempts: OWNER_LOGIN_CODES_PER_IP.max,
+    window_seconds: OWNER_LOGIN_CODES_PER_IP.windowSeconds
+  });
+  if (ipError) {
+    console.error("WhatsOrder owner login IP limit failed", ipError.code);
+    return { status: "not_configured" };
+  }
+  if (!ipAllowed) {
+    return { status: "rate_limited" };
+  }
+
+  const accepted = { status: "accepted", phoneE164 } as const;
+
+  // An active member with this verified phone and a linked login. The oldest
+  // membership is used, so repeated requests hit the same per-member cooldown.
+  const { data: memberships } = await admin
+    .from("restaurant_users")
+    .select("id,restaurant_id,user_id,restaurants!inner(status)")
+    .eq("phone_e164", phoneE164)
+    .not("phone_verified_at", "is", null)
+    .not("user_id", "is", null)
+    .order("created_at");
+  const membership = (memberships ?? []).find((row) => {
+    const restaurant = Array.isArray(row.restaurants) ? row.restaurants[0] : row.restaurants;
+    return isRestaurantAdminAccessAllowed((restaurant as { status?: RestaurantStatus } | null)?.status);
+  });
+  if (!membership) {
+    return accepted;
+  }
+
+  // Daily cap per phone (shared with super-admin links).
+  const { count: todayCount } = await admin
+    .from("owner_login_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("phone_e164", phoneE164)
+    .gte("created_at", new Date(Date.now() - OWNER_LOGIN_SENDS_PER_PHONE.windowSeconds * 1000).toISOString());
+  if ((todayCount ?? 0) >= OWNER_LOGIN_SENDS_PER_PHONE.max) {
+    return accepted;
+  }
+
+  // Member window = resend cooldown; phone window = 3 per 15 minutes.
+  const { data: requestId, error: reserveError } = await admin.rpc("reserve_owner_login_request", {
+    target_kind: "code",
+    target_phone_e164: phoneE164,
+    target_restaurant_user_id: membership.id,
+    target_restaurant_id: membership.restaurant_id,
+    target_requested_by: null,
+    target_ip_hash: hashLoginIp(input.ip),
+    ttl_seconds: OWNER_LOGIN_CODE_TTL_SECONDS,
+    max_per_member: 1,
+    member_window_seconds: OWNER_LOGIN_RESEND_COOLDOWN_SECONDS,
+    max_per_phone: OWNER_LOGIN_CODES_PER_PHONE.max,
+    phone_window_seconds: OWNER_LOGIN_CODES_PER_PHONE.windowSeconds
+  });
+  if (reserveError) {
+    console.error("WhatsOrder owner login code not reserved", reserveError.code);
+    return accepted;
+  }
+  if (!requestId) {
+    return accepted;
+  }
+
+  const { error: otpError } = await authClient.auth.signInWithOtp({
+    phone: toSupabasePhone(phoneE164),
+    options: { shouldCreateUser: false, channel: "sms" }
+  });
+  if (otpError) {
+    console.error("WhatsOrder owner login code not sent", otpError.status ?? "unknown");
+  }
+  return accepted;
+}
+
+// ── Step 2: owner enters the code ───────────────────────────────────────────
+
+export type VerifyOwnerLoginCodeResult =
+  | { ok: true; accessToken: string; refreshToken: string; expiresIn: number }
+  | { ok: false; reason: "wrong_code" | "expired" | "not_configured" };
+
+export async function verifyOwnerLoginCode(
+  phoneE164: string,
+  code: string
+): Promise<VerifyOwnerLoginCodeResult> {
+  const admin = getSupabaseAdmin();
+  const authClient = createEphemeralAuthClient();
+  if (!admin || !authClient || !isOwnerWhatsAppCodeEnabled()) {
+    return { ok: false, reason: "not_configured" };
+  }
+  if (!isE164(phoneE164) || !/^\d{6}$/.test(code)) {
+    return { ok: false, reason: "wrong_code" };
+  }
+
+  // Count the attempt first; after the cap there is nothing left to try.
+  const { data: started, error: startError } = await admin.rpc("start_owner_code_verification", {
+    target_phone_e164: phoneE164,
+    max_attempts: OWNER_LOGIN_CODE_MAX_ATTEMPTS
+  });
+  const request = (Array.isArray(started) ? started[0] : started) as
+    | { request_id: string; restaurant_id: string; restaurant_user_id: string }
+    | undefined;
+  if (startError || !request) {
+    return { ok: false, reason: "expired" };
+  }
+
+  const { data: verified, error: verifyError } = await authClient.auth.verifyOtp({
+    phone: toSupabasePhone(phoneE164),
+    token: code,
+    type: "sms"
+  });
+  const session = verified?.session;
+  if (verifyError || !session || fromSupabasePhone(session.user.phone) !== phoneE164) {
+    await recordOwnerAuthEvent(admin, {
+      restaurantId: request.restaurant_id,
+      restaurantUserId: request.restaurant_user_id,
+      actorUserId: null,
+      event: "login_failed",
+      detail: verifyError?.message ?? "session_mismatch"
+    });
+    return { ok: false, reason: "wrong_code" };
+  }
+
+  await admin.rpc("finish_owner_code_login", { target_request_id: request.request_id });
+
+  // Activate every verified-phone membership of this login that is waiting.
+  await admin
+    .from("restaurant_users")
+    .update({ accepted_at: new Date().toISOString() })
+    .eq("user_id", session.user.id)
+    .eq("phone_e164", phoneE164)
+    .not("phone_verified_at", "is", null)
     .is("accepted_at", null);
 
   await recordOwnerAuthEvent(admin, {
