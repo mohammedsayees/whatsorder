@@ -56,6 +56,15 @@ const nextConfig: NextConfig = {
     ]
   },
   images: {
+    // Keep each optimized variant for 31 days instead of re-fetching and
+    // re-transforming it every hour (stored objects say max-age=3600, and
+    // Vercel otherwise honours that — 342 origin fetches/day at ~850 KB in
+    // Nov 2026). Safe because every optimized source has a unique,
+    // never-overwritten path (menu item photos, restaurant logo/cover:
+    // `<name>-<Date.now()>.webp`, upsert: false); replacing an image changes
+    // its URL. Do not route overwrite-in-place paths (poster art, chat media)
+    // through next/image.
+    minimumCacheTTL: 2_678_400,
     // Only the configured Supabase project can use the image optimizer.
     // Admin-entered external image URLs remain supported as unoptimized images.
     remotePatterns: supabaseHost
