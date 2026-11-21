@@ -198,6 +198,7 @@ export async function generateMenuItemImageAction(input: {
   let generated;
   try {
     generated = await generateMenuItemImage({
+      usage: { restaurantId: restaurant.id },
       restaurantName: restaurant.name,
       productName: item.name,
       categoryName: category?.name ?? "Menu",

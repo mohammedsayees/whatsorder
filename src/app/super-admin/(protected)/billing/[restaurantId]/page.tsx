@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { AiUsagePanel } from "@/components/super-admin/AiUsagePanel";
+import { getAiUsageSummary } from "@/lib/ai/usage-data";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -45,6 +47,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: "Card (Stripe)"
 };
 
+const AI_USAGE_DAYS = 30;
+
 export default async function BillingDetailPage({
   params,
   searchParams
@@ -57,7 +61,10 @@ export default async function BillingDetailPage({
     searchParams,
     listActivePlans()
   ]);
-  const detail = await getBillingDetail(restaurantId);
+  const [detail, aiUsage] = await Promise.all([
+    getBillingDetail(restaurantId),
+    getAiUsageSummary({ days: AI_USAGE_DAYS, restaurantId })
+  ]);
   if (!detail) {
     notFound();
   }
@@ -496,6 +503,8 @@ export default async function BillingDetailPage({
               </div>
             ) : null}
           </section>
+
+          <AiUsagePanel days={AI_USAGE_DAYS} showRestaurant={false} usage={aiUsage} />
 
           <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black">Status history</h2>

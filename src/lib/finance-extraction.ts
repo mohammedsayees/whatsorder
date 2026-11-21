@@ -6,6 +6,7 @@ import {
   normalizeFinanceExtractionResponse,
   type FinanceExtraction
 } from "@/lib/finance-document";
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
 import { FINANCE_DOCUMENT_BUCKET } from "@/lib/finance-upload";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -69,7 +70,8 @@ function safeExtractionError(error: unknown) {
 
 async function extractWithGemini(
   bytes: Uint8Array,
-  mimeType: string
+  mimeType: string,
+  usage: AiUsageScope
 ): Promise<FinanceExtraction> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("FINANCE_EXTRACTION_NOT_CONFIGURED");
@@ -116,6 +118,7 @@ async function extractWithGemini(
   if (!response) throw new Error("FINANCE_UPSTREAM_NETWORK");
   if (!response.ok) throw new Error(`FINANCE_UPSTREAM_${response.status}`);
   const payload = (await response.json()) as GeminiResponse;
+  await recordGeminiUsage("finance_extract", modelName(), payload, usage);
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   try {
     const extraction = normalizeFinanceExtractionResponse(JSON.parse(text));
@@ -163,7 +166,7 @@ export async function processFinanceExtractionJob(
 
   try {
     const source = uploaded ?? await downloadFinanceDocument(restaurantId, documentId);
-    const extraction = await extractWithGemini(source.bytes, source.mimeType);
+    const extraction = await extractWithGemini(source.bytes, source.mimeType, { restaurantId });
     const stored = financeExtractionToStorage(extraction);
     const { data: completed, error: completeError } = await admin.rpc(
       "complete_finance_extraction_job",

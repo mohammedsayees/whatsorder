@@ -195,7 +195,7 @@ export async function POST(request: Request) {
   // it in the background for next time. Text-only posters skip it entirely.
   let artStatus: PosterArtStatus = "none";
   const [copyVariants, artPlan] = await Promise.all([
-    generateCopyVariants({ templateId, ...bundle.facts, language }),
+    generateCopyVariants({ templateId, ...bundle.facts, language }, { restaurantId }),
     body.forceTypographic === true || !bundle.art
       ? Promise.resolve(null)
       : planPosterArt(admin, {

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, ReceiptText, Search } from "lucide-react";
+import { AiUsagePanel } from "@/components/super-admin/AiUsagePanel";
 import { SubscriptionStatusBadge } from "@/components/super-admin/BillingBadges";
+import { getAiUsageSummary } from "@/lib/ai/usage-data";
 import { formatAED } from "@/lib/currency";
 import { formatUaeDate } from "@/lib/date-time";
 import { priceForSubscription, type SubscriptionStatus } from "@/lib/billing";
@@ -17,17 +19,21 @@ const statusFilters: Array<{ value: "all" | SubscriptionStatus; label: string }>
   { value: "cancelled", label: "Cancelled" }
 ];
 
+const AI_USAGE_DAYS = 30;
+
 export default async function SuperAdminBillingPage({
   searchParams
 }: {
   searchParams: Promise<{ q?: string; status?: string; outstanding?: string; error?: string }>;
 }) {
-  const [subscriptions, plans, restaurants, query] = await Promise.all([
+  const [subscriptions, plans, restaurants, query, aiUsage] = await Promise.all([
     listSubscriptionsForBilling(),
     listActivePlans(),
     getSuperAdminRestaurants(),
-    searchParams
+    searchParams,
+    getAiUsageSummary({ days: AI_USAGE_DAYS })
   ]);
+  const restaurantNames = new Map(restaurants.map((restaurant) => [restaurant.id, restaurant.name]));
 
   const subscribedIds = new Set(subscriptions.map((entry) => entry.subscription.restaurant_id));
   const unsubscribed = restaurants.filter((restaurant) => !subscribedIds.has(restaurant.id));
@@ -169,6 +175,8 @@ export default async function SuperAdminBillingPage({
           </div>
         )}
       </section>
+
+      <AiUsagePanel days={AI_USAGE_DAYS} restaurantNames={restaurantNames} usage={aiUsage} />
 
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">

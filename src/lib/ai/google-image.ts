@@ -1,5 +1,6 @@
 import "server-only";
 
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
 import {
   DEFAULT_AI_IMAGE_STYLE_PRESET,
   isAiImageStylePreset,
@@ -38,6 +39,8 @@ export type GenerateMenuItemImageInput = {
   price?: number | null;
   servingStyle?: string | null;
   stylePreset: string;
+  /** Restaurant the AI call is billed to (ai_usage_events). */
+  usage?: AiUsageScope;
 };
 
 export type GeneratedMenuItemImage = {
@@ -228,6 +231,8 @@ export type GeminiImageResult = { imageBuffer: Buffer; mimeType: string; model: 
 export async function generateGeminiImage(input: {
   prompt: string;
   inputImage?: { buffer: Buffer; mimeType: string };
+  /** What the image is for and who it is billed to (ai_usage_events). */
+  usage?: AiUsageScope & { feature: "menu_image" | "poster_art" };
 }): Promise<GeminiImageResult> {
   const apiKey = imageApiKey();
   if (!apiKey) {
@@ -252,6 +257,8 @@ export async function generateGeminiImage(input: {
 
   const response = await fetchGeminiWithRetry(endpoint, requestBody);
   const payload = (await response.json()) as GeminiImageResponse;
+  // Billed even when no image comes back, so record before checking.
+  await recordGeminiUsage(input.usage?.feature ?? "menu_image", model, payload, input.usage);
   const image = firstInlineImage(payload);
   if (!image) {
     console.error("WhatsOrder AI image generation returned no image", { model });
@@ -319,6 +326,9 @@ export async function generateMenuItemImage(
   input: GenerateMenuItemImageInput
 ): Promise<GeneratedMenuItemImage> {
   const prompt = buildPrompt(input);
-  const generated = await generateGeminiImage({ prompt });
+  const generated = await generateGeminiImage({
+    prompt,
+    usage: { feature: "menu_image", restaurantId: input.usage?.restaurantId ?? null }
+  });
   return { ...generated, prompt };
 }

@@ -4,6 +4,7 @@
 // here and again by resolveRequests before anything reaches a cart.
 import { itemOptionGroups, normalizeChatText, type ChatMenu } from "@/lib/whatsapp-order-cart";
 import type { ChatItemRequest, ChatParseResult } from "@/lib/whatsapp-order-flow";
+import { recordGeminiUsage, type AiUsageScope } from "@/lib/ai/usage";
 
 export const GEMINI_PARSE_TIMEOUT_MS = 8_000;
 const MAX_PROMPT_ITEMS = 400;
@@ -132,6 +133,8 @@ export type GeminiParseCall = { raw: unknown | null; model: string; error?: stri
 
 export async function callGeminiChatParser(text: string, catalog: unknown[], options: {
   apiKey: string; model: string; fetchImpl?: typeof fetch; timeoutMs?: number;
+  /** Restaurant the call is billed to (ai_usage_events). */
+  usage?: AiUsageScope;
 }): Promise<GeminiParseCall> {
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
@@ -152,6 +155,7 @@ export async function callGeminiChatParser(text: string, catalog: unknown[], opt
     );
     if (!response.ok) return { raw: null, model: options.model, error: `http ${response.status}` };
     const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    await recordGeminiUsage("order_parse", options.model, payload, options.usage);
     const body = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     try {
       return { raw: JSON.parse(body), model: options.model };

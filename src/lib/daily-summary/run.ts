@@ -160,7 +160,9 @@ export async function runDailySummary(options?: {
       };
       const rawNumbers = await computeDailyNumbers(admin, restaurant.id, summaryDate);
       const numbers = withDailyCoach(rawNumbers, restaurant);
-      const message = await narrate(numbers, restaurant.name, restaurant);
+      const message = await narrate(numbers, restaurant.name, restaurant, {
+        restaurantId: restaurant.id
+      });
       // Commit the generated recap before attempting an external side effect.
       await save({ numbers, message_text: message, error: null });
       result.generated++;
