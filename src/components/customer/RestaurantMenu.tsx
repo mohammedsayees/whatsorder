@@ -35,8 +35,8 @@ import {
   nextOpening,
   normalizeOpeningHours,
   weekDayLabels,
-  weekDays,
-  type NextOpening
+  reopeningMessage,
+  weekDays
 } from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
@@ -134,38 +134,6 @@ const GROUP_TOKEN = /^[A-Za-z0-9_-]{22,64}$/;
 // in the header only once there are a few.
 const MIN_REVIEWS_FOR_RATING = 5;
 
-const ARABIC_WEEKDAYS: Record<NextOpening["day"], string> = {
-  monday: "الاثنين",
-  tuesday: "الثلاثاء",
-  wednesday: "الأربعاء",
-  thursday: "الخميس",
-  friday: "الجمعة",
-  saturday: "السبت",
-  sunday: "الأحد"
-};
-
-/** "We're closed right now. We open today at 7:00 AM." (or tomorrow / on Monday). */
-function closedUntilMessage(reopening: NextOpening, language: "en" | "ar"): string {
-  const time = formatOpeningTime(reopening.time);
-  if (language === "ar") {
-    // Arabic AM/PM marks, isolated so the bidi algorithm can't reorder "7:00".
-    const arabicTime = `\u2068${time.replace("AM", "ص").replace("PM", "م")}\u2069`;
-    const when =
-      reopening.daysAhead === 0
-        ? "اليوم"
-        : reopening.daysAhead === 1
-          ? "غداً"
-          : `يوم ${ARABIC_WEEKDAYS[reopening.day]}`;
-    return `المطعم مغلق الآن. نفتح ${when} الساعة ${arabicTime}.`;
-  }
-  const when =
-    reopening.daysAhead === 0
-      ? "today"
-      : reopening.daysAhead === 1
-        ? "tomorrow"
-        : `on ${weekDayLabels[reopening.day]}`;
-  return `We're closed right now. We open ${when} at ${time}.`;
-}
 
 const InstallAppPrompt = dynamic(
   () =>
@@ -259,7 +227,7 @@ export function RestaurantMenu({
         )
       : null;
   const closedMessage = reopening
-    ? closedUntilMessage(reopening, language)
+    ? `${language === "ar" ? "المطعم مغلق الآن." : "We're closed right now."} ${reopeningMessage(reopening, language)}`
     : t.orderClosedHint;
   const [personalization, setPersonalization] = useState<{
     loyalty: CustomerLoyalty | null;

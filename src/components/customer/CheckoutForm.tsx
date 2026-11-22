@@ -8,6 +8,7 @@ import {
   BadgeCheck,
   CarFront,
   CheckCircle2,
+  CreditCard,
   Loader2,
   LocateFixed,
   MapPin,
@@ -22,7 +23,10 @@ import { saveCustomerAddressAction } from "@/app/r/[restaurantSlug]/account/acti
 import { cartLineKey, formatLineOptions } from "@/lib/cart-line";
 import {
   ADDRESS_LIMITS,
+  checkoutPreferencesStorageKey,
   composeDeliveryAddress,
+  liftLegacyAddress,
+  parseCheckoutPreferences,
   parseSavedDetails,
   savedDetailsStorageKey,
   type SavedCustomerDetails
@@ -31,7 +35,7 @@ import { formatCurrency } from "@/lib/currency";
 import { trackFunnel } from "@/lib/customer-funnel-client";
 import { groupCheckoutKey, type GroupCheckoutHandoff } from "@/lib/group-order";
 import { pickSuggestion, type CheckoutSuggestions } from "@/lib/checkout-suggestion";
-import { isRestaurantOpen } from "@/lib/opening-hours";
+import { isRestaurantOpen, nextOpening, reopeningMessage } from "@/lib/opening-hours";
 import { minimumOrderRemaining } from "@/lib/security";
 import { onboardingOrdersHref } from "@/lib/onboarding-order-handoff";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
@@ -78,9 +82,9 @@ function savedPinLocation(
 const ADDRESS_COPY = {
   en: {
     building: "Building or villa",
-    buildingPlaceholder: "Al Noor Tower, Villa 12...",
-    flat: "Flat / floor (optional)",
-    flatPlaceholder: "1204, 12th floor",
+    buildingPlaceholder: "Al Noor Tower",
+    flat: "Flat (optional)",
+    flatPlaceholder: "1204",
     details: "Street & directions (optional)",
     detailsPlaceholder: "Street name, gate colour, entrance...",
     remember: "Remember my details on this device for next time",
@@ -92,9 +96,9 @@ const ADDRESS_COPY = {
   },
   ar: {
     building: "المبنى أو الفيلا",
-    buildingPlaceholder: "برج النور، فيلا 12...",
-    flat: "الشقة / الطابق (اختياري)",
-    flatPlaceholder: "1204، الطابق 12",
+    buildingPlaceholder: "برج النور",
+    flat: "الشقة (اختياري)",
+    flatPlaceholder: "1204",
     details: "الشارع والاتجاهات (اختياري)",
     detailsPlaceholder: "اسم الشارع، لون البوابة، المدخل...",
     remember: "تذكر بياناتي على هذا الجهاز للمرة القادمة",
@@ -107,9 +111,45 @@ const ADDRESS_COPY = {
 } as const;
 
 const onlinePaymentCopy = {
-  en: { label: "Pay online now (card, Apple Pay, Google Pay)", redirecting: "Opening secure payment…" },
-  ar: { label: "ادفع الآن إلكترونياً (بطاقة، Apple Pay، Google Pay)", redirecting: "جارٍ فتح صفحة الدفع الآمنة…" }
+  en: {
+    label: "Pay online now (card, Apple Pay, Google Pay)",
+    redirecting: "Opening secure payment…",
+    pay: "Pay",
+    payNextStep: "We save your order, then open secure card payment."
+  },
+  ar: {
+    label: "ادفع الآن إلكترونياً (بطاقة، Apple Pay، Google Pay)",
+    redirecting: "جارٍ فتح صفحة الدفع الآمنة…",
+    pay: "ادفع",
+    payNextStep: "نحفظ طلبك ثم نفتح صفحة الدفع الآمنة بالبطاقة."
+  }
 } as const;
+
+// More checkout-only copy (kept out of the shared menu bundle).
+const CHECKOUT_COPY = {
+  en: {
+    placeOrder: "Place order",
+    phoneHint: "Order updates come to this WhatsApp number.",
+    closedTitle: "We're closed right now",
+    pausedTitle: "Ordering is temporarily paused",
+    closedBody: "You can still browse the menu, and your cart is saved.",
+    pausedBody: "You can still view the menu, but the restaurant is not accepting new orders right now."
+  },
+  ar: {
+    placeOrder: "تأكيد الطلب",
+    phoneHint: "تصلك تحديثات الطلب على رقم واتساب هذا.",
+    closedTitle: "المطعم مغلق الآن",
+    pausedTitle: "الطلبات متوقفة مؤقتاً",
+    closedBody: "يمكنك تصفح القائمة، وسلتك محفوظة.",
+    pausedBody: "يمكنك مشاهدة القائمة، لكن المطعم لا يستقبل طلبات جديدة حالياً."
+  }
+} as const;
+
+/** Example local number per country, as the phone field's placeholder. */
+const PHONE_PLACEHOLDERS: Record<string, string> = {
+  AE: "05X XXX XXXX",
+  IN: "98765 43210"
+};
 
 type InstructionKey = "callOnArrival" | "dontRingBell" | "leaveAtDoor" | "noCutlery";
 
@@ -202,7 +242,7 @@ export function CheckoutForm({
           latitude: accountAddress.latitude,
           longitude: accountAddress.longitude
         }
-      : {
+      : liftLegacyAddress({
           name: prefill?.name ?? "",
           phone: prefill?.phone ?? "",
           area: prefill?.delivery_area ?? "",
@@ -212,8 +252,16 @@ export function CheckoutForm({
           landmark: prefill?.default_landmark ?? "",
           latitude: null,
           longitude: null
-        }
+        })
   );
+  // A customer who already ordered here (signed-in profile, or details this
+  // device remembered from a past order) has given order-processing consent;
+  // start it ticked. They can still untick it, and the server still requires it.
+  const [consentOrder, setConsentOrder] = useState(Boolean(prefill));
+  // Start from the customer's current marketing choice: the order saves this
+  // box onto their record, so an unticked default would silently opt them out.
+  const [consentMarketing, setConsentMarketing] = useState(Boolean(prefill?.consent_marketing));
+  const [paymentMethod, setPaymentMethod] = useState("Cash on Delivery");
   const [saveAddressToAccount, setSaveAddressToAccount] = useState(true);
   const [newAddressLabel, setNewAddressLabel] = useState("");
   const [rememberDetails, setRememberDetails] = useState(true);
@@ -361,8 +409,9 @@ export function CheckoutForm({
       return;
     }
 
-    const restored = saved;
+    const restored = liftLegacyAddress(saved);
     setHasSavedDetails(true);
+    setConsentOrder(true);
     // Fill only what the signed-in profile left blank. A saved account
     // address owns the address fields; the device copy only adds contact info.
     setDetails((current) =>
@@ -400,6 +449,55 @@ export function CheckoutForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailsStorageKey]);
 
+  const paymentMethods = [
+    {
+      value: "Cash on Delivery",
+      label: fulfilmentType === "delivery" ? t.cashOnDelivery : t.cashOnCollection
+    },
+    {
+      value: "Card on Delivery",
+      label: fulfilmentType === "delivery" ? t.cardOnDelivery : t.cardOnCollection
+    },
+    ...(restaurant.country_code === "IN" ? [{ value: "UPI", label: "UPI" }] : []),
+    ...(onlinePaymentAvailable
+      ? [{ value: "Online Payment", label: onlinePaymentCopy[language === "ar" ? "ar" : "en"].label }]
+      : [])
+  ];
+  const payingOnline = paymentMethod === "Online Payment";
+  const checkoutCopy = CHECKOUT_COPY[language === "ar" ? "ar" : "en"];
+  const prefsStorageKey = checkoutPreferencesStorageKey(restaurant.slug);
+
+  useEffect(() => {
+    try {
+      const prefs = parseCheckoutPreferences(
+        window.localStorage.getItem(prefsStorageKey),
+        paymentMethods.map((method) => method.value)
+      );
+      if (prefs.paymentMethod) setPaymentMethod(prefs.paymentMethod);
+      // A signed-in profile is the source of truth; the device copy covers guests.
+      if (!prefill && prefs.consentMarketing !== null) setConsentMarketing(prefs.consentMarketing);
+    } catch {
+      // Storage blocked: defaults stand.
+    }
+    // Read once on mount; the method list only matters for validation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefsStorageKey]);
+
+  function persistPreferences() {
+    try {
+      window.localStorage.setItem(
+        prefsStorageKey,
+        JSON.stringify({
+          paymentMethod,
+          // Guests' marketing choice is remembered only with their details.
+          consentMarketing: !signedIn && rememberDetails ? consentMarketing : null
+        })
+      );
+    } catch {
+      // A convenience only.
+    }
+  }
+
   // Funnel: one view per visit, plus why a visit could not order.
   const orderingClosed = restaurant.accepting_orders === false || !scheduleOpen;
   const blockReason =
@@ -434,6 +532,10 @@ export function CheckoutForm({
   }
 
   function persistDetails() {
+    // Signed-in customers' details live in their account, not on the device.
+    if (signedIn) {
+      return;
+    }
     try {
       if (!rememberDetails) {
         window.localStorage.removeItem(detailsStorageKey);
@@ -575,6 +677,7 @@ export function CheckoutForm({
       }
 
       persistDetails();
+      persistPreferences();
       await saveAddressAfterOrder();
 
       if (groupHandoff?.organiserToken) {
@@ -743,17 +846,22 @@ export function CheckoutForm({
   }
 
   if (restaurant.accepting_orders === false || !scheduleOpen) {
+    const paused = restaurant.accepting_orders === false;
+    const reopening = paused
+      ? null
+      : nextOpening(restaurant.opening_hours_enabled, restaurant.opening_hours, new Date(), restaurant.time_zone);
     return (
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10 text-center" dir={direction}>
         <h1 className="text-2xl font-black">
-          {language === "ar" ? "الطلبات متوقفة مؤقتاً" : "Ordering is temporarily paused"}
+          {paused ? checkoutCopy.pausedTitle : checkoutCopy.closedTitle}
         </h1>
-        <p className="mt-3 text-stone-600">
-          {language === "ar"
-            ? "يمكنك مشاهدة القائمة، لكن المطعم لا يستقبل طلبات جديدة حالياً."
-            : restaurant.accepting_orders === false
-              ? "You can still view the menu, but the restaurant is not accepting new orders right now."
-              : "The restaurant is currently closed. Please return during opening hours."}
+        {reopening ? (
+          <p className="mt-3 font-black text-ink">
+            {reopeningMessage(reopening, language === "ar" ? "ar" : "en")}
+          </p>
+        ) : null}
+        <p className="mt-2 text-stone-600">
+          {paused ? checkoutCopy.pausedBody : checkoutCopy.closedBody}
         </p>
         <Link
           className="focus-ring mt-6 inline-flex justify-center rounded-full bg-leaf px-5 py-3 font-bold text-white"
@@ -994,10 +1102,12 @@ export function CheckoutForm({
                 maxLength={ADDRESS_LIMITS.phone}
                 name="customer_phone"
                 onChange={(event) => updateDetail("phone", event.target.value)}
+                placeholder={PHONE_PLACEHOLDERS[restaurant.country_code ?? "AE"]}
                 required
                 type="tel"
                 value={details.phone}
               />
+              <span className="mt-1 block text-xs text-stone-500">{checkoutCopy.phoneHint}</span>
             </label>
           </div>
 
@@ -1085,7 +1195,7 @@ export function CheckoutForm({
                     value={details.area}
                   />
                 </label>
-                <div className="grid grid-cols-[1fr_8.5rem] items-end gap-3">
+                <div className="grid grid-cols-[1fr_8.5rem] items-start gap-3">
                   <label className="block min-w-0">
                     <span className="text-sm font-bold">{addressCopy.building}</span>
                     <input
@@ -1262,29 +1372,20 @@ export function CheckoutForm({
           <fieldset>
             <legend className="mb-2 text-sm font-bold">{t.paymentMethod}</legend>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                {
-                  value: "Cash on Delivery",
-                  label: fulfilmentType === "delivery" ? t.cashOnDelivery : t.cashOnCollection
-                },
-                {
-                  value: "Card on Delivery",
-                  label: fulfilmentType === "delivery" ? t.cardOnDelivery : t.cardOnCollection
-                },
-                ...(restaurant.country_code === "IN"
-                  ? [{ value: "UPI", label: "UPI" }]
-                  : []),
-                ...(onlinePaymentAvailable
-                  ? [{ value: "Online Payment", label: onlinePaymentCopy[language === "ar" ? "ar" : "en"].label }]
-                  : [])
-              ].map((method) => (
+              {paymentMethods.map((method) => (
                 <label
                   className={`flex min-h-12 items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold has-[:checked]:border-leaf has-[:checked]:bg-mint/40${
                     method.value === "Online Payment" ? " col-span-2" : ""
                   }`}
                   key={method.value}
                 >
-                  <input defaultChecked={method.value === "Cash on Delivery"} name="payment_method" type="radio" value={method.value} />
+                  <input
+                    checked={paymentMethod === method.value}
+                    name="payment_method"
+                    onChange={() => setPaymentMethod(method.value)}
+                    type="radio"
+                    value={method.value}
+                  />
                   {method.label}
                 </label>
               ))}
@@ -1292,6 +1393,7 @@ export function CheckoutForm({
           </fieldset>
 
           <div className="space-y-3 text-sm leading-6 text-stone-700">
+            {signedIn ? null : (
             <label className="flex gap-3">
               <input
                 checked={rememberDetails}
@@ -1316,12 +1418,26 @@ export function CheckoutForm({
                 ) : null}
               </span>
             </label>
+            )}
             <label className="flex gap-3">
-              <input className="mt-1 h-4 w-4 shrink-0" name="consent_order_processing" required type="checkbox" />
+              <input
+                checked={consentOrder}
+                className="mt-1 h-4 w-4 shrink-0"
+                name="consent_order_processing"
+                onChange={(event) => setConsentOrder(event.target.checked)}
+                required
+                type="checkbox"
+              />
               <span>{t.consentOrder}</span>
             </label>
             <label className="flex gap-3">
-              <input className="mt-1 h-4 w-4 shrink-0" name="consent_marketing" type="checkbox" />
+              <input
+                checked={consentMarketing}
+                className="mt-1 h-4 w-4 shrink-0"
+                name="consent_marketing"
+                onChange={(event) => setConsentMarketing(event.target.checked)}
+                type="checkbox"
+              />
               <span>
                 {t.consentMarketing}{" "}
                 <Link className="font-black text-leaf underline" href="/privacy" target="_blank">
@@ -1356,14 +1472,22 @@ export function CheckoutForm({
               disabled={isPending || redirectingToPayment || amountRemaining > 0 || deliveryBlocked}
               type="submit"
             >
-              <MessageCircle className="shrink-0" size={18} />
+              {payingOnline ? (
+                <CreditCard className="shrink-0" size={18} />
+              ) : (
+                <MessageCircle className="shrink-0" size={18} />
+              )}
               {redirectingToPayment
                 ? onlinePaymentCopy[language === "ar" ? "ar" : "en"].redirecting
                 : isPending
                   ? t.sendingOrder
-                  : t.saveAndContinueWhatsApp}
+                  : payingOnline
+                    ? `${onlinePaymentCopy[language === "ar" ? "ar" : "en"].pay} ${formatCurrency(total, restaurant)}`
+                    : checkoutCopy.placeOrder}
             </button>
-            <p className="mt-2 text-center text-xs text-stone-500">{t.whatsAppNextStep}</p>
+            <p className="mt-2 text-center text-xs text-stone-500">
+              {payingOnline ? onlinePaymentCopy[language === "ar" ? "ar" : "en"].payNextStep : t.whatsAppNextStep}
+            </p>
           </div>
         </form>
       </div>

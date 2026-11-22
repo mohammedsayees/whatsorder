@@ -3,7 +3,8 @@ import {
   defaultOpeningHours,
   isRestaurantOpen,
   nextOpening,
-  normalizeOpeningHours
+  normalizeOpeningHours,
+  reopeningMessage
 } from "@/lib/opening-hours";
 
 describe("restaurant opening hours", () => {
@@ -80,5 +81,26 @@ describe("nextOpening", () => {
       Object.entries(defaultOpeningHours).map(([day, hours]) => [day, { ...hours, closed: true }])
     );
     expect(nextOpening(true, allClosed, new Date("2026-06-22T01:12:00Z"))).toBeNull();
+  });
+});
+
+describe("reopeningMessage", () => {
+  it("says today, tomorrow or the weekday", () => {
+    expect(reopeningMessage({ daysAhead: 0, day: "monday", time: "07:00" }, "en")).toBe(
+      "We open today at 7:00 AM."
+    );
+    expect(reopeningMessage({ daysAhead: 1, day: "tuesday", time: "16:30" }, "en")).toBe(
+      "We open tomorrow at 4:30 PM."
+    );
+    expect(reopeningMessage({ daysAhead: 3, day: "thursday", time: "09:00" }, "en")).toBe(
+      "We open on Thursday at 9:00 AM."
+    );
+  });
+
+  it("uses Arabic day words and isolated Arabic AM/PM marks", () => {
+    expect(reopeningMessage({ daysAhead: 0, day: "monday", time: "07:00" }, "ar")).toBe(
+      "نفتح اليوم الساعة \u20687:00 ص\u2069."
+    );
+    expect(reopeningMessage({ daysAhead: 2, day: "friday", time: "18:00" }, "ar")).toContain("يوم الجمعة");
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   composeDeliveryAddress,
+  liftLegacyAddress,
+  parseCheckoutPreferences,
   parseSavedDetails,
   savedDetailsStorageKey
 } from "@/lib/customer-address";
@@ -68,5 +70,43 @@ describe("parseSavedDetails", () => {
 
   it("scopes storage per restaurant", () => {
     expect(savedDetailsStorageKey("a")).not.toBe(savedDetailsStorageKey("b"));
+  });
+});
+
+describe("liftLegacyAddress", () => {
+  it("moves a one-line legacy address into Building", () => {
+    expect(liftLegacyAddress({ building: "", flat: "", details: " Building 12, Flat 304 " })).toEqual({
+      building: "Building 12, Flat 304",
+      flat: "",
+      details: ""
+    });
+  });
+
+  it("leaves structured or over-long addresses alone", () => {
+    const structured = { building: "Al Noor Tower", flat: "", details: "Blue gate" };
+    expect(liftLegacyAddress(structured)).toBe(structured);
+    const withFlat = { building: "", flat: "12", details: "Street 5" };
+    expect(liftLegacyAddress(withFlat)).toBe(withFlat);
+    const long = { building: "", flat: "", details: "x".repeat(121) };
+    expect(liftLegacyAddress(long)).toBe(long);
+  });
+});
+
+describe("parseCheckoutPreferences", () => {
+  const allowed = ["Cash on Delivery", "Online Payment"];
+
+  it("keeps known payment methods and boolean consent", () => {
+    expect(
+      parseCheckoutPreferences(JSON.stringify({ paymentMethod: "Online Payment", consentMarketing: true }), allowed)
+    ).toEqual({ paymentMethod: "Online Payment", consentMarketing: true });
+  });
+
+  it("drops unavailable methods and junk", () => {
+    expect(parseCheckoutPreferences(JSON.stringify({ paymentMethod: "UPI", consentMarketing: "yes" }), allowed)).toEqual({
+      paymentMethod: null,
+      consentMarketing: null
+    });
+    expect(parseCheckoutPreferences("not json", allowed)).toEqual({ paymentMethod: null, consentMarketing: null });
+    expect(parseCheckoutPreferences(null, allowed)).toEqual({ paymentMethod: null, consentMarketing: null });
   });
 });
