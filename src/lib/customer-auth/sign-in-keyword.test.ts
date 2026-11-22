@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   customerSignInNumber,
   isCustomerSignInKeyword,
+  parseCustomerSignInMessage,
+  signInMessageWithStamp,
   signInReplyMessage,
   SIGN_IN_KEYWORD
 } from "./sign-in-keyword";
@@ -45,5 +47,24 @@ describe("customerSignInNumber", () => {
     );
     expect(customerSignInNumber({ integration: disconnected, ownsCloudNumber: false, whatsappNumber: "971500009999" })).toBeNull();
     expect(customerSignInNumber({ integration: null, ownsCloudNumber: false, whatsappNumber: null })).toBeNull();
+  });
+});
+
+describe("sign-in message with a receipt stamp code", () => {
+  const code = "QwAAAAAAQACAAAAAAAAAAQ.tf3k2a.abcdefghijklmnopqrstuv";
+
+  it("reads the code after a keyword, and plain keywords as before", () => {
+    expect(parseCustomerSignInMessage(signInMessageWithStamp(code))).toEqual({ stampCode: code });
+    expect(parseCustomerSignInMessage(`تسجيل الدخول #${code}`)).toEqual({ stampCode: code });
+    expect(parseCustomerSignInMessage("Login")).toEqual({ stampCode: null });
+    expect(signInMessageWithStamp(null)).toBe(SIGN_IN_KEYWORD);
+  });
+
+  it("ignores codes that do not follow a whole keyword", () => {
+    expect(parseCustomerSignInMessage(`hello #${code}`)).toBeNull();
+    expect(parseCustomerSignInMessage(`Login please #${code}`)).toBeNull();
+    expect(parseCustomerSignInMessage("Login #short")).toBeNull();
+    expect(parseCustomerSignInMessage(`#${code}`)).toBeNull();
+    expect(parseCustomerSignInMessage(null)).toBeNull();
   });
 });

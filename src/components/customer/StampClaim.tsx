@@ -1,80 +1,82 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
-import { Gift, Loader2, MessageCircle, Stamp } from "lucide-react";
-import {
-  claimStampAction,
-  type StampClaimResult
-} from "@/app/r/[restaurantSlug]/stamp/actions";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, Gift, Loader2, MessageCircle, RotateCcw, Stamp } from "lucide-react";
+import { claimStampAction } from "@/app/r/[restaurantSlug]/stamp/actions";
 import { pendingStampClaimKey } from "@/lib/customer-auth/stamp-claim";
+import { stampClaimText, type StampClaimResult } from "@/lib/stamp-claim-text";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 
 type Translate = (en: string, ar: string) => string;
 
-/** One sentence describing a claim result, in the customer's language. */
-export function stampClaimText(result: StampClaimResult, t: Translate): string {
-  if (!result.ok) {
-    switch (result.error) {
-      case "already_claimed":
-        return t("This receipt's stamp has already been collected.", "تم جمع ختم هذا الإيصال بالفعل.");
-      case "expired":
-        return t("This receipt is more than 24 hours old, so its stamp can't be collected.", "مضى أكثر من 24 ساعة على هذا الإيصال، لذا لا يمكن جمع الختم.");
-      case "order_cancelled":
-        return t("This order was cancelled, so it has no stamp.", "تم إلغاء هذا الطلب، لذا لا يوجد ختم.");
-      case "loyalty_off":
-        return t("This café isn't giving stamps right now.", "هذا المقهى لا يقدم أختاماً حالياً.");
-      case "invalid_link":
-        return t("This stamp link isn't valid. Ask the café for help.", "رابط الختم هذا غير صالح. اطلب المساعدة من المقهى.");
-      case "signed_out":
-        return t("Please confirm your number on WhatsApp first.", "يرجى تأكيد رقمك عبر واتساب أولاً.");
-      default:
-        return t("Something went wrong. Please try again.", "حدث خطأ. يرجى المحاولة مرة أخرى.");
-    }
-  }
-  const reward = result.reward?.trim() || t("reward", "مكافأة");
-  const progress =
-    result.required > 0
-      ? result.stamps >= result.required
-        ? t(`You have ${result.stamps}/${result.required}: your free ${reward} is ready!`, `لديك ${result.stamps}/${result.required}: ${reward} المجاني جاهز!`)
-        : t(
-            `${result.stamps}/${result.required} stamps · ${result.required - result.stamps} more for a free ${reward}.`,
-            `${result.stamps}/${result.required} أختام · ${result.required - result.stamps} أخرى للحصول على ${reward} مجاناً.`
-          )
-      : "";
-  switch (result.outcome) {
-    case "stamped":
-      return `${t("Stamp added!", "تمت إضافة الختم!")} ${progress}`;
-    case "already":
-      return `${t("You've already collected this stamp.", "لقد جمعت هذا الختم بالفعل.")} ${progress}`;
-    case "pending":
-      return t("Done! Your stamp is added as soon as your order is ready.", "تم! ستتم إضافة الختم عند تجهيز طلبك.");
-    default:
-      return t("Your number is saved. This order was below the minimum for a stamp.", "تم حفظ رقمك. هذا الطلب أقل من الحد الأدنى للحصول على ختم.");
-  }
+/** Filled and empty stamp dots, like the menu and account pages. */
+function StampDots({ stamps, required }: { stamps: number; required: number }) {
+  const dots = Math.min(required, 12);
+  if (dots <= 0) return null;
+  return (
+    <div aria-hidden className="mt-3 flex flex-wrap justify-center gap-1.5">
+      {Array.from({ length: dots }).map((_, index) => (
+        <span
+          className={`grid h-7 w-7 place-items-center rounded-full border ${
+            index < stamps ? "border-leaf bg-leaf text-white" : "border-leaf/40 bg-white"
+          }`}
+          key={index}
+        >
+          {index < stamps ? <Check size={14} /> : null}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function StampClaim({
+  expired = false,
+  logoUrl = null,
   restaurantName,
+  restaurantNameAr = null,
   restaurantSlug,
   signedIn,
   signInUrl,
   token
 }: {
+  /** A genuine receipt from this café, older than 24 hours. */
+  expired?: boolean;
+  logoUrl?: string | null;
   restaurantName: string;
+  restaurantNameAr?: string | null;
   restaurantSlug: string;
   signedIn: boolean;
   signInUrl: string | null;
   token: string | null;
 }) {
-  const { language } = useCustomerLanguage();
+  const { language, setLanguage } = useCustomerLanguage();
   const isAr = language === "ar";
   const t: Translate = (en, ar) => (isAr ? ar : en);
+  const name = isAr && restaurantNameAr ? restaurantNameAr : restaurantName;
   const [result, setResult] = useState<StampClaimResult | null>(null);
   const [pending, startTransition] = useTransition();
+  const autoClaimed = useRef(false);
 
-  // Signed out: keep the claim on this device; the account page finishes it
-  // right after the WhatsApp sign-in link brings the customer back.
+  function claim() {
+    if (!token) return;
+    startTransition(async () => {
+      setResult(await claimStampAction(restaurantSlug, token));
+    });
+  }
+
+  // Signed in: claiming is safe to repeat ("already collected"), so do it on
+  // open instead of asking for another tap.
+  useEffect(() => {
+    if (!token || !signedIn || autoClaimed.current) return;
+    autoClaimed.current = true;
+    claim();
+    // claim() only depends on the props checked above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn, token]);
+
+  // Signed out: also keep the claim on this device. The WhatsApp sign-in
+  // message already carries it; this is the fallback for that path.
   useEffect(() => {
     if (!token || signedIn) return;
     try {
@@ -83,55 +85,86 @@ export function StampClaim({
         JSON.stringify({ token, savedAt: Date.now() })
       );
     } catch {
-      // Storage blocked: the customer can scan the receipt again after signing in.
+      // Storage blocked: the WhatsApp message still carries the claim.
     }
   }, [restaurantSlug, signedIn, token]);
 
-  const card = "mx-auto mt-8 max-w-md rounded-2xl border border-stone-200 bg-white p-6 text-center";
+  const earned = result?.ok && result.required > 0;
+  const ready = Boolean(result?.ok && result.required > 0 && result.stamps >= result.required);
 
   return (
-    <main className="min-h-screen bg-stone-50 px-4 py-6" dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
-      <section className={card}>
-        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-mint text-leaf">
-          <Stamp size={24} />
-        </div>
+    <main className="min-h-screen px-4 py-6" dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
+      <div className="mx-auto flex max-w-md justify-end">
+        <button
+          aria-label={t("Switch to Arabic", "التبديل إلى الإنجليزية")}
+          className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-stone-200 bg-white text-sm font-black text-ink"
+          lang={isAr ? "en" : "ar"}
+          onClick={() => setLanguage(isAr ? "en" : "ar")}
+          type="button"
+        >
+          {isAr ? "EN" : "ع"}
+        </button>
+      </div>
+      <section className="mx-auto mt-4 max-w-md rounded-2xl border border-stone-200 bg-white p-6 text-center">
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt="" className="mx-auto h-14 w-14 rounded-2xl object-cover" height={56} src={logoUrl} width={56} />
+        ) : (
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-mint text-leaf">
+            <Stamp size={24} />
+          </div>
+        )}
         <h1 className="mt-3 text-xl font-black text-ink">{t("Collect your stamp", "اجمع ختمك")}</h1>
-        <p className="text-sm font-semibold text-stone-500">{restaurantName}</p>
+        <p className="text-sm font-semibold text-stone-500">{name}</p>
 
-        {!token ? (
+        {expired ? (
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+            {stampClaimText({ ok: false, error: "expired" }, t)}
+          </p>
+        ) : !token ? (
           <p className="mt-4 text-sm font-bold text-rose-700">
             {stampClaimText({ ok: false, error: "invalid_link" }, t)}
           </p>
         ) : result ? (
-          <p
-            className={`mt-4 rounded-xl px-4 py-3 text-sm font-black ${result.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}
-            role="status"
-          >
-            {result.ok && result.stamps >= result.required && result.required > 0 ? (
-              <Gift className="mb-1 inline" size={16} />
-            ) : null}{" "}
-            {stampClaimText(result, t)}
-          </p>
+          <>
+            {earned && result.ok ? <StampDots required={result.required} stamps={result.stamps} /> : null}
+            <p
+              className={`mt-4 rounded-xl px-4 py-3 text-sm font-black ${result.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"}`}
+              role="status"
+            >
+              {ready ? <Gift className="mb-1 inline" size={16} /> : null} {stampClaimText(result, t)}
+            </p>
+            {result.ok ? (
+              <a
+                className="focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 text-sm font-black text-white"
+                href={`/r/${restaurantSlug}/account`}
+              >
+                <Gift size={16} />
+                {t("View my rewards", "عرض مكافآتي")}
+              </a>
+            ) : result.error === "failed" ? (
+              <button
+                className="focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-5 py-3 text-sm font-black text-ink disabled:opacity-60"
+                disabled={pending}
+                onClick={claim}
+                type="button"
+              >
+                <RotateCcw size={16} />
+                {t("Try again", "حاول مرة أخرى")}
+              </button>
+            ) : null}
+          </>
         ) : signedIn ? (
-          <button
-            className="focus-ring mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-leaf px-5 py-3 text-sm font-black text-white disabled:opacity-60"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                setResult(await claimStampAction(restaurantSlug, token));
-              })
-            }
-            type="button"
-          >
-            {pending ? <Loader2 className="animate-spin" size={16} /> : <Stamp size={16} />}
-            {t("Add my stamp", "أضف ختمي")}
-          </button>
+          <p className="mt-5 inline-flex items-center justify-center gap-2 text-sm font-black text-leaf" role="status">
+            <Loader2 className="animate-spin" size={16} />
+            {t("Adding your stamp…", "جارٍ إضافة ختمك…")}
+          </p>
         ) : signInUrl ? (
           <>
             <p className="mt-4 text-sm font-semibold text-stone-600">
               {t(
-                "Confirm your number on WhatsApp: press send on the message we open, then tap the link we reply with. Your stamp is added automatically.",
-                "أكّد رقمك عبر واتساب: اضغط إرسال على الرسالة، ثم افتح الرابط الذي نرسله. ستتم إضافة الختم تلقائياً."
+                "Confirm your number on WhatsApp: press send on the message we open. We add your stamp straight away and reply with a link to your rewards.",
+                "أكّد رقمك عبر واتساب: اضغط إرسال على الرسالة التي نفتحها. نضيف ختمك فوراً ونرد عليك برابط مكافآتك."
               )}
             </p>
             <a
@@ -158,57 +191,5 @@ export function StampClaim({
         </Link>
       </section>
     </main>
-  );
-}
-
-/**
- * Finishes a receipt claim saved before the customer signed in. Mounted on
- * the account page (where the WhatsApp sign-in link lands); renders nothing
- * when there is no pending claim.
- */
-export function PendingStampClaim({ restaurantSlug, t }: { restaurantSlug: string; t: Translate }) {
-  const [result, setResult] = useState<StampClaimResult | null>(null);
-
-  useEffect(() => {
-    let token: string | null = null;
-    try {
-      const key = pendingStampClaimKey(restaurantSlug);
-      const raw = window.localStorage.getItem(key);
-      window.localStorage.removeItem(key);
-      const saved = raw ? (JSON.parse(raw) as { token?: unknown; savedAt?: unknown }) : null;
-      // The claim token itself expires in 24h; drop stale device copies sooner.
-      if (
-        saved &&
-        typeof saved.token === "string" &&
-        typeof saved.savedAt === "number" &&
-        Date.now() - saved.savedAt < 24 * 60 * 60 * 1000
-      ) {
-        token = saved.token;
-      }
-    } catch {
-      token = null;
-    }
-    if (!token) return;
-    let active = true;
-    void claimStampAction(restaurantSlug, token)
-      .then((outcome) => {
-        if (active) setResult(outcome);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [restaurantSlug]);
-
-  if (!result) {
-    return null;
-  }
-  return (
-    <p
-      className={`mt-4 rounded-2xl px-4 py-3 text-sm font-black ${result.ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}
-      role="status"
-    >
-      {stampClaimText(result, t)}
-    </p>
   );
 }

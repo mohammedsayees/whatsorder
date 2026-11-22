@@ -31,6 +31,10 @@ import {
 } from "@/lib/chat-inbox";
 import { downloadChatMedia, type ChatMediaJob } from "@/lib/chat-media";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
+import { parseCustomerSignInMessage } from "@/lib/customer-auth/sign-in-keyword";
+import { verifyStampClaimCode } from "@/lib/customer-auth/stamp-claim-code";
+import { claimOrderStampForPhone } from "@/lib/customer-auth/stamp-claim-server";
+import { stampClaimReplyText } from "@/lib/stamp-claim-text";
 import {
   buildCustomerLinkUrl,
   sendWhatsAppText,
@@ -292,11 +296,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         })
       );
 
+      // "Login #<code>" from a receipt's stamp page: the stamp is added here,
+      // for the phone WhatsApp delivered from (never a browser-supplied one).
+      const stampCodes = new Map<string, string>();
+      for (const message of inboundMessages) {
+        const signIn = message.type === "text" ? parseCustomerSignInMessage(message.body) : null;
+        if (signIn?.stampCode) {
+          stampCodes.set(message.from, signIn.stampCode);
+        }
+      }
+
       await Promise.all(
         [...senders].filter((phone) => !optOutSenders.has(phone)).map(async (phone) => {
+          const stampOrderId = verifyStampClaimCode(stampCodes.get(phone), restaurant.id);
+          const stampLine = stampOrderId
+            ? stampClaimReplyText(
+                await claimOrderStampForPhone({ restaurantId: restaurant.id, orderId: stampOrderId, phone })
+              )
+            : null;
           const token = await mintLinkToken({ restaurantId: restaurant.id, phone });
-          const url = buildCustomerLinkUrl(baseUrl, token, restaurant.slug);
-          const body = `View your order & stamps at ${restaurant.name} →\n${url}`;
+          const url = buildCustomerLinkUrl(baseUrl, token, restaurant.slug, stampLine ? "account" : "menu");
+          const link = `View your order & stamps at ${restaurant.name} →\n${url}`;
+          const body = stampLine ? `${stampLine}\n\n${link}` : link;
           const sent = await sendWhatsAppText(phone, body);
           if (sent) {
             await recordOutboundChatMessage({

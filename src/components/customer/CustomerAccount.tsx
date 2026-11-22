@@ -27,7 +27,7 @@ import {
 import { useCart } from "@/components/customer/CartProvider";
 import { CustomerAddressBook } from "@/components/customer/CustomerAddressBook";
 import { CustomerVouchers } from "@/components/customer/CustomerVouchers";
-import { PendingStampClaim } from "@/components/customer/StampClaim";
+import { PendingStampClaim } from "@/components/customer/PendingStampClaim";
 import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
