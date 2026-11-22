@@ -17,6 +17,47 @@ type GeminiResponse = {
 const GEMINI_TOTAL_BUDGET_MS = 45_000;
 const GEMINI_MIN_ATTEMPT_MS = 5_000;
 const GEMINI_RETRY_BACKOFF_MS = 1_000;
+const UPSTREAM_DETAIL_MAX_CHARS = 300;
+
+// Carries what Gemini actually said so the server log can show it. Only the
+// coarse error code (from `message`) is ever stored or shown to staff.
+class FinanceUpstreamError extends Error {
+  constructor(
+    code: string,
+    readonly upstream: { httpStatus?: number; providerStatus?: string; providerMessage?: string; cause?: string }
+  ) {
+    super(code);
+  }
+}
+
+// Gemini errors look like {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED"}}.
+async function readUpstreamError(response: Response, code: string) {
+  let providerStatus: string | undefined;
+  let providerMessage: string | undefined;
+  try {
+    const text = await response.text();
+    try {
+      const parsed = JSON.parse(text) as { error?: { message?: unknown; status?: unknown } };
+      if (typeof parsed.error?.status === "string") providerStatus = parsed.error.status;
+      if (typeof parsed.error?.message === "string") providerMessage = parsed.error.message;
+    } catch {
+      providerMessage = text;
+    }
+  } catch {
+    // Body unreadable; the HTTP status alone is still worth logging.
+  }
+  return new FinanceUpstreamError(code, {
+    httpStatus: response.status,
+    providerStatus,
+    providerMessage: providerMessage?.slice(0, UPSTREAM_DETAIL_MAX_CHARS)
+  });
+}
+
+function upstreamDetail(error: unknown) {
+  if (error instanceof FinanceUpstreamError) return error.upstream;
+  if (error instanceof Error && error.message.startsWith("FINANCE_")) return {};
+  return { cause: error instanceof Error ? error.name : typeof error };
+}
 
 function modelName() {
   return process.env.GEMINI_FINANCE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
@@ -104,19 +145,25 @@ async function extractWithGemini(
         body,
         signal: AbortSignal.timeout(remaining)
       });
-    } catch {
-      if (attempt === 2) throw new Error("FINANCE_UPSTREAM_NETWORK");
+    } catch (error) {
+      if (attempt === 2) {
+        throw new FinanceUpstreamError("FINANCE_UPSTREAM_NETWORK", {
+          cause: error instanceof Error ? error.name : "unknown"
+        });
+      }
       continue;
     }
     if (response.ok) break;
     if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      const first = await readUpstreamError(response, `FINANCE_UPSTREAM_${response.status}`);
+      console.warn("WhatsOrder finance extraction retrying", first.upstream);
       await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_BACKOFF_MS));
       continue;
     }
-    throw new Error(`FINANCE_UPSTREAM_${response.status}`);
+    throw await readUpstreamError(response, `FINANCE_UPSTREAM_${response.status}`);
   }
   if (!response) throw new Error("FINANCE_UPSTREAM_NETWORK");
-  if (!response.ok) throw new Error(`FINANCE_UPSTREAM_${response.status}`);
+  if (!response.ok) throw await readUpstreamError(response, `FINANCE_UPSTREAM_${response.status}`);
   const payload = (await response.json()) as GeminiResponse;
   await recordGeminiUsage("finance_extract", modelName(), payload, usage);
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
@@ -190,7 +237,11 @@ export async function processFinanceExtractionJob(
       requested_lease_token: leaseToken,
       requested_error_code: errorCode
     });
-    console.error("WhatsOrder finance extraction failed", { documentId, errorCode });
+    console.error("WhatsOrder finance extraction failed", {
+      documentId,
+      errorCode,
+      ...upstreamDetail(error)
+    });
     return { ok: false as const, error: errorCode };
   }
 }

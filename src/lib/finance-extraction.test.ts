@@ -115,4 +115,29 @@ describe("finance bill extraction job", () => {
       vi.useRealTimers();
     }
   });
+  it("logs Gemini's real status and message, but stores only the coarse code", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+        error: { code: 429, message: "Quota exceeded for metric: generate_content_free_tier_requests", status: "RESOURCE_EXHAUSTED" }
+      }), { status: 429 })));
+      const pending = processFinanceExtractionJob("restaurant", "doc", uploaded);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await pending).toEqual({ ok: false, error: "provider_busy" });
+      expect(errorLog).toHaveBeenCalledWith("WhatsOrder finance extraction failed", {
+        documentId: "doc",
+        errorCode: "provider_busy",
+        httpStatus: 429,
+        providerStatus: "RESOURCE_EXHAUSTED",
+        providerMessage: "Quota exceeded for metric: generate_content_free_tier_requests"
+      });
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain("test-key");
+      const failCall = rpcCalls("fail_finance_extraction_job")[0];
+      expect(failCall?.[1]).toMatchObject({ requested_error_code: "provider_busy" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
