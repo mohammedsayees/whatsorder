@@ -143,6 +143,12 @@ const InstallAppPrompt = dynamic(
   { ssr: false }
 );
 
+// Opened from the cart bar; loads on demand.
+const CartSheet = dynamic(
+  () => import("@/components/customer/CartSheet").then((module) => module.CartSheet),
+  { ssr: false }
+);
+
 type CategoryWithItems = {
   category: CustomerMenuCategory;
   items: CustomerMenuItem[];
@@ -262,7 +268,13 @@ export function RestaurantMenu({
   const [optionsSheet, setOptionsSheet] = useState<{
     item: CustomerMenuItem;
     offer: CustomerMenuOffer | null;
+    /** Set when editing a cart line from the cart drawer. */
+    editLine?: CartLine;
   } | null>(null);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  // What the menu check changed in a saved cart (shown once, dismissible).
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const cartChecked = useRef(false);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
@@ -371,6 +383,22 @@ export function RestaurantMenu({
     () => resolveOptionGroupsByItem(optionCatalog),
     [optionCatalog]
   );
+  // A saved cart can be days old: once it loads, align it with this menu
+  // (drop what is gone, refresh prices) before the customer reaches checkout.
+  useEffect(() => {
+    if (!cart.isReady || cartChecked.current) return;
+    cartChecked.current = true;
+    if (cart.lines.length === 0) return;
+    const saved = cart.lines;
+    void import("@/lib/cart-reconcile").then(({ reconcileCartWithMenu, reconcileNotice }) => {
+      const result = reconcileCartWithMenu(saved, { items, offers, groupsByItemId: resolvedGroupsByItemId });
+      if (result.changed) cart.replaceLines(result.lines);
+      setCartNotice(reconcileNotice(result, language));
+    });
+    // Once per visit, against the cart as it loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart.isReady]);
+
   // "from AED X" for items whose options change the price.
   const fromPriceByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -1221,17 +1249,34 @@ export function RestaurantMenu({
         />
       ) : null}
 
-      {cart.count > 0 && !groupToken ? (
+      {(cart.count > 0 || cartNotice) && !groupToken ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-white">
+          {cartNotice ? (
+            <p className="mx-auto mb-2 flex max-w-3xl items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900" role="status">
+              <span className="flex-1">{cartNotice}</span>
+              <button aria-label={language === "ar" ? "إغلاق" : "Dismiss"} className="focus-ring shrink-0 rounded" onClick={() => setCartNotice(null)} type="button">
+                <X size={14} />
+              </button>
+            </p>
+          ) : null}
+          {cart.count > 0 ? (
+          <button
+            className="focus-ring mx-auto flex w-full max-w-3xl items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-start text-white"
+            onClick={() => setIsCartOpen(true)}
+            type="button"
+          >
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10">
               <ShoppingBag size={18} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-black">
+              <p aria-live="polite" className="text-sm font-black">
                 {cart.count} {cart.count > 1 ? t.itemsInCart : t.itemInCart}
               </p>
-              {!minimumReached ? (
+              {!orderingAvailable ? (
+                <p className="text-xs font-semibold text-white/70">
+                  {reopening ? reopeningMessage(reopening, language) : t.closedNow}
+                </p>
+              ) : !minimumReached ? (
                 <p className="text-xs font-semibold text-white/70">
                   {language === "ar"
                     ? `أضف ${formatCurrency(amountRemaining, restaurant)} لإتمام الحد الأدنى`
@@ -1239,24 +1284,42 @@ export function RestaurantMenu({
                 </p>
               ) : null}
             </div>
-            {minimumReached ? (
-              <Link
-                href={checkoutHref}
-                className="focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink"
-              >
-                {t.viewCart}
-                <span>{formatCurrency(cart.subtotal, restaurant)}</span>
-              </Link>
-            ) : (
-              <span
-                aria-disabled="true"
-                className="inline-flex shrink-0 items-center rounded-full bg-white/15 px-4 py-2.5 text-sm font-black text-white/70"
-              >
-                {formatCurrency(cart.subtotal, restaurant)}
-              </span>
-            )}
-          </div>
+            {/* Always opens the cart: it can be reviewed and edited even below
+                the minimum or while the café is closed. */}
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-ink">
+              {t.viewCart}
+              <span>{formatCurrency(cart.subtotal, restaurant)}</span>
+            </span>
+          </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {isCartOpen ? (
+        <CartSheet
+          amountRemaining={amountRemaining}
+          checkoutHref={checkoutHref}
+          closedLabel={
+            orderingAvailable
+              ? null
+              : restaurant.accepting_orders === false
+                ? t.notAcceptingOrders
+                : reopening
+                  ? reopeningMessage(reopening, language)
+                  : t.closedNow
+          }
+          language={language}
+          notice={cartNotice}
+          offers={offers}
+          onClose={() => setIsCartOpen(false)}
+          onEdit={(line, offer) => {
+            const item = itemsById.get(line.item_id);
+            if (!item || !(resolvedGroupsByItemId.get(item.id) ?? []).length) return;
+            setIsCartOpen(false);
+            setOptionsSheet({ item, offer, editLine: line });
+          }}
+          restaurant={restaurant}
+        />
       ) : null}
 
       {isCategorySheetOpen ? (
@@ -1284,6 +1347,8 @@ export function RestaurantMenu({
               : optionsSheet.item.price
           }
           groups={resolvedGroupsByItemId.get(optionsSheet.item.id) ?? []}
+          initialOptions={optionsSheet.editLine?.options}
+          initialQuantity={optionsSheet.editLine?.quantity}
           item={optionsSheet.item}
           language={language}
           maxQuantity={
@@ -1291,13 +1356,16 @@ export function RestaurantMenu({
               ? Math.max(
                   0,
                   optionsSheet.offer.max_quantity_per_order -
-                    offerQuantityInCart(optionsSheet.offer.id)
+                    offerQuantityInCart(optionsSheet.offer.id) +
+                    (optionsSheet.editLine?.quantity ?? 0)
                 )
               : undefined
           }
           offer={optionsSheet.offer}
           restaurant={restaurant}
           onAdd={(options, quantity) => {
+            // Editing replaces the line it came from.
+            if (optionsSheet.editLine) cart.removeLine(cartLineKey(optionsSheet.editLine));
             cart.addConfiguredLine({
               item: optionsSheet.item,
               offer: optionsSheet.offer,
@@ -1308,6 +1376,7 @@ export function RestaurantMenu({
           }}
           onClose={() => setOptionsSheet(null)}
           showDetails
+          submitLabel={optionsSheet.editLine ? (language === "ar" ? "تحديث" : "Update") : undefined}
         />
       ) : null}
     </div>
