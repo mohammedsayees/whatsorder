@@ -189,3 +189,106 @@ export function cleanCustomerName(value: unknown): string | null {
   }
   return name;
 }
+
+/**
+ * Identity of an order's basket: the same items, options and quantities in
+ * any order. Prices are left out — the cart re-prices on checkout anyway.
+ */
+export function basketSignature(lines: CartLine[]): string {
+  return lines
+    .map((line) => {
+      const options = (line.options ?? [])
+        .map((option) => option.option_id)
+        .sort()
+        .join("+");
+      return `${line.item_id}|${options}|${Number(line.quantity)}`;
+    })
+    .sort()
+    .join(",");
+}
+
+export interface UsualBasket {
+  /** "usual" when the same basket was ordered at least twice, else "last". */
+  kind: "usual" | "last";
+  order: CustomerAccountOrder;
+  lines: CartLine[];
+  count: number;
+}
+
+/**
+ * The basket to offer a one-tap re-order for: the most repeated basket among
+ * the given orders (newest first; ties go to the most recent), or the latest
+ * re-orderable one when nothing repeats. Cancelled orders are ignored.
+ */
+export function usualBasket(orders: CustomerAccountOrder[]): UsualBasket | null {
+  // Map keeps insertion order, i.e. each basket's most recent appearance.
+  const seen = new Map<string, UsualBasket>();
+
+  for (const order of orders) {
+    if (order.status === "Cancelled") continue;
+    const lines = reorderableLines(order.items);
+    if (lines.length === 0) continue;
+    const signature = basketSignature(lines);
+    const entry = seen.get(signature) ?? { kind: "last" as const, order, lines, count: 0 };
+    entry.count += 1;
+    seen.set(signature, entry);
+  }
+
+  let best: UsualBasket | null = null;
+  for (const entry of seen.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  const latest = seen.values().next().value ?? null;
+  if (best && best.count >= 2) return { ...best, kind: "usual" };
+  return latest ? { ...latest, kind: "last", count: 1 } : null;
+}
+
+/** Calendar day (YYYY-MM-DD) of an instant in the given time zone. */
+export function dayKey(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone
+  }).format(new Date(iso));
+}
+
+/** Orders (newest first) grouped into consecutive calendar days. */
+export function groupOrdersByDay<T extends { created_at: string }>(
+  orders: T[],
+  timeZone: string
+): { key: string; orders: T[] }[] {
+  const groups: { key: string; orders: T[] }[] = [];
+  for (const order of orders) {
+    const key = dayKey(order.created_at, timeZone);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.orders.push(order);
+    } else {
+      groups.push({ key, orders: [order] });
+    }
+  }
+  return groups;
+}
+
+function shiftDay(key: string, days: number): string {
+  const date = new Date(`${key}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** "Today" / "Yesterday" (localized), otherwise a short date like "Thu, 20 Nov". */
+export function dayLabel(key: string, todayKey: string, locale: string): string {
+  const offset = key === todayKey ? 0 : key === shiftDay(todayKey, -1) ? -1 : null;
+  if (offset !== null) {
+    const text = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(offset, "day");
+    return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+  }
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: key.slice(0, 4) === todayKey.slice(0, 4) ? undefined : "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${key}T12:00:00Z`));
+}
