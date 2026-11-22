@@ -47,6 +47,16 @@ vi.mock("@/lib/marketing/consent", () => ({
 vi.mock("@/lib/customer-auth/tokens", () => ({
   mintLinkToken: (...args: unknown[]) => mintLink(...args)
 }));
+const verifyStampCode = vi.fn((..._args: unknown[]): string | null => null);
+const claimStamp = vi.fn(async (..._args: unknown[]) => ({
+  ok: true as const, outcome: "stamped" as const, stamps: 5, required: 7, reward: "Free Crunch Burger"
+}));
+vi.mock("@/lib/customer-auth/stamp-claim-code", () => ({
+  verifyStampClaimCode: (...args: unknown[]) => verifyStampCode(...args)
+}));
+vi.mock("@/lib/customer-auth/stamp-claim-server", () => ({
+  claimOrderStampForPhone: (...args: unknown[]) => claimStamp(...args)
+}));
 // Off by default so the AI receptionist only runs in tests that opt in.
 let planAllowed = false;
 vi.mock("@/lib/plan-gates", () => ({
@@ -96,7 +106,7 @@ function messageEvent(body: string) {
 beforeEach(() => {
   existingMessage = null;
   planAllowed = false;
-  for (const mock of [storeMedia, withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, vi.mocked(after)]) {
+  for (const mock of [storeMedia, withdraw, sendText, handleOrder, generateAi, recordOutbound, mintLink, verifyStampCode, claimStamp, vi.mocked(after)]) {
     mock.mockClear();
   }
 });
@@ -164,6 +174,30 @@ describe("WhatsApp Web connector sign-in keyword", () => {
     expect(mintLink).not.toHaveBeenCalled();
     expect(sendText).not.toHaveBeenCalled();
     expect(handleOrder).not.toHaveBeenCalled();
+  });
+
+  it("adds a receipt's stamp for the sender when the message carries its code", async () => {
+    const code = "QwAAAAAAQACAAAAAAAAAAQ.tf3k2a.abcdefghijklmnopqrstuv";
+    verifyStampCode.mockReturnValueOnce("43000000-0000-4000-8000-000000000001");
+    await POST(messageEvent(`Login #${code}`));
+    expect(verifyStampCode).toHaveBeenCalledWith(code, "rest-1");
+    expect(claimStamp).toHaveBeenCalledWith({
+      restaurantId: "rest-1",
+      orderId: "43000000-0000-4000-8000-000000000001",
+      phone: "971500000001"
+    });
+    const reply = sendText.mock.calls[0][2] as string;
+    expect(reply.startsWith("Stamp added! 5/7 stamps · 2 more for a free Crunch Burger.")).toBe(true);
+    expect(reply).toContain("/api/customer/link?token=tok-123&next=%2Fr%2Fchaixpress%2Faccount");
+    expect(handleOrder).not.toHaveBeenCalled();
+  });
+
+  it("still signs in, without claiming, when the code is not genuine", async () => {
+    await POST(messageEvent("Login #QwAAAAAAQACAAAAAAAAAAQ.tf3k2a.abcdefghijklmnopqrstuv"));
+    expect(claimStamp).not.toHaveBeenCalled();
+    const reply = sendText.mock.calls[0][2] as string;
+    expect(reply).not.toContain("Stamp");
+    expect(reply).toContain("token=tok-123");
   });
 
   it("leaves sentences that merely mention an account to ordering and the AI", async () => {

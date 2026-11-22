@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SignJWT } from "jose";
 import {
   buildStampClaimUrl,
+  inspectStampClaimToken,
   mintStampClaimToken,
   pendingStampClaimKey,
   verifyStampClaimToken
@@ -52,6 +53,20 @@ describe("stamp claim tokens", () => {
     expect(await verifyStampClaimToken(token)).toEqual(claim);
     vi.setSystemTime(new Date("2026-11-21T10:01:00Z"));
     expect(await verifyStampClaimToken(token)).toBeNull();
+  });
+
+  it("tells an expired receipt apart from a broken link", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-20T10:00:00Z"));
+    const token = (await mintStampClaimToken(claim)) as string;
+    const fresh = await inspectStampClaimToken(token);
+    expect(fresh).toMatchObject({ status: "valid", claim });
+    expect(fresh.status === "valid" && fresh.expiresAt).toBe(Date.parse("2026-11-21T10:00:00Z") / 1000);
+    vi.setSystemTime(new Date("2026-11-21T10:01:00Z"));
+    expect(await inspectStampClaimToken(token)).toEqual({ status: "expired", restaurantId: claim.restaurantId });
+    // Tampered: still "invalid", never "expired".
+    expect(await inspectStampClaimToken(`${token.slice(0, -2)}xx`)).toEqual({ status: "invalid" });
+    expect(await inspectStampClaimToken(null)).toEqual({ status: "invalid" });
   });
 
   it("does nothing without a configured secret", async () => {

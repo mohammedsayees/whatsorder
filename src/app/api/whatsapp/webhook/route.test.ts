@@ -36,6 +36,16 @@ vi.mock("@/lib/whatsapp-cloud-tenant", () => ({
 vi.mock("@/lib/marketing/consent", () => ({
   withdrawMarketingConsentByPhone: (...args: unknown[]) => withdraw(...args)
 }));
+const verifyStampCode = vi.fn((..._args: unknown[]): string | null => null);
+const claimStamp = vi.fn(async (..._args: unknown[]) => ({
+  ok: true as const, outcome: "stamped" as const, stamps: 5, required: 7, reward: "Crunch Burger"
+}));
+vi.mock("@/lib/customer-auth/stamp-claim-code", () => ({
+  verifyStampClaimCode: (...args: unknown[]) => verifyStampCode(...args)
+}));
+vi.mock("@/lib/customer-auth/stamp-claim-server", () => ({
+  claimOrderStampForPhone: (...args: unknown[]) => claimStamp(...args)
+}));
 
 const { POST } = await import("./route");
 
@@ -69,6 +79,34 @@ beforeEach(() => {
   withdraw.mockClear();
   recordOutbound.mockClear();
   mintLinkToken.mockClear();
+  verifyStampCode.mockClear();
+  claimStamp.mockClear();
+});
+
+describe("Cloud webhook receipt stamp codes", () => {
+  const code = "QwAAAAAAQACAAAAAAAAAAQ.tf3k2a.abcdefghijklmnopqrstuv";
+
+  it("adds the stamp for the sender and puts the result above the link", async () => {
+    verifyStampCode.mockImplementation((given) => (given === code ? "43000000-0000-4000-8000-000000000001" : null));
+    await POST(delivery([{ from: "971500000001", body: `Login #${code}` }]));
+    expect(verifyStampCode).toHaveBeenCalledWith(code, "rest-1");
+    expect(claimStamp).toHaveBeenCalledWith({
+      restaurantId: "rest-1",
+      orderId: "43000000-0000-4000-8000-000000000001",
+      phone: "971500000001"
+    });
+    const body = sendWhatsAppText.mock.calls[0][1];
+    expect(body.startsWith("Stamp added! 5/7")).toBe(true);
+    expect(body).toContain("https://app.test/link");
+    verifyStampCode.mockReset();
+    verifyStampCode.mockImplementation(() => null);
+  });
+
+  it("never claims for ordinary messages", async () => {
+    await POST(delivery([{ from: "971500000002", body: "hello" }]));
+    expect(claimStamp).not.toHaveBeenCalled();
+    expect(sendWhatsAppText.mock.calls[0][1]).not.toContain("Stamp");
+  });
 });
 
 describe("Cloud webhook STOP handling", () => {

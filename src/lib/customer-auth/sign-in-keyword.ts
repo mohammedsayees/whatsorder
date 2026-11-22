@@ -45,6 +45,32 @@ export function isCustomerSignInKeyword(text: string | null | undefined): boolea
   return Boolean(text) && KEYWORD_SET.has(normalize(text as string));
 }
 
+// "Login #<stamp code>": the receipt page pre-fills this so the stamp is added
+// the moment WhatsApp delivers the message (see stamp-claim-code.ts).
+const WITH_STAMP_CODE = /^([\s\S]*?)\s*#([A-Za-z0-9_-]{22}\.[a-z0-9]{1,10}\.[A-Za-z0-9_-]{22})\s*$/;
+
+/**
+ * Null unless the whole message is a sign-in keyword, optionally followed by
+ * one "#<stamp code>". The code is returned unverified: the webhook checks it.
+ */
+export function parseCustomerSignInMessage(
+  text: string | null | undefined
+): { stampCode: string | null } | null {
+  if (!text) {
+    return null;
+  }
+  const withCode = WITH_STAMP_CODE.exec(text);
+  if (withCode && isCustomerSignInKeyword(withCode[1])) {
+    return { stampCode: withCode[2] };
+  }
+  return isCustomerSignInKeyword(text) ? { stampCode: null } : null;
+}
+
+/** What the receipt page pre-fills: the keyword plus the receipt's code. */
+export function signInMessageWithStamp(stampCode: string | null): string {
+  return stampCode ? `${SIGN_IN_KEYWORD} #${stampCode}` : SIGN_IN_KEYWORD;
+}
+
 export function signInReplyMessage(restaurantName: string, url: string): string {
   const name = restaurantName.trim() || "us";
   return (

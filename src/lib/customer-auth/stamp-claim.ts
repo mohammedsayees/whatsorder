@@ -7,7 +7,7 @@
 // stamp. HS256 with CUSTOMER_AUTH_SECRET, own audience, so a claim token can
 // never be used as a login link or session.
 
-import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { SignJWT, errors, jwtVerify, type JWTPayload } from "jose";
 
 const AUD_STAMP_CLAIM = "wo:stamp:claim";
 export const STAMP_CLAIM_TTL = "24h";
@@ -68,4 +68,36 @@ export async function verifyStampClaimToken(token: string | null | undefined): P
 
 export function buildStampClaimUrl(baseUrl: string, restaurantSlug: string, token: string): string {
   return `${baseUrl.replace(/\/$/, "")}/r/${restaurantSlug}/stamp?t=${encodeURIComponent(token)}`;
+}
+
+export type StampClaimTokenState =
+  | { status: "valid"; claim: StampClaim; expiresAt: number }
+  | { status: "expired"; restaurantId: string }
+  | { status: "invalid" };
+
+/**
+ * Like verifyStampClaimToken, but tells an authentic-but-expired receipt
+ * (older than 24h) apart from a broken link, so the page can say which.
+ * jose checks the signature before the expiry, so "expired" is genuine.
+ */
+export async function inspectStampClaimToken(token: string | null | undefined): Promise<StampClaimTokenState> {
+  const secret = getSecret();
+  if (!secret || !token || token.length > 2048) {
+    return { status: "invalid" };
+  }
+  try {
+    const { payload } = await jwtVerify<StampClaimClaims>(token, secret, {
+      audience: AUD_STAMP_CLAIM,
+      algorithms: ["HS256"]
+    });
+    if (typeof payload.rid !== "string" || typeof payload.oid !== "string" || typeof payload.exp !== "number") {
+      return { status: "invalid" };
+    }
+    return { status: "valid", claim: { restaurantId: payload.rid, orderId: payload.oid }, expiresAt: payload.exp };
+  } catch (error) {
+    if (error instanceof errors.JWTExpired && typeof error.payload?.rid === "string") {
+      return { status: "expired", restaurantId: error.payload.rid };
+    }
+    return { status: "invalid" };
+  }
 }

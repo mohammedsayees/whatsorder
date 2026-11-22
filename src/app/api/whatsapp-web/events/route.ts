@@ -23,9 +23,12 @@ import {
   optOutConfirmationMessage
 } from "@/lib/marketing/opt-out";
 import {
-  isCustomerSignInKeyword,
+  parseCustomerSignInMessage,
   signInReplyMessage
 } from "@/lib/customer-auth/sign-in-keyword";
+import { verifyStampClaimCode } from "@/lib/customer-auth/stamp-claim-code";
+import { claimOrderStampForPhone } from "@/lib/customer-auth/stamp-claim-server";
+import { stampClaimReplyText } from "@/lib/stamp-claim-text";
 import { mintLinkToken } from "@/lib/customer-auth/tokens";
 import { buildCustomerLinkUrl } from "@/lib/customer-auth/whatsapp-cloud";
 import { sendRestaurantWhatsAppText } from "@/lib/whatsapp-integration";
@@ -324,7 +327,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // one-time sign-in link for this sender at this café, and nothing else.
   // The sender is the phone WhatsApp delivered from (the connector drops
   // non-phone LIDs), so the link signs them into their own history only.
-  if (type === "text" && isCustomerSignInKeyword(body)) {
+  const signIn = type === "text" ? parseCustomerSignInMessage(body) : null;
+  if (signIn) {
     if (existing) {
       return NextResponse.json({ ok: true });
     }
@@ -339,11 +343,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: true });
     }
     try {
+      // "Login #<code>" from a receipt: add the stamp now, for the phone
+      // WhatsApp delivered from, so it never depends on which browser later
+      // opens the sign-in link.
+      const stampOrderId = signIn.stampCode ? verifyStampClaimCode(signIn.stampCode, restaurantId) : null;
+      const stampLine = stampOrderId
+        ? stampClaimReplyText(await claimOrderStampForPhone({ restaurantId, orderId: stampOrderId, phone }))
+        : null;
       const token = await mintLinkToken({ restaurantId, phone });
-      const reply = signInReplyMessage(
+      const signInReply = signInReplyMessage(
         cafe.name ?? "",
         buildCustomerLinkUrl(baseUrl, token, cafe.slug, "account")
       );
+      const reply = stampLine ? `${stampLine}\n\n${signInReply}` : signInReply;
       const sent = await sendRestaurantWhatsAppText(restaurantId, phone, reply);
       if (sent) {
         await recordOutboundChatMessage({
