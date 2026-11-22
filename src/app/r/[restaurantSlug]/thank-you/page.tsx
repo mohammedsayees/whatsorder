@@ -2,7 +2,7 @@ import { getRestaurantBySlug } from "@/lib/data";
 import { loadOrderConfirmation } from "@/lib/order-confirmation";
 import { notFound } from "next/navigation";
 import { getConfiguredWebPushPublicKey } from "@/lib/push-auth";
-import { SavedOrderConfirmation } from "@/components/customer/SavedOrderConfirmation";
+import { OrderConfirmationUnavailable, SavedOrderConfirmation } from "@/components/customer/SavedOrderConfirmation";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 import { getRestaurantPrepEstimate } from "@/lib/prep-time-data";
 import { refreshOrderPayment } from "@/lib/stripe/order-payments";
@@ -15,10 +15,11 @@ export default async function ThankYouPage({ params, searchParams }: {
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   if (!restaurant) notFound();
   const [order, prepEstimate] = await Promise.all([
-    loadOrderConfirmation(restaurant.id, query.order ?? ""),
+    loadOrderConfirmation(restaurant.id, query.order ?? "", { receipt: true }),
     getRestaurantPrepEstimate(restaurant.id)
   ]);
-  if (!order) notFound();
+  // Another device, another browser or an expired link: explain, don't 404.
+  if (!order) return <OrderConfirmationUnavailable restaurant={restaurant} language={query.lang} />;
   if (order.online_payment_status === "pending") {
     // Back from Stripe before the webhook: ask Stripe directly.
     order.online_payment_status = await refreshOrderPayment(restaurant, order.id);

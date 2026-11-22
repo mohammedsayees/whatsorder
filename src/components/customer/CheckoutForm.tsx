@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -51,13 +52,20 @@ import {
 } from "@/lib/customer-addresses";
 import type { CustomerVoucher } from "@/lib/customer-vouchers";
 import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
-import { InstallAppPrompt } from "@/components/customer/InstallAppPrompt";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
-import { OrderPushPrompt } from "@/components/customer/OrderPushPrompt";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import { useFulfilmentPreference } from "@/components/customer/useFulfilmentPreference";
 import type { CustomerProfile } from "@/lib/customer-auth/context";
 import type { FulfilmentType, PublicRestaurant } from "@/lib/types";
+
+// Only the post-order "send on WhatsApp" screen uses these: load them then,
+// not with the checkout form.
+const InstallAppPrompt = dynamic(() =>
+  import("@/components/customer/InstallAppPrompt").then((module) => module.InstallAppPrompt)
+);
+const OrderPushPrompt = dynamic(() =>
+  import("@/components/customer/OrderPushPrompt").then((module) => module.OrderPushPrompt)
+);
 
 type CapturedLocation = {
   latitude: number;
@@ -784,6 +792,7 @@ export function CheckoutForm({
         <InstallAppPrompt language={language} />
         {pendingWhatsAppOrder.webPushPublicKey ? (
           <OrderPushPrompt
+            language={language === "ar" ? "ar" : "en"}
             orderId={pendingWhatsAppOrder.orderId}
             publicKey={pendingWhatsAppOrder.webPushPublicKey}
             restaurantSlug={restaurant.slug}

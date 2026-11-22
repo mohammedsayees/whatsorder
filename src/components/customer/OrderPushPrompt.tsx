@@ -39,15 +39,41 @@ async function saveSubscription(input: {
   }
 }
 
+const COPY = {
+  en: {
+    enabledTitle: "Order notifications enabled",
+    enabledBody: "We’ll notify this device when your order status changes.",
+    title: "Get order updates",
+    blocked: "Notifications are blocked in this browser’s settings.",
+    failed: "Notifications could not be enabled. You can try again.",
+    offer: "Enable free notifications for this order. No marketing messages are included.",
+    enabling: "Enabling…",
+    enable: "Enable notifications"
+  },
+  ar: {
+    enabledTitle: "تم تفعيل إشعارات الطلب",
+    enabledBody: "سنرسل إشعاراً إلى هذا الجهاز عند تغيّر حالة طلبك.",
+    title: "تابع تحديثات طلبك",
+    blocked: "الإشعارات محظورة في إعدادات هذا المتصفح.",
+    failed: "تعذر تفعيل الإشعارات. يمكنك المحاولة مرة أخرى.",
+    offer: "فعّل إشعارات مجانية لهذا الطلب. لا تتضمن أي رسائل تسويقية.",
+    enabling: "جارٍ التفعيل…",
+    enable: "تفعيل الإشعارات"
+  }
+} as const;
+
 export function OrderPushPrompt({
+  language = "en",
   orderId,
   publicKey,
   restaurantSlug
 }: {
+  language?: "en" | "ar";
   orderId: string;
   publicKey: string;
   restaurantSlug: string;
 }) {
+  const copy = COPY[language];
   const [state, setState] = useState<PromptState>("checking");
 
   useEffect(() => {
@@ -129,27 +155,23 @@ export function OrderPushPrompt({
 
   if (state === "enabled") {
     return (
-      <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-900">
+      <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-start text-sm text-emerald-900">
         <p className="flex items-center gap-2 font-black">
-          <CheckCircle2 size={17} /> Order notifications enabled
+          <CheckCircle2 size={17} /> {copy.enabledTitle}
         </p>
-        <p className="mt-1">We’ll notify this device when your order status changes.</p>
+        <p className="mt-1">{copy.enabledBody}</p>
       </div>
     );
   }
 
   return (
-    <div className="mt-5 rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm">
+    <div className="mt-5 rounded-2xl border border-stone-200 bg-white p-4 text-start shadow-sm">
       <p className="flex items-center gap-2 font-black text-ink">
         {state === "blocked" ? <BellOff size={18} /> : <Bell size={18} />}
-        Get order updates
+        {copy.title}
       </p>
       <p className="mt-1 text-sm leading-6 text-stone-600">
-        {state === "blocked"
-          ? "Notifications are blocked in this browser’s settings."
-          : state === "error"
-            ? "Notifications could not be enabled. You can try again."
-            : "Enable free notifications for this order. No marketing messages are included."}
+        {state === "blocked" ? copy.blocked : state === "error" ? copy.failed : copy.offer}
       </p>
       {state !== "blocked" ? (
         <button
@@ -159,7 +181,7 @@ export function OrderPushPrompt({
           type="button"
         >
           {state === "enabling" ? <Loader2 className="animate-spin" size={16} /> : <Bell size={16} />}
-          {state === "enabling" ? "Enabling…" : "Enable notifications"}
+          {state === "enabling" ? copy.enabling : copy.enable}
         </button>
       ) : null}
     </div>

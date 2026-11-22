@@ -38,7 +38,8 @@ describe("saved order confirmation", () => {
     vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
 
     expect(await loadOrderConfirmation("restaurant", orderId)).toEqual({
-      ...saved, status_events: events, customer_arrived_at: null, customer_arrival_note: null, rider: null, online_payment_status: null });
+      ...saved, status_events: events, customer_arrived_at: null, customer_arrival_note: null, rider: null, online_payment_status: null,
+      receipt: null });
     // Main read and the separate arrival and payment reads are all order- and tenant-scoped.
     expect(orderQuery.eq.mock.calls).toEqual([
       ["restaurant_id", "restaurant"], ["id", orderId],
@@ -52,5 +53,31 @@ describe("saved order confirmation", () => {
 
     orderQuery.maybeSingle.mockResolvedValue({ data: null, error: { message: "offline" } } as never);
     await expect(loadOrderConfirmation("restaurant", orderId)).rejects.toThrow("Please retry");
+  });
+
+  it("reads the receipt only when asked, scoped to order and restaurant", async () => {
+    const receipt = { subtotal: 29, delivery_fee: 0, discount_amount: 2.9, loyalty_discount: 0, promo_code: "SAVE10",
+      payment_method: "Cash on Delivery", delivery_address: "Building 12", table_number: null, car_plate_number: null };
+    const saved = { id: orderId, whatsapp_message: "m", status: "New", created_at: null, fulfilment_type: "delivery" };
+    const orderQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn(async () => {
+        const columns = String(orderQuery.select.mock.calls.at(-1)?.[0] ?? "");
+        return { data: columns.startsWith("subtotal") ? receipt : saved, error: null };
+      }) };
+    const eventsQuery = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue({ data: [], error: null }) };
+    const from = vi.fn((table: string) => table === "orders" ? orderQuery : eventsQuery);
+    vi.mocked(getOrderPushAuthorization).mockResolvedValue({ restaurantId: "restaurant", orderId });
+    vi.mocked(getSupabaseAdmin).mockReturnValue({ from } as never);
+
+    expect((await loadOrderConfirmation("restaurant", orderId))?.receipt).toBeNull();
+    expect(orderQuery.select.mock.calls.some(([columns]) => String(columns).startsWith("subtotal"))).toBe(false);
+
+    orderQuery.select.mockClear();
+    orderQuery.eq.mockClear();
+    const loaded = await loadOrderConfirmation("restaurant", orderId, { receipt: true });
+    expect(loaded?.receipt).toEqual(receipt);
+    expect(orderQuery.eq.mock.calls).toHaveLength(8);
+    expect(orderQuery.eq.mock.calls.filter(([column]) => column === "restaurant_id")).toHaveLength(4);
   });
 });
