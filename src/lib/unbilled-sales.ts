@@ -72,3 +72,22 @@ export function breakdownWithoutUnbilled<T extends Partial<Record<string, number
     Object.entries(breakdown).filter(([category]) => category !== UNBILLED_SALE)
   ) as T;
 }
+
+export type CashSalesSplit = {
+  /** Cash from completed orders. */
+  billed: number;
+  /** Cash unbilled sales (no order). */
+  unbilled: number;
+  /** Billed + unbilled: all cash sales that went into the drawer. */
+  total: number;
+};
+
+/** Total cash sales and its billed/unbilled parts. */
+export function cashSalesSplit(billedCash: number, unbilled: UnbilledSales): CashSalesSplit {
+  const unbilledCash = roundMoney(unbilled.byMethod.cash ?? 0);
+  return {
+    billed: roundMoney(billedCash),
+    unbilled: unbilledCash,
+    total: roundMoney(billedCash + unbilledCash)
+  };
+}

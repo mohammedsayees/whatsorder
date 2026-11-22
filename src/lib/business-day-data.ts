@@ -2,6 +2,7 @@ import "server-only";
 
 import { parseBusinessDayCloseReportSnapshot } from "@/lib/business-day";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { UNBILLED_SALE, unbilledFromEntries } from "@/lib/unbilled-sales";
 import type { RestaurantAdminSession } from "@/lib/super-admin-auth";
 import type { BusinessDay, ShiftOtherIncomeEntry } from "@/lib/types";
 
@@ -88,4 +89,27 @@ export async function getBusinessDayReportView(
     return { ...row, snapshot };
   });
   return reports.length ? { reports } : null;
+}
+
+/**
+ * Unbilled sales (by payment method) recorded in the given shifts of this
+ * tenant. Day reports store only the category total, so the cash part is
+ * read from the entries; voids after close are excluded, as in shift reports.
+ */
+export async function getUnbilledSalesForShifts(
+  session: RestaurantAdminSession,
+  shiftIds: string[]
+) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase || !shiftIds.length) return unbilledFromEntries([]);
+  const { data, error } = await supabase
+    .from("shift_other_income_entries")
+    .select("category, payment_method, amount, voided_at")
+    .eq("restaurant_id", session.restaurantId)
+    .eq("category", UNBILLED_SALE)
+    .in("shift_id", shiftIds);
+  if (error) throw new Error("Unbilled sales could not be loaded.");
+  return unbilledFromEntries(
+    (data ?? []).map((entry) => ({ ...entry, amount: Number(entry.amount) }))
+  );
 }

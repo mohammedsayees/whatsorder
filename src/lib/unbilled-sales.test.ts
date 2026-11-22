@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   breakdownWithoutUnbilled,
+  cashSalesSplit,
   otherIncomeExcludingUnbilled,
   unbilledFromEntries,
   unbilledFromReport
@@ -31,5 +32,13 @@ describe("unbilled sales", () => {
       other_income_total: 25, cash_other_income_total: 17, card_other_income_total: 8, upi_other_income_total: 0
     }, unbilled)).toEqual({ total: 5, cash: 5, card: 0, upi: 0 });
     expect(breakdownWithoutUnbilled({ unbilled_sale: 20, used_oil_sale: 5 })).toEqual({ used_oil_sale: 5 });
+  });
+
+  it("adds cash unbilled sales to billed cash for total cash sales", () => {
+    // Chai Xpress 21 Nov: 34.50 + 340.50 billed, 10 + 26 unbilled cash.
+    expect(cashSalesSplit(375, { total: 114, byMethod: { cash: 36, card: 78 } }))
+      .toEqual({ billed: 375, unbilled: 36, total: 411 });
+    expect(cashSalesSplit(34.5, { total: 0, byMethod: {} }))
+      .toEqual({ billed: 34.5, unbilled: 0, total: 34.5 });
   });
 });

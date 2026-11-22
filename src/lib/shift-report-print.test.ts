@@ -229,7 +229,10 @@ describe("renderShiftCloseThermalReport", () => {
     expect(html).toContain("Unbilled sales (no order)");
     expect(html).not.toContain("UNBILLED SALES");
     expect(html).toContain("4 teas no bill (cash)");
-    expect(html).toContain("Unbilled cash sales");
+    // Total cash sales = billed cash orders + cash unbilled sales, split below.
+    expect(html).toMatch(/<span>Total cash sales<\/span><strong>AED\s113\.50<\/strong>/);
+    expect(html).toMatch(/<span>Billed \(orders\)<\/span><strong>AED\s101\.50<\/strong>/);
+    expect(html).toMatch(/<span>Unbilled<\/span><strong>AED\s12<\/strong>/);
     // Other income keeps only the oil sale.
     expect(html).toContain("Used oil sale: Oil");
     expect(html).not.toContain("Unbilled sale: 4 teas");
@@ -238,6 +241,9 @@ describe("renderShiftCloseThermalReport", () => {
   it("lists cash other income so the cash drawer lines add up to expected", () => {
     const without = renderShiftCloseThermalReport(report);
     expect(without).not.toContain("Cash other income");
+    // No unbilled cash: just the total, no billed/unbilled split.
+    expect(without).toContain("Total cash sales");
+    expect(without).not.toContain("Billed (orders)");
 
     const html = renderShiftCloseThermalReport({
       ...report,

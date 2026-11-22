@@ -34,6 +34,7 @@ import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-
 import {
   UNBILLED_SALE,
   breakdownWithoutUnbilled,
+  cashSalesSplit,
   otherIncomeExcludingUnbilled,
   unbilledFromReport
 } from "@/lib/unbilled-sales";
@@ -48,11 +49,13 @@ const fulfilmentLabels: Record<string, string> = {
 function ReportValue({
   label,
   value,
-  tone = "default"
+  tone = "default",
+  detail
 }: {
   label: string;
   value: string;
   tone?: "default" | "good" | "warning";
+  detail?: string;
 }) {
   return (
     <div className={`rounded-lg p-3 ${
@@ -66,6 +69,7 @@ function ReportValue({
         {label}
       </dt>
       <dd className="mt-1 text-lg font-black">{value}</dd>
+      {detail ? <dd className="mt-0.5 text-xs text-stone-500">{detail}</dd> : null}
     </div>
   );
 }
@@ -154,6 +158,7 @@ export default async function ShiftCloseReportPage({
   // Unbilled sales are stored as receipts but reported as sales.
   const unbilled = unbilledFromReport(report);
   const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
+  const cashSales = cashSalesSplit(report.completed_cash_order_total, unbilled);
   const otherIncomeBreakdown = breakdownWithoutUnbilled(report.other_income_breakdown);
   const collected = creditCollected(report);
   const showCredit = hasCreditActivity(report);
@@ -193,6 +198,10 @@ export default async function ShiftCloseReportPage({
           `Marketplace sales: ${money(report.marketplace_sales_total)}\n` +
           (unbilled.total > 0 ? `Unbilled sales: ${money(unbilled.total)}\n` : "") +
           `Combined operational sales: ${money(report.combined_operational_sales + unbilled.total)}\n` +
+          `Total cash sales: ${money(cashSales.total)}` +
+          (cashSales.unbilled > 0
+            ? ` (billed ${money(cashSales.billed)} + unbilled ${money(cashSales.unbilled)})\n`
+            : "\n") +
           `Other income: ${money(otherIncome.total)}\n` +
           `Total operational receipts: ${money(report.combined_operational_receipts)}\n` +
           `Cash difference: ${money(report.cash_difference_amount)}\n` +
@@ -537,7 +546,13 @@ export default async function ShiftCloseReportPage({
             <dl className="mt-3 grid grid-cols-2 gap-2">
               <ReportValue label="Completed orders" value={String(report.completed_order_count)} />
               <ReportValue label="Cancelled" value={String(report.cancelled_order_count)} />
-              <ReportValue label="Cash orders" value={money(report.completed_cash_order_total)} />
+              <ReportValue
+                detail={cashSales.unbilled > 0
+                  ? `Billed (orders) ${money(cashSales.billed)} · Unbilled ${money(cashSales.unbilled)}`
+                  : undefined}
+                label="Total cash sales"
+                value={money(cashSales.total)}
+              />
               <ReportValue label="Cash paid-outs" value={money(report.cash_paid_out_total)} />
             </dl>
           </div>
