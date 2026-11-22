@@ -168,3 +168,40 @@ export function todayOpeningHours(
   const { day } = restaurantClock(value, timeZone);
   return { day, ...hours[day] };
 }
+
+export type NextOpening = {
+  /** 0 = later today, 1 = tomorrow, … up to 7 (same weekday next week). */
+  daysAhead: number;
+  day: WeekDay;
+  /** "HH:MM" in the restaurant's time zone. */
+  time: string;
+};
+
+/**
+ * When a currently-closed restaurant next opens, from its weekly hours.
+ * Null when hours are off or every day is marked closed.
+ */
+export function nextOpening(
+  hoursEnabled: boolean | null | undefined,
+  rawHours: unknown,
+  value: Date = new Date(),
+  timeZone = restaurantTimeZone
+): NextOpening | null {
+  if (!hoursEnabled) {
+    return null;
+  }
+
+  const hours = normalizeOpeningHours(rawHours);
+  const clock = restaurantClock(value, timeZone);
+  const todayIndex = weekDays.indexOf(clock.day);
+
+  for (let daysAhead = 0; daysAhead <= 7; daysAhead += 1) {
+    const day = weekDays[(todayIndex + daysAhead) % weekDays.length];
+    const hoursForDay = hours[day];
+    if (hoursForDay.closed) continue;
+    if (daysAhead === 0 && timeToMinutes(hoursForDay.open) <= clock.minutes) continue;
+    return { daysAhead, day, time: hoursForDay.open };
+  }
+
+  return null;
+}

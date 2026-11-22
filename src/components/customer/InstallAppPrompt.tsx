@@ -17,7 +17,14 @@ type BeforeInstallPromptEvent = Event & {
  * prompt use it; every other browser keeps the pill visible and shows manual
  * instructions instead.
  */
-export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
+export function InstallAppPrompt({
+  compact = false,
+  language
+}: {
+  /** Round icon button for the banner controls; the hint drops below it. */
+  compact?: boolean;
+  language: CustomerLanguage;
+}) {
   const t = customerTranslations[language];
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
@@ -88,6 +95,37 @@ export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
     setShowInstallHint((current) => !current);
   };
 
+  const hint = showInstallHint ? (
+    <p
+      className={
+        compact
+          ? "absolute end-0 top-full z-20 mt-2 w-64 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-600 shadow-soft"
+          : "mt-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-600"
+      }
+      role="status"
+    >
+      {isIos ? t.installAppIosHint : t.installAppBrowserHint}
+    </p>
+  ) : null;
+
+  if (compact) {
+    return (
+      <div className="relative">
+        <button
+          aria-expanded={installEvent ? undefined : showInstallHint}
+          aria-label={t.installApp}
+          className="focus-ring grid h-9 w-9 place-items-center rounded-full bg-white/90 text-leaf shadow-sm"
+          onClick={handleClick}
+          title={t.installApp}
+          type="button"
+        >
+          <Download size={17} />
+        </button>
+        {hint}
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4">
       <button
@@ -98,11 +136,7 @@ export function InstallAppPrompt({ language }: { language: CustomerLanguage }) {
         <Download size={15} />
         {t.installApp}
       </button>
-      {showInstallHint ? (
-        <p className="mt-2 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-600">
-          {isIos ? t.installAppIosHint : t.installAppBrowserHint}
-        </p>
-      ) : null}
+      {hint}
     </div>
   );
 }

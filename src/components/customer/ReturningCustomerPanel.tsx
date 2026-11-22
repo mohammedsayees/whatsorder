@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Check, RotateCcw } from "lucide-react";
-import { formatCurrency } from "@/lib/currency";
+import { Check, Gift, RotateCcw } from "lucide-react";
 import { useCart } from "@/components/customer/CartProvider";
+import { formatOrderItemName } from "@/lib/cart-line";
+import { basketSignature } from "@/lib/customer-account";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
-import type { PublicRestaurant } from "@/lib/types";
+import { loyaltyRewardName } from "@/lib/loyalty-reward";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type { CartLine } from "@/lib/types";
 
-const MAX_STAMP_DOTS = 12;
+const MAX_REORDER_CARDS = 5;
 
 function validLines(items: unknown): CartLine[] {
   if (!Array.isArray(items)) {
@@ -20,121 +21,112 @@ function validLines(items: unknown): CartLine[] {
   );
 }
 
-function StampCard({ loyalty, isAr }: { loyalty: CustomerLoyalty; isAr: boolean }) {
+/**
+ * One-line stamp summary with a progress bar. The full stamp card lives on the
+ * account page; here it must not push the menu off the first screen.
+ */
+function StampSummary({ loyalty, isAr }: { loyalty: CustomerLoyalty; isAr: boolean }) {
   const required = loyalty.stamps_required ?? 0;
   const stamps = Math.max(0, loyalty.stamps);
   const rewardReady = required > 0 && stamps >= required;
-  const reward = loyalty.reward ?? (isAr ? "مكافأة" : "reward");
-  // Cap the rendered dots so a large card stays compact.
-  const dots = Math.min(required, MAX_STAMP_DOTS);
+  const remaining = Math.max(required - stamps, 0);
+  const name = loyaltyRewardName(loyalty.reward);
+  const progress = required > 0 ? Math.min(100, Math.round((stamps / required) * 100)) : 0;
+
+  const text = rewardReady
+    ? isAr
+      ? `🎉 ${name ?? "مكافأتك"} مجاناً جاهزة! اذكرها عند الطلب.`
+      : `🎉 Your free ${name ?? "reward"} is ready! Mention it when you order.`
+    : isAr
+      ? `باقي ${remaining} لـ${name ?? "مكافأة"} مجاناً`
+      : `${remaining} more to a free ${name ?? "reward"}`;
 
   return (
-    <div className="rounded-2xl border border-mint bg-mint/15 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-black text-leaf">
-          {isAr ? "بطاقة الأختام" : "Your stamp card"}
-        </h2>
-        <span className="text-sm font-bold text-leaf">
-          {stamps}/{required}
-        </span>
-      </div>
-
-      {dots > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {Array.from({ length: dots }).map((_, index) => {
-            const filled = index < stamps;
-            return (
-              <span
-                aria-hidden
-                className={`grid h-6 w-6 place-items-center rounded-full border text-leaf ${
-                  filled ? "border-leaf bg-leaf text-white" : "border-leaf/40 bg-white"
-                }`}
-                key={index}
-              >
-                {filled ? <Check size={13} /> : null}
-              </span>
-            );
-          })}
-          {required > MAX_STAMP_DOTS ? (
-            <span className="self-center text-xs font-bold text-leaf/70">
-              +{required - MAX_STAMP_DOTS}
-            </span>
-          ) : null}
+    <div className="flex items-center gap-3 rounded-2xl border border-leaf/15 bg-mint/50 px-4 py-3">
+      <Gift aria-hidden className="shrink-0 text-leaf" size={18} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-black text-ink">{text}</p>
+        <div aria-hidden className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
+          <div className="h-full rounded-full bg-leaf" style={{ width: `${progress}%` }} />
         </div>
-      ) : null}
-
-      <p className="mt-3 text-sm font-semibold text-stone-700">
-        {rewardReady
-          ? isAr
-            ? `🎉 لديك ${reward} مجاناً! اذكرها عند الطلب.`
-            : `🎉 You've earned a free ${reward}! Mention it when you order.`
-          : isAr
-            ? `${Math.max(required - stamps, 0)} أختام أخرى للحصول على ${reward} مجاناً.`
-            : `${Math.max(required - stamps, 0)} more to a free ${reward}.`}
-      </p>
+      </div>
+      <span className="shrink-0 text-sm font-black text-leaf">
+        <span className="sr-only">{isAr ? "الأختام" : "Stamps"} </span>
+        {stamps}/{required}
+      </span>
     </div>
   );
 }
 
+/** Recent orders as unique baskets (newest first), at most MAX_REORDER_CARDS. */
+function uniqueBaskets(orders: CustomerRecentOrder[]) {
+  const seen = new Set<string>();
+  const baskets: { id: string; lines: CartLine[] }[] = [];
+  for (const order of orders) {
+    if (order.status === "Cancelled") continue;
+    const lines = validLines(order.items);
+    if (lines.length === 0) continue;
+    const signature = basketSignature(lines);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    baskets.push({ id: order.id, lines });
+    if (baskets.length === MAX_REORDER_CARDS) break;
+  }
+  return baskets;
+}
+
 function ReorderStrip({
-  orders,
+  baskets,
   isAr,
-  restaurant
+  orderingAvailable
 }: {
-  orders: CustomerRecentOrder[];
+  baskets: { id: string; lines: CartLine[] }[];
   isAr: boolean;
-  restaurant: PublicRestaurant;
+  orderingAvailable: boolean;
 }) {
   const cart = useCart();
   const [addedId, setAddedId] = useState<string | null>(null);
-
-  const reorderable = orders
-    .map((order) => ({ order, lines: validLines(order.items) }))
-    .filter((entry) => entry.lines.length > 0);
-
-  if (reorderable.length === 0) {
-    return null;
-  }
+  const single = baskets.length === 1;
 
   return (
     <div>
       <h2 className="text-sm font-black text-ink">
         {isAr ? "اطلب مجدداً" : "Order again"}
       </h2>
-      <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
-        {reorderable.map(({ order, lines }) => {
+      <div className={`mt-2 flex gap-3 pb-1 ${single ? "" : "overflow-x-auto"}`}>
+        {baskets.map(({ id, lines }) => {
           const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
-          const justAdded = addedId === order.id;
+          const justAdded = addedId === id;
 
           return (
             <div
-              className="flex min-w-56 shrink-0 flex-col justify-between rounded-2xl border border-stone-200 bg-white p-3"
-              key={order.id}
+              className={`flex shrink-0 items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-3 ${
+                single ? "w-full" : "w-64"
+              }`}
+              key={id}
             >
-              <p className="line-clamp-2 text-sm font-bold text-ink">
-                {lines.map((line) => `${line.quantity}× ${line.name}`).join(", ")}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-stone-500">
-                {itemCount} {isAr ? "صنف" : itemCount === 1 ? "item" : "items"} ·{" "}
-                {formatCurrency(order.total, restaurant)}
-              </p>
+              <div className="min-w-0">
+                <p className="line-clamp-2 text-sm font-bold text-ink">
+                  {lines
+                    .map((line) => `${line.quantity}× ${formatOrderItemName(line, isAr ? "ar" : "en")}`)
+                    .join(", ")}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-stone-500">
+                  {isAr ? `${itemCount} صنف` : `${itemCount} ${itemCount === 1 ? "item" : "items"}`}
+                </p>
+              </div>
               <button
-                className="focus-ring mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-leaf px-3 py-2 text-sm font-black text-white transition disabled:opacity-70"
+                className="focus-ring inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-leaf px-3 py-2 text-sm font-black text-white transition disabled:bg-stone-300"
+                disabled={!orderingAvailable}
                 onClick={() => {
                   cart.addLines(lines);
-                  setAddedId(order.id);
-                  window.setTimeout(() => setAddedId((id) => (id === order.id ? null : id)), 1800);
+                  setAddedId(id);
+                  window.setTimeout(() => setAddedId((current) => (current === id ? null : current)), 1800);
                 }}
                 type="button"
               >
                 {justAdded ? <Check size={15} /> : <RotateCcw size={15} />}
-                {justAdded
-                  ? isAr
-                    ? "تمت الإضافة"
-                    : "Added"
-                  : isAr
-                    ? "أضف للسلة"
-                    : "Add to cart"}
+                {justAdded ? (isAr ? "تمت الإضافة" : "Added") : isAr ? "أضف" : "Add"}
               </button>
             </div>
           );
@@ -154,26 +146,27 @@ export function ReturningCustomerPanel({
   loyalty,
   recentOrders,
   language,
-  restaurant
+  orderingAvailable
 }: {
   loyalty: CustomerLoyalty | null;
   recentOrders: CustomerRecentOrder[];
   language: CustomerLanguage;
-  restaurant: PublicRestaurant;
+  /** False while the café is closed: reorder buttons are disabled like the menu's. */
+  orderingAvailable: boolean;
 }) {
   const isAr = language === "ar";
   const showLoyalty = Boolean(loyalty?.enabled && (loyalty?.stamps_required ?? 0) > 0);
-  const hasReorder = recentOrders.some((order) => validLines(order.items).length > 0);
+  const baskets = uniqueBaskets(recentOrders);
 
-  if (!showLoyalty && !hasReorder) {
+  if (!showLoyalty && baskets.length === 0) {
     return null;
   }
 
   return (
-    <section className="mt-5 space-y-4 px-4" dir={isAr ? "rtl" : "ltr"}>
-      {showLoyalty && loyalty ? <StampCard isAr={isAr} loyalty={loyalty} /> : null}
-      {hasReorder ? (
-        <ReorderStrip isAr={isAr} orders={recentOrders} restaurant={restaurant} />
+    <section className="mt-4 space-y-4 px-4" dir={isAr ? "rtl" : "ltr"}>
+      {showLoyalty && loyalty ? <StampSummary isAr={isAr} loyalty={loyalty} /> : null}
+      {baskets.length > 0 ? (
+        <ReorderStrip baskets={baskets} isAr={isAr} orderingAvailable={orderingAvailable} />
       ) : null}
     </section>
   );
