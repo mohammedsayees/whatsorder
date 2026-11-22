@@ -12,6 +12,8 @@ import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
 import { BillingBanner } from "@/components/admin/BillingBanner";
 import { ItemOptionsSheet } from "@/components/customer/ItemOptionsSheet";
+import { CartSheet } from "@/components/customer/CartSheet";
+import { CartProvider } from "@/components/customer/CartProvider";
 import type { MenuCategory, MenuItem, MenuOptionCatalog, MenuWithCategories } from "@/lib/types";
 const billingMenu: MenuWithCategories = {
  categories: [{ id: "43000000-0000-4000-8000-000000000002", restaurant_id: "restaurant-a", name: "Drinks", is_active: true, display_order: 0, created_at: "" }],
@@ -55,6 +57,14 @@ function ItemSheetFixture() {
   {open ? <ItemOptionsSheet basePrice={1} groups={groups} item={item as never} language="en" restaurant={demoRestaurant} showDetails
    onAdd={(options, quantity) => { setAdded(`${quantity}x ${options.map(o => o.name).join("+")}`); setOpen(false); }} onClose={() => setOpen(false)} /> : null}</>;
 }
+function CartSheetFixture() {
+ const [edited, setEdited] = useState("");
+ return <CartProvider restaurantSlug="cart-fixture">
+  <p data-testid="edited">{edited}</p>
+  <CartSheet amountRemaining={0} checkoutHref="/checkout" closedLabel={null} language="en" notice="Prices in your cart were updated."
+   offers={[]} onClose={() => undefined} onEdit={(line) => setEdited(line.name)} restaurant={{ ...demoRestaurant, minimum_order_amount: 0 }} />
+ </CartProvider>;
+}
 function PromoFixture() {
  const [terms, setTerms] = useState<PromoTerms | null>(null);
  const [subtotal, setSubtotal] = useState(30);
@@ -79,6 +89,7 @@ function Fixture() {
  }
  if (mode === "promo") return <PromoFixture />;
  if (mode === "item-sheet") return <ItemSheetFixture />;
+ if (mode === "cart-sheet") return <CartSheetFixture />;
  if (mode === "billing-autopay-failed") return <BillingBanner autopayFailure="insufficient_funds" billingHref="/admin/billing" status="active" />;
  if (mode === "status-paying" || mode === "status-paid") {
   const paid = mode === "status-paid";

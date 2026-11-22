@@ -40,6 +40,10 @@ type CartContextValue = {
   incrementOffer: (lineKey: string, offer: CustomerMenuOffer) => void;
   increment: (lineKey: string) => void;
   decrement: (lineKey: string) => void;
+  /** Drops one line whatever its quantity (cart drawer "Remove", edit). */
+  removeLine: (lineKey: string) => void;
+  /** Swaps in a reconciled cart (prices/availability refreshed from the menu). */
+  replaceLines: (lines: CartLine[]) => void;
   clearCart: () => void;
 };
 
@@ -362,6 +366,12 @@ export function CartProvider({
     );
   }, []);
 
+  const removeLine = useCallback((lineKey: string) => {
+    setLines((current) => current.filter((line) => cartLineKey(line) !== lineKey));
+  }, []);
+
+  const replaceLines = useCallback((next: CartLine[]) => setLines(next), []);
+
   const clearCart = useCallback(() => setLines([]), []);
 
   const value = useMemo(
@@ -377,6 +387,8 @@ export function CartProvider({
       incrementOffer,
       increment,
       decrement,
+      removeLine,
+      replaceLines,
       clearCart
     }),
     [
@@ -389,7 +401,9 @@ export function CartProvider({
       increment,
       incrementOffer,
       isReady,
-      lines
+      lines,
+      removeLine,
+      replaceLines
     ]
   );
 

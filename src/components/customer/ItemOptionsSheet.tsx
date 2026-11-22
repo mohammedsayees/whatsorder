@@ -78,6 +78,8 @@ export function ItemOptionsSheet({
   addDisabledReason = null,
   basePrice,
   groups,
+  initialOptions,
+  initialQuantity = 1,
   item,
   language,
   maxQuantity,
@@ -85,13 +87,17 @@ export function ItemOptionsSheet({
   onAdd,
   onClose,
   restaurant,
-  showDetails = false
+  showDetails = false,
+  submitLabel
 }: {
   /** When set, the item can be viewed but not added; shown on the button. */
   addDisabledReason?: string | null;
   /** Item base price, or the offer's promotional price when seeded by an offer. */
   basePrice: number;
   groups: ResolvedOptionGroup[];
+  /** Editing a cart line: start from its choices (never a default pick). */
+  initialOptions?: CartLineOption[];
+  initialQuantity?: number;
   item: CustomerMenuItem;
   language: CustomerLanguage;
   /** Remaining allowed quantity (offer cap minus in-cart total); undefined = unlimited. */
@@ -102,6 +108,8 @@ export function ItemOptionsSheet({
   restaurant: PublicRestaurant;
   /** Customer menu: show the item's photo and full description at the top. */
   showDetails?: boolean;
+  /** Button text instead of "Add to cart" (e.g. "Update item"). */
+  submitLabel?: string;
 }) {
   const t = customerTranslations[language];
   const copy = COPY[language === "ar" ? "ar" : "en"];
@@ -109,8 +117,14 @@ export function ItemOptionsSheet({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [quantity, setQuantity] = useState(1);
+  const [selected, setSelected] = useState<Record<string, string[]>>(() => {
+    const start: Record<string, string[]> = {};
+    for (const option of initialOptions ?? []) {
+      start[option.group_id] = [...(start[option.group_id] ?? []), option.option_id];
+    }
+    return start;
+  });
+  const [quantity, setQuantity] = useState(Math.max(1, initialQuantity));
   // Set after an Add tap with a required choice still open: highlights it.
   const [missingGroupId, setMissingGroupId] = useState<string | null>(null);
   // Parents pass an inline onClose; keep the latest without re-running the
@@ -401,7 +415,7 @@ export function ItemOptionsSheet({
               onClick={add}
               type="button"
             >
-              {addDisabledReason ?? `${t.addToCart} · ${formatCurrency(unitPrice * quantity, restaurant)}`}
+              {addDisabledReason ?? `${submitLabel ?? t.addToCart} · ${formatCurrency(unitPrice * quantity, restaurant)}`}
             </button>
           </div>
         </div>
