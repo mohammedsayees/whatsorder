@@ -3,18 +3,21 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { BusinessDayReportActions } from "@/components/admin/BusinessDayReportActions";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
-import { breakdownWithoutUnbilled, unbilledFromReport } from "@/lib/unbilled-sales";
-import { getBusinessDayReportView } from "@/lib/business-day-data";
+import { breakdownWithoutUnbilled, cashSalesSplit, unbilledFromReport } from "@/lib/unbilled-sales";
+import { getBusinessDayReportView, getUnbilledSalesForShifts } from "@/lib/business-day-data";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import type { BusinessDayCloseReportSnapshot, BusinessDayShiftSnapshot } from "@/lib/types";
 
-function Metric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+function Metric({
+  label, value, highlight = false, detail
+}: { label: string; value: string; highlight?: boolean; detail?: string }) {
   return (
     <div className={`rounded-lg p-3 ${highlight ? "bg-emerald-50" : "bg-stone-50"}`}>
       <dt className="text-xs font-bold uppercase tracking-wide text-stone-500">{label}</dt>
       <dd className="mt-1 text-lg font-black">{value}</dd>
+      {detail ? <dd className="mt-0.5 text-xs text-stone-500">{detail}</dd> : null}
     </div>
   );
 }
@@ -34,6 +37,13 @@ export default async function BusinessDayReportPage({
   const money = (value: number) => formatCurrency(value, report);
   // Unbilled sales are stored as receipts but reported as sales.
   const unbilledTotal = unbilledFromReport(report).total;
+  const cashSales = cashSalesSplit(
+    report.cash_order_sales,
+    unbilledTotal > 0
+      ? await getUnbilledSalesForShifts(session, report.shifts.map((shift) => shift.id))
+      : { total: 0, byMethod: {} }
+  );
+  const cashOtherIncome = Math.round((report.cash_other_income_total - cashSales.unbilled) * 100) / 100;
   const otherIncomeBreakdown = breakdownWithoutUnbilled(report.other_income_breakdown);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
 
@@ -113,11 +123,14 @@ export default async function BusinessDayReportPage({
           <div>
             <h2 className="text-lg font-black">Payment and cash movement</h2>
             <dl className="mt-3 grid grid-cols-2 gap-3">
-              <Metric label="Cash order sales" value={money(report.cash_order_sales)} />
               <Metric
-                label={unbilledTotal > 0 ? "Cash other income incl. unbilled" : "Cash other income"}
-                value={money(report.cash_other_income_total)}
+                detail={cashSales.unbilled > 0
+                  ? `Billed (orders) ${money(cashSales.billed)} · Unbilled ${money(cashSales.unbilled)}`
+                  : undefined}
+                label="Total cash sales"
+                value={money(cashSales.total)}
               />
+              <Metric label="Cash other income" value={money(cashOtherIncome)} />
               <Metric label="Cash paid-outs" value={money(report.cash_paid_out_total)} />
               <Metric label="Net cash movement" value={money(report.net_cash_movement)} />
               <Metric label="Card order sales" value={money(report.card_order_sales)} />

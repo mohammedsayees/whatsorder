@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/currency";
 import { creditCollected, hasCreditActivity, salesByPayment } from "@/lib/shift-credit";
 import {
   UNBILLED_SALE,
+  cashSalesSplit,
   otherIncomeExcludingUnbilled,
   unbilledFromReport
 } from "@/lib/unbilled-sales";
@@ -144,6 +145,7 @@ export function renderShiftCloseThermalReport(
   // Unbilled sales are stored as receipts but printed as sales.
   const unbilled = unbilledFromReport(report);
   const otherIncome = otherIncomeExcludingUnbilled(report, unbilled);
+  const cashSales = cashSalesSplit(report.completed_cash_order_total, unbilled);
   const dateTime = (value: string) => formatRestaurantShortDateTime(value, report);
   const shiftWindow = isSameRestaurantCalendarDay(report.opened_at, report.closed_at, report)
     ? `${dateTime(report.opened_at)} → ${formatRestaurantTime(report.closed_at, report)}`
@@ -270,8 +272,10 @@ export function renderShiftCloseThermalReport(
           <h2>CASH DRAWER</h2>
           ${moneyRow("Opening cash", money(report.opening_cash_amount))}
           ${openingCheckRows(report, money)}
-          ${moneyRow("Cash sales", money(report.completed_cash_order_total))}
-          ${(unbilled.byMethod.cash ?? 0) > 0 ? moneyRow("Unbilled cash sales", money(unbilled.byMethod.cash ?? 0)) : ""}
+          ${moneyRow("Total cash sales", money(cashSales.total))}
+          ${cashSales.unbilled > 0
+            ? subRow("Billed (orders)", money(cashSales.billed)) + subRow("Unbilled", money(cashSales.unbilled))
+            : ""}
           ${otherIncome.cash > 0 ? moneyRow("Cash other income", money(otherIncome.cash)) : ""}
           ${isMaterial(report.cash_paid_out_total) || paidOuts.length
             ? moneyRow("Cash paid-outs", `-${money(report.cash_paid_out_total)}`)
