@@ -25,6 +25,8 @@ type MenuItemCardProps = {
   totalQuantity: number;
   /** Aggregate quantity across every cart line of the active offer. */
   offerQuantity: number;
+  /** Lowest configured price when options change it ("from AED X"); else null. */
+  fromPrice?: number | null;
   orderingAvailable: boolean;
   language: CustomerLanguage;
   restaurant: PublicRestaurant;
@@ -45,6 +47,7 @@ export const MenuItemCard = memo(function MenuItemCard({
   cartLine,
   totalQuantity,
   offerQuantity,
+  fromPrice = null,
   orderingAvailable,
   language,
   restaurant,
@@ -66,11 +69,20 @@ export const MenuItemCard = memo(function MenuItemCard({
 
   return (
     <article
-      className={`[contain-intrinsic-size:auto_160px] [content-visibility:auto] rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
+      className={`relative [contain-intrinsic-size:auto_160px] [content-visibility:auto] rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm transition ${
         item.is_available ? "" : "opacity-65"
       }`}
       data-testid={`menu-item-${item.id}`}
     >
+      {/* The whole card opens the item (photo, full description, options);
+          the + and stepper buttons sit above it and keep the quick add. */}
+      <button
+        aria-label={itemName}
+        className="focus-ring absolute inset-0 rounded-[24px]"
+        data-testid={`open-item-${item.id}`}
+        onClick={() => onOpenOptions(item, activeOffer)}
+        type="button"
+      />
       <div className="flex gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -89,7 +101,7 @@ export const MenuItemCard = memo(function MenuItemCard({
           </div>
 
           {itemDescription ? (
-            <p className="mt-2 text-sm leading-6 text-stone-500">{itemDescription}</p>
+            <p className="mt-2 line-clamp-2 text-sm leading-6 text-stone-500">{itemDescription}</p>
           ) : null}
 
           <div className="mt-3 flex items-center justify-between gap-3">
@@ -103,6 +115,11 @@ export const MenuItemCard = memo(function MenuItemCard({
                     {formatCurrency(activeOffer.promotional_price, restaurant)}
                   </p>
                 </>
+              ) : fromPrice !== null ? (
+                <p className="text-base font-black text-ink">
+                  <span className="text-xs font-bold text-stone-500">{t.priceFrom} </span>
+                  {formatCurrency(fromPrice, restaurant)}
+                </p>
               ) : (
                 <p className="text-base font-black text-ink">{formatCurrency(item.price, restaurant)}</p>
               )}
@@ -112,7 +129,7 @@ export const MenuItemCard = memo(function MenuItemCard({
             </div>
 
             {hasOptions ? (
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
                 {totalQuantity > 0 ? (
                   <span className="grid h-7 min-w-7 place-items-center rounded-full bg-mint/25 px-2 text-xs font-black text-leaf">
                     {totalQuantity}
@@ -120,7 +137,7 @@ export const MenuItemCard = memo(function MenuItemCard({
                 ) : null}
                 <button
                   aria-label={`${t.customize} ${itemName}`}
-                  className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
+                  className="focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                   data-testid={`add-item-${item.id}`}
                   disabled={!item.is_available || !orderingAvailable}
                   onClick={() => onOpenOptions(item, activeOffer)}
@@ -130,10 +147,10 @@ export const MenuItemCard = memo(function MenuItemCard({
                 </button>
               </div>
             ) : cartLine ? (
-              <div className="inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
+              <div className="relative inline-flex items-center overflow-hidden rounded-full border border-stone-200 bg-stone-50">
                 <button
                   aria-label={`${t.remove} ${itemName}`}
-                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
+                  className="focus-ring grid h-11 w-11 place-items-center text-stone-700"
                   onClick={() => onDecrement(plainLineKey)}
                   type="button"
                 >
@@ -142,7 +159,7 @@ export const MenuItemCard = memo(function MenuItemCard({
                 <span className="w-8 text-center text-sm font-bold">{cartLine.quantity}</span>
                 <button
                   aria-label={`${t.addMore} ${itemName}`}
-                  className="focus-ring grid h-9 w-9 place-items-center text-stone-700"
+                  className="focus-ring grid h-11 w-11 place-items-center text-stone-700"
                   disabled={
                     !orderingAvailable ||
                     (Boolean(activeOffer) &&
@@ -161,7 +178,7 @@ export const MenuItemCard = memo(function MenuItemCard({
             ) : (
               <button
                 aria-label={`${t.add} ${itemName}`}
-                className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
+                className="focus-ring relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-leaf text-white shadow-sm disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-600"
                 data-testid={`add-item-${item.id}`}
                 disabled={
                   !item.is_available || !orderingAvailable
@@ -177,10 +194,10 @@ export const MenuItemCard = memo(function MenuItemCard({
           </div>
         </div>
 
-        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
+        <div className="pointer-events-none relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
           {item.image_url ? (
             <Image
-              alt={itemName}
+              alt=""
               className="h-full w-full object-cover"
               height={112}
               loading="lazy"
@@ -189,8 +206,9 @@ export const MenuItemCard = memo(function MenuItemCard({
               width={112}
             />
           ) : (
-            <div className="grid h-full w-full place-items-center px-3 text-center text-xs font-bold text-ink/55">
-              {item.is_featured ? t.popularPick : itemName}
+            // No photo: the initial, not a second copy of the name or badge.
+            <div aria-hidden className="grid h-full w-full place-items-center text-4xl font-black text-ink/20">
+              {itemName.trim().charAt(0).toUpperCase()}
             </div>
           )}
         </div>

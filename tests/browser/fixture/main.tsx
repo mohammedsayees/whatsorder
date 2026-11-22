@@ -11,6 +11,7 @@ import { PromoCodeField } from "@/components/customer/PromoCodeField";
 import { computePromoDiscount, type PromoTerms } from "@/lib/promo-codes";
 import { MenuPrintDesigner } from "@/components/admin/MenuPrintDesigner";
 import { BillingBanner } from "@/components/admin/BillingBanner";
+import { ItemOptionsSheet } from "@/components/customer/ItemOptionsSheet";
 import type { MenuCategory, MenuItem, MenuOptionCatalog, MenuWithCategories } from "@/lib/types";
 const billingMenu: MenuWithCategories = {
  categories: [{ id: "43000000-0000-4000-8000-000000000002", restaurant_id: "restaurant-a", name: "Drinks", is_active: true, display_order: 0, created_at: "" }],
@@ -41,6 +42,19 @@ function Queue({ restaurantId }: { restaurantId: string }) {
  return <><button onClick={() => enqueue({ restaurantId, clientOrderId: crypto.randomUUID(), items: [], action: "kitchen" } as unknown as StaffOrderPayload, 5)}>Queue ticket</button>
  <p data-testid="queue-count">{queue.length}</p><p data-testid="attempts">{queue[0]?.attempts ?? 0}</p>{queue.map(entry => <p key={entry.clientOrderId}>{entry.restaurantId}</p>)}</>;
 }
+function ItemSheetFixture() {
+ const [open, setOpen] = useState(true);
+ const [added, setAdded] = useState("");
+ const option = (id: string, group_id: string, name: string, price_delta: number) => ({ id, group_id, name, name_ar: null, price_delta, is_available: true, display_order: 0 });
+ const groups = [
+  { group: { id: "size", name: "Size", name_ar: null, min_select: 1, max_select: 1, display_order: 0 }, options: [option("small", "size", "Small", 0), option("large", "size", "Large", 2)] },
+  { group: { id: "extras", name: "Extras", name_ar: null, min_select: 0, max_select: 2, display_order: 1 }, options: [option("saffron", "extras", "Saffron", 1)] }
+ ];
+ const item = { id: "karak", category_id: "tea", name: "Karak Tea", name_ar: null, price: 1, description: "Slow-boiled with cardamom", description_ar: null, image_url: null, is_available: true, is_featured: false };
+ return <><button onClick={() => setOpen(true)}>Open item</button><p data-testid="added">{added}</p>
+  {open ? <ItemOptionsSheet basePrice={1} groups={groups} item={item as never} language="en" restaurant={demoRestaurant} showDetails
+   onAdd={(options, quantity) => { setAdded(`${quantity}x ${options.map(o => o.name).join("+")}`); setOpen(false); }} onClose={() => setOpen(false)} /> : null}</>;
+}
 function PromoFixture() {
  const [terms, setTerms] = useState<PromoTerms | null>(null);
  const [subtotal, setSubtotal] = useState(30);
@@ -64,6 +78,7 @@ function Fixture() {
   return <SavedOrderConfirmation restaurant={demoRestaurant} webPushPublicKey={null} order={{ id: "43000000-0000-4000-8000-0000000000cc", status: "Out for Delivery", items:[{item_id:"tea",name:"Tea",price:5,quantity:2}], total:10, whatsapp_message:"Rider order", created_at: new Date(Date.now() - 25 * 60_000).toISOString(), fulfilment_type:"delivery", status_events: [], customer_arrived_at: null, customer_arrival_note: null, rider: { name: "Ravi", phone: "971501234567", location: stale ? null : { distanceKm: 1.24, updatedAt: new Date(Date.now() - 30_000).toISOString(), mapsUrl: "https://www.google.com/maps?q=25.4,55.5" } } }} />;
  }
  if (mode === "promo") return <PromoFixture />;
+ if (mode === "item-sheet") return <ItemSheetFixture />;
  if (mode === "billing-autopay-failed") return <BillingBanner autopayFailure="insufficient_funds" billingHref="/admin/billing" status="active" />;
  if (mode === "status-paying" || mode === "status-paid") {
   const paid = mode === "status-paid";
