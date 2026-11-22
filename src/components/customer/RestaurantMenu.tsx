@@ -255,6 +255,12 @@ export function RestaurantMenu({
   );
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
   const [showHours, setShowHours] = useState(false);
+  // Offer-strip photos whose link is dead show the plain backdrop instead.
+  const [failedImageUrls, setFailedImageUrls] = useState<ReadonlySet<string>>(() => new Set());
+  const markImageFailed = useCallback((url: string | null) => {
+    if (!url) return;
+    setFailedImageUrls((current) => (current.has(url) ? current : new Set(current).add(url)));
+  }, []);
   // Install prompts only for repeat visitors; first visits are for ordering.
   const [isRepeatVisit, setIsRepeatVisit] = useState(false);
   const [groupToken, setGroupToken] = useState<string | null>(null);
@@ -948,12 +954,13 @@ export function RestaurantMenu({
                     key={offer.id}
                   >
                     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-linen">
-                      {item.image_url ? (
+                      {item.image_url && !failedImageUrls.has(item.image_url) ? (
                         <Image
                           alt=""
                           className="object-cover"
                           fill
                           loading="lazy"
+                          onError={() => markImageFailed(item.image_url)}
                           sizes="80px"
                           src={item.image_url}
                           unoptimized={!isOptimizableImageUrl(item.image_url)}

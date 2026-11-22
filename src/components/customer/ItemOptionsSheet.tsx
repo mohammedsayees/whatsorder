@@ -127,6 +127,7 @@ export function ItemOptionsSheet({
   const [quantity, setQuantity] = useState(Math.max(1, initialQuantity));
   // Set after an Add tap with a required choice still open: highlights it.
   const [missingGroupId, setMissingGroupId] = useState<string | null>(null);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   // Parents pass an inline onClose; keep the latest without re-running the
   // dialog setup (which would steal focus on every selection).
   const onCloseRef = useRef(onClose);
@@ -267,11 +268,13 @@ export function ItemOptionsSheet({
         role="dialog"
       >
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
-          {showDetails && item.image_url ? (
+          {showDetails && item.image_url && failedImageUrl !== item.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               alt=""
               className="-mx-5 -mt-5 mb-4 aspect-[16/10] w-[calc(100%+2.5rem)] max-w-none object-cover"
+              // A dead photo link drops the header instead of leaving an empty box.
+              onError={() => setFailedImageUrl(item.image_url)}
               src={item.image_url}
             />
           ) : null}
