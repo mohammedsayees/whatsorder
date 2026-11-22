@@ -50,7 +50,7 @@ import {
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import { useFulfilmentPreference } from "@/components/customer/useFulfilmentPreference";
-import { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
+import { optionPriceRange, resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
 import type { CustomerLoyalty, CustomerRecentOrder } from "@/lib/customer-auth/context";
 import type {
   CartLine,
@@ -371,6 +371,17 @@ export function RestaurantMenu({
     () => resolveOptionGroupsByItem(optionCatalog),
     [optionCatalog]
   );
+  // "from AED X" for items whose options change the price.
+  const fromPriceByItemId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of items) {
+      const groups = resolvedGroupsByItemId.get(item.id);
+      if (!groups?.length) continue;
+      const range = optionPriceRange(item.price, groups);
+      if (range.varies) map.set(item.id, range.min);
+    }
+    return map;
+  }, [items, resolvedGroupsByItemId]);
 
   // With options, one item can span several cart lines — badges show the
   // per-item aggregate, and offer caps apply to the per-offer aggregate.
@@ -433,6 +444,14 @@ export function RestaurantMenu({
             bestSellerItems.push(item);
           }
         }
+      }
+
+      // Unavailable items sink to the end of their category (stable order).
+      for (const [categoryId, categoryItems] of itemsByCategoryId) {
+        itemsByCategoryId.set(categoryId, [
+          ...categoryItems.filter((item) => item.is_available),
+          ...categoryItems.filter((item) => !item.is_available)
+        ]);
       }
 
       const regularCategories = categories
@@ -1109,6 +1128,7 @@ export function RestaurantMenu({
                       key={item.id}
                       activeOffer={activeOffer}
                       cartLine={hasOptions ? undefined : linesByKey.get(plainLineKey)}
+                      fromPrice={activeOffer ? null : fromPriceByItemId.get(item.id) ?? null}
                       hasOptions={hasOptions}
                       item={item}
                       language={language}
@@ -1251,6 +1271,13 @@ export function RestaurantMenu({
 
       {optionsSheet ? (
         <ItemOptionsSheet
+          addDisabledReason={
+            !optionsSheet.item.is_available
+              ? t.unavailable
+              : !orderingAvailable
+                ? t.closedNow
+                : null
+          }
           basePrice={
             optionsSheet.offer
               ? optionsSheet.offer.promotional_price
@@ -1280,6 +1307,7 @@ export function RestaurantMenu({
             setOptionsSheet(null);
           }}
           onClose={() => setOptionsSheet(null)}
+          showDetails
         />
       ) : null}
     </div>

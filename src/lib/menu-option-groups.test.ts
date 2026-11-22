@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveOptionGroupsByItem } from "@/lib/menu-option-groups";
+import { optionPriceRange, resolveOptionGroupsByItem, type ResolvedOptionGroup } from "@/lib/menu-option-groups";
 import type { MenuOptionCatalog } from "@/lib/types";
 
 const catalog: MenuOptionCatalog = {
@@ -87,5 +87,36 @@ describe("resolveOptionGroupsByItem", () => {
 
   it("returns an empty index when no catalog is supplied", () => {
     expect(resolveOptionGroupsByItem(undefined).size).toBe(0);
+  });
+});
+
+describe("optionPriceRange", () => {
+  const group = (id: string, min: number, max: number | null) =>
+    ({ id, name: id, name_ar: null, min_select: min, max_select: max, display_order: 1 });
+  const option = (id: string, groupId: string, delta: number, available = true) =>
+    ({ id, group_id: groupId, name: id, name_ar: null, price_delta: delta, is_available: available, display_order: 1 });
+
+  it("adds the cheapest required choice and flags varying prices", () => {
+    const groups: ResolvedOptionGroup[] = [
+      { group: group("size", 1, 1), options: [option("m", "size", 1), option("l", "size", 2)] },
+      { group: group("extras", 0, 3), options: [option("saffron", "extras", 1)] }
+    ];
+    expect(optionPriceRange(1, groups)).toEqual({ min: 2, varies: true });
+  });
+
+  it("keeps the base price when required choices are free", () => {
+    const groups: ResolvedOptionGroup[] = [
+      { group: group("sugar", 1, 1), options: [option("none", "sugar", 0), option("extra", "sugar", 0)] }
+    ];
+    expect(optionPriceRange(5, groups)).toEqual({ min: 5, varies: false });
+  });
+
+  it("counts discounts and skips unavailable options", () => {
+    const groups: ResolvedOptionGroup[] = [
+      { group: group("size", 1, 1), options: [option("small", "size", -1), option("gone", "size", -3, false)] },
+      { group: group("pick", 2, 2), options: [option("a", "pick", 0.5), option("b", "pick", 0.25), option("c", "pick", 3)] }
+    ];
+    expect(optionPriceRange(4, groups)).toEqual({ min: 3.75, varies: true });
+    expect(optionPriceRange(4, [])).toEqual({ min: 4, varies: false });
   });
 });

@@ -54,3 +54,34 @@ export function resolveOptionGroupsByItem(
 
   return map;
 }
+
+/**
+ * Lowest price an item can be ordered at with its options, and whether any
+ * option changes the price. The card shows "from <min>" when it varies, so a
+ * required paid upgrade never looks cheaper than it is. Mirrors the sheet:
+ * a required group needs min(min_select, options) choices, cheapest first.
+ */
+export function optionPriceRange(
+  basePrice: number,
+  groups: ResolvedOptionGroup[]
+): { min: number; varies: boolean } {
+  let min = basePrice;
+  let varies = false;
+
+  for (const { group, options } of groups) {
+    const available = options.filter((option) => option.is_available);
+    if (available.some((option) => Number(option.price_delta) !== 0)) {
+      varies = true;
+    }
+    const needed = Math.min(group.min_select, available.length);
+    if (needed > 0) {
+      const cheapest = available
+        .map((option) => Number(option.price_delta))
+        .sort((first, second) => first - second)
+        .slice(0, needed);
+      min += cheapest.reduce((sum, delta) => sum + delta, 0);
+    }
+  }
+
+  return { min: Math.max(0, Math.round(min * 100) / 100), varies };
+}
