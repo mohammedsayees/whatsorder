@@ -47,6 +47,7 @@ export const customerTranslations = {
     deliveryLocation: "Delivery location",
     freshCafeFavourites: "Fresh cafe favourites",
     goBack: "Go back",
+    hours: "Hours",
     itemInCart: "item in cart",
     itemAvailable: "item available",
     itemsInCart: "items in cart",
@@ -83,6 +84,7 @@ export const customerTranslations = {
     remove: "Remove",
     saveRestaurant: "Save restaurant",
     installApp: "Install app",
+    switchLanguage: "Switch to Arabic",
     installAppBrowserHint:
       'Open this page in Safari or Chrome, then use the browser menu to choose "Add to Home Screen" or "Install app".',
     installAppIosHint:
@@ -183,6 +185,7 @@ export const customerTranslations = {
     deliveryLocation: "موقع التوصيل",
     freshCafeFavourites: "وجبات ومشروبات طازجة",
     goBack: "رجوع",
+    hours: "الساعات",
     itemInCart: "صنف في السلة",
     itemAvailable: "صنف متاح",
     itemsInCart: "أصناف في السلة",
@@ -218,6 +221,7 @@ export const customerTranslations = {
     remove: "إزالة",
     saveRestaurant: "حفظ المطعم",
     installApp: "تثبيت التطبيق",
+    switchLanguage: "التبديل إلى الإنجليزية",
     installAppBrowserHint:
       'افتح هذه الصفحة في سفاري أو كروم، ثم اختر "إضافة إلى الشاشة الرئيسية" أو "تثبيت التطبيق" من قائمة المتصفح.',
     installAppIosHint:

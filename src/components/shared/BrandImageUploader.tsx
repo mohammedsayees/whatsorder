@@ -26,7 +26,7 @@ export function BrandImageUploader({
   const label = isLogo ? "Restaurant logo" : "Cover image";
   const guidance = isLogo
     ? "Recommended: 512 × 512 px, JPG/PNG/WebP, up to 2MB."
-    : "Recommended: 1600 × 600 px, JPG/PNG/WebP, up to 5MB.";
+    : "Recommended: 1600 × 600 px, JPG/PNG/WebP, up to 5MB. Shown edge to edge on phones: keep your products and any text in the middle, since buttons cover the top corners and your logo the bottom-left.";
 
   function uploadSelectedFile(file: File) {
     const formData = new FormData();

@@ -54,6 +54,7 @@ import {
 } from "@/lib/customer-account";
 import type { CustomerLoyalty } from "@/lib/customer-auth/context";
 import { getRestaurantLocalization } from "@/lib/localization";
+import { loyaltyRewardName } from "@/lib/loyalty-reward";
 import type { CartLine, PublicRestaurant } from "@/lib/types";
 
 type Tab = "orders" | "rewards" | "vouchers" | "addresses" | "settings";
@@ -295,7 +296,7 @@ function SignedInAccount({
   }
 
   const stampsLeft = loyalty ? Math.max((loyalty.stamps_required ?? 0) - Math.max(0, loyalty.stamps), 0) : 0;
-  const rewardName = loyalty?.reward ?? t("reward", "مكافأة");
+  const rewardName = loyaltyRewardName(loyalty?.reward) ?? t("reward", "مكافأة");
 
   function loadMore() {
     const last = orders[orders.length - 1];
@@ -786,7 +787,7 @@ function Rewards({
   const required = loyalty.stamps_required ?? 0;
   const stamps = Math.max(0, loyalty.stamps);
   const ready = required > 0 && stamps >= required;
-  const reward = loyalty.reward ?? t("reward", "مكافأة");
+  const reward = loyaltyRewardName(loyalty.reward) ?? t("reward", "مكافأة");
   const dots = Math.min(required, 20);
 
   return (

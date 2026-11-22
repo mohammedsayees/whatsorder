@@ -32,9 +32,11 @@ import { minimumOrderRemaining } from "@/lib/security";
 import {
   formatOpeningTime,
   isRestaurantOpen,
+  nextOpening,
   normalizeOpeningHours,
   weekDayLabels,
-  weekDays
+  weekDays,
+  type NextOpening
 } from "@/lib/opening-hours";
 import { customerTranslations, getTextDirection } from "@/lib/customer-i18n";
 import { cartLineKey } from "@/lib/cart-line";
@@ -128,6 +130,43 @@ const GroupOrderStart = dynamic(
 // doesn't pull in the group helpers.
 const GROUP_TOKEN = /^[A-Za-z0-9_-]{22,64}$/;
 
+// A single review reads as unconvincing (or suspicious); show the average
+// in the header only once there are a few.
+const MIN_REVIEWS_FOR_RATING = 5;
+
+const ARABIC_WEEKDAYS: Record<NextOpening["day"], string> = {
+  monday: "الاثنين",
+  tuesday: "الثلاثاء",
+  wednesday: "الأربعاء",
+  thursday: "الخميس",
+  friday: "الجمعة",
+  saturday: "السبت",
+  sunday: "الأحد"
+};
+
+/** "We're closed right now. We open today at 7:00 AM." (or tomorrow / on Monday). */
+function closedUntilMessage(reopening: NextOpening, language: "en" | "ar"): string {
+  const time = formatOpeningTime(reopening.time);
+  if (language === "ar") {
+    // Arabic AM/PM marks, isolated so the bidi algorithm can't reorder "7:00".
+    const arabicTime = `\u2068${time.replace("AM", "ص").replace("PM", "م")}\u2069`;
+    const when =
+      reopening.daysAhead === 0
+        ? "اليوم"
+        : reopening.daysAhead === 1
+          ? "غداً"
+          : `يوم ${ARABIC_WEEKDAYS[reopening.day]}`;
+    return `المطعم مغلق الآن. نفتح ${when} الساعة ${arabicTime}.`;
+  }
+  const when =
+    reopening.daysAhead === 0
+      ? "today"
+      : reopening.daysAhead === 1
+        ? "tomorrow"
+        : `on ${weekDayLabels[reopening.day]}`;
+  return `We're closed right now. We open ${when} at ${time}.`;
+}
+
 const InstallAppPrompt = dynamic(
   () =>
     import("@/components/customer/InstallAppPrompt").then(
@@ -197,6 +236,9 @@ export function RestaurantMenu({
   // The shared menu HTML may be edge-cached. Start from a deterministic value
   // for SSR/hydration, then evaluate opening hours on the customer's clock.
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  // Only offer "back" when the customer came from another page of this app;
+  // a QR scan, WhatsApp link or home-screen launch has nothing to go back to.
+  const [canGoBack, setCanGoBack] = useState(false);
   const scheduleOpen =
     currentTime === null ||
     isRestaurantOpen(
@@ -207,6 +249,18 @@ export function RestaurantMenu({
     );
   const orderingAvailable =
     restaurant.accepting_orders !== false && scheduleOpen;
+  const reopening =
+    !scheduleOpen && currentTime
+      ? nextOpening(
+          restaurant.opening_hours_enabled,
+          restaurant.opening_hours,
+          currentTime,
+          restaurant.time_zone
+        )
+      : null;
+  const closedMessage = reopening
+    ? closedUntilMessage(reopening, language)
+    : t.orderClosedHint;
   const [personalization, setPersonalization] = useState<{
     loyalty: CustomerLoyalty | null;
     recentOrders: CustomerRecentOrder[];
@@ -246,6 +300,15 @@ export function RestaurantMenu({
   useEffect(() => {
     setCurrentTime(new Date());
     const clock = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    try {
+      setCanGoBack(
+        window.history.length > 1 &&
+          Boolean(document.referrer) &&
+          new URL(document.referrer).origin === window.location.origin
+      );
+    } catch {
+      setCanGoBack(false);
+    }
     const currentQuery = new URLSearchParams(window.location.search);
     const queryTableNumber = currentQuery
       .get("table")
@@ -645,7 +708,10 @@ export function RestaurantMenu({
     <div dir={direction}>
       <main className="mx-auto w-full max-w-3xl pb-32">
         <header>
-          <div className="relative h-28 overflow-hidden bg-ink sm:h-36">
+          <div className="relative">
+          {/* Fixed shape (matches the 1600×600 upload guidance) so the crop is
+              the same on every screen width. */}
+          <div className="relative aspect-[8/3] max-h-64 w-full overflow-hidden bg-ink">
             {coverImageUrl ? (
               <Image
                 alt=""
@@ -659,31 +725,36 @@ export function RestaurantMenu({
             ) : (
               <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(52,211,153,0.35),_transparent_45%),linear-gradient(135deg,#0f172a_0%,#1f2937_48%,#111827_100%)]" />
             )}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/5 to-black/30" />
+            <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/25 to-transparent" />
+          </div>
 
-            <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 px-4 pt-3">
-              <button
-                aria-label={t.goBack}
-                className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
-                onClick={() => window.history.back()}
-                type="button"
-              >
-                <ChevronLeft className={language === "ar" ? "rotate-180" : ""} size={18} />
-              </button>
+            {/* Controls sit outside the clipped image so the install hint can drop below. */}
+            <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 px-3 pt-2.5">
+              {canGoBack ? (
+                <button
+                  aria-label={t.goBack}
+                  className="focus-ring grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
+                  onClick={() => window.history.back()}
+                  type="button"
+                >
+                  <ChevronLeft className={language === "ar" ? "rotate-180" : ""} size={17} />
+                </button>
+              ) : null}
 
-              <div className="flex items-center gap-2">
-                <LanguageToggle language={language} setLanguage={setLanguage} />
+              <div className="ms-auto flex items-center gap-2">
+                <LanguageToggle compact language={language} setLanguage={setLanguage} />
+                {isRepeatVisit ? <InstallAppPrompt compact language={language} /> : null}
                 <Link
                   aria-label={t.myAccount}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
+                  className="focus-ring grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                   href={`/r/${restaurant.slug}/account`}
                   prefetch={false}
                 >
-                  <UserRound size={18} />
+                  <UserRound size={17} />
                 </Link>
                 <button
                   aria-label={t.shareMenu}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
+                  className="focus-ring grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
                   onClick={async () => {
                     const shareUrl = window.location.href;
 
@@ -704,7 +775,7 @@ export function RestaurantMenu({
                   }}
                   type="button"
                 >
-                  <Share2 size={18} />
+                  <Share2 size={17} />
                 </button>
               </div>
             </div>
@@ -732,7 +803,7 @@ export function RestaurantMenu({
             </div>
 
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-stone-500">
-              {feedback.averageRating !== null ? (
+              {feedback.averageRating !== null && feedback.reviewCount >= MIN_REVIEWS_FOR_RATING ? (
                 <span className="inline-flex items-center gap-1 text-amber-700">
                   <Star size={12} className="fill-current" />
                   {feedback.averageRating.toFixed(1)} ({feedback.reviewCount})
@@ -748,6 +819,9 @@ export function RestaurantMenu({
                   type="button"
                 >
                   {scheduleOpen ? t.openNow : t.closedNow}
+                  <span className="font-semibold text-stone-500 underline underline-offset-2">
+                    {t.hours}
+                  </span>
                   <ChevronDown
                     className={`transition ${showHours ? "rotate-180" : ""}`}
                     size={13}
@@ -789,11 +863,11 @@ export function RestaurantMenu({
 
             {!orderingAvailable ? (
               <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
-                {restaurant.accepting_orders === false ? t.notAcceptingOrders : t.orderClosedHint}
+                {restaurant.accepting_orders === false ? t.notAcceptingOrders : closedMessage}
               </p>
             ) : null}
 
-            <div className="mt-3">
+            <div className={`mt-3 transition ${orderingAvailable ? "" : "opacity-60"}`}>
               <FulfilmentSelector
                 available={fulfilment.available}
                 language={language}
@@ -821,7 +895,6 @@ export function RestaurantMenu({
               </button>
             ) : null}
 
-            {isRepeatVisit ? <InstallAppPrompt language={language} /> : null}
           </div>
         </header>
 
@@ -836,8 +909,8 @@ export function RestaurantMenu({
           <ReturningCustomerPanel
             language={language}
             loyalty={personalization.loyalty}
+            orderingAvailable={orderingAvailable}
             recentOrders={personalization.recentOrders}
-            restaurant={restaurant}
           />
         ) : null}
 
