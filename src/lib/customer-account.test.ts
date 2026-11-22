@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  basketSignature,
   cleanCustomerName,
+  dayKey,
+  dayLabel,
+  groupOrdersByDay,
+  usualBasket,
   isActiveOrder,
   orderReference,
   orderSavings,
@@ -120,5 +125,98 @@ describe("get_customer_account migration", () => {
 
   it("caps the page size", () => {
     expect(sql).toContain("least(greatest(coalesce(p_limit, 20), 1), 50)");
+  });
+});
+
+function accountOrder(
+  id: string,
+  created_at: string,
+  items: unknown,
+  status = "Completed"
+) {
+  return {
+    id,
+    created_at,
+    status,
+    total: 10,
+    subtotal: 10,
+    delivery_fee: 0,
+    discount_amount: 0,
+    loyalty_discount: 0,
+    promo_code: null,
+    items,
+    fulfilment_type: "pickup",
+    payment_method: "Cash",
+    online_payment_status: null,
+    online_paid_at: null,
+    points_earned: null,
+    points_redeemed: null
+  } as Parameters<typeof usualBasket>[0][number];
+}
+
+const karak = { item_id: "karak", name: "Karak", price: 1, quantity: 1, options: [{ option_id: "m", group_id: "size", name: "Medium", price_delta: 0 }] };
+const coffee = { item_id: "coffee", name: "Coffee", price: 8, quantity: 1 };
+
+describe("basketSignature", () => {
+  it("ignores line order and price but not quantity or options", () => {
+    expect(basketSignature([karak, coffee])).toBe(basketSignature([{ ...coffee, price: 99 }, karak]));
+    expect(basketSignature([karak])).not.toBe(basketSignature([{ ...karak, quantity: 2 }]));
+    expect(basketSignature([karak])).not.toBe(basketSignature([{ ...karak, options: [] }]));
+  });
+});
+
+describe("usualBasket", () => {
+  it("picks the most repeated basket, preferring the most recent on ties", () => {
+    const orders = [
+      accountOrder("a", "2026-11-20T10:00:00Z", [coffee]),
+      accountOrder("b", "2026-11-19T10:00:00Z", [karak]),
+      accountOrder("c", "2026-11-18T10:00:00Z", [karak]),
+      accountOrder("d", "2026-11-17T10:00:00Z", [coffee])
+    ];
+    const usual = usualBasket(orders);
+    expect(usual?.kind).toBe("usual");
+    expect(usual?.order.id).toBe("a");
+    expect(usual?.count).toBe(2);
+  });
+
+  it("falls back to the latest order, skipping cancelled and empty ones", () => {
+    const orders = [
+      accountOrder("x", "2026-11-21T10:00:00Z", [karak], "Cancelled"),
+      accountOrder("y", "2026-11-20T10:00:00Z", null),
+      accountOrder("z", "2026-11-19T10:00:00Z", [coffee]),
+      accountOrder("w", "2026-11-18T10:00:00Z", [karak])
+    ];
+    expect(usualBasket(orders)).toMatchObject({ kind: "last", count: 1, order: { id: "z" } });
+    expect(usualBasket([])).toBeNull();
+  });
+});
+
+describe("order day grouping", () => {
+  it("groups by the restaurant's local day", () => {
+    // 21:30Z on the 20th is already the 21st in Dubai (UTC+4).
+    expect(dayKey("2026-11-20T21:30:00Z", "Asia/Dubai")).toBe("2026-11-21");
+    const groups = groupOrdersByDay(
+      [
+        { created_at: "2026-11-20T21:30:00Z" },
+        { created_at: "2026-11-20T13:45:00Z" },
+        { created_at: "2026-11-20T10:00:00Z" },
+        { created_at: "2026-11-17T08:00:00Z" }
+      ],
+      "Asia/Dubai"
+    );
+    expect(groups.map((group) => [group.key, group.orders.length])).toEqual([
+      ["2026-11-21", 1],
+      ["2026-11-20", 2],
+      ["2026-11-17", 1]
+    ]);
+  });
+
+  it("labels today and yesterday, otherwise a short date", () => {
+    expect(dayLabel("2026-11-22", "2026-11-22", "en-AE")).toBe("Today");
+    expect(dayLabel("2026-11-21", "2026-11-22", "en-AE")).toBe("Yesterday");
+    expect(dayLabel("2026-11-30", "2026-12-01", "en-AE")).toBe("Yesterday");
+    expect(dayLabel("2026-11-22", "2026-11-22", "ar-AE")).toBe("اليوم");
+    expect(dayLabel("2026-11-17", "2026-11-22", "en-AE")).toMatch(/Tue.*17.*Nov/);
+    expect(dayLabel("2025-11-17", "2026-11-22", "en-AE")).toContain("2025");
   });
 });

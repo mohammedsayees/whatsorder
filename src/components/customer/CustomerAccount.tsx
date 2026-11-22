@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type KeyboardEvent } from "react";
 import {
   Check,
   ChevronDown,
@@ -33,15 +33,19 @@ import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
 import { formatOrderItemName } from "@/lib/cart-line";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/currency";
 import {
   CUSTOMER_NAME_MAX_LENGTH,
+  dayKey,
+  dayLabel,
+  groupOrdersByDay,
   isActiveOrder,
   orderReference,
   orderSavings,
   paymentMethodKind,
   paymentState,
   reorderableLines,
+  usualBasket,
   type CustomerAccount,
   type CustomerAccountOrder,
   type CustomerLoyaltyEntry,
@@ -50,9 +54,9 @@ import {
 } from "@/lib/customer-account";
 import type { CustomerLoyalty } from "@/lib/customer-auth/context";
 import { getRestaurantLocalization } from "@/lib/localization";
-import type { PublicRestaurant } from "@/lib/types";
+import type { CartLine, PublicRestaurant } from "@/lib/types";
 
-type Tab = "orders" | "payments" | "rewards" | "vouchers" | "addresses" | "settings";
+type Tab = "orders" | "rewards" | "vouchers" | "addresses" | "settings";
 type Translate = (en: string, ar: string) => string;
 
 const STATUS_LABELS: Record<string, [string, string]> = {
@@ -111,6 +115,7 @@ export function CustomerAccountView({
   const t: Translate = (en, ar) => (isAr ? ar : en);
   const restaurantName = isAr && restaurant.name_ar ? restaurant.name_ar : restaurant.name;
   const menuHref = `/r/${restaurant.slug}`;
+  const firstName = account?.profile?.name?.trim().split(/\s+/)[0] ?? "";
 
   return (
     <div dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
@@ -126,8 +131,12 @@ export function CustomerAccountView({
           <LanguageToggle language={language} setLanguage={setLanguage} />
         </div>
 
-        <h1 className="mt-4 text-2xl font-black text-ink">{t("My account", "حسابي")}</h1>
-        <p className="text-sm font-semibold text-stone-500">{restaurantName}</p>
+        <h1 className="mt-4 text-2xl font-black text-ink">
+          {firstName ? t(`Hi, ${firstName} 👋`, `مرحباً، ${firstName} 👋`) : t("My account", "حسابي")}
+        </h1>
+        <p className="text-sm font-semibold text-stone-500">
+          {firstName ? `${t("My account", "حسابي")} · ${restaurantName}` : restaurantName}
+        </p>
 
         {account ? (
           <SignedInAccount
@@ -239,21 +248,54 @@ function SignedInAccount({
   );
   const formatDate = (iso: string | null) => (iso ? dateFormat.format(new Date(iso)) : "—");
   const money = (value: number | null | undefined) => formatCurrency(Number(value ?? 0), restaurant);
+  const dateLocale = isAr ? "ar-AE" : localization.locale;
+  const timeFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(dateLocale, { timeStyle: "short", timeZone: localization.time_zone }),
+    [dateLocale, localization.time_zone]
+  );
+  const formatTime = (iso: string) => timeFormat.format(new Date(iso));
   const profile = account.profile;
-  const showRewards = Boolean(account.loyalty?.enabled && (account.loyalty?.stamps_required ?? 0) > 0);
+  const loyalty = account.loyalty;
+  const showRewards = Boolean(loyalty?.enabled && (loyalty?.stamps_required ?? 0) > 0);
+  const usual = useMemo(() => usualBasket(orders), [orders]);
+  const dayGroups = useMemo(
+    () => groupOrdersByDay(orders, localization.time_zone),
+    [orders, localization.time_zone]
+  );
+  const todayKey = dayKey(new Date().toISOString(), localization.time_zone);
 
-  const tabs: { id: Tab; label: string; icon: typeof Receipt }[] = [
+  const tabs: { id: Tab; label: string; icon: typeof Receipt; count?: number }[] = [
     { id: "orders", label: t("Orders", "الطلبات"), icon: ShoppingBag },
-    { id: "payments", label: t("Payments", "المدفوعات"), icon: Receipt },
     ...(showRewards ? [{ id: "rewards" as Tab, label: t("Rewards", "المكافآت"), icon: Gift }] : []),
-    {
-      id: "vouchers",
-      label: vouchers.length > 0 ? `${t("Vouchers", "القسائم")} (${vouchers.length})` : t("Vouchers", "القسائم"),
-      icon: TicketPercent
-    },
+    { id: "vouchers", label: t("Vouchers", "القسائم"), icon: TicketPercent, count: vouchers.length },
     ...(profile ? [{ id: "addresses" as Tab, label: t("Addresses", "العناوين"), icon: MapPin }] : []),
     { id: "settings", label: t("Profile", "الملف"), icon: Settings }
   ];
+
+  // WAI-ARIA tabs: arrow keys move between tabs (mirrored in RTL), Home/End jump.
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const next = isAr ? "ArrowLeft" : "ArrowRight";
+    const previous = isAr ? "ArrowRight" : "ArrowLeft";
+    const target =
+      event.key === next
+        ? (index + 1) % tabs.length
+        : event.key === previous
+          ? (index - 1 + tabs.length) % tabs.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? tabs.length - 1
+              : -1;
+    if (target < 0) return;
+    event.preventDefault();
+    const id = tabs[target].id;
+    setTab(id);
+    document.getElementById(`account-tab-${id}`)?.focus();
+  }
+
+  const stampsLeft = loyalty ? Math.max((loyalty.stamps_required ?? 0) - Math.max(0, loyalty.stamps), 0) : 0;
+  const rewardName = loyalty?.reward ?? t("reward", "مكافأة");
 
   function loadMore() {
     const last = orders[orders.length - 1];
@@ -296,12 +338,23 @@ function SignedInAccount({
       <PendingStampClaim restaurantSlug={restaurant.slug} t={t} />
       <section className="mt-4 grid grid-cols-3 gap-2 text-center">
         <Stat label={t("Orders", "الطلبات")} value={String(profile?.total_orders ?? orders.length)} />
-        <Stat label={t("Spent", "الإنفاق")} value={money(profile?.total_spend)} />
         <Stat
-          label={showRewards ? t("Stamps", "الأختام") : t("Member since", "عضو منذ")}
+          fullValue={money(profile?.total_spend)}
+          label={t("Spent", "الإنفاق")}
+          value={formatCurrencyCompact(Number(profile?.total_spend ?? 0), restaurant)}
+        />
+        <Stat
+          label={
+            showRewards && loyalty
+              ? stampsLeft === 0
+                ? t(`Free ${rewardName} ready 🎉`, `${rewardName} مجاني جاهز 🎉`)
+                : t(`${stampsLeft} more to a free ${rewardName}`, `باقي ${stampsLeft} لـ${rewardName} مجاناً`)
+              : t("Member since", "عضو منذ")
+          }
+          onClick={showRewards ? () => setTab("rewards") : undefined}
           value={
-            showRewards && account.loyalty
-              ? `${account.loyalty.stamps}/${account.loyalty.stamps_required}`
+            showRewards && loyalty
+              ? `${loyalty.stamps}/${loyalty.stamps_required}`
               : profile?.member_since
                 ? new Intl.DateTimeFormat(isAr ? "ar-AE" : localization.locale, {
                     month: "short",
@@ -313,29 +366,50 @@ function SignedInAccount({
         />
       </section>
 
-      <nav
+      {/* Every tab fits on a phone: equal columns, icon above a short label. */}
+      <div
         aria-label={t("Account sections", "أقسام الحساب")}
-        className="sticky top-0 z-10 -mx-4 mt-5 flex gap-1 overflow-x-auto border-b border-stone-200 bg-white px-4"
+        className="sticky top-0 z-10 -mx-4 mt-5 grid auto-cols-fr grid-flow-col border-b border-stone-200 bg-[#fbfaf7]/95 px-2 backdrop-blur"
         role="tablist"
       >
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {tabs.map(({ id, label, icon: Icon, count }, index) => (
           <button
+            aria-controls={`account-panel-${id}`}
             aria-selected={tab === id}
-            className={`focus-ring inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-black transition ${
+            className={`focus-ring flex min-w-0 flex-col items-center gap-1 border-b-2 px-0.5 pb-2 pt-2.5 text-[11px] font-black tracking-tight transition min-[400px]:text-xs ${
               tab === id ? "border-leaf text-leaf" : "border-transparent text-stone-500"
             }`}
+            id={`account-tab-${id}`}
             key={id}
             onClick={() => setTab(id)}
+            onKeyDown={(event) => onTabKeyDown(event, index)}
             role="tab"
+            tabIndex={tab === id ? 0 : -1}
             type="button"
           >
-            <Icon aria-hidden size={15} />
-            {label}
+            <span className="relative">
+              <Icon aria-hidden size={18} />
+              {count ? (
+                <span className="absolute -end-2.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-leaf px-1 text-[10px] leading-none text-white">
+                  {count}
+                </span>
+              ) : null}
+            </span>
+            <span className="max-w-full truncate">
+              {label}
+              {count ? <span className="sr-only"> ({count})</span> : null}
+            </span>
           </button>
         ))}
-      </nav>
+      </div>
 
-      <div className="mt-4">
+      <div
+        aria-labelledby={`account-tab-${tab}`}
+        className="focus-ring mt-4 rounded-2xl"
+        id={`account-panel-${tab}`}
+        role="tabpanel"
+        tabIndex={0}
+      >
         {tab === "orders" ? (
           <>
             {orders.length === 0 ? (
@@ -343,41 +417,41 @@ function SignedInAccount({
                 text={t("No orders yet. Your orders will show up here.", "لا توجد طلبات بعد. ستظهر طلباتك هنا.")}
               />
             ) : (
-              <ul className="space-y-3">
-                {orders.map((order) => (
-                  <OrderCard
-                    formatDate={formatDate}
+              <>
+                {usual ? (
+                  <UsualOrderCard
                     isAr={isAr}
-                    key={order.id}
-                    money={money}
-                    order={order}
+                    kind={usual.kind}
+                    lines={usual.lines}
                     restaurantSlug={restaurant.slug}
                     t={t}
                   />
+                ) : null}
+                {dayGroups.map((group) => (
+                  <section className="mt-5 first:mt-0" key={group.key}>
+                    <h2
+                      className="mb-2 text-xs font-black uppercase tracking-wide text-stone-500"
+                      suppressHydrationWarning
+                    >
+                      {dayLabel(group.key, todayKey, dateLocale)}
+                    </h2>
+                    <ul className="space-y-3">
+                      {group.orders.map((order) => (
+                        <OrderCard
+                          formatDate={formatDate}
+                          formatTime={formatTime}
+                          isAr={isAr}
+                          key={order.id}
+                          money={money}
+                          order={order}
+                          restaurantSlug={restaurant.slug}
+                          t={t}
+                        />
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
-            )}
-            {loadMoreControl}
-          </>
-        ) : null}
-
-        {tab === "payments" ? (
-          <>
-            {orders.length === 0 ? (
-              <EmptyState text={t("No payments yet.", "لا توجد مدفوعات بعد.")} />
-            ) : (
-              <ul className="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
-                {orders.map((order) => (
-                  <PaymentRow
-                    formatDate={formatDate}
-                    isAr={isAr}
-                    key={order.id}
-                    money={money}
-                    order={order}
-                    restaurantSlug={restaurant.slug}
-                  />
-                ))}
-              </ul>
+              </>
             )}
             {loadMoreControl}
           </>
@@ -436,12 +510,106 @@ function SignedInAccount({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-stone-200 bg-white px-2 py-3">
-      <p className="truncate text-base font-black text-ink">{value}</p>
-      <p className="text-xs font-bold text-stone-500">{label}</p>
+function Stat({
+  fullValue,
+  label,
+  onClick,
+  value
+}: {
+  /** Exact value for screen readers and the tooltip when `value` is shortened. */
+  fullValue?: string;
+  label: string;
+  onClick?: () => void;
+  value: string;
+}) {
+  const className = "rounded-2xl border border-stone-200 bg-white px-2 py-3";
+  const content = (
+    <>
+      <span aria-hidden className="block truncate text-base font-black text-ink">
+        {value}
+      </span>
+      <span className="sr-only">{fullValue ?? value} </span>
+      <span className="mt-0.5 line-clamp-2 text-xs font-bold leading-tight text-stone-500">{label}</span>
+    </>
+  );
+  return onClick ? (
+    <button className={`focus-ring ${className}`} onClick={onClick} title={fullValue} type="button">
+      {content}
+    </button>
+  ) : (
+    <div className={className} title={fullValue}>
+      {content}
     </div>
+  );
+}
+
+/** Adds a past basket to the cart, then turns into a checkout link. */
+function ReorderButton({
+  label,
+  lines,
+  restaurantSlug,
+  t
+}: {
+  label: string;
+  lines: CartLine[];
+  restaurantSlug: string;
+  t: Translate;
+}) {
+  const cart = useCart();
+  const [added, setAdded] = useState(false);
+  const className =
+    "focus-ring inline-flex shrink-0 items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white";
+  return added ? (
+    <Link className={className} href={`/r/${restaurantSlug}/checkout`}>
+      <Check size={15} />
+      {t("Added · Go to checkout", "تمت الإضافة · إتمام الطلب")}
+    </Link>
+  ) : (
+    <button
+      className={className}
+      onClick={() => {
+        cart.addLines(lines);
+        setAdded(true);
+      }}
+      type="button"
+    >
+      <RotateCcw size={15} />
+      {label}
+    </button>
+  );
+}
+
+function UsualOrderCard({
+  isAr,
+  kind,
+  lines,
+  restaurantSlug,
+  t
+}: {
+  isAr: boolean;
+  kind: "usual" | "last";
+  lines: CartLine[];
+  restaurantSlug: string;
+  t: Translate;
+}) {
+  const summary = lines
+    .map((line) => `${line.quantity}× ${formatOrderItemName(line, isAr ? "ar" : "en")}`)
+    .join(", ");
+  return (
+    <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-leaf/20 bg-mint p-4">
+      <div className="min-w-0 flex-1">
+        <h2 className="text-xs font-black uppercase tracking-wide text-leaf">
+          {kind === "usual" ? t("Your usual", "طلبك المعتاد") : t("Your last order", "طلبك الأخير")}
+        </h2>
+        <p className="mt-1 line-clamp-2 text-sm font-bold text-ink">{summary}</p>
+      </div>
+      <ReorderButton
+        label={t("Order again", "اطلب مجدداً")}
+        lines={lines}
+        restaurantSlug={restaurantSlug}
+        t={t}
+      />
+    </section>
   );
 }
 
@@ -464,6 +632,7 @@ function PaymentBadge({ order, isAr }: { order: CustomerAccountOrder; isAr: bool
 
 function OrderCard({
   formatDate,
+  formatTime,
   isAr,
   money,
   order,
@@ -471,15 +640,17 @@ function OrderCard({
   t
 }: {
   formatDate: (iso: string | null) => string;
+  formatTime: (iso: string) => string;
   isAr: boolean;
   money: (value: number | null | undefined) => string;
   order: CustomerAccountOrder;
   restaurantSlug: string;
   t: Translate;
 }) {
-  const cart = useCart();
   const [open, setOpen] = useState(false);
-  const [added, setAdded] = useState(false);
+  const payment = paymentState(order);
+  // Payments needing attention show without expanding the card.
+  const flagPayment = payment === "pending" || payment === "failed" || payment === "refunded";
   const lines = reorderableLines(order.items);
   const active = isActiveOrder(order.status);
   const [statusEn, statusAr] = STATUS_LABELS[order.status] ?? [order.status, order.status];
@@ -511,7 +682,8 @@ function OrderCard({
             >
               {isAr ? statusAr : statusEn}
             </span>
-            <span className="text-xs font-semibold text-stone-500">{formatDate(order.created_at)}</span>
+            <span className="text-xs font-semibold text-stone-500">{formatTime(order.created_at)}</span>
+            {flagPayment ? <PaymentBadge isAr={isAr} order={order} /> : null}
           </div>
           <p className="mt-2 line-clamp-2 text-sm font-bold text-ink">{summary || `#${orderReference(order.id)}`}</p>
         </div>
@@ -528,7 +700,7 @@ function OrderCard({
       {open ? (
         <div className="border-t border-stone-100 px-4 pb-4 pt-3 text-sm">
           <p className="text-xs font-bold text-stone-500">
-            {t("Order", "الطلب")} #{orderReference(order.id)}
+            {t("Order", "الطلب")} #{orderReference(order.id)} · {formatDate(order.created_at)}
           </p>
           <ul className="mt-2 space-y-1">
             {lines.map((line, index) => (
@@ -570,27 +742,12 @@ function OrderCard({
 
           <div className="mt-4 flex flex-wrap gap-2">
             {lines.length > 0 ? (
-              added ? (
-                <Link
-                  className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
-                  href={`/r/${restaurantSlug}/checkout`}
-                >
-                  <Check size={15} />
-                  {t("Added · Go to checkout", "تمت الإضافة · إتمام الطلب")}
-                </Link>
-              ) : (
-                <button
-                  className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 text-sm font-black text-white"
-                  onClick={() => {
-                    cart.addLines(lines);
-                    setAdded(true);
-                  }}
-                  type="button"
-                >
-                  <RotateCcw size={15} />
-                  {t("Order again", "اطلب مجدداً")}
-                </button>
-              )
+              <ReorderButton
+                label={t("Order again", "اطلب مجدداً")}
+                lines={lines}
+                restaurantSlug={restaurantSlug}
+                t={t}
+              />
             ) : null}
             <a
               className="focus-ring inline-flex items-center gap-2 rounded-full border border-stone-200 px-4 py-2 text-sm font-black text-ink"
@@ -612,43 +769,6 @@ function Row({ label, value, bold = false }: { label: string; value: string; bol
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
-  );
-}
-
-function PaymentRow({
-  formatDate,
-  isAr,
-  money,
-  order,
-  restaurantSlug
-}: {
-  formatDate: (iso: string | null) => string;
-  isAr: boolean;
-  money: (value: number | null | undefined) => string;
-  order: CustomerAccountOrder;
-  restaurantSlug: string;
-}) {
-  const [methodEn, methodAr] = METHOD_LABELS[paymentMethodKind(order.payment_method)];
-  return (
-    <li>
-      <a
-        className="focus-ring flex items-center gap-3 px-4 py-3"
-        href={orderPageHref(restaurantSlug, order.id, isAr)}
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-black text-ink">
-            #{orderReference(order.id)} · {isAr ? methodAr : methodEn}
-          </p>
-          <p className="text-xs font-semibold text-stone-500">
-            {formatDate(order.online_paid_at ?? order.created_at)}
-          </p>
-        </div>
-        <div className="shrink-0 text-end">
-          <p className="text-sm font-black text-ink">{money(order.total)}</p>
-          <PaymentBadge isAr={isAr} order={order} />
-        </div>
-      </a>
-    </li>
   );
 }
 
