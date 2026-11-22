@@ -5,8 +5,32 @@ test("a New order waiting too long offers WhatsApp and a call", async ({ page })
   await page.goto("/?mode=status-waiting");
   await expect(page.getByText("The restaurant hasn't confirmed yet")).toBeVisible();
   await expect(page.getByRole("link", { name: "Call restaurant" })).toHaveAttribute("href", /^tel:\+\d+$/);
-  const send = page.getByRole("link", { name: "Send on WhatsApp" });
+  // One WhatsApp action: the page's Send button, which carries the order.
+  const send = page.getByRole("link", { name: "Send this order on WhatsApp" });
+  await expect(send).toHaveCount(1);
   expect(decodeURIComponent((await send.getAttribute("href"))!)).toContain("Tracked order");
+});
+
+test("a cancel while the page is open replaces Send with Contact the restaurant", async ({ page }) => {
+  await page.route("**/api/customer/order-status**", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "Cancelled",
+      created_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+      fulfilment_type: "delivery",
+      status_events: [{ to_status: "Cancelled", created_at: new Date().toISOString() }]
+    })
+  }));
+  await page.goto("/?mode=status-waiting");
+  await expect(page.getByRole("heading", { name: "Order saved" })).toBeVisible();
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("heading", { name: "Order cancelled" })).toBeVisible();
+  // The order message must not be one tap away once the restaurant cancelled it.
+  await expect(page.getByRole("link", { name: "Send this order on WhatsApp" })).toHaveCount(0);
+  const contact = page.getByRole("link", { name: "Contact the restaurant" });
+  const href = decodeURIComponent((await contact.getAttribute("href"))!);
+  expect(href).toContain("I need help with order");
+  expect(href).not.toContain("Tracked order");
 });
 
 test("the timeline follows live status updates", async ({ page }) => {

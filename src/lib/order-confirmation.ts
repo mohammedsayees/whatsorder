@@ -8,6 +8,7 @@ import type { CustomerRiderView } from "@/lib/rider-location";
 import { getCustomerRiderView } from "@/lib/rider-location-data";
 import type { CartLine, FulfilmentType, OrderStatus } from "@/lib/types";
 import { asOnlinePaymentStatus, type OnlinePaymentStatus } from "@/lib/stripe/order-payment-rules";
+import type { OrderReceipt } from "@/lib/order-receipt";
 
 export type OrderConfirmation = {
   id: string;
@@ -26,12 +27,16 @@ export type OrderConfirmation = {
   rider: CustomerRiderView | null;
   /** "Pay online" state; null for cash/card-on-collection orders. */
   online_payment_status?: OnlinePaymentStatus | null;
+  /** Totals breakdown, payment method and where the order goes; null if unreadable. */
+  receipt?: OrderReceipt | null;
 };
 
 // A URL reference alone never authorizes access to the order or its message.
 export async function loadOrderConfirmation(
   restaurantId: string,
-  orderId: string
+  orderId: string,
+  /** The page wants the receipt; the 15s status poll does not. */
+  options: { receipt?: boolean } = {}
 ): Promise<OrderConfirmation | null> {
   if (!isClientOrderId(orderId)) return null;
   const authorization = await getOrderPushAuthorization(orderId);
@@ -40,7 +45,7 @@ export async function loadOrderConfirmation(
   }
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error("Order confirmation is temporarily unavailable.");
-  const [orderResult, eventsResult, arrivalResult, paymentResult] = await Promise.all([
+  const [orderResult, eventsResult, arrivalResult, paymentResult, receiptResult] = await Promise.all([
     admin
       .from("orders")
       .select("id,items,total,status,whatsapp_message,created_at,fulfilment_type")
@@ -69,7 +74,18 @@ export async function loadOrderConfirmation(
       .select("online_payment_status")
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
-      .maybeSingle()
+      .maybeSingle(),
+    // Receipt details are a nicety too: a failure hides the breakdown only.
+    options.receipt
+      ? admin
+          .from("orders")
+          .select(
+            "subtotal,delivery_fee,discount_amount,loyalty_discount,promo_code,payment_method,delivery_address,table_number,car_plate_number"
+          )
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null })
   ]);
   if (orderResult.error) {
     throw new Error("Order confirmation could not be loaded. Please retry.");
@@ -77,7 +93,7 @@ export async function loadOrderConfirmation(
   if (!orderResult.data) return null;
   const order = orderResult.data as Omit<
     OrderConfirmation,
-    "status_events" | "customer_arrived_at" | "customer_arrival_note" | "rider" | "online_payment_status"
+    "status_events" | "customer_arrived_at" | "customer_arrival_note" | "rider" | "online_payment_status" | "receipt"
   >;
   const arrival = arrivalResult.error
     ? null
@@ -99,6 +115,7 @@ export async function loadOrderConfirmation(
     online_payment_status: paymentResult.error
       ? null
       : asOnlinePaymentStatus((paymentResult.data as { online_payment_status?: unknown } | null)?.online_payment_status),
+    receipt: receiptResult.error ? null : ((receiptResult.data as OrderReceipt | null) ?? null),
     rider: await getCustomerRiderView(restaurantId, orderId, {
       status: order.status,
       fulfilment_type: order.fulfilment_type ?? null

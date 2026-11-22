@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bike, CarFront, Check, Loader2, MapPin, MessageCircle, Phone, XCircle } from "lucide-react";
+import { Bike, CarFront, Check, Loader2, MapPin, Phone, XCircle } from "lucide-react";
 import { formatDistance } from "@/lib/rider-location";
 import { ARRIVAL_NOTE_MAX, canMarkArrived } from "@/lib/car-arrival";
 import type { CustomerLanguage } from "@/lib/customer-i18n";
-import { trackFunnel } from "@/lib/customer-funnel-client";
 import {
   isAwaitingAcceptanceTooLong,
   isOrderActive,
@@ -39,8 +38,7 @@ const COPY = {
     cancelledBody: "Contact the restaurant if you have questions about it.",
     waitingTitle: "The restaurant hasn't confirmed yet",
     waitingBody:
-      "If you haven't sent the order on WhatsApp, tap Send below. You can also call the restaurant.",
-    send: "Send on WhatsApp",
+      "If you haven't sent the order on WhatsApp yet, use the Send button above. You can also call the restaurant.",
     call: "Call restaurant",
     arrivedTitle: "Arrived at the restaurant?",
     arrivedHelp: "Tap below once you're parked and they'll bring your order to your car.",
@@ -78,8 +76,7 @@ const COPY = {
     cancelledTitle: "تم إلغاء هذا الطلب",
     cancelledBody: "تواصل مع المطعم إذا كان لديك أي استفسار.",
     waitingTitle: "لم يؤكد المطعم طلبك بعد",
-    waitingBody: "إذا لم ترسل الطلب عبر واتساب بعد، اضغط إرسال أدناه. يمكنك أيضاً الاتصال بالمطعم.",
-    send: "إرسال عبر واتساب",
+    waitingBody: "إذا لم ترسل الطلب عبر واتساب بعد، استخدم زر الإرسال أعلاه. يمكنك أيضاً الاتصال بالمطعم.",
     call: "اتصل بالمطعم",
     arrivedTitle: "وصلت إلى المطعم؟",
     arrivedHelp: "اضغط أدناه بعد أن تركن سيارتك وسيحضرون طلبك إليها.",
@@ -133,19 +130,20 @@ export function OrderStatusTracker({
   callHref,
   initial,
   language,
+  onStatusChange,
   orderId,
   prepMinutes = null,
-  restaurantId,
-  whatsappUrl
+  restaurantId
 }: {
   callHref: string | null;
   initial: OrderProgressSnapshot;
   language: CustomerLanguage;
+  /** Tells the page when the polled status changes (its header follows it). */
+  onStatusChange?: (status: OrderProgressSnapshot["status"]) => void;
   orderId: string;
   /** Restaurant's measured median prep time, or null without history. */
   prepMinutes?: number | null;
   restaurantId: string;
-  whatsappUrl: string;
 }) {
   const copy = COPY[language];
   const [snapshot, setSnapshot] = useState(initial);
@@ -153,6 +151,9 @@ export function OrderStatusTracker({
   // which the server render cannot know.
   const [now, setNow] = useState<Date | null>(null);
   const active = isOrderActive(snapshot.status);
+  useEffect(() => {
+    onStatusChange?.(snapshot.status);
+  }, [onStatusChange, snapshot.status]);
 
   useEffect(() => {
     setNow(new Date());
@@ -300,16 +301,6 @@ export function OrderStatusTracker({
           <p className="font-black">{copy.waitingTitle}</p>
           <p className="mt-1 text-amber-900/80">{copy.waitingBody}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <a
-              className="focus-ring inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-2 font-black text-white"
-              href={whatsappUrl}
-              onClick={() => trackFunnel(restaurantId, "whatsapp_opened", { orderId })}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <MessageCircle size={15} />
-              {copy.send}
-            </a>
             {callHref ? (
               <a
                 className="focus-ring inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 font-black text-amber-900"
