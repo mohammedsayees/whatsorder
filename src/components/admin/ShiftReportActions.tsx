@@ -37,7 +37,9 @@ export function ShiftReportActions({
     setPrintError(null);
     printHtmlDocument(
       renderShiftCloseThermalReport(report, { cashDenominations }),
-      setPrintError
+      setPrintError,
+      // One continuous slip, however long the shift report is.
+      { singlePageWidthMm: 80 }
     );
   }, [cashDenominations, report]);
 

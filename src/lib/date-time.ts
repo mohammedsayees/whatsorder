@@ -61,6 +61,17 @@ export function formatRestaurantShortDateTime(
   }).format(asDate(value));
 }
 
+export function formatRestaurantTime(
+  value: DateInput,
+  restaurant?: Partial<RestaurantLocalization> | null
+) {
+  const localization = getRestaurantLocalization(restaurant);
+  return new Intl.DateTimeFormat(localization.locale, {
+    timeStyle: "short",
+    timeZone: localization.time_zone
+  }).format(asDate(value));
+}
+
 export function formatUaeDate(value: DateInput) {
   return formatRestaurantDate(value);
 }

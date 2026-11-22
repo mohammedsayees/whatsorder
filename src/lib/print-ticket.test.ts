@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { printHtmlDocument } from "@/lib/print-ticket";
+import { fitPageToContent, printHtmlDocument } from "@/lib/print-ticket";
 
 describe("printHtmlDocument", () => {
   afterEach(() => {
@@ -39,5 +39,21 @@ describe("printHtmlDocument", () => {
     expect(appendChild).toHaveBeenCalledOnce();
     expect(focus).toHaveBeenCalledOnce();
     expect(print).toHaveBeenCalledOnce();
+  });
+
+  it("sizes the page to the content so a long receipt prints as one slip", () => {
+    const appended: { textContent: string }[] = [];
+    const frameDocument = {
+      body: { getBoundingClientRect: () => ({ height: 1700 }), scrollHeight: 1690 },
+      documentElement: { scrollHeight: 1600 },
+      createElement: () => ({ textContent: "" }),
+      head: { appendChild: (node: { textContent: string }) => appended.push(node) }
+    } as unknown as Document;
+
+    fitPageToContent(frameDocument, 80);
+
+    // 1700 CSS px = 449.8 mm, rounded up, plus 4 mm slack.
+    expect(appended).toHaveLength(1);
+    expect(appended[0].textContent).toBe("@page { size: 80mm 454mm; margin: 0; }");
   });
 });

@@ -3,9 +3,44 @@
 // orders list and the staff punch screen. The HTML is built by
 // "@/lib/order-print".
 
+const CSS_PX_PER_MM = 96 / 25.4;
+
+export type PrintHtmlOptions = {
+  /**
+   * Print the whole document as one page this many millimetres wide, sized
+   * to the content's height. Browsers ignore `@page { size: 80mm auto }` and
+   * paginate long receipts at a default page height (A4), so a thermal
+   * printer cuts them into several slips. Measuring the rendered content and
+   * setting an exact page height keeps it to one continuous slip.
+   */
+  singlePageWidthMm?: number;
+};
+
+/** Sets the frame's page to `widthMm` wide and exactly as tall as its content. */
+export function fitPageToContent(frameDocument: Document, widthMm: number) {
+  const body = frameDocument.body;
+  if (!body) {
+    return;
+  }
+  const heightPx = Math.max(
+    body.getBoundingClientRect().height,
+    body.scrollHeight,
+    frameDocument.documentElement.scrollHeight
+  );
+  if (!Number.isFinite(heightPx) || heightPx <= 0) {
+    return;
+  }
+  // A few millimetres of slack so rounding never spills onto a second page.
+  const heightMm = Math.ceil(heightPx / CSS_PX_PER_MM) + 4;
+  const style = frameDocument.createElement("style");
+  style.textContent = `@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }`;
+  frameDocument.head.appendChild(style);
+}
+
 export function printHtmlDocument(
   html: string,
-  onError?: (message: string) => void
+  onError?: (message: string) => void,
+  options: PrintHtmlOptions = {}
 ) {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -42,6 +77,14 @@ export function printHtmlDocument(
       onError?.("Unable to render the print preview. Please try again.");
       cleanup();
       return;
+    }
+
+    if (options.singlePageWidthMm) {
+      try {
+        fitPageToContent(frameWindow.document, options.singlePageWidthMm);
+      } catch {
+        // Fall back to the document's own @page rule; it still prints.
+      }
     }
 
     // Remove the iframe once the dialog closes (whether printed or cancelled).
