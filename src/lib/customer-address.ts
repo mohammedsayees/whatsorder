@@ -122,3 +122,51 @@ export function composeDeliveryAddress(
     .join(", ")
     .slice(0, 500);
 }
+
+/**
+ * Addresses saved before the structured form are one free-text line, which
+ * would land in "Street & directions" next to an empty, required-looking
+ * Building field. Move a short single line into Building instead; long or
+ * multi-part text stays where it is (the order still composes the same).
+ */
+export function liftLegacyAddress<T extends { building: string; flat: string; details: string }>(
+  parts: T
+): T {
+  const legacy = parts.details.trim();
+  if (parts.building.trim() || parts.flat.trim() || !legacy || legacy.length > ADDRESS_LIMITS.building) {
+    return parts;
+  }
+  return { ...parts, building: legacy, details: "" };
+}
+
+/** Non-personal checkout choices remembered per store on this device. */
+export type CheckoutPreferences = {
+  paymentMethod: string | null;
+  consentMarketing: boolean | null;
+};
+
+export function checkoutPreferencesStorageKey(restaurantSlug: string) {
+  return `whatsorder-checkout-prefs-v1-${restaurantSlug}`;
+}
+
+/** Reads stored preferences defensively; unknown payment methods are dropped. */
+export function parseCheckoutPreferences(
+  raw: string | null,
+  allowedPaymentMethods: readonly string[]
+): CheckoutPreferences {
+  const empty: CheckoutPreferences = { paymentMethod: null, consentMarketing: null };
+  if (!raw) return empty;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return empty;
+    return {
+      paymentMethod:
+        typeof parsed.paymentMethod === "string" && allowedPaymentMethods.includes(parsed.paymentMethod)
+          ? parsed.paymentMethod
+          : null,
+      consentMarketing: typeof parsed.consentMarketing === "boolean" ? parsed.consentMarketing : null
+    };
+  } catch {
+    return empty;
+  }
+}
