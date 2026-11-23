@@ -954,6 +954,10 @@ export function RestaurantMenu({
                           className="object-cover"
                           fill
                           loading="lazy"
+                          // A dead photo link leaves the tile's linen background.
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
                           sizes="80px"
                           src={item.image_url}
                           unoptimized={!isOptimizableImageUrl(item.image_url)}

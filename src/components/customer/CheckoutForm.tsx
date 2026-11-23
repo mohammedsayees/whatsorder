@@ -973,6 +973,9 @@ export function CheckoutForm({
                   className="h-12 w-12 shrink-0 rounded-lg object-cover"
                   height={48}
                   loading="lazy"
+                  onError={(event) => {
+                    event.currentTarget.hidden = true;
+                  }}
                   src={suggestion.image_url}
                   width={48}
                 />

@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Star, Plus, Minus } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { customerTranslations, type CustomerLanguage } from "@/lib/customer-i18n";
@@ -59,6 +59,7 @@ export const MenuItemCard = memo(function MenuItemCard({
   onOpenOptions
 }: MenuItemCardProps) {
   const t = customerTranslations[language];
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const plainLineKey = activeOffer
     ? cartLineKey({ item_id: item.id, offer_id: activeOffer.id })
     : cartLineKey({ item_id: item.id });
@@ -195,12 +196,14 @@ export const MenuItemCard = memo(function MenuItemCard({
         </div>
 
         <div className="pointer-events-none relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-linen">
-          {item.image_url ? (
+          {item.image_url && failedImageUrl !== item.image_url ? (
             <Image
               alt=""
               className="h-full w-full object-cover"
               height={112}
               loading="lazy"
+              // A dead photo link falls back to the initial, not a broken icon.
+              onError={() => setFailedImageUrl(item.image_url)}
               src={item.image_url}
               unoptimized={!isOptimizableImageUrl(item.image_url)}
               width={112}

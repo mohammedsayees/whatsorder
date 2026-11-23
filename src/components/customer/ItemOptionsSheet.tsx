@@ -272,6 +272,10 @@ export function ItemOptionsSheet({
             <img
               alt=""
               className="-mx-5 -mt-5 mb-4 aspect-[16/10] w-[calc(100%+2.5rem)] max-w-none object-cover"
+              // A dead photo link drops the header instead of leaving an empty box.
+              onError={(event) => {
+                event.currentTarget.hidden = true;
+              }}
               src={item.image_url}
             />
           ) : null}
