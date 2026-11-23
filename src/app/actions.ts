@@ -11,6 +11,7 @@ import {
 } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseReferralSettingsInput } from "@/lib/referrals";
+import { STAFF_ONLY_OFFER_MESSAGE } from "@/lib/offer-eligibility";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
@@ -750,12 +751,17 @@ export async function addMenuOfferAction(formData: FormData) {
   const maximumQuantity = Number(stringValue(formData, "max_quantity_per_order") || 1);
   const { data: menuItem, error: itemError } = await supabase
     .from("menu_items")
-    .select("id,price")
+    .select("id,price,staff_only")
     .eq("id", menuItemId)
     .eq("restaurant_id", restaurant.id)
     .maybeSingle();
 
   databaseFailure("Offer item lookup", itemError);
+
+  // Staff-only products are hidden from customers, so the offer would never show.
+  if (menuItem?.staff_only === true) {
+    throw new Error(STAFF_ONLY_OFFER_MESSAGE);
+  }
 
   if (
     !title ||
