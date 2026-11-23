@@ -13,6 +13,7 @@ import { isPushAuthorizationConfigured } from "@/lib/push-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   checkoutSessionOutcome,
+  meetsOnlinePaymentMinimum,
   toMinorUnits,
   type OnlinePaymentStatus
 } from "@/lib/stripe/order-payment-rules";
@@ -227,8 +228,18 @@ export async function checkoutUrlForOrder(input: {
     }
   }
 
+  const currency = (restaurant.currency_code ?? "AED").toLowerCase();
+  // Below Stripe's minimum (AED 2.00) the session can never be created.
+  if (!meetsOnlinePaymentMinimum(order.total, currency)) return null;
   const amount = toMinorUnits(order.total);
-  if (amount <= 0) return null;
+
+  // The idempotency key must always travel with identical parameters, or
+  // Stripe rejects the retry outright. expires_at is the only time-dependent
+  // one, so both come from the same one-minute window: a double tap within
+  // the window gets the same session back, and a retry after a failed
+  // attempt (a later window) is a fresh request instead of a stuck replay.
+  const windowMinute = Math.floor(Date.now() / 60_000);
+  const expiresAt = (windowMinute + 1) * 60 + SESSION_MINUTES * 60;
 
   const reference = orderId.slice(-8).toUpperCase();
   const confirmation = `${origin}/r/${restaurant.slug}/thank-you?order=${encodeURIComponent(orderId)}`;
@@ -240,7 +251,7 @@ export async function checkoutUrlForOrder(input: {
         {
           quantity: 1,
           price_data: {
-            currency: (restaurant.currency_code ?? "AED").toLowerCase(),
+            currency,
             unit_amount: amount,
             product_data: { name: `${restaurant.name} · Order ${reference}`.slice(0, 120) }
           }
@@ -249,14 +260,14 @@ export async function checkoutUrlForOrder(input: {
       client_reference_id: orderId,
       metadata,
       payment_intent_data: { metadata, description: `WhatsOrder order ${reference}` },
-      expires_at: Math.floor(Date.now() / 1000) + SESSION_MINUTES * 60,
+      expires_at: expiresAt,
       success_url: `${confirmation}&payment=done`,
       cancel_url: `${confirmation}&payment=cancelled`
     },
     {
       ...requestOptions(account),
       // One session per order (and per replaced session after expiry).
-      idempotencyKey: `whatsorder-order-${orderId}-${order.stripe_checkout_session_id ?? "first"}`
+      idempotencyKey: `whatsorder-order-${orderId}-${order.stripe_checkout_session_id ?? "first"}-${windowMinute}`
     }
   );
 

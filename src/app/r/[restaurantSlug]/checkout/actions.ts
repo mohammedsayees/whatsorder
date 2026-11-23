@@ -41,7 +41,11 @@ import { formatCurrency } from "@/lib/currency";
 import { getRestaurantAdminSession } from "@/lib/super-admin-auth";
 import { requestOrigin } from "@/lib/request-origin";
 import { checkoutUrlForOrder, getOnlinePaymentAccount } from "@/lib/stripe/order-payments";
-import { ONLINE_PAYMENT_METHOD } from "@/lib/stripe/order-payment-rules";
+import {
+  meetsOnlinePaymentMinimum,
+  ONLINE_PAYMENT_METHOD,
+  onlinePaymentMinimum
+} from "@/lib/stripe/order-payment-rules";
 import type { CartLine, FulfilmentType, PaymentMethod } from "@/lib/types";
 
 type CreateOrderResult =
@@ -361,6 +365,17 @@ export async function createOrderAction(
   }
   const promoAmount = promo?.amount ?? 0;
   const total = Math.round((subtotal - promoAmount + appliedDeliveryFee) * 100) / 100;
+  // Stripe cannot charge below its minimum (AED 2.00): refuse before saving,
+  // so the customer never ends up with an order that can't be paid.
+  if (payOnline && !meetsOnlinePaymentMinimum(total, restaurant.currency_code)) {
+    return {
+      ok: false,
+      error: `Online payment starts from ${formatCurrency(
+        onlinePaymentMinimum(restaurant.currency_code),
+        restaurant
+      )}. Please choose cash or card instead.`
+    };
+  }
   // Future payment gateway support can reserve an unpaid payment intent here before WhatsApp opens.
   const message = buildWhatsAppMessage({
     restaurant,

@@ -33,6 +33,8 @@ import {
   type SavedCustomerDetails
 } from "@/lib/customer-address";
 import { formatCurrency } from "@/lib/currency";
+import { getRestaurantLocalization } from "@/lib/localization";
+import { meetsOnlinePaymentMinimum, onlinePaymentMinimum } from "@/lib/stripe/order-payment-rules";
 import { trackFunnel } from "@/lib/customer-funnel-client";
 import { groupCheckoutKey, type GroupCheckoutHandoff } from "@/lib/group-order";
 import { pickSuggestion, type CheckoutSuggestions } from "@/lib/checkout-suggestion";
@@ -123,13 +125,15 @@ const onlinePaymentCopy = {
     label: "Pay online now (card, Apple Pay, Google Pay)",
     redirecting: "Opening secure payment…",
     pay: "Pay",
-    payNextStep: "We save your order, then open secure card payment."
+    payNextStep: "We save your order, then open secure card payment.",
+    minimum: "Online payment starts from"
   },
   ar: {
     label: "ادفع الآن إلكترونياً (بطاقة، Apple Pay، Google Pay)",
     redirecting: "جارٍ فتح صفحة الدفع الآمنة…",
     pay: "ادفع",
-    payNextStep: "نحفظ طلبك ثم نفتح صفحة الدفع الآمنة بالبطاقة."
+    payNextStep: "نحفظ طلبك ثم نفتح صفحة الدفع الآمنة بالبطاقة.",
+    minimum: "الدفع الإلكتروني متاح ابتداءً من"
   }
 } as const;
 
@@ -471,7 +475,17 @@ export function CheckoutForm({
       ? [{ value: "Online Payment", label: onlinePaymentCopy[language === "ar" ? "ar" : "en"].label }]
       : [])
   ];
-  const payingOnline = paymentMethod === "Online Payment";
+  // Stripe's minimum charge (AED 2.00): below it the option stays visible but
+  // can't be picked, and a remembered "Pay online" falls back to cash.
+  const onlineCurrency = getRestaurantLocalization(restaurant).currency_code;
+  const onlineBelowMinimum = onlinePaymentAvailable && !meetsOnlinePaymentMinimum(total, onlineCurrency);
+  const payingOnline = paymentMethod === "Online Payment" && !onlineBelowMinimum;
+
+  useEffect(() => {
+    if (onlineBelowMinimum && paymentMethod === "Online Payment") {
+      setPaymentMethod("Cash on Delivery");
+    }
+  }, [onlineBelowMinimum, paymentMethod]);
   const checkoutCopy = CHECKOUT_COPY[language === "ar" ? "ar" : "en"];
   const prefsStorageKey = checkoutPreferencesStorageKey(restaurant.slug);
 
@@ -1388,17 +1402,28 @@ export function CheckoutForm({
                 <label
                   className={`flex min-h-12 items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold has-[:checked]:border-leaf has-[:checked]:bg-mint/40${
                     method.value === "Online Payment" ? " col-span-2" : ""
-                  }`}
+                  }${method.value === "Online Payment" && onlineBelowMinimum ? " opacity-60" : ""}`}
                   key={method.value}
                 >
                   <input
                     checked={paymentMethod === method.value}
+                    disabled={method.value === "Online Payment" && onlineBelowMinimum}
                     name="payment_method"
                     onChange={() => setPaymentMethod(method.value)}
                     type="radio"
                     value={method.value}
                   />
-                  {method.label}
+                  {method.value === "Online Payment" && onlineBelowMinimum ? (
+                    <span>
+                      {method.label}
+                      <span className="block text-xs font-normal text-stone-500">
+                        {onlinePaymentCopy[language === "ar" ? "ar" : "en"].minimum}{" "}
+                        {formatCurrency(onlinePaymentMinimum(onlineCurrency), restaurant)}
+                      </span>
+                    </span>
+                  ) : (
+                    method.label
+                  )}
                 </label>
               ))}
             </div>
