@@ -18,6 +18,28 @@ describe("buildShareUrl", () => {
   });
 });
 
+describe("referral share link", () => {
+  it("uses the sender's code as the src token", () => {
+    expect(buildShareUrl("https://whatsorder.app/r/chaixpress?table=5", "AB12cd")).toBe(
+      "https://whatsorder.app/r/chaixpress?src=ref-ab12cd"
+    );
+  });
+
+  it("falls back to the plain share tag for a missing or malformed code", () => {
+    expect(buildShareUrl("https://whatsorder.app/r/chaixpress", null)).toBe(url);
+    expect(buildShareUrl("https://whatsorder.app/r/chaixpress", "x y")).toBe(url);
+  });
+
+  it("mentions the friend's bonus points in both languages, only when given", () => {
+    const base = { restaurant, offers: [], url };
+    expect(buildShareMessage({ ...base, language: "en", bonusPoints: 20 })).toContain(
+      "Get 20 bonus points on your first order"
+    );
+    expect(buildShareMessage({ ...base, language: "ar", bonusPoints: 20 })).toContain("20 نقطة مكافأة");
+    expect(buildShareMessage({ ...base, language: "en" })).not.toContain("bonus points");
+  });
+});
+
 describe("buildShareMessage", () => {
   it("English: name, area, pitch, link and WhatsOrder credit", () => {
     const msg = buildShareMessage({ restaurant, language: "en", offers: [], url });

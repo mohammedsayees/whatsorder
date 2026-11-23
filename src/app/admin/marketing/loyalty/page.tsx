@@ -1,8 +1,10 @@
 import { BillingSoftBlock } from "@/components/admin/BillingSoftBlock";
 import { LoyaltySettingsForm } from "@/components/admin/LoyaltySettingsForm";
 import { MarketingTabs } from "@/components/admin/MarketingTabs";
+import { ReferralSettingsForm } from "@/components/admin/ReferralSettingsForm";
 import { isManagementBlocked } from "@/lib/billing";
 import { getTenantAccess } from "@/lib/billing-data";
+import { loadReferralStats } from "@/lib/referral-data";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 
@@ -13,12 +15,21 @@ export default async function MarketingLoyaltyPage() {
     return <BillingSoftBlock surface="Loyalty" />;
   }
 
+  const referralStats = await loadReferralStats(restaurantId);
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
       <MarketingTabs active="loyalty" canEditLoyalty />
       <h1 className="mt-4 text-2xl font-black text-ink">Loyalty stamp card</h1>
       <div className="mt-6">
         <LoyaltySettingsForm restaurant={restaurant} canWrite={Boolean(getSupabaseAdmin())} />
+      </div>
+      <div className="mt-6">
+        <ReferralSettingsForm
+          canWrite={Boolean(getSupabaseAdmin())}
+          restaurant={restaurant}
+          stats={referralStats}
+        />
       </div>
     </main>
   );
