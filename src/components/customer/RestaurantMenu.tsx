@@ -770,24 +770,17 @@ export function RestaurantMenu({
                 <button
                   aria-label={t.shareMenu}
                   className="focus-ring grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink shadow-sm"
-                  onClick={async () => {
-                    const shareUrl = window.location.href;
-
-                    try {
-                      if (navigator.share) {
-                        await navigator.share({
-                          title: restaurantName,
-                          text: `${t.whatsAppOrdering} - ${restaurantName}`,
-                          url: shareUrl
-                        });
-                        return;
-                      }
-
-                      await navigator.clipboard.writeText(shareUrl);
-                    } catch {
-                      // Dismissed share sheet or blocked clipboard: nothing to do.
-                    }
-                  }}
+                  onClick={() =>
+                    // Loaded on tap only, to keep it out of the first-load bundle.
+                    void import("@/components/customer/shareMenu").then(({ shareMenu }) =>
+                      shareMenu({
+                        restaurant,
+                        restaurantName,
+                        language,
+                        offers: visibleOffers.map(({ offer }) => offer)
+                      })
+                    ).catch(() => undefined)
+                  }
                   type="button"
                 >
                   <Share2 size={17} />

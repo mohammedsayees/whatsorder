@@ -133,8 +133,7 @@ export const customerTranslations = {
     table: "Table",
     takeawayShort: "Pickup",
     whatsAppNextStep:
-      "We save your order first. Then you send it to the restaurant on WhatsApp with one tap.",
-    whatsAppOrdering: "WhatsApp ordering"
+      "We save your order first. Then you send it to the restaurant on WhatsApp with one tap."
   },
   ar: {
     add: "إضافة",
@@ -258,8 +257,7 @@ export const customerTranslations = {
     sendDirectlyOnWhatsApp: "أرسل مباشرة عبر واتساب",
     table: "طاولة",
     takeawayShort: "استلام",
-    whatsAppNextStep: "نحفظ طلبك أولاً، ثم ترسله إلى المطعم عبر واتساب بضغطة واحدة.",
-    whatsAppOrdering: "طلب عبر واتساب"
+    whatsAppNextStep: "نحفظ طلبك أولاً، ثم ترسله إلى المطعم عبر واتساب بضغطة واحدة."
   }
 } as const;
 

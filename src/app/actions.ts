@@ -10,6 +10,7 @@ import {
   getRestaurantBySlug
 } from "@/lib/data";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { parseReferralSettingsInput } from "@/lib/referrals";
 import { normalizeWhatsAppNumber } from "@/lib/whatsapp";
 import { openingHoursFromFormData } from "@/lib/opening-hours";
 import { isValidCustomerPhone } from "@/lib/security";
@@ -972,6 +973,34 @@ export async function updateLoyaltySettingsAction(formData: FormData) {
   revalidatePath("/admin/marketing/loyalty");
   revalidatePath("/admin/marketing");
   revalidatePath("/admin/customers");
+}
+
+// Owner/admin-only: the café funds referral rewards, so the café sets the terms.
+// Same gate as the stamp card — managers and staff cannot retune the economics.
+export async function updateReferralSettingsAction(formData: FormData) {
+  const session = await requireRestaurantRole(["owner", "restaurant_admin"]);
+  const restaurant = session.restaurant;
+  const supabase = getSupabaseAdmin();
+
+  if (!restaurant || !supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("restaurants")
+    .update(
+      parseReferralSettingsInput({
+        enabled: formData.get("referral_enabled") === "on",
+        pointsEach: stringValue(formData, "referral_points_each"),
+        redeemPoints: stringValue(formData, "referral_redeem_points"),
+        rewardValue: stringValue(formData, "referral_reward_value"),
+        minOrder: stringValue(formData, "referral_min_order")
+      })
+    )
+    .eq("id", restaurant.id);
+  databaseFailure("Referral settings update", error);
+
+  revalidatePath("/admin/marketing/loyalty");
 }
 
 export async function addCategoryAction(formData: FormData) {

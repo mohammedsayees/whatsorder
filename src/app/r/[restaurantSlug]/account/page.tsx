@@ -5,6 +5,7 @@ import { CustomerAccountView } from "@/components/customer/CustomerAccount";
 import { loadCustomerAccount } from "@/lib/customer-account-data";
 import { loadCustomerAddresses } from "@/lib/customer-addresses-data";
 import { loadCustomerVouchers } from "@/lib/customer-vouchers-data";
+import { loadReferralSummary } from "@/lib/referral-data";
 import { getRestaurantBySlug } from "@/lib/data";
 import { currentSlugForReleasedSlug } from "@/lib/slug-history";
 import { customerSignInNumber, SIGN_IN_KEYWORD } from "@/lib/customer-auth/sign-in-keyword";
@@ -35,15 +36,16 @@ export default async function CustomerAccountPage({
   const result = await loadCustomerAccount(restaurant.id);
   const identity =
     result.status === "ok" ? { restaurantId: restaurant.id, phone: result.account.phone } : null;
-  const [addresses, vouchers] = identity
+  const [addresses, vouchers, referral] = identity
     ? await Promise.all([
         // An address book needs a customers row (created by the first order).
         result.status === "ok" && result.account.profile
           ? loadCustomerAddresses(identity)
           : Promise.resolve([]),
-        loadCustomerVouchers(identity)
+        loadCustomerVouchers(identity),
+        loadReferralSummary(identity)
       ])
-    : [[], []];
+    : [[], [], null];
 
   // "Sign in with WhatsApp" opens a chat, pre-filled with the sign-in
   // keyword, on a number that answers with a link: the café's WhatsApp Web
@@ -67,6 +69,7 @@ export default async function CustomerAccountPage({
         account={result.status === "ok" ? result.account : null}
         addresses={addresses}
         loadFailed={result.status === "error"}
+        referral={referral}
         restaurant={restaurant}
         signInUrl={signInUrl}
         vouchers={vouchers}

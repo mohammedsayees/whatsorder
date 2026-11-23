@@ -14,8 +14,24 @@ export async function generateMetadata({
   const restaurant = await getRestaurantBySlug(restaurantSlug);
   const name = restaurant?.name ?? "WhatsOrder";
 
+  // Link-preview card shown by WhatsApp & co. before the recipient opens the
+  // link. Static per-restaurant (the crawler can't know the reader's language).
+  const description = `Order directly from ${name}${
+    restaurant?.city ? ` in ${restaurant.city}` : ""
+  }. No app to download. | اطلب مباشرة من ${restaurant?.name_ar ?? name}`;
+  const image = restaurant?.cover_image_url ?? restaurant?.logo_url;
+
   return {
     title: name,
+    description,
+    openGraph: {
+      type: "website",
+      siteName: "WhatsOrder",
+      title: `${name} – Order directly`,
+      description,
+      ...(image ? { images: [{ url: image, alt: name }] } : {})
+    },
+    twitter: { card: image ? "summary_large_image" : "summary" },
     manifest: `/r/${encodeURIComponent(restaurantSlug)}/manifest.webmanifest`,
     appleWebApp: {
       capable: true,

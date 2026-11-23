@@ -26,9 +26,11 @@ import {
 } from "@/app/r/[restaurantSlug]/account/actions";
 import { useCart } from "@/components/customer/CartProvider";
 import { CustomerAddressBook } from "@/components/customer/CustomerAddressBook";
+import { CustomerReferralCard } from "@/components/customer/CustomerReferralCard";
 import { CustomerVouchers } from "@/components/customer/CustomerVouchers";
 import { PendingStampClaim } from "@/components/customer/PendingStampClaim";
 import type { CustomerVoucher } from "@/lib/customer-vouchers";
+import { shouldShowReferral, type ReferralSummary } from "@/lib/referrals";
 import type { SavedAddress } from "@/lib/customer-addresses";
 import { LanguageToggle } from "@/components/customer/LanguageToggle";
 import { useCustomerLanguage } from "@/components/customer/useCustomerLanguage";
@@ -100,6 +102,7 @@ export function CustomerAccountView({
   account,
   addresses = [],
   loadFailed,
+  referral = null,
   restaurant,
   signInUrl,
   vouchers = []
@@ -107,6 +110,7 @@ export function CustomerAccountView({
   account: CustomerAccount | null;
   addresses?: SavedAddress[];
   loadFailed: boolean;
+  referral?: ReferralSummary | null;
   restaurant: PublicRestaurant;
   signInUrl: string | null;
   vouchers?: CustomerVoucher[];
@@ -144,6 +148,7 @@ export function CustomerAccountView({
             account={account}
             addresses={addresses}
             isAr={isAr}
+            referral={referral}
             restaurant={restaurant}
             t={t}
             vouchers={vouchers}
@@ -221,6 +226,7 @@ function SignedInAccount({
   account,
   addresses,
   isAr,
+  referral,
   restaurant,
   t,
   vouchers
@@ -229,6 +235,7 @@ function SignedInAccount({
   addresses: SavedAddress[];
   vouchers: CustomerVoucher[];
   isAr: boolean;
+  referral: ReferralSummary | null;
   restaurant: PublicRestaurant;
   t: Translate;
 }) {
@@ -463,6 +470,15 @@ function SignedInAccount({
             formatDate={formatDate}
             history={account.loyaltyHistory}
             loyalty={account.loyalty}
+            t={t}
+          />
+        ) : null}
+
+        {tab === "vouchers" && shouldShowReferral(referral) ? (
+          <CustomerReferralCard
+            money={money}
+            referral={referral}
+            restaurantSlug={restaurant.slug}
             t={t}
           />
         ) : null}

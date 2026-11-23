@@ -116,6 +116,11 @@ export type Restaurant = PublicRestaurant & {
   loyalty_stamps_required?: number;
   loyalty_reward_description?: string | null;
   loyalty_qualifying_min_amount?: number | null;
+  referral_enabled?: boolean;
+  referral_points_each?: number;
+  referral_redeem_points?: number;
+  referral_reward_value?: number;
+  referral_min_order?: number;
   created_at: string;
   updated_at?: string;
 };
