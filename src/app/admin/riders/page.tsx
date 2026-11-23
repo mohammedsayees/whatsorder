@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { RiderLiveBoard } from "@/components/admin/RiderLiveBoard";
 import { GiveRiderCashForm, ReceiveRiderCashForm } from "@/components/admin/RiderCashForms";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantShortDateTime } from "@/lib/date-time";
@@ -9,6 +10,7 @@ import {
 } from "@/lib/rider-cash-data";
 import { RIDER_CASH_ENTRY_LABELS } from "@/lib/rider-cash";
 import { getDeliveryRiders } from "@/lib/rider-data";
+import { getLiveRiderFleet } from "@/lib/rider-live-data";
 import { requireRestaurantAdmin } from "@/lib/super-admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +27,10 @@ export default async function AdminRidersPage({
   const money = (value: number) => formatCurrency(value, restaurant);
   const range = resolveRiderReportRange(query.from, query.to, restaurant);
   const riders = await getDeliveryRiders(session.restaurantId);
-  const [report, entries] = await Promise.all([
+  const [report, entries, fleet] = await Promise.all([
     getRiderReport(session.restaurantId, riders, range),
-    getRecentRiderCashEntries(session.restaurantId)
+    getRecentRiderCashEntries(session.restaurantId),
+    getLiveRiderFleet(session.restaurantId)
   ]);
   const riderNames = new Map(riders.map((rider) => [rider.id, rider.name]));
   const holders = report.rows.filter((row) => row.balance !== 0);
@@ -45,6 +48,8 @@ export default async function AdminRidersPage({
         Cash a rider holds is what you gave them for change plus the cash they collected, minus what they handed back.
         The shift cannot be closed until every rider is settled.
       </p>
+
+      <RiderLiveBoard initial={fleet} />
 
       <section aria-label="Cash held by riders" className="mt-6 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

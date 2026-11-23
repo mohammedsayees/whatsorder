@@ -21,8 +21,12 @@ import { fileURLToPath } from "node:url";
 // kB = 1,000 bytes gzipped, as `next build` prints. Measured 2026-11-21:
 // menu 132.7, checkout 133.6, account 130.3, thank-you 119.5, stamp 114.8.
 // Budgets leave ~2-3 kB of headroom.
+// 2026-12-15: menu page 135 -> 136. The admin live rider map lazy-loads
+// Leaflet, and every new lazy chunk adds its hash to the webpack runtime
+// chunk that all pages load (+~0.5 kB). No map/admin code is in the customer
+// chunks themselves.
 export const CUSTOMER_BUDGETS_KB = {
-  "/r/[restaurantSlug]/page": 135,
+  "/r/[restaurantSlug]/page": 136,
   "/r/[restaurantSlug]/checkout/page": 136,
   "/r/[restaurantSlug]/account/page": 133,
   "/r/[restaurantSlug]/thank-you/page": 122,
