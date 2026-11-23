@@ -76,7 +76,7 @@ describe("Pay online checkout sessions", () => {
     expect(url).toBe("https://checkout.stripe.com/c/pay/cs_test_new");
     const [params, options] = stripe.checkout.sessions.create.mock.calls[0] as unknown as [Record<string, any>, Record<string, string>];
     expect(options.stripeAccount).toBe("acct_1TestAAAAAAAAAAA");
-    expect(options.idempotencyKey).toBe(`whatsorder-order-${orderId}-first`);
+    expect(options.idempotencyKey).toMatch(new RegExp(`^whatsorder-order-${orderId}-first-\\d+$`));
     expect(params.line_items[0].price_data).toMatchObject({ currency: "aed", unit_amount: 4250 });
     expect(params.metadata).toEqual({ whatsorder_order_id: orderId, whatsorder_restaurant_id: restaurant.id });
     expect(params.success_url).toBe(`https://app.example/r/chaixpress/thank-you?order=${orderId}&payment=done`);
@@ -84,6 +84,44 @@ describe("Pay online checkout sessions", () => {
     const update = calls.find((call) => call.op === "update");
     expect(update?.payload).toEqual({ stripe_checkout_session_id: "cs_test_new", online_payment_status: "pending" });
     expect(update?.filters).toContainEqual(["eq", "restaurant_id", restaurant.id]);
+  });
+
+  it("sends identical parameters under one key, and a fresh key for a later retry", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-11-23T04:38:26.100Z"));
+      mockOrders({ id: orderId, total: 10, status: "New", online_payment_status: "pending", stripe_checkout_session_id: null });
+      const stripe = mockStripe();
+      await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" });
+      vi.setSystemTime(new Date("2026-11-23T04:38:42.900Z")); // double tap, same minute
+      await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" });
+      vi.setSystemTime(new Date("2026-11-23T04:40:05.000Z")); // retry after a failure
+      await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" });
+
+      const calls = stripe.checkout.sessions.create.mock.calls as unknown as [Record<string, any>, Record<string, string>][];
+      const [first, second, later] = calls;
+      // Same key => byte-identical parameters, so Stripe replays instead of refusing.
+      expect(second[1].idempotencyKey).toBe(first[1].idempotencyKey);
+      expect(second[0]).toEqual(first[0]);
+      expect(later[1].idempotencyKey).not.toBe(first[1].idempotencyKey);
+      // Stripe needs 30 min to 24 h; the window keeps it at 35-36 min.
+      const createdAt = Date.parse("2026-11-23T04:38:26.100Z") / 1000;
+      expect(first[0].expires_at - createdAt).toBeGreaterThanOrEqual(35 * 60);
+      expect(first[0].expires_at - createdAt).toBeLessThanOrEqual(36 * 60);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never asks Stripe for a session below its AED 2.00 minimum", async () => {
+    const stripe = mockStripe();
+    mockOrders({ id: orderId, total: 1, status: "New", online_payment_status: "pending", stripe_checkout_session_id: null });
+    expect(await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" })).toBeNull();
+    mockOrders({ id: orderId, total: 1.99, status: "New", online_payment_status: "pending", stripe_checkout_session_id: null });
+    expect(await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" })).toBeNull();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    mockOrders({ id: orderId, total: 2, status: "New", online_payment_status: "pending", stripe_checkout_session_id: null });
+    expect(await checkoutUrlForOrder({ restaurant, orderId, origin: "https://a" })).not.toBeNull();
   });
 
   it("reuses the open session instead of creating another", async () => {

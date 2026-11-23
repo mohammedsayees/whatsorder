@@ -2,11 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   asOnlinePaymentStatus,
   checkoutSessionOutcome,
+  meetsOnlinePaymentMinimum,
+  onlinePaymentMinimum,
   onlinePaymentStaffLabel,
   toMinorUnits
 } from "@/lib/stripe/order-payment-rules";
 
 describe("online order payment rules", () => {
+  it("knows Stripe's minimum charge (AED 2.00)", () => {
+    expect(onlinePaymentMinimum("AED")).toBe(2);
+    expect(onlinePaymentMinimum("aed")).toBe(2);
+    expect(onlinePaymentMinimum(null)).toBe(2);
+    expect(meetsOnlinePaymentMinimum(1, "AED")).toBe(false);
+    expect(meetsOnlinePaymentMinimum(1.99, "AED")).toBe(false);
+    expect(meetsOnlinePaymentMinimum(2, "AED")).toBe(true);
+    expect(meetsOnlinePaymentMinimum(0.1 + 1.9, "AED")).toBe(true);
+    expect(meetsOnlinePaymentMinimum(0, "XYZ")).toBe(false);
+    expect(meetsOnlinePaymentMinimum(0.01, "XYZ")).toBe(true);
+  });
+
   it("charges the order total in fils without float drift", () => {
     expect(toMinorUnits(18)).toBe(1800);
     expect(toMinorUnits(12.35)).toBe(1235);

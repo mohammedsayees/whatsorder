@@ -18,6 +18,26 @@ export function toMinorUnits(amount: number) {
   return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
 }
 
+// Stripe's smallest chargeable amount per currency (minor units). Below it
+// Checkout Session creation fails ("must add up to at least AED 2.00"), so
+// "Pay online" is not offered and the server refuses it.
+// https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts
+const ONLINE_PAYMENT_MINIMUM_MINOR: Record<string, number> = {
+  aed: 200,
+  inr: 50
+};
+
+/** Smallest total payable online, in major units (e.g. 2 for AED 2.00). */
+export function onlinePaymentMinimum(currencyCode: string | null | undefined) {
+  return (ONLINE_PAYMENT_MINIMUM_MINOR[(currencyCode ?? "AED").toLowerCase()] ?? 0) / 100;
+}
+
+/** True when Stripe can charge this total in this currency. */
+export function meetsOnlinePaymentMinimum(total: number, currencyCode: string | null | undefined) {
+  const amount = toMinorUnits(total);
+  return amount > 0 && amount >= Math.round(onlinePaymentMinimum(currencyCode) * 100);
+}
+
 type SessionLike = { status?: string | null; payment_status?: string | null };
 
 /** What a Checkout Session means for its order, or null for "no change". */
