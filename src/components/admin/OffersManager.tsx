@@ -8,6 +8,7 @@ import {
 } from "@/app/actions";
 import { formatCurrency } from "@/lib/currency";
 import { formatRestaurantDate } from "@/lib/date-time";
+import { isOfferEligibleItem } from "@/lib/offer-eligibility";
 import type { MenuItem, MenuOffer, Restaurant } from "@/lib/types";
 
 export function OffersManager({
@@ -23,7 +24,8 @@ export function OffersManager({
   restaurant: Restaurant;
   restaurantId?: string;
 }) {
-  const availableItems = items.filter((item) => item.is_available);
+  // Staff-only products are hidden from customers, so an offer on one would never show.
+  const availableItems = items.filter(isOfferEligibleItem);
   const itemsById = new Map(items.map((item) => [item.id, item]));
 
   return (
@@ -51,6 +53,9 @@ export function OffersManager({
               </option>
             ))}
           </select>
+          <span className="mt-1 block text-xs text-stone-500">
+            Only products customers can see are listed. Staff-only products are left out.
+          </span>
         </label>
         <label className="block">
           <span className="text-sm font-bold">Offer price</span>
@@ -167,6 +172,16 @@ export function OffersManager({
                   <span className="line-through">{formatCurrency(item?.price ?? 0, restaurant)}</span>{" "}
                   <span className="font-black text-leaf">{formatCurrency(offer.promotional_price, restaurant)}</span>
                 </p>
+                {item?.staff_only ? (
+                  <p
+                    className="mt-2 max-w-md rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800"
+                    role="alert"
+                  >
+                    Customers can&apos;t see this offer: &ldquo;{item.name}&rdquo; is a staff-only
+                    product. In Menu, set its visibility to &ldquo;Customer menu and staff&rdquo;, or
+                    delete this offer and add one for a customer-visible product.
+                  </p>
+                ) : null}
                 {offer.starts_at || offer.ends_at ? (
                   <p className="mt-1 text-xs font-semibold text-stone-400">
                     {offer.starts_at ? formatRestaurantDate(offer.starts_at, restaurant) : "Now"} –{" "}
