@@ -19,12 +19,18 @@ import type { FulfilmentType, OrderStatus } from "@/lib/types";
 // SHA-256 hash; every read/write is scoped by the assignment's own
 // restaurant_id and order_id, never by anything the client sends.
 
-const TOKEN = /^[A-Za-z0-9_-]{30,64}$/;
+export const RIDER_TOKEN_PATTERN = /^[A-Za-z0-9_-]{30,64}$/;
+const TOKEN = RIDER_TOKEN_PATTERN;
 /** Ignore positions sent faster than this per assignment. */
 const MIN_SAVE_GAP_MS = 5000;
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** The hash stored for a tracking link's secret. */
+export function hashRiderToken(token: string) {
+  return sha256(token);
 }
 
 function publicAppUrl() {

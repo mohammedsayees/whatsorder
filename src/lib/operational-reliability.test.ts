@@ -173,7 +173,7 @@ describe("restaurant operational reliability boundaries", () => {
     expect(migration).toContain("constraint shift_close_reports_shift_tenant_fkey");
     expect(migration).toContain("Only restaurant management can correct a closed shift report");
     // v4 adds the blind-count check and then runs v3, which writes the report.
-    expect(action).toContain('supabase.rpc("close_restaurant_shift_v4"');
+    expect(action).toContain('supabase.rpc("close_restaurant_shift_v5"');
     expect(source("supabase/migrations/20261121120000_blind_cash_count.sql"))
       .toContain("return public.close_restaurant_shift_v3(");
     expect(action).toContain("session.restaurantId");

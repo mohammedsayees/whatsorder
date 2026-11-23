@@ -374,6 +374,11 @@ export type OrderRiderAssignment = {
   delivery_reason: string | null;
   transport_message_id: string | null;
   created_at: string;
+  picked_up_at?: string | null;
+  outcome?: "delivered" | "failed" | null;
+  failure_reason?: string | null;
+  collected_method?: "Cash on Delivery" | "Card on Delivery" | null;
+  method_changed?: boolean;
 };
 
 export type ShiftStatus = "open" | "closed";

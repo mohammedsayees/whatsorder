@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   BarChart3,
+  Bike,
   BriefcaseBusiness,
   ClipboardList,
   CreditCard,
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/admin", label: "Dashboard", icon: BarChart3, staff: true },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList, staff: true },
   { href: "/admin/shifts", label: "Shifts", icon: WalletCards, staff: true },
+  { href: "/admin/riders", label: "Riders", icon: Bike, staff: true },
   { href: "/admin/menu", label: "Menu", icon: MenuSquare, staff: true },
   { href: "/admin/customers", label: "Customers", icon: Users, staff: false },
   { href: "/admin/chats", label: "WhatsApp", icon: MessagesSquare, staff: false },

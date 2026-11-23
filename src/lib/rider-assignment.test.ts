@@ -61,12 +61,27 @@ describe("buildRiderAssignmentMessage", () => {
       rider: { name: "Ahmed" },
       trackingUrl: "https://example.com/rider/secret-token"
     });
-    expect(withLink).toContain("📡 LIVE LOCATION");
+    expect(withLink).toContain("📡 YOUR DELIVERY");
     expect(withLink).toContain("https://example.com/rider/secret-token");
-    expect(withLink.indexOf("📡 LIVE LOCATION")).toBeGreaterThan(withLink.indexOf("💵 PAYMENT"));
+    expect(withLink.indexOf("📡 YOUR DELIVERY")).toBeGreaterThan(withLink.indexOf("💵 PAYMENT"));
 
     const without = buildRiderAssignmentMessage({ order: order(), restaurant, rider: { name: "Ahmed" } });
-    expect(without).not.toContain("LIVE LOCATION");
+    expect(without).not.toContain("YOUR DELIVERY");
+  });
+
+  it("tells the rider about change the restaurant gave them for this order", () => {
+    const message = buildRiderAssignmentMessage({
+      order: order(),
+      restaurant,
+      rider: { name: "Ahmed" },
+      changeAdvance: 50
+    });
+    expect(message).toMatch(/Change given to you: .*50.* \(for this order\)/);
+    expect(message.indexOf("Change given to you")).toBeGreaterThan(message.indexOf("💵 PAYMENT"));
+
+    expect(
+      buildRiderAssignmentMessage({ order: order(), restaurant, rider: { name: "Ahmed" } })
+    ).not.toContain("Change given to you");
   });
 
   it("includes only the delivery and collection facts the rider needs", () => {
