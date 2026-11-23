@@ -27,7 +27,8 @@ export type ReportTab =
   | "products"
   | "customers"
   | "fulfilment"
-  | "sources";
+  | "sources"
+  | "online_payments";
 
 export type ReportRange = {
   endDate: string;

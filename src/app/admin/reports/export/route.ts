@@ -9,6 +9,13 @@ import {
 import { requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getOtherIncomeForReport } from "@/lib/business-day-data";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
+import { formatRestaurantShortDateTime } from "@/lib/date-time";
+import { getOnlinePaymentOrders, restaurantHasOnlinePayments } from "@/lib/online-payments-data";
+import {
+  asOnlinePaymentFilter,
+  buildOnlinePaymentsReport,
+  onlinePaymentsToCsv
+} from "@/lib/online-payments-report";
 
 const exportableTabs: ReportTab[] = [
   "overview",
@@ -18,7 +25,8 @@ const exportableTabs: ReportTab[] = [
   "products",
   "customers",
   "fulfilment",
-  "sources"
+  "sources",
+  "online_payments"
 ];
 
 export async function GET(request: Request) {
@@ -39,6 +47,20 @@ export async function GET(request: Request) {
     new Date(),
     restaurant
   );
+  if (tab === "online_payments") {
+    if (!(await restaurantHasOnlinePayments(restaurant.id))) {
+      return new Response("Not found", { status: 404 });
+    }
+    const filter = asOnlinePaymentFilter(url.searchParams.get("status"));
+    const report = buildOnlinePaymentsReport(
+      await getOnlinePaymentOrders(restaurant.id, range.startIso, range.endExclusiveIso),
+      filter
+    );
+    const csv = onlinePaymentsToCsv(report, (value) => formatRestaurantShortDateTime(value, restaurant));
+    const suffix = filter === "all" ? "" : `-${filter}`;
+    return csvResponse(csv, `whatsorder-${restaurant.slug}-online-payments${suffix}-${range.startDate}-to-${range.endDate}.csv`);
+  }
+
   const orders = await getOrdersForReport(
     restaurant.id,
     range.startIso,
@@ -67,8 +89,10 @@ export async function GET(request: Request) {
         ])
       ].map((row) => row.map(csvCell).join(",")).join("\n")
     : reportToCsv(tab, buildRestaurantReport(orders, customers, restaurant));
-  const filename = `whatsorder-${restaurant.slug}-${tab}-${range.startDate}-to-${range.endDate}.csv`;
+  return csvResponse(csv, `whatsorder-${restaurant.slug}-${tab}-${range.startDate}-to-${range.endDate}.csv`);
+}
 
+function csvResponse(csv: string, filename: string) {
   return new Response(`\uFEFF${csv}`, {
     headers: {
       "Cache-Control": "private, no-store",

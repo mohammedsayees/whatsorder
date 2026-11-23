@@ -19,6 +19,13 @@ import { getCustomerFunnel } from "@/lib/customer-funnel-data";
 import { OrderingFunnelCard } from "@/components/admin/OrderingFunnelCard";
 import { getOtherIncomeForReport } from "@/lib/business-day-data";
 import { otherIncomeCategoryLabels, otherIncomePaymentLabels } from "@/lib/business-day";
+import { getOnlinePaymentOrders, restaurantHasOnlinePayments } from "@/lib/online-payments-data";
+import {
+  asOnlinePaymentFilter,
+  buildOnlinePaymentsReport,
+  type OnlinePaymentFilter
+} from "@/lib/online-payments-report";
+import { OnlinePaymentsSummary, OnlinePaymentsTable } from "@/components/admin/OnlinePaymentsReport";
 
 const reportTabs: Array<{ label: string; value: ReportTab }> = [
   { label: "Overview", value: "overview" },
@@ -28,7 +35,8 @@ const reportTabs: Array<{ label: string; value: ReportTab }> = [
   { label: "Products", value: "products" },
   { label: "Customers", value: "customers" },
   { label: "Fulfilment", value: "fulfilment" },
-  { label: "Order source", value: "sources" }
+  { label: "Order source", value: "sources" },
+  { label: "Online payments", value: "online_payments" }
 ];
 
 const presets: Array<{ label: string; value: ReportPreset }> = [
@@ -82,6 +90,7 @@ export default async function AdminReportsPage({
     end?: string;
     preset?: string;
     start?: string;
+    status?: string;
     tab?: string;
   }>;
 }) {
@@ -93,9 +102,14 @@ export default async function AdminReportsPage({
   const formatDate = (value: string | Date) => formatRestaurantDate(value, restaurant);
   const formatDateTime = (value: string | Date) =>
     formatRestaurantShortDateTime(value, restaurant);
-  const activeTab = reportTabs.some((tab) => tab.value === query.tab)
+  // "Online payments" is offered only to cafés that take (or took) them.
+  const showOnlinePayments = await restaurantHasOnlinePayments(restaurant.id);
+  const visibleTabs = reportTabs.filter((tab) => tab.value !== "online_payments" || showOnlinePayments);
+  const activeTab = visibleTabs.some((tab) => tab.value === query.tab)
     ? (query.tab as ReportTab)
     : "overview";
+  const onlineTab = activeTab === "online_payments";
+  const onlineFilter = asOnlinePaymentFilter(query.status);
   const range = resolveReportRange(
     query.preset,
     query.start,
@@ -103,14 +117,31 @@ export default async function AdminReportsPage({
     new Date(),
     restaurant
   );
-  const [orders, otherIncomeEntries, funnel] = await Promise.all([
-    getOrdersForReport(restaurant.id, range.startIso, range.endExclusiveIso),
+  const [orders, otherIncomeEntries, funnel, onlinePaymentOrders] = await Promise.all([
+    // The online tab reads only "Pay online" orders (below), not every order.
+    onlineTab
+      ? Promise.resolve([])
+      : getOrdersForReport(restaurant.id, range.startIso, range.endExclusiveIso),
     getOtherIncomeForReport(restaurant.id, range.startIso, range.endExclusiveIso),
     // Scoped by the session's restaurant; only the overview shows it.
     activeTab === "overview"
       ? getCustomerFunnel(restaurant.id, range.startIso, range.endExclusiveIso)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    onlineTab
+      ? getOnlinePaymentOrders(restaurant.id, range.startIso, range.endExclusiveIso)
+      : Promise.resolve([])
   ]);
+  const onlineReport = onlineTab ? buildOnlinePaymentsReport(onlinePaymentOrders, onlineFilter) : null;
+  const onlineFilterHref = (filter: OnlinePaymentFilter) => {
+    const params = new URLSearchParams({
+      end: range.endDate,
+      preset: range.preset,
+      start: range.startDate,
+      tab: "online_payments"
+    });
+    if (filter !== "all") params.set("status", filter);
+    return `/admin/reports?${params.toString()}`;
+  };
   const customerPhones = [
     ...new Set(
       orders
@@ -126,6 +157,7 @@ export default async function AdminReportsPage({
     start: range.startDate,
     tab: activeTab
   });
+  if (onlineTab && onlineFilter !== "all") exportQuery.set("status", onlineFilter);
   const maximumDailySales = Math.max(
     1,
     ...report.salesRows.map((row) => row.sales)
@@ -149,7 +181,7 @@ export default async function AdminReportsPage({
           href={`/admin/reports/export?${exportQuery.toString()}`}
         >
           <Download size={17} />
-          Export {reportTabs.find((tab) => tab.value === activeTab)?.label} CSV
+          Export {visibleTabs.find((tab) => tab.value === activeTab)?.label} CSV
         </a>
       </div>
 
@@ -177,6 +209,7 @@ export default async function AdminReportsPage({
 
         <form className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-[1fr_1fr_auto]" method="get">
           <input name="tab" type="hidden" value={activeTab} />
+          {onlineTab && onlineFilter !== "all" ? <input name="status" type="hidden" value={onlineFilter} /> : null}
           <input name="preset" type="hidden" value="custom" />
           <label className="text-sm font-bold text-stone-600">
             From
@@ -211,7 +244,7 @@ export default async function AdminReportsPage({
       </section>
 
       <nav className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Report type">
-        {reportTabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <Link
             aria-current={activeTab === tab.value ? "page" : undefined}
             className={`shrink-0 rounded-lg border px-4 py-2.5 text-sm font-black ${
@@ -227,6 +260,7 @@ export default async function AdminReportsPage({
         ))}
       </nav>
 
+      {onlineReport ? <OnlinePaymentsSummary money={money} report={onlineReport} /> : (
       <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["Completed orders", report.completedOrders],
@@ -240,6 +274,7 @@ export default async function AdminReportsPage({
           </div>
         ))}
       </section>
+      )}
 
       {activeTab === "other_income" ? (
         <section className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
@@ -277,6 +312,16 @@ export default async function AdminReportsPage({
       ) : null}
 
       <div className="mt-5">
+        {onlineReport ? (
+          <OnlinePaymentsTable
+            filter={onlineFilter}
+            filterHref={onlineFilterHref}
+            formatDateTime={formatDateTime}
+            money={money}
+            report={onlineReport}
+          />
+        ) : null}
+
         {activeTab === "overview" ? (
           <div className="space-y-5">
           <OrderingFunnelCard funnel={funnel} />
