@@ -59,6 +59,17 @@ export function RiderAssignmentControl({
           {assignedRider?.name ?? "Rider"} · {deliveryLabels[assignment.delivery_status]}
         </p>
       ) : null}
+      {assignment?.outcome === "failed" ? (
+        <p className="mt-1 rounded-md bg-rose-100 px-2 py-1 text-xs font-black text-rose-800" role="status">
+          Rider could not deliver{assignment.failure_reason ? `: ${assignment.failure_reason}` : ""}
+        </p>
+      ) : assignment?.outcome === "delivered" ? (
+        <p className="mt-1 text-xs font-bold text-leaf">
+          Delivered by rider{assignment.method_changed ? " · paid a different way than ordered" : ""}
+        </p>
+      ) : assignment?.picked_up_at ? (
+        <p className="mt-1 text-xs font-bold text-blue-800">Rider has picked up the order</p>
+      ) : null}
       <form action={formAction} className="mt-2 space-y-2">
         <input name="order_id" type="hidden" value={orderId} />
         <label className="sr-only" htmlFor={`rider-${orderId}`}>
@@ -81,6 +92,17 @@ export function RiderAssignmentControl({
             </option>
           ))}
         </select>
+        <label className="block text-xs font-bold text-blue-900" htmlFor={`change-${orderId}`}>
+          Change given to rider (optional)
+        </label>
+        <input
+          className="focus-ring w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold"
+          disabled={pending}
+          id={`change-${orderId}`}
+          inputMode="decimal"
+          name="change_advance"
+          placeholder="0"
+        />
         <button
           className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-sm font-black text-white disabled:opacity-60"
           disabled={pending}

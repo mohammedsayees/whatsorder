@@ -3,34 +3,50 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Square } from "lucide-react";
 import { RIDER_SEND_INTERVAL_MS } from "@/lib/rider-location";
+import {
+  isRiderApp,
+  openNativeLocationSettings,
+  startNativeTracking,
+  type NativeFix
+} from "@/lib/rider-native";
 
 type State = "active" | "ended" | "replaced";
 
 /**
- * Shares the rider's GPS while this page is open. Sends at most one
- * position every 20 s; stops by itself when the delivery ends or the order
- * is reassigned. Phones pause GPS when the screen locks, so the page asks
- * the rider to keep it open.
+ * Shares the rider's GPS. In a browser it only works while this page is open
+ * (phones pause GPS when the page is backgrounded or the screen locks). In the
+ * WhatsOrder Rider app it keeps running in the background, so the rider can
+ * use Google Maps. Sends at most one position every 20 s; stops by itself when
+ * the delivery ends or the order is reassigned.
  */
 export function RiderLocationSharer({ initialState, token }: { initialState: State; token: string }) {
   const [state, setState] = useState<State>(initialState);
   const [sharing, setSharing] = useState(false);
+  const [inApp, setInApp] = useState(false);
   const [lastSent, setLastSent] = useState<Date | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [needsSettings, setNeedsSettings] = useState(false);
   const watchRef = useRef<number | null>(null);
+  const nativeStopRef = useRef<(() => Promise<void>) | null>(null);
   const lastSendRef = useRef(0);
+
+  useEffect(() => setInApp(isRiderApp()), []);
 
   const stop = () => {
     if (watchRef.current !== null) {
       navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
     }
+
+    const stopNative = nativeStopRef.current;
+    nativeStopRef.current = null;
+    void stopNative?.().catch(() => undefined);
     setSharing(false);
   };
 
   useEffect(() => stop, []);
 
-  const send = async (position: GeolocationPosition) => {
+  const send = async (fix: NativeFix) => {
     const now = Date.now();
 
     if (now - lastSendRef.current < RIDER_SEND_INTERVAL_MS) {
@@ -43,9 +59,9 @@ export function RiderLocationSharer({ initialState, token }: { initialState: Sta
       const response = await fetch("/api/rider/location", {
         body: JSON.stringify({
           token,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          accuracy: fix.accuracy
         }),
         headers: { "content-type": "application/json" },
         keepalive: true,
@@ -70,18 +86,50 @@ export function RiderLocationSharer({ initialState, token }: { initialState: Sta
     }
   };
 
+  const startNative = async () => {
+    try {
+      nativeStopRef.current = await startNativeTracking(
+        (fix) => void send(fix),
+        (reason) => {
+          if (reason === "permission_denied") {
+            setProblem("Location permission is off. Turn it on (choose “Always” if asked) and try again.");
+            setNeedsSettings(true);
+            stop();
+          } else {
+            setProblem("Waiting for GPS…");
+          }
+        }
+      );
+    } catch {
+      setProblem("Could not start location sharing. Close and reopen the app.");
+      setSharing(false);
+    }
+  };
+
   const start = () => {
     setProblem(null);
+    setNeedsSettings(false);
+    lastSendRef.current = 0;
+
+    if (inApp) {
+      setSharing(true);
+      void startNative();
+      return;
+    }
 
     if (!navigator.geolocation) {
       setProblem("This browser cannot share location.");
       return;
     }
 
-    lastSendRef.current = 0;
     setSharing(true);
     watchRef.current = navigator.geolocation.watchPosition(
-      (position) => void send(position),
+      (position) =>
+        void send({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }),
       (error) => {
         setProblem(
           error.code === error.PERMISSION_DENIED
@@ -109,8 +157,9 @@ export function RiderLocationSharer({ initialState, token }: { initialState: Sta
   return (
     <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
       <p className="text-sm leading-6 text-stone-600">
-        Share your live location so the customer can see you&apos;re on the way. It only works while this page is open,
-        so keep your screen on during the delivery. Sharing stops automatically when the order is delivered.
+        {inApp
+          ? "Share your live location so the customer can see you're on the way. It keeps working while you use your maps app or lock your screen. Sharing stops automatically when the order is delivered."
+          : "Share your live location so the customer can see you're on the way. In the browser it only works while this page is open, so keep your screen on during the delivery. Sharing stops automatically when the order is delivered."}
       </p>
       {sharing ? (
         <>
@@ -141,6 +190,15 @@ export function RiderLocationSharer({ initialState, token }: { initialState: Sta
         </button>
       )}
       {problem ? <p className="mt-3 text-sm font-semibold text-amber-700">{problem}</p> : null}
+      {needsSettings ? (
+        <button
+          className="focus-ring mt-2 w-full rounded-full border border-stone-300 px-5 py-3 font-black text-stone-700"
+          onClick={() => void openNativeLocationSettings().catch(() => undefined)}
+          type="button"
+        >
+          Open location settings
+        </button>
+      ) : null}
     </section>
   );
 }

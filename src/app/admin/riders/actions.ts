@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { newRiderTrackingToken } from "@/lib/rider-location-data";
 
 import { buildRiderAssignmentMessage } from "@/lib/rider-assignment";
+import { parseMoneyAmount } from "@/lib/rider-cash";
 import { sendRiderWhatsApp } from "@/lib/rider-whatsapp";
 import { requireRestaurantAdmin, requireRestaurantRole } from "@/lib/super-admin-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -160,11 +161,37 @@ export async function assignRiderToOrderAction(
     return { error: "The rider assignment could not be saved." };
   }
 
+  // Optional cash the restaurant hands the rider so they can make change for
+  // this order. Recorded in the rider cash ledger, linked to the order.
+  const changeAdvance = parseMoneyAmount(field(formData, "change_advance", 12) || "0");
+  let advanceRecorded = 0;
+  let advanceFailed = false;
+  if (changeAdvance === null) {
+    advanceFailed = true;
+  } else if (changeAdvance > 0) {
+    const advance = await admin.from("rider_cash_entries").insert({
+      restaurant_id: session.restaurantId,
+      rider_id: rider.id,
+      entry_type: "change_advance",
+      amount: changeAdvance,
+      order_id: order.id,
+      assignment_id: assignment.data.id,
+      actor_user_id: session.userId,
+      actor_role: session.role
+    });
+    if (advance.error) {
+      advanceFailed = true;
+    } else {
+      advanceRecorded = changeAdvance;
+    }
+  }
+
   const message = buildRiderAssignmentMessage({
     order,
     restaurant: session.restaurant,
     rider,
-    trackingUrl: tracking.url
+    trackingUrl: tracking.url,
+    changeAdvance: advanceRecorded || null
   });
   let delivery: Awaited<ReturnType<typeof sendRiderWhatsApp>>;
   try {
@@ -209,6 +236,12 @@ export async function assignRiderToOrderAction(
   }
 
   revalidatePath("/admin/orders");
+  revalidatePath("/admin/riders");
+  if (advanceFailed) {
+    return {
+      warning: `${rider.name} assigned, but the change amount was not recorded. Add it under Riders → Give change, then tell the rider.`
+    };
+  }
   return delivery.delivered
     ? { success: `${rider.name} assigned. WhatsApp accepted the delivery details.` }
     : { warning: deliveryWarning(delivery.reason) };

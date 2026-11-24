@@ -1,5 +1,8 @@
 import type { OrderStatus } from "@/lib/types";
 
+/** Shape of the secret in a rider's private link (`/rider/<token>`). */
+export const RIDER_TOKEN_PATTERN = /^[A-Za-z0-9_-]{30,64}$/;
+
 /** Customers only see a rider position this recent. */
 export const RIDER_LOCATION_FRESH_MS = 10 * 60 * 1000;
 /** The rider page sends at most one position this often. */

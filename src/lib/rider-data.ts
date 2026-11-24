@@ -31,7 +31,7 @@ export async function getLatestOrderRiderAssignments(
   const { data, error } = await admin
     .from("order_rider_assignments")
     .select(
-      "id, restaurant_id, order_id, rider_id, delivery_status, delivery_reason, transport_message_id, created_at"
+      "id, restaurant_id, order_id, rider_id, delivery_status, delivery_reason, transport_message_id, created_at, picked_up_at, outcome, failure_reason, collected_method, method_changed"
     )
     .eq("restaurant_id", restaurantId)
     .in("order_id", orderIds)

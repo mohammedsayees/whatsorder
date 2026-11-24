@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WhatsOrder Rider</string>
+    <string name="title_activity_main">WhatsOrder Rider</string>
+    <string name="package_name">app.whatsorder.rider</string>
+    <string name="custom_url_scheme">app.whatsorder.rider</string>
+    <!-- Shown in the notification settings for the always-on location notice. -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Delivery location</string>
+</resources>

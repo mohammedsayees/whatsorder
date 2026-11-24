@@ -59,8 +59,10 @@ export function buildRiderAssignmentMessage(input: {
   rider: Pick<DeliveryRider, "name">;
   /** Private link for sharing live location with the customer. */
   trackingUrl?: string | null;
+  /** Cash the restaurant handed the rider so they can make change. */
+  changeAdvance?: number | null;
 }) {
-  const { order, restaurant, rider, trackingUrl } = input;
+  const { order, restaurant, rider, trackingUrl, changeAdvance } = input;
   const pickup = pickupAddress(restaurant);
   const lines = [
     `🚴 NEW DELIVERY — ${restaurant.name.toLocaleUpperCase()}`,
@@ -88,11 +90,16 @@ export function buildRiderAssignmentMessage(input: {
   }
 
   lines.push("", "💵 PAYMENT", ...paymentInstruction(order, restaurant));
+  if (changeAdvance && changeAdvance > 0) {
+    lines.push(
+      `Change given to you: ${formatCurrency(changeAdvance, restaurant).replace(/\s+/g, " ")} (for this order)`
+    );
+  }
   if (trackingUrl) {
     lines.push(
       "",
-      "📡 LIVE LOCATION",
-      "When you set off, open this link and keep it open so the customer can see you're on the way:",
+      "📡 YOUR DELIVERY",
+      "Open this link when you set off. Tap Picked up, share your location, and tap Delivered when done (it also records the cash you collect). Keep it open:",
       trackingUrl
     );
   }

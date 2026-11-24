@@ -44,6 +44,7 @@ function friendlyShiftError(message?: string) {
     "Only the shift opener or restaurant management can add a paid-out",
     "Only the shift opener or restaurant management can close this shift",
     "Cannot close shift while active orders remain",
+    "Settle rider cash before closing the shift",
     "Paid-out amount must be greater than zero",
     "A paid-out reason is required",
     "Counted cash cannot be negative",
@@ -544,7 +545,7 @@ export async function closeShiftAction(
     return { error: breakdown.error };
   }
 
-  const { error } = await supabase.rpc("close_restaurant_shift_v4", {
+  const { error } = await supabase.rpc("close_restaurant_shift_v5", {
     event_actor_user_id: session.userId,
     requested_card_terminal_total: cardTerminalTotal,
     requested_cash_counted_amount: cashCounted,
