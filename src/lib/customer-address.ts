@@ -91,6 +91,9 @@ export function parseSavedDetails(raw: string | null): SavedCustomerDetails | nu
     result.longitude = longitude;
   }
 
+  // Device copies saved before this fix may repeat the composed address here.
+  result.details = cleanAddressDetails(result);
+
   return STRING_FIELDS.some((field) => result[field]) ? result : null;
 }
 
@@ -98,6 +101,57 @@ const ADDRESS_LABELS: Record<CustomerLanguage, { building: string; flat: string 
   en: { building: "Building/Villa", flat: "Flat/Floor" },
   ar: { building: "المبنى/الفيلا", flat: "الشقة/الطابق" }
 };
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+
+/**
+ * "Street & directions" must hold only what the customer typed there. Older
+ * saved addresses and device copies also carry the composed
+ * "Building/Villa: X, Flat/Floor: Y" text in that field, which then printed
+ * twice on every order. Removes those leading labelled segments, but only for
+ * a part that is also filled in separately, so no address text is ever lost.
+ */
+export function cleanAddressDetails(parts: { building: string; flat: string; details: string }): string {
+  const building = parts.building.trim();
+  const flat = parts.flat.trim();
+  let rest = parts.details.trim();
+
+  for (let pass = 0; pass < 6 && rest; pass += 1) {
+    const before = rest;
+
+    for (const labels of Object.values(ADDRESS_LABELS)) {
+      // Exact copy of what compose would produce (handles commas inside values).
+      const head = [
+        building ? `${labels.building}: ${building}` : "",
+        flat ? `${labels.flat}: ${flat}` : ""
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      if (head && (rest === head || rest.startsWith(`${head},`))) {
+        rest = rest.slice(head.length).replace(/^,\s*/, "").trim();
+        continue;
+      }
+
+      // A stale copy, e.g. the flat was edited after the text was saved.
+      const labelled = (label: string) =>
+        new RegExp(`^${escapeRegExp(label)}:[^,]*(?:,\\s*|$)`);
+
+      if (building && labelled(labels.building).test(rest)) {
+        rest = rest.replace(labelled(labels.building), "").trim();
+      }
+      if (flat && labelled(labels.flat).test(rest)) {
+        rest = rest.replace(labelled(labels.flat), "").trim();
+      }
+    }
+
+    if (rest === before) {
+      break;
+    }
+  }
+
+  return rest;
+}
 
 /**
  * Joins the structured fields into the single delivery_address the order
@@ -111,7 +165,7 @@ export function composeDeliveryAddress(
   const labels = ADDRESS_LABELS[language];
   const building = parts.building.trim();
   const flat = parts.flat.trim();
-  const details = parts.details.trim();
+  const details = cleanAddressDetails(parts);
 
   return [
     building ? `${labels.building}: ${building}` : "",
@@ -133,10 +187,50 @@ export function liftLegacyAddress<T extends { building: string; flat: string; de
   parts: T
 ): T {
   const legacy = parts.details.trim();
-  if (parts.building.trim() || parts.flat.trim() || !legacy || legacy.length > ADDRESS_LIMITS.building) {
+  if (parts.building.trim() || parts.flat.trim() || !legacy) {
+    return parts;
+  }
+
+  // The last order's delivery_address is the composed
+  // "Building/Villa: X, Flat/Floor: Y[, more]" text: split it back into fields
+  // instead of dropping the whole line into Building.
+  const composed = parseComposedAddress(legacy);
+  if (composed) {
+    return { ...parts, ...composed };
+  }
+
+  if (legacy.length > ADDRESS_LIMITS.building) {
     return parts;
   }
   return { ...parts, building: legacy, details: "" };
+}
+
+/** Inverse of composeDeliveryAddress; null when the text is not in that format. */
+export function parseComposedAddress(
+  value: string
+): { building: string; flat: string; details: string } | null {
+  const text = value.trim();
+
+  for (const labels of Object.values(ADDRESS_LABELS)) {
+    const building = new RegExp(`^${escapeRegExp(labels.building)}:\\s*([^,]+?)\\s*(?:,\\s*|$)`).exec(text);
+    if (!building) {
+      continue;
+    }
+
+    let rest = text.slice(building[0].length);
+    const flat = new RegExp(`^${escapeRegExp(labels.flat)}:\\s*([^,]+?)\\s*(?:,\\s*|$)`).exec(rest);
+    if (flat) {
+      rest = rest.slice(flat[0].length);
+    }
+
+    return {
+      building: building[1].slice(0, ADDRESS_LIMITS.building),
+      flat: (flat?.[1] ?? "").slice(0, ADDRESS_LIMITS.flat),
+      details: rest.trim().slice(0, ADDRESS_LIMITS.details)
+    };
+  }
+
+  return null;
 }
 
 /** Non-personal checkout choices remembered per store on this device. */
