@@ -5,6 +5,7 @@ import { haversineKm } from "@/lib/geo";
 import { orderReference } from "@/lib/order-notifications";
 import {
   RIDER_LOCATION_FRESH_MS,
+  RIDER_TOKEN_PATTERN,
   RIDER_SHARING_STATUSES,
   isRiderVisibleToCustomer,
   riderFirstName,
@@ -19,8 +20,8 @@ import type { FulfilmentType, OrderStatus } from "@/lib/types";
 // SHA-256 hash; every read/write is scoped by the assignment's own
 // restaurant_id and order_id, never by anything the client sends.
 
-export const RIDER_TOKEN_PATTERN = /^[A-Za-z0-9_-]{30,64}$/;
 const TOKEN = RIDER_TOKEN_PATTERN;
+export { RIDER_TOKEN_PATTERN };
 /** Ignore positions sent faster than this per assignment. */
 const MIN_SAVE_GAP_MS = 5000;
 

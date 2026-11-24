@@ -9,7 +9,7 @@ const compat = new FlatCompat({ baseDirectory: __dirname });
 
 const eslintConfig = [
   {
-    ignores: [".next/**", "node_modules/**", "out/**", "generated-docs/**"]
+    ignores: [".next/**", "node_modules/**", "out/**", "generated-docs/**", "mobile/**"]
   },
   ...compat.extends("next/core-web-vitals")
 ];
