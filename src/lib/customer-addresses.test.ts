@@ -66,6 +66,33 @@ describe("parseSavedAddresses", () => {
   });
 });
 
+describe("composed address copied into details", () => {
+  const polluted = {
+    ...base,
+    building: "Rawdha3",
+    flat: "203",
+    details: "Building/Villa: Rawdha3, Flat/Floor: 203"
+  };
+
+  it("is cleaned before an address is saved", () => {
+    expect(cleanSavedAddressInput(polluted)?.details).toBe("");
+  });
+
+  it("is healed when saved addresses are read back", () => {
+    const [address] = parseSavedAddresses([{ id: "a1", ...polluted, is_default: true }]);
+    expect(address.details).toBe("");
+    expect(address.building).toBe("Rawdha3");
+    expect(address.flat).toBe("203");
+  });
+
+  it("keeps genuine street text", () => {
+    const [address] = parseSavedAddresses([
+      { id: "a1", ...polluted, details: "Building/Villa: Rawdha3, Flat/Floor: 203, blue gate" }
+    ]);
+    expect(address.details).toBe("blue gate");
+  });
+});
+
 describe("matching and summary", () => {
   it("matches addresses regardless of case and spacing", () => {
     expect(isSameAddress(base, { ...base, area: " al nahda " })).toBe(true);

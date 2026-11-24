@@ -4,7 +4,7 @@
 // address book per café). No I/O: the server loader is in
 // customer-addresses-data.ts. Safe to import from client components.
 
-import { ADDRESS_LIMITS } from "@/lib/customer-address";
+import { ADDRESS_LIMITS, cleanAddressDetails } from "@/lib/customer-address";
 
 export const MAX_SAVED_ADDRESSES = 10;
 export const ADDRESS_LABEL_MAX_LENGTH = 40;
@@ -68,6 +68,8 @@ export function cleanSavedAddressInput(input: unknown): SavedAddressInput | null
     }
     result[field] = value;
   }
+  // Never store the composed address inside the free-text details.
+  result.details = cleanAddressDetails(result);
 
   const hasLatitude = source.latitude !== null && source.latitude !== undefined && source.latitude !== "";
   const hasLongitude = source.longitude !== null && source.longitude !== undefined && source.longitude !== "";
@@ -100,14 +102,17 @@ export function parseSavedAddresses(data: unknown): SavedAddress[] {
     const latitude = coordinate(source.latitude, 90);
     const longitude = coordinate(source.longitude, 180);
     const paired = latitude !== null && longitude !== null;
+    const building = text(source.building);
+    const flat = text(source.flat);
     return [
       {
         id: source.id as string,
         label: text(source.label),
         area: text(source.area),
-        building: text(source.building),
-        flat: text(source.flat),
-        details: text(source.details),
+        building,
+        flat,
+        // Heals rows saved while the composed address was copied in here.
+        details: cleanAddressDetails({ building, flat, details: text(source.details) }),
         landmark: text(source.landmark),
         latitude: paired ? latitude : null,
         longitude: paired ? longitude : null,
